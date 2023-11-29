@@ -208,7 +208,9 @@ common defaults
     transformers-base >=0.4.6 && <0.5,
     utf8-string >=1.0.2 && <1.1,
     vector >=0.12.3.1 && <0.13,
-    witherable >=0.4.2 && <0.5
+    witherable >=0.4.2 && <0.5,
+
+    plutus-core
 
 library
   import: defaults
