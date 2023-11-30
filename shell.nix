@@ -1,18 +1,21 @@
 with (import <nixpkgs> {});
-mkShell {
-  buildInputs = [
+let haskell928 = haskell.packages.ghc928;
+    ghc928 = haskell.compiler.ghc928;
+in mkShell {
+  nativeBuildInputs = [
+    pkg-config
+    haskell928.haskell-language-server
+    ghc928
     cabal-install
-    haskell-language-server
-    haskell.compiler.ghc924
+  ];
+
+  buildInputs = [
     zlib
     libsodium
     secp256k1
   ];
 
-  shelHook = ''
-    export PKG_CONFIG_PATH=/usr/lib/pkgconfig:/usr/share/pkgconfig:/usr/local/lib/pkgconfig
-    export PKG_CONFIG_PATH=/usr/share/pkgconfig:$PKG_CONFIG_PATH
-    export PKG_CONFIG_PATH=/usr/local/lib/pkgconfig:$PKG_CONFIG_PATH
+  shellHook = ''
     export LC_ALL=C.utf8
   '';
 }

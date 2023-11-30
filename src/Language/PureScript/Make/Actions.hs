@@ -38,6 +38,7 @@ import Language.PureScript.AST (SourcePos(..))
 import Language.PureScript.Bundle qualified as Bundle
 import Language.PureScript.CodeGen.JS qualified as J
 import Language.PureScript.CodeGen.JS.Printer (prettyPrintJS, prettyPrintJSWithSourceMaps)
+import Language.PureScript.CodeGen.UPLC qualified as PC
 import Language.PureScript.CoreFn qualified as CF
 import Language.PureScript.CoreFn.ToJSON qualified as CFJ
 import Language.PureScript.Crash (internalError)
@@ -277,6 +278,9 @@ buildMakeActions outputDir filePathMap foreigns usePrefix =
         when sourceMaps $ genSourceMap dir mapFile (length prefix) mappings
     when (S.member Docs codegenTargets) $ do
       lift $ writeJSONFile (outputFilename mn "docs.json") docs
+    when (S.member UPLC codegenTargets) $ do
+      uplc <- PC.moduleToUPLC m
+      lift $ PC.printUPLC uplc
 
   ffiCodegen :: CF.Module CF.Ann -> Make ()
   ffiCodegen m = do
