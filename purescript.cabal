@@ -1,4 +1,4 @@
-cabal-version:  2.4
+cabal-version:  3.0
 
 name:           purescript
 -- Note: don't add prerelease identifiers here! Add them in app/Version.hs and npm-package/package.json instead.
@@ -34,7 +34,7 @@ extra-source-files:
   tests/support/pscide/src/**/*.purs
   tests/support/pscide/src/**/*.js
   tests/support/pscide/src/**/*.fail
-  stack.yaml
+  -- stack.yaml
   README.md
   INSTALL.md
   CONTRIBUTORS.md
@@ -209,8 +209,8 @@ common defaults
     utf8-string >=1.0.2 && <1.1,
     vector >=0.12.3.1 && <0.13,
     witherable >=0.4.2 && <0.5,
-
-    plutus-core
+    plutus-core,
+    plutus-core:plutus-ir
 
 library
   import: defaults
