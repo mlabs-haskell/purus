@@ -201,6 +201,7 @@ traverseLit f = \case
   CharLiteral x -> pure $ CharLiteral x
   BooleanLiteral x -> pure $ BooleanLiteral x
   ArrayLiteral xs  -> ArrayLiteral <$> traverse f xs
+  ObjectLiteral xs -> ObjectLiteral <$> traverse (\(str,x) -> f x >>= \b -> pure (str,b)) xs
 
 inferType :: M m => Maybe SourceType -> A.Expr -> m SourceType
 inferType (Just t) _ = pure t

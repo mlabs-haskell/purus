@@ -114,8 +114,10 @@ rebuildModuleWithIndex MakeActions{..} exEnv externs m@(Module _ _ moduleName _ 
     desugarCaseGuards elaborated
 
   regrouped <- createBindingGroups moduleName . collapseBindingGroups $ deguarded
+
   let mod' = Module ss coms moduleName regrouped exps
   ((coreFnTyped,chkSt),nextVar'') <- runSupplyT nextVar' $ runStateT (CFT.moduleToCoreFn mod') (emptyCheckState env')
+  mapM_ (traceM . show . fmap (fmap (const ()) . fst)) . CF.moduleDecls $ coreFnTyped
   traceM $ CFT.prettyPrintModule' (CFT.forgetNonTypes coreFnTyped)
   let corefn = CF.moduleToCoreFn env' mod'
       (optimized, nextVar''') = runSupply nextVar'' $ CF.optimizeCoreFn corefn
