@@ -48,8 +48,13 @@ import Language.PureScript.Make.Cache qualified as Cache
 import Language.PureScript.Make.Actions as Actions
 import Language.PureScript.Make.Monad as Monad
 import Language.PureScript.CoreFn qualified as CF
+import Language.PureScript.CoreFn.Typed qualified as CFT
+import Language.PureScript.CoreFn.Typed.Pretty qualified as CFT
 import System.Directory (doesFileExist)
 import System.FilePath (replaceExtension)
+
+-- Temporary
+import Debug.Trace (traceM)
 
 -- | Rebuild a single module.
 --
@@ -110,8 +115,10 @@ rebuildModuleWithIndex MakeActions{..} exEnv externs m@(Module _ _ moduleName _ 
 
   regrouped <- createBindingGroups moduleName . collapseBindingGroups $ deguarded
   let mod' = Module ss coms moduleName regrouped exps
-      corefn = CF.moduleToCoreFn env' mod'
-      (optimized, nextVar'') = runSupply nextVar' $ CF.optimizeCoreFn corefn
+  ((coreFnTyped,chkSt),nextVar'') <- runSupplyT nextVar' $ runStateT (CFT.moduleToCoreFn mod') (emptyCheckState env')
+  traceM $ CFT.prettyPrintModule' (CFT.forgetNonTypes coreFnTyped)
+  let corefn = CF.moduleToCoreFn env' mod'
+      (optimized, nextVar''') = runSupply nextVar'' $ CF.optimizeCoreFn corefn
       (renamedIdents, renamed) = renameInModule optimized
       exts = moduleToExternsFile mod' env' renamedIdents
   ffiCodegen renamed

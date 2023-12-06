@@ -5,6 +5,18 @@ module Language.PureScript.TypeChecker.Types
   ( BindingGroupType(..)
   , typesOf
   , checkTypeKind
+  , check
+  , infer
+  , inferBinder
+  , freshTypeWithKind
+  , kindType
+  , TypedValue' (..)
+  , instantiatePolyTypeWithUnknowns
+  , tvToExpr
+  , SplitBindingGroup(..)
+  , typeDictionaryForBindingGroup
+  , typeForBindingGroupElement
+  , checkTypedBindingGroupElement
   ) where
 
 {-

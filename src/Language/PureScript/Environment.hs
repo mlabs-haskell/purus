@@ -20,7 +20,7 @@ import Data.Text (Text)
 import Data.Text qualified as T
 import Data.List.NonEmpty qualified as NEL
 
-import Language.PureScript.AST.SourcePos (nullSourceAnn)
+import Language.PureScript.AST.SourcePos (nullSourceAnn, pattern NullSourceAnn)
 import Language.PureScript.Crash (internalError)
 import Language.PureScript.Names (Ident, ProperName(..), ProperNameType(..), Qualified, QualifiedBy, coerceProperName)
 import Language.PureScript.Roles (Role(..))
@@ -360,6 +360,18 @@ tyForall var k ty = ForAll nullSourceAnn TypeVarInvisible var (Just k) ty Nothin
 -- | Smart constructor for function types
 function :: SourceType -> SourceType -> SourceType
 function = TypeApp nullSourceAnn . TypeApp nullSourceAnn tyFunction
+
+-- This is borderline necessary
+pattern (:->) :: Type () -> Type () -> Type ()
+pattern a :-> b =
+  TypeApp ()
+    (TypeApp () (TypeConstructor () C.Function) a)
+    b
+
+getFunArgTy :: Type () -> Type ()
+getFunArgTy = \case
+  a :-> _ -> a
+  other -> other
 
 -- To make reading the kind signatures below easier
 (-:>) :: SourceType -> SourceType -> SourceType

@@ -250,6 +250,8 @@ library
     Language.PureScript.CoreFn.Optimizer
     Language.PureScript.CoreFn.ToJSON
     Language.PureScript.CoreFn.Traversals
+    Language.PureScript.CoreFn.Typed
+    Language.PureScript.CoreFn.Typed.Pretty
     Language.PureScript.CoreImp
     Language.PureScript.CoreImp.AST
     Language.PureScript.CoreImp.Module
