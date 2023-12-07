@@ -209,8 +209,8 @@ While we still have a few details to flesh out, the rough shape of our compilati
     - Parses the `CoreFn` modules and `ExternsFile`s for modules imported by the `Main` source file 
     - Resolves imports
     - Performs inlining
-      - We probably _have_ to inline row-polymorphic functions because we cannot represent their types in a PIR bindings/declaration
-      - We probably do not need to inline monomorphic or `Type`-polymorphic functions, for which we can generate PIR bindings/declarations 
+      1. We probably _have_ to inline row-polymorphic functions because we cannot represent their types in a PIR bindings/declaration
+      2. We probably do not need to inline monomorphic or `Type`-polymorphic functions, for which we can generate PIR bindings/declarations 
     - Applies all type arguments / instantiated all type variables (throwing an error if a variable cannot be instantiated to a concrete type)
     - Eliminates `ObjectUpdate` and `Accessor` expressions using fully-instantiated (closed) row types 
     - Performs any optimizations
