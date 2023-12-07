@@ -43,14 +43,46 @@ projA :: forall (row :: Row Type). { a :: Int | row } -> Int
 projA { a } = a
 ```
 
-We have an insight for solving this problem, inspired by Haskell's `HasField` machinery, but it's just an idea and not something we fully developed: we can transform it into an extra parameter (here using a self-explanatory invented here syntax):
+We have considered two approaches to solving this problem: 
+
+#### Solution 1: Desugar to Typeclass 
+
+The first is inspired by Haskell's `HasField` machinery and the `HasType` constraint from `row-types`. The general idea is to desugar open rows to a set of typeclass constraints that can be solved by the compiler for all and only closed rows. One possible implementation of the typeclass might be: 
 
 ```purescript
-projA :: forall (row :: Row Type). \indexOfAinRow -> { a @ indexOfAinRow :: Int | row } -> Int
-projA ix record = record !! ix
+class HasType :: Symbol -> Type -> Row Type -> Constraint 
+class HasType l t r | l r -> t where 
+   lookup :: Record r -> t   -- will require a type application of the Symbol to use, could also pass proxies 
 ```
 
-This kind of parameters can be resolved at compile time (similar to subsumption of type class dictionaries), and probably inlined in (almost?) every use site.
+Desugaring the previous example would give us: 
+
+```purescript 
+projA :: forall (row :: Row Type). HasType "a" Int row => Record row -> Int 
+projA record = lookup @"a" record 
+```
+
+In cases where the `row` type argument is known at compile time, the constraint can be solved using builtin compiler-solved typeclass utilities in conjunction with type inference. However, not _every_ constraint can be solved at compile time. For instance, consider a library module that contains a function with a type such as `f :: forall (r :: Row Type). {a :: Int} -> (...)`. The function `f` may not instantiate `r` to a concrete row type until it is imported and applied to a concrete argument. This poses a difficulty for us, because, as far as we are aware, there is no way to represent the _kind_ of `r` using the PIR/TPLC type system (which, to our knowledge, supports higher kinded types but not lifted datatypes). One possible solution is to transform the previous example into something like: 
+
+```purescript 
+projA :: forall (t :: Type). (t -> Int) -> t -> Int 
+projA f record = f record 
+```
+
+This yields a function with a type that can be represented in the Plutus type system. While this erases information (i.e. concerning labels) necessary to solve the constraint, we could conceivably encode this in annotation metadata when generating PIR or TPLC and resolve the "implicit" function argument during linking. 
+
+#### Solution 2: Defer Compilation
+
+The second solution is, essentially, to do nothing until we reach the point in our compilation pipeline where all type variables are (or should be) instantiated. To elaborate: The type of a Plutus script (a validator or minting policy) never contains type variables and lacks quantifiers. Consequently, any row-polymorphic expression must be instantiated with a concrete row if it is used to write a Plutus script. 
+
+Because the most severe problem with the typeclass approach is that it requires us to generate PIR or TPLC that contains types (kinds, to be more specific) that cannot be represented (without losing information) in the PIR/TPLC type system, one way to solve this problem _without_ adding subsantial complexity during the linking phase is simply to defer conversion into PIR/TPLC until we know we are compiling a Plutus script, at which point all types must be fully instantiated. If all types are fully instantiated, then records (and functions that contain record updates and accessors) can easily be transformed into PIR products (in accordance with the rough procedure outlined above). 
+
+One potential drawback of defering compilation is that doing so prohibits us from generating PIR or TPLC _modules_ directly. On this approach, our first compilation pass would generate modules in a type-annotated variant of PureScript's `CoreFn` AST (possibly with additional support for type declarations). These modules could be bundled as libraries and used by other developers, but could not be used to directly generate _arbitrary_ PIR/UPLC. A second compilation pass - which aims at generating a UPLC Plutus script - would resolve imports, perform inlining and some optimizations, instantiate all type variables (& other misc linking tasks) _at the `CoreFn`_ level, before transforming typed `CoreFn` to `PIR` and, finally, UPLC.  
+
+#### Decision 
+
+The only drawback to Solution 2 is that it forces us into a particular design for modules and the linker. However, we see no advantage in generating PIR/TPLC modules directly and no disadvantage in generating (typed) `CoreFn` modules. The added complexity of the typeclass approach simply does not provide advantages proportionate with the amount of labor required to implement it, and therefore we will be moving forward with Solution 2. 
+
 
 ### Data encoding techniques
 
@@ -155,9 +187,37 @@ Thus a basic type class implementation requires only records (or even just produ
 
 ## Linker
 
-PureScript compiles code on per-module basis, because it has to maintain per-module FFI interfaces.
+PureScript compiles code on a per-module basis, because it has to maintain per-module FFI interfaces. 
 
-TBD: how to link modules together
+Modifying the PureScript compiler to behave differently would be extremely laborious and error-prone - the assumption of multiple output modules is deeply embedded in the PureScript compilation pipeline. Making a change would require a near-total rewrite of that pipeline, which we do not judge to be viable given our budget and resources. 
+
+Any linker design, then, must satisfy the following constraints: 
+  - It must preserve the per-module compilation pipeline of the PureScript compiler 
+  - It must yield modules that can serve as libraries
+  - It must be capable of assembling multiple library modules into a single "executable" Plutus script 
+  - It must be consistent with our solutions to the row polymorphism and data encoding problems 
+  
+One obvious solution satisfies all of these constraints: A two-stage compilation process that, in the first stage, outputs an intermediate representation on a per-module basis and, in the second stage, resolves imports, performs inlining (&etc) to generate a UPLC executable. This two-stage design satisfies all of the above criteria, and has the additional benefit of minimizing the required changes to the PureScript compiler (i.e. the second stage could be implemented as a separate executable in a different project). 
+
+While we still have a few details to flesh out, the rough shape of our compilation pipeline architecture is: 
+  1. The PureScript compiler parses the CST from a set of module files and transforms it into a (sugared) AST (this is unmodified PS compiler behavior)
+  2. We modify the PureScript compiler to transform the sugared AST into a *typed* variant of PureScript's `CoreFn` AST. The simplest way to do this is to tag expressions with their type in the annotation field, though it may be useful to create our own variant AST for ergonomic reasons. 
+  3. We write a trivial code generator that serializes typed `CoreFn` modules and writes them to the output directory. The compiler will also generate suitable `ExternsFile`s, which are needed for incremental compilation and linking. (This is the last step that involves the PS compiler directly)
+    - The set of `CoreFn` modules generated at this stage can serve as a package or library which may be shared  
+  4. We implement a second-pass compiler executable which: 
+    - Parses the `Main` source file (which should contain a `main` function that will be compiled to a UPLC script) and transforms it into typed `CoreFn`
+    - Parses the `CoreFn` modules and `ExternsFile`s for modules imported by the `Main` source file 
+    - Resolves imports 
+    - Performs inlining 
+      - We probably _have_ to inline row-polymorphic functions because we cannot represent their types in a PIR bindings/declaration
+      - We probably do not need to inline monomorphic or `Type`-polymorphic functions, for which we can generate PIR bindings/declarations 
+    - Applies all type arguments / instantiated all type variables (throwing an error if a variable cannot be instantiated to a concrete type)
+    - Eliminates `ObjectUpdate` and `Accessor` expressions using fully-instantiated (closed) row types 
+    - Performs any optimizations
+    - Transforms the typed `CoreFn` AST into a PIR AST 
+    - Compiles PIR to UPLC
+    - Seralizes the UPLC Plutus Script and writes it to the output directory 
+
 
 ## Possible optimizations
 
