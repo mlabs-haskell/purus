@@ -92,7 +92,7 @@ There are three data encoding approaches we considered:
 
 Scott encoding is a technique (or family of techniques) for representing algebraic data types as lambda calculus terms (i.e. functions). Although there is no canonical form or standard set of techniques for working with Scott-encoded data, the general idea behind the encoding is to store values (e.g. arguments to a constructor) as parameters to a function. The parameters can then be accessed by applying a suitable "destructor" function to the lambda term which stores the values.
 
-Scott encoding is used in Plutarch and (as far as I am aware - this may change) PlutusTx. While a full explanation of Scott encoding is outside the scope of this report, the [Plutarch Docs](https://plutonomicon.github.io/plutarch-plutus/Concepts/Data%20and%20Scott%20encoding) provides a simple example that showcases the approach (comments added here, minor changes for clarity):
+Scott encoding is used in Plutarch. While a full explanation of Scott encoding is outside the scope of this report, the [Plutarch Docs](https://plutonomicon.github.io/plutarch-plutus/Concepts/Data%20and%20Scott%20encoding) provides a simple example that showcases the approach (comments added here, minor changes for clarity):
 
 ``` haskell
 -- A Scott-encoded variant of Haskell's Maybe type
@@ -151,6 +151,7 @@ Our priorities:
 
 1. Functions as data is crucial, so PlutusData encoding is not viable.
 2. All other things being equal, a standardized & intuitive representation is superior to a non-standardized or non-intuitive representation.
+3. Choosing a representation that will be the target of future optimization efforts by IOG is preferable due to future performance benefits we will get.
 
 In light of our priorities, the SOP representation is the best choice for Purus. While Scott encoding is a viable option in that it is performant and enables storing functions in data structures, it lacks any distinct advantage over the SOP representation.
 
@@ -218,14 +219,37 @@ While we still have a few details to flesh out, the rough shape of our compilati
   9. Compiles PIR to UPLC
   10. Seralizes the UPLC Plutus Script and writes it to the output directory
 
-
 ## Possible optimizations
 
-TBD
-<!-- Possible optimisations we could apply (list of approaches with links) -->
+### From purescript-backend-optimizer
+
+[purescript-backend-optimizer](https://github.com/aristanetworks/purescript-backend-optimizer) is a tool that consumes the compiler's high-level IR (CoreFn) and applies a more aggressive inlining pipeline (subsuming existing optimizations) that is backend agnostic.
+
+Some of the optimizations are implemented on the JavaScript level, and are therefore not applicable.
+
+Among those that are implemented on CoreFn level, there is only one:
+
+#### Pattern matching optimization
+
+Naive pattern matching implementations often suffer from multiple dispatching on the same variants many times, because the path information from previous matches are not considered in the following ones. [purescript-backend-optimizer implements](https://github.com/aristanetworks/purescript-backend-optimizer/blob/bdef8b58cd8591bef7fd499c892989604e6b918d/docs/optimized-pattern-matching.md) an algorithm that transforms a single pattern matching statement into a tree of nested pattern matchings, that work faster because a single constructor is never dispatched on more than once.
+
+We decided that it is unreasonable for us to spend time on this optimization, at least at this stage, because:
+
+- it is rarely needed, because complex and inefficient pattern matching is rarely encountered in real programs
+- this optimization could be performed manually on the source language level
+
+#### Stream Fusion (List Fusion)
+
+`purescript-backend-optimizer` is able to fuse scott-encoded lists (`Fold` type) ([source](https://github.com/aristanetworks/purescript-backend-optimizer/blob/bdef8b58cd8591bef7fd499c892989604e6b918d/backend-es/test/snapshots/Snapshot.Fusion01.purs#L1), [output](https://github.com/aristanetworks/purescript-backend-optimizer/blob/bdef8b58cd8591bef7fd499c892989604e6b918d/backend-es/test/snapshots-out/Snapshot.Fusion01.js#L1)). Unfortunately, it is done on the JavaScript level, so we can't adapt this code easily.
+
+However, the value proposition of stream fusion is low in the context of on-chain scripts.
+
+#### Tail Call Optimization
+
+We don't have to implement TCO, because the interpreter already handles the case with tail recursion optimally (based on conversations with IOG).
 
 ## Software environment
 
-TBD
+We will only support Ubuntu Linux (latest LTS), compiling the project using Nix with latest major version of GHC supported by the upstream PureScript compiler.
 
-<!-- A list of assumptions about the software environment the compiler will rely on -->
+It should not be a problem to compile the binary for other linux distros, MacOS or Windows, because the PureScript compiler repo we forked supports all of these, but in our CI we will only use Ubuntu, so the guarantees we will provide will only apply to that environment.
