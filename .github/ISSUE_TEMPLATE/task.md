@@ -1,12 +1,12 @@
 ---
-name: Compiler proposal
-about: A concrete suggestion to change the Purus compiler
+name: Project Task
+about: A task to modify the Purus compiler
 labels: 'type: enhancement'
 assignees: ''
 
 ---
 
-## Summary
+## Context
 
 One or two sentence summary of the proposal.
 
@@ -14,10 +14,10 @@ One or two sentence summary of the proposal.
 
 Background information about why this proposal is necessary.
 
-## Proposal
+## The Ask
 
 Detailed description of the proposal.
 
-## Examples
+## Acceptance Criteria
 
-At least one or two examples of the proposal being used.
+How can we decide if the task is complete?

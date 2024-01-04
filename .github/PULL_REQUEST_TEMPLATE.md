@@ -10,4 +10,4 @@ Clearly and concisely describe the purpose of the pull request. If this PR relat
 - [ ] Added myself to CONTRIBUTORS.md (if this is my first contribution)
 - [ ] Linked any existing issues or proposals that this pull request should close
 - [ ] Updated or added relevant documentation
-- [ ] Added a test for the contribution (if applicable)
+- [ ] Added a test for the contribution or a justification for the absence of tests
