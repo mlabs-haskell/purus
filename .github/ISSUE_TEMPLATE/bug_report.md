@@ -1,6 +1,6 @@
 ---
 name: Bug report
-about: Create a report to help us improve the PureScript compiler
+about: Create a report to help us improve the Purus compiler
 title: ''
 labels: 'type: bug'
 assignees: ''
@@ -23,6 +23,6 @@ A clear and concise description of what you expected to happen.
 
 Add any other context about the problem here.
 
-## PureScript version
+## Purus version
 
 0.x.x
