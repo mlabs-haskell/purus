@@ -50,6 +50,7 @@ import Language.PureScript.Make.Monad as Monad
 import Language.PureScript.CoreFn qualified as CF
 import Language.PureScript.CoreFn.Typed qualified as CFT
 import Language.PureScript.CoreFn.Typed.Pretty qualified as CFT
+import Language.PureScript.CoreFn.Typed.Module qualified as CFT
 import System.Directory (doesFileExist)
 import System.FilePath (replaceExtension)
 
@@ -90,6 +91,7 @@ rebuildModuleWithIndex
   -> Maybe (Int, Int)
   -> m ExternsFile
 rebuildModuleWithIndex MakeActions{..} exEnv externs m@(Module _ _ moduleName _ _) moduleIndex = do
+  traceM "hi"
   progress $ CompilingModule moduleName moduleIndex
   let env = foldl' (flip applyExternsFileToEnvironment) initEnvironment externs
       withPrim = importPrim m
@@ -117,8 +119,9 @@ rebuildModuleWithIndex MakeActions{..} exEnv externs m@(Module _ _ moduleName _ 
 
   let mod' = Module ss coms moduleName regrouped exps
   ((coreFnTyped,chkSt),nextVar'') <- runSupplyT nextVar' $ runStateT (CFT.moduleToCoreFn mod') (emptyCheckState env')
-  mapM_ (traceM . show . fmap (fmap (const ()) . fst)) . CF.moduleDecls $ coreFnTyped
-  traceM $ CFT.prettyPrintModule' (CFT.forgetNonTypes coreFnTyped)
+  traceM "boom?"
+  mapM_ (traceM . show) . CFT.moduleDecls $ coreFnTyped
+  traceM $ CFT.prettyPrintModule'  coreFnTyped
   let corefn = CF.moduleToCoreFn env' mod'
       (optimized, nextVar''') = runSupply nextVar'' $ CF.optimizeCoreFn corefn
       (renamedIdents, renamed) = renameInModule optimized
@@ -138,7 +141,7 @@ rebuildModuleWithIndex MakeActions{..} exEnv externs m@(Module _ _ moduleName _ 
                  ++ "; details:\n" ++ prettyPrintMultipleErrors defaultPPEOptions errs
                Right d -> d
 
-  evalSupplyT nextVar'' $ codegen renamed docs exts
+  evalSupplyT nextVar''' $ codegen renamed docs exts
   return exts
 
 -- | Compiles in "make" mode, compiling each module separately to a @.js@ file and an @externs.cbor@ file.

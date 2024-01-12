@@ -252,6 +252,8 @@ library
     Language.PureScript.CoreFn.Traversals
     Language.PureScript.CoreFn.Typed
     Language.PureScript.CoreFn.Typed.Pretty
+    Language.PureScript.CoreFn.Typed.Expr
+    Language.PureScript.CoreFn.Typed.Module
     Language.PureScript.CoreImp
     Language.PureScript.CoreImp.AST
     Language.PureScript.CoreImp.Module

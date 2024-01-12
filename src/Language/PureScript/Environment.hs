@@ -4,7 +4,7 @@ import Prelude
 
 import GHC.Generics (Generic)
 import Control.DeepSeq (NFData)
-import Control.Monad (unless)
+import Control.Monad (unless, void)
 import Codec.Serialise (Serialise)
 import Data.Aeson ((.=), (.:))
 import Data.Aeson qualified as A
@@ -360,6 +360,13 @@ tyForall var k ty = ForAll nullSourceAnn TypeVarInvisible var (Just k) ty Nothin
 -- | Smart constructor for function types
 function :: SourceType -> SourceType -> SourceType
 function = TypeApp nullSourceAnn . TypeApp nullSourceAnn tyFunction
+
+purusFun :: Type a -> Type a -> Type ()
+purusFun = f . g
+   where
+    f x = TypeApp () x . void
+    g = TypeApp () tyFunctionNoAnn . void
+    tyFunctionNoAnn = TypeConstructor () C.Function
 
 -- This is borderline necessary
 pattern (:->) :: Type () -> Type () -> Type ()

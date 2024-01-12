@@ -36,6 +36,8 @@ import Language.PureScript.Label (Label(..))
 
 import Text.PrettyPrint.Boxes (Box(..), hcat, hsep, left, moveRight, nullBox, render, text, top, vcat, (<>))
 
+import Debug.Trace
+
 data PrettyPrintType
   = PPTUnknown Int
   | PPTypeVar Text (Maybe Text)
@@ -56,6 +58,7 @@ data PrettyPrintType
   | PPRecord [(Label, PrettyPrintType)] (Maybe PrettyPrintType)
   | PPRow [(Label, PrettyPrintType)] (Maybe PrettyPrintType)
   | PPTruncated
+  deriving (Show)
 
 type PrettyPrintConstraint = (Qualified (ProperName 'ClassName), [PrettyPrintType], [PrettyPrintType])
 
@@ -118,12 +121,12 @@ constraintAsBox (pn, ks, tys) = typeAsBox' (foldl PPTypeApp (foldl (\a b -> PPTy
 -- Generate a pretty-printed string representing a Row
 --
 prettyPrintRowWith :: TypeRenderOptions -> Char -> Char -> [(Label, PrettyPrintType)] -> Maybe PrettyPrintType -> Box
-prettyPrintRowWith tro open close labels rest =
+prettyPrintRowWith tro open close labels rest = trace ("prettyPrintRowWith: \n" `mappend` show labels `mappend` "\n" `mappend` show rest) $
   case (labels, rest) of
     ([], Nothing) ->
       if troRowAsDiff tro then text [ open, ' ' ] <> text "..." <> text [ ' ', close ] else text [ open, close ]
     ([], Just _) ->
-      text [ open, ' ' ] <> tailToPs rest <> text [ ' ', close ]
+      text [ open {-, ' ' -}] <> tailToPs rest <> text [ ' ' {-, close -}]
     _ ->
       vcat left $
         zipWith (\(nm, ty) i -> nameAndTypeToPs (if i == 0 then open else ',') nm ty) labels [0 :: Int ..] ++

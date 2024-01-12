@@ -10,17 +10,31 @@ import Data.Monoid qualified as Monoid ((<>))
 import Data.Text qualified as T
 
 import Language.PureScript.Environment
-import Language.PureScript.CoreFn
+import Language.PureScript.CoreFn.Typed.Expr
+import Language.PureScript.CoreFn.Typed.Module
+import Language.PureScript.AST.Literals
+import Language.PureScript.CoreFn.Binders
 import Language.PureScript.Crash (internalError)
 import Language.PureScript.Names (OpName(..), ProperName(..), Qualified(..), disqualify, runModuleName, showIdent, Ident, ModuleName)
 import Language.PureScript.Pretty.Common (before, beforeWithSpace, parensT)
-import Language.PureScript.Pretty.Types (typeAsBox, typeAtomAsBox, prettyPrintObjectKey)
+import Language.PureScript.Pretty.Types ( typeAsBox, typeAtomAsBox, prettyPrintObjectKey)
 import Language.PureScript.Types (Constraint(..), Type)
 import Language.PureScript.PSString (PSString, prettyPrintString)
 
 import Text.PrettyPrint.Boxes (Box, left, moveRight, text, vcat, hcat, vsep, (//), (<>), render)
 import Language.PureScript.Pretty.Types
 import Data.Map qualified as M
+
+-- I can't figure out why their type pretty printer mangles record types, this is an incredibly stupid temporary hack
+ppType :: Int -> Type a -> String
+ppType i t = go [] $ prettyPrintType i t
+  where
+    go :: String -> String -> String
+    go acc [] = acc
+    go acc (' ':xs) = case dropWhile (== ' ') xs of
+      [] -> acc
+      more -> go (acc `mappend` [' ']) more
+    go acc (x:xs) = go (acc `mappend` [x]) xs
 
 textT :: Text -> Box
 textT = text . T.unpack
@@ -35,45 +49,53 @@ list open close f xs = vcat left (zipWith toLine [0 :: Int ..] xs ++ [ text [ cl
   where
   toLine i a = text [ if i == 0 then open else ',', ' ' ] <> f a
 
+
+hlist :: Char -> Char -> (a -> Box) -> [a] -> Box
+hlist open close _ [] = text [open, close]
+hlist open close f xs = hcat left (zipWith toLine [0 :: Int ..] xs ++ [ text [ close ] ])
+  where
+  toLine i a = text [ if i == 0 then open else ',', ' ' ] <> f a
+
+
 ellipsis :: Box
 ellipsis = text "..."
 
-prettyPrintObject :: Int -> [(PSString, Maybe (Expr (Type ())))] -> Box
-prettyPrintObject d = list '{' '}' prettyPrintObjectProperty
+prettyPrintObject :: Int -> [(PSString, Maybe (Expr a))] -> Box
+prettyPrintObject d = hlist '{' '}' prettyPrintObjectProperty
   where
-  prettyPrintObjectProperty :: (PSString, Maybe (Expr (Type ()))) -> Box
+  prettyPrintObjectProperty :: (PSString, Maybe (Expr a)) -> Box
   prettyPrintObjectProperty (key, value) = textT (prettyPrintObjectKey key Monoid.<> ": ") <> maybe (text "_") (prettyPrintValue (d - 1)) value
 
-prettyPrintUpdateEntry :: Int -> PSString -> Expr (Type ()) -> Box
+prettyPrintUpdateEntry :: Int -> PSString -> Expr a -> Box
 prettyPrintUpdateEntry d key val = textT (prettyPrintObjectKey key) <> text " = " <> prettyPrintValue (d - 1) val
 
 -- | Pretty-print an expression
-prettyPrintValue :: Int -> Expr (Type ())-> Box
+prettyPrintValue :: Int -> Expr a -> Box
 -- prettyPrintValue d _ | d < 0 = text "..."
-prettyPrintValue d (Accessor _ prop val) = prettyPrintValueAtom (d - 1) val `before` textT ("." Monoid.<> prettyPrintObjectKey prop)
-prettyPrintValue d (ObjectUpdate _ty o _copyFields ps) = prettyPrintValueAtom (d - 1) o `beforeWithSpace` list '{' '}' (uncurry (prettyPrintUpdateEntry d)) ps
-prettyPrintValue d (App _ val arg) = prettyPrintValueAtom (d - 1) val `beforeWithSpace` prettyPrintValueAtom (d - 1) arg
-prettyPrintValue d (Abs ty arg val) = text (oneLine $ '\\' : T.unpack (showIdent arg) ++ ": " ++ prettyPrintType (d) (getFunArgTy ty) ++ " -> ") //  (prettyPrintValue (d-1)  val)
-prettyPrintValue d (Case _ values binders) =
+prettyPrintValue d (Accessor _ ty prop val) = prettyPrintValueAtom (d - 1) val `before` textT ("." Monoid.<> prettyPrintObjectKey prop)
+prettyPrintValue d (ObjectUpdate ann _ty o _copyFields ps) = prettyPrintValueAtom (d - 1) o `beforeWithSpace` list '{' '}' (uncurry (prettyPrintUpdateEntry d)) ps
+prettyPrintValue d (App ann _ val arg) = prettyPrintValueAtom (d - 1) val `beforeWithSpace` prettyPrintValueAtom (d - 1) arg
+prettyPrintValue d (Abs ann ty arg val) = text (oneLine $ '\\' : T.unpack (showIdent arg) ++ ": " ++ ppType (d) (getFunArgTy ty) ++ " -> ") //  (prettyPrintValue (d-1)  val)
+prettyPrintValue d (Case ann ty values binders) =
   (text "case " <> foldr beforeWithSpace (text "of") (map (prettyPrintValueAtom (d - 1)) values)) //
     moveRight 2 (vcat left (map (prettyPrintCaseAlternative (d - 1)) binders))
-prettyPrintValue d (Let _  ds val) =
+prettyPrintValue d (Let _ _  ds val) =
   text "let" //
     moveRight 2 (vcat left (map (prettyPrintDeclaration (d - 1)) ds)) //
     (text "in " <> prettyPrintValue (d - 1) val)
 -- TODO: constraint kind args
-prettyPrintValue d (Literal _ l) = prettyPrintLiteralValue d l
+prettyPrintValue d (Literal _ _ l) = prettyPrintLiteralValue d l
 prettyPrintValue d expr@Constructor{} = prettyPrintValueAtom d expr
 prettyPrintValue d expr@Var{} = prettyPrintValueAtom d expr
 
 -- | Pretty-print an atomic expression, adding parentheses if necessary.
-prettyPrintValueAtom :: Int -> Expr (Type ()) -> Box
-prettyPrintValueAtom d (Literal _ l) = prettyPrintLiteralValue d l
-prettyPrintValueAtom _ (Constructor _ _ name _) = text $ T.unpack $ runProperName name
-prettyPrintValueAtom d (Var ty ident) = text . oneLine $ "(" ++  T.unpack (showIdent (disqualify ident)) ++ ": " ++ prettyPrintType d ty ++  ")"
+prettyPrintValueAtom :: Int -> Expr a -> Box
+prettyPrintValueAtom d (Literal _  _ l) = prettyPrintLiteralValue d l
+prettyPrintValueAtom _ (Constructor _ _ _ name _) = text $ T.unpack $ runProperName name
+prettyPrintValueAtom d (Var ann ty ident) = text . oneLine $ "(" ++  T.unpack (showIdent (disqualify ident)) ++ ": " ++ ppType d ty ++  ")"
 prettyPrintValueAtom d expr = (text "(" <> prettyPrintValue d expr) `before` text ")"
 
-prettyPrintLiteralValue :: Int -> Literal (Expr (Type ())) -> Box
+prettyPrintLiteralValue :: Int -> Literal (Expr a) -> Box
 prettyPrintLiteralValue _ (NumericLiteral n) = text $ either show show n
 prettyPrintLiteralValue _ (StringLiteral s) = text $ T.unpack $ prettyPrintString s
 prettyPrintLiteralValue _ (CharLiteral c) = text $ show c
@@ -82,36 +104,36 @@ prettyPrintLiteralValue _ (BooleanLiteral False) = text "false"
 prettyPrintLiteralValue d (ArrayLiteral xs) = list '[' ']' (prettyPrintValue (d - 1)) xs
 prettyPrintLiteralValue d (ObjectLiteral ps) = prettyPrintObject (d - 1) $ second Just `map` ps
 
-prettyPrintDeclaration :: Int -> Bind (Type ()) -> Box
+prettyPrintDeclaration :: Int -> Bind a -> Box
 -- prettyPrintDeclaration d _ | d < 0 = ellipsis
 prettyPrintDeclaration d b = case b of
-  NonRec ty ident expr ->
+  NonRec _ ident expr ->
     vcat left [
-      text (oneLine $ T.unpack (showIdent ident) ++ " :: " ++ prettyPrintType 0 ty ),
+      text (oneLine $ T.unpack (showIdent ident) ++ " :: " ++ ppType 0 (exprType expr) ),
       text (T.unpack (showIdent ident) ++ " = ") <> prettyPrintValue d expr -- not sure about the d here
     ]
-  Rec bindings -> vsep 1 left $ map (\((ty,ident),expr) ->
+  Rec bindings -> vsep 1 left $ map (\((_,ident),expr) ->
         vcat left [
-          text (oneLine $ T.unpack (showIdent ident) ++ " :: " ++ prettyPrintType 0 ty ),
+          text (oneLine $ T.unpack (showIdent ident) ++ " :: " ++ ppType 0 (exprType expr) ),
           text (T.unpack (showIdent ident) ++ " = ") <> prettyPrintValue (d-1) expr
       ]) bindings
 
-prettyPrintCaseAlternative :: Int -> CaseAlternative (Type ()) -> Box
+prettyPrintCaseAlternative :: Int -> CaseAlternative a -> Box
 -- prettyPrintCaseAlternative d _ | d < 0 = ellipsis
 prettyPrintCaseAlternative d (CaseAlternative binders result) =
   text (T.unpack (T.unwords (map prettyPrintBinderAtom binders))) <> prettyPrintResult result
   where
-  prettyPrintResult :: Either [(Guard (Type ()), Expr (Type ()))] (Expr (Type ())) -> Box
+  prettyPrintResult :: Either [(Guard a, Expr a)] (Expr a) -> Box
   prettyPrintResult = \case
     Left ges -> vcat left $  map (prettyPrintGuardedValueSep' (text " | ")) ges
     Right exp -> text " -> " <> prettyPrintValue (d-1) exp
 
-  prettyPrintGuardedValueSep' :: Box -> (Guard (Type ()), Expr (Type ())) -> Box
+  prettyPrintGuardedValueSep' :: Box -> (Guard a, Expr a) -> Box
   prettyPrintGuardedValueSep' sep (guardE, resultE) =
     prettyPrintValue (d-1) guardE <> text " -> " <> prettyPrintValue (d-1) resultE
 
 
-prettyPrintModule :: Module (Type ()) -> Box
+prettyPrintModule :: Module a -> Box
 prettyPrintModule (Module modSS modComments modName modPath modImports modExports modReExports modForeign modDecls) =
   vcat left $
     [text (show modName ++ " (" ++ modPath ++ ")")]
@@ -129,7 +151,7 @@ prettyPrintModule (Module modSS modComments modName modPath modImports modExport
    goReExport :: (ModuleName,[Ident]) -> Box
    goReExport (mn,idents) = vcat left $ flip map idents $ \i -> text (show mn ++ "." ++ T.unpack (showIdent i))
 
-prettyPrintModule' :: Module (Type ()) -> String
+prettyPrintModule' :: Module a -> String
 prettyPrintModule' = render . prettyPrintModule
 {-
   prettyPrintResult [GuardedExpr [] v] = text " -> " <> prettyPrintValue (d - 1) v
