@@ -33,12 +33,12 @@ import Language.PureScript.AST (ErrorMessageHint(..), Module(..), SourceSpan(..)
 import Language.PureScript.Crash (internalError)
 import Language.PureScript.CST qualified as CST
 import Language.PureScript.Docs.Convert qualified as Docs
-import Language.PureScript.Environment (initEnvironment)
+import Language.PureScript.Environment (initEnvironment, Environment(..))
 import Language.PureScript.Errors (MultipleErrors, SimpleErrorMessage(..), addHint, defaultPPEOptions, errorMessage', errorMessage'', prettyPrintMultipleErrors)
 import Language.PureScript.Externs (ExternsFile, applyExternsFileToEnvironment, moduleToExternsFile)
 import Language.PureScript.Linter (Name(..), lint, lintImports)
 import Language.PureScript.ModuleDependencies (DependencyDepth(..), moduleSignature, sortModules)
-import Language.PureScript.Names (ModuleName, isBuiltinModuleName, runModuleName)
+import Language.PureScript.Names (ModuleName, isBuiltinModuleName, runModuleName, showIdent, showQualified)
 import Language.PureScript.Renamer (renameInModule)
 import Language.PureScript.Sugar (Env, collapseBindingGroups, createBindingGroups, desugar, desugarCaseGuards, externsEnv, primEnv)
 import Language.PureScript.TypeChecker (CheckState(..), emptyCheckState, typeCheckModule)
@@ -48,14 +48,15 @@ import Language.PureScript.Make.Cache qualified as Cache
 import Language.PureScript.Make.Actions as Actions
 import Language.PureScript.Make.Monad as Monad
 import Language.PureScript.CoreFn qualified as CF
-import Language.PureScript.CoreFn.Typed qualified as CFT
-import Language.PureScript.CoreFn.Typed.Pretty qualified as CFT
-import Language.PureScript.CoreFn.Typed.Module qualified as CFT
+import Language.PureScript.CoreFn qualified as CFT
+import Language.PureScript.CoreFn.Pretty qualified as CFT
+import Language.PureScript.CoreFn.Module qualified as CFT
 import System.Directory (doesFileExist)
 import System.FilePath (replaceExtension)
 
 -- Temporary
 import Debug.Trace (traceM)
+import Language.PureScript.CoreFn.Pretty (ppType)
 
 -- | Rebuild a single module.
 --
@@ -91,7 +92,6 @@ rebuildModuleWithIndex
   -> Maybe (Int, Int)
   -> m ExternsFile
 rebuildModuleWithIndex MakeActions{..} exEnv externs m@(Module _ _ moduleName _ _) moduleIndex = do
-  traceM "hi"
   progress $ CompilingModule moduleName moduleIndex
   let env = foldl' (flip applyExternsFileToEnvironment) initEnvironment externs
       withPrim = importPrim m
@@ -118,11 +118,11 @@ rebuildModuleWithIndex MakeActions{..} exEnv externs m@(Module _ _ moduleName _ 
   regrouped <- createBindingGroups moduleName . collapseBindingGroups $ deguarded
 
   let mod' = Module ss coms moduleName regrouped exps
-  ((coreFnTyped,chkSt),nextVar'') <- runSupplyT nextVar' $ runStateT (CFT.moduleToCoreFn mod') (emptyCheckState env')
-  traceM "boom?"
-  mapM_ (traceM . show) . CFT.moduleDecls $ coreFnTyped
-  traceM $ CFT.prettyPrintModule'  coreFnTyped
-  let corefn = CF.moduleToCoreFn env' mod'
+  ((coreFn,chkSt),nextVar'') <- runSupplyT nextVar' $ runStateT (CFT.moduleToCoreFn mod') (emptyCheckState env')
+  traceM $ prettyEnv (checkEnv chkSt)
+  --mapM_ (traceM . show) . CFT.moduleDecls $ coreFn
+  traceM $ CFT.prettyPrintModule'  coreFn
+  let corefn = coreFn
       (optimized, nextVar''') = runSupply nextVar'' $ CF.optimizeCoreFn corefn
       (renamedIdents, renamed) = renameInModule optimized
       exts = moduleToExternsFile mod' env' renamedIdents
@@ -143,6 +143,18 @@ rebuildModuleWithIndex MakeActions{..} exEnv externs m@(Module _ _ moduleName _ 
 
   evalSupplyT nextVar''' $ codegen renamed docs exts
   return exts
+ where
+   prettyEnv :: Environment -> String
+   prettyEnv Environment{..} = M.foldlWithKey' goPretty "" names
+     where
+       goPretty acc ident (ty,_,_) =
+         acc
+         <> "\n"
+         <> T.unpack (showQualified showIdent ident)
+         <> " :: "
+         <> ppType 10 ty
+
+
 
 -- | Compiles in "make" mode, compiling each module separately to a @.js@ file and an @externs.cbor@ file.
 --

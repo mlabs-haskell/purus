@@ -22,7 +22,7 @@ import Language.PureScript.AST.SourcePos (nullSourceSpan)
 import Language.PureScript.Constants.Libs qualified as C
 import Language.PureScript.CoreFn.Ann (Ann)
 import Language.PureScript.CoreFn.Binders (Binder(..))
-import Language.PureScript.CoreFn.Expr (Bind(..), CaseAlternative(..), Expr(..))
+import Language.PureScript.CoreFn.Expr (Bind(..), CaseAlternative(..), Expr(..), exprType)
 import Language.PureScript.CoreFn.Meta (Meta(IsSyntheticApp))
 import Language.PureScript.CoreFn.Traversals (everywhereOnValues, traverseCoreFn)
 import Language.PureScript.Environment (dictTypeName)
@@ -246,18 +246,18 @@ generateIdentFor d e = at d . non mempty . at e %%<~ \case
   -- enables doing monadic work in the RHS, namely `freshIdent` here.)
   where
   nameHint = \case
-    App _ v1 v2
-      | Var _ n <- v1
+    App _ _ v1 v2
+      | Var _ _ n <- v1
       , fmap (ProperName . runIdent) n == fmap dictTypeName C.IsSymbol
-      , Literal _ (ObjectLiteral [(_, Abs _ _ (Literal _ (StringLiteral str)))]) <- v2
+      , Literal _ _ (ObjectLiteral [(_, Abs _ _ _ (Literal _ _ (StringLiteral str)))]) <- v2
       , Just decodedStr <- decodeString str
         -> decodedStr <> "IsSymbol"
       | otherwise
         -> nameHint v1
-    Var _ (Qualified _ ident)
+    Var _ _ (Qualified _ ident)
       | Ident name             <- ident -> name
       | GenIdent (Just name) _ <- ident -> name
-    Accessor _ prop _
+    Accessor _ _ prop _
       | Just decodedProp <- decodeString prop -> decodedProp
     _ -> "ref"
 
@@ -270,7 +270,7 @@ nullAnn = (nullSourceSpan, [], Nothing)
 replaceLocals :: M.Map Ident (Expr Ann) -> [Bind Ann] -> [Bind Ann]
 replaceLocals m = if M.null m then identity else map f' where
   (f', g', _) = everywhereOnValues identity f identity
-  f e@(Var _ (Qualified _ ident)) = maybe e g' $ ident `M.lookup` m
+  f e@(Var _ _ (Qualified _ ident)) = maybe e g' $ ident `M.lookup` m
   f e = e
 
 -- |
@@ -292,7 +292,7 @@ floatExpr topLevelQB = \case
     let w' = w
           & (if isNew then newBindings %~ addToScope deepestScope [(ident, (_plurality, e))] else identity)
           & plurality .~ PluralityMap (M.singleton ident False)
-    pure (Var nullAnn (Qualified qb ident), w')
+    pure (Var nullAnn (exprType e) (Qualified qb ident), w')
   (e, w) -> pure (e, w)
 
 -- |
@@ -328,8 +328,8 @@ getNewBindsAsLet
   -> m (Expr Ann)
 getNewBindsAsLet = fmap (uncurry go) . getNewBinds where
   go bs = if null bs then identity else \case
-    Let a bs' e' -> Let a (bs ++ bs') e'
-    e'           -> Let nullAnn bs e'
+    Let a t bs' e' -> Let a t (bs ++ bs') e'
+    e'           -> Let nullAnn (exprType e') bs e'
 
 -- |
 -- Feed the Writer part of the monad with the requirements of this name.
@@ -386,13 +386,13 @@ optimizeCommonSubexpressions mn
   -- common subexpression elimination pass.
   shouldFloatExpr :: Expr Ann -> Bool
   shouldFloatExpr = \case
-    App (_, _, Just IsSyntheticApp) e _ -> isSimple e
+    App (_, _, Just IsSyntheticApp) _ e _ -> isSimple e
     _                                   -> False
 
   isSimple :: Expr Ann -> Bool
   isSimple = \case
     Var{}          -> True
-    Accessor _ _ e -> isSimple e
+    Accessor _ _ _ e -> isSimple e
     _              -> False
 
   handleAndWrapExpr :: Expr Ann -> CSEMonad (Expr Ann)
@@ -404,9 +404,9 @@ optimizeCommonSubexpressions mn
 
   handleExpr :: Expr Ann -> CSEMonad (Expr Ann)
   handleExpr = discuss (ifM (shouldFloatExpr . fst) (floatExpr topLevelQB) pure) . \case
-    Abs a ident e   -> enterAbs $ Abs a ident <$> newScopeWithIdents False [ident] (handleAndWrapExpr e)
-    v@(Var _ qname) -> summarizeName mn qname $> v
-    Let a bs e      -> uncurry (Let a) <$> handleBinds False (handleExpr e) bs
+    Abs a t ident e   -> enterAbs $ Abs a t ident <$> newScopeWithIdents False [ident] (handleAndWrapExpr e)
+    v@(Var _ _ qname) -> summarizeName mn qname $> v
+    Let a t bs e      -> uncurry (Let a t) <$> handleBinds False (handleExpr e) bs
     x               -> handleExprDefault x
 
   handleCaseAlternative :: CaseAlternative Ann -> CSEMonad (CaseAlternative Ann)

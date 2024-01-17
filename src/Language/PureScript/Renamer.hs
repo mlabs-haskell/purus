@@ -161,28 +161,28 @@ renameInDecls =
 -- Renames within a value.
 --
 renameInValue :: Expr Ann -> Rename (Expr Ann)
-renameInValue (Literal ann l) =
-  Literal ann <$> renameInLiteral renameInValue l
+renameInValue (Literal ann t l) =
+  Literal ann t <$> renameInLiteral renameInValue l
 renameInValue c@Constructor{} = return c
-renameInValue (Accessor ann prop v) =
-  Accessor ann prop <$> renameInValue v
-renameInValue (ObjectUpdate ann obj copy vs) =
-  (\obj' -> ObjectUpdate ann obj' copy) <$> renameInValue obj <*> traverse (\(name, v) -> (name, ) <$> renameInValue v) vs
-renameInValue (Abs ann name v) =
-  newScope $ Abs ann <$> updateScope name <*> renameInValue v
-renameInValue (App ann v1 v2) =
-  App ann <$> renameInValue v1 <*> renameInValue v2
-renameInValue (Var ann (Qualified qb name)) | isBySourcePos qb || not (isPlainIdent name) =
+renameInValue (Accessor ann t prop v) =
+  Accessor ann t prop <$> renameInValue v
+renameInValue (ObjectUpdate ann t obj copy vs) =
+  (\obj' -> ObjectUpdate ann t obj' copy) <$> renameInValue obj <*> traverse (\(name, v) -> (name, ) <$> renameInValue v) vs
+renameInValue (Abs ann t name v) =
+  newScope $ Abs ann t <$> updateScope name <*> renameInValue v
+renameInValue (App ann t v1 v2) =
+  App ann t <$> renameInValue v1 <*> renameInValue v2
+renameInValue (Var ann t (Qualified qb name)) | isBySourcePos qb || not (isPlainIdent name) =
   -- This should only rename identifiers local to the current module: either
   -- they aren't qualified, or they are but they have a name that should not
   -- have appeared in a module's externs, so they must be from this module's
   -- top-level scope.
-  Var ann . Qualified qb <$> lookupIdent name
+  Var ann t . Qualified qb <$> lookupIdent name
 renameInValue v@Var{} = return v
-renameInValue (Case ann vs alts) =
-  newScope $ Case ann <$> traverse renameInValue vs <*> traverse renameInCaseAlternative alts
-renameInValue (Let ann ds v) =
-  newScope $ Let ann <$> renameInDecls ds <*> renameInValue v
+renameInValue (Case ann t vs alts) =
+  newScope $ Case ann t <$> traverse renameInValue vs <*> traverse renameInCaseAlternative alts
+renameInValue (Let ann t ds v) =
+  newScope $ Let ann t <$> renameInDecls ds <*> renameInValue v
 
 -- |
 -- Renames within literals.

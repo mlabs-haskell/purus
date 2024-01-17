@@ -162,50 +162,59 @@ recordToJSON :: (a -> Value) -> [(PSString, a)] -> Value
 recordToJSON f = toJSON . map (toJSON *** f)
 
 exprToJSON :: Expr Ann -> Value
-exprToJSON (Var ann i)              = object [ "type"        .= toJSON "Var"
+exprToJSON (Var ann ty i)           = object [ "kind"        .= toJSON "Var"
+                                             , "type"        .= toJSON ty
                                              , "annotation"  .= annToJSON ann
                                              , "value"       .= qualifiedToJSON runIdent i
                                              ]
-exprToJSON (Literal ann l)          = object [ "type"        .= "Literal"
+exprToJSON (Literal ann ty l)       = object [ "kind"        .= "Literal"
+                                             , "type"        .= toJSON ty
                                              , "annotation"  .= annToJSON ann
                                              , "value"       .=  literalToJSON exprToJSON l
                                              ]
-exprToJSON (Constructor ann d c is) = object [ "type"        .= "Constructor"
+exprToJSON (Constructor ann ty d c is) = object [ "kind"        .= "Constructor"
+                                             , "type"        .= toJSON ty
                                              , "annotation"  .= annToJSON ann
                                              , "typeName"    .= properNameToJSON d
                                              , "constructorName" .= properNameToJSON c
                                              , "fieldNames"  .= map identToJSON is
                                              ]
-exprToJSON (Accessor ann f r)       = object [ "type"        .= "Accessor"
+exprToJSON (Accessor ann ty f r)    = object [ "kind"        .= "Accessor"
+                                             , "type"        .= toJSON ty
                                              , "annotation"  .= annToJSON ann
                                              , "fieldName"   .= f
                                              , "expression"  .= exprToJSON r
                                              ]
-exprToJSON (ObjectUpdate ann r copy fs)
-                                    = object [ "type"        .= "ObjectUpdate"
+exprToJSON (ObjectUpdate ann ty r copy fs)
+                                    = object [ "kind"        .= "ObjectUpdate"
+                                             , "type"        .= toJSON ty
                                              , "annotation"  .= annToJSON ann
                                              , "expression"  .= exprToJSON r
                                              , "copy"        .= toJSON copy
                                              , "updates"     .= recordToJSON exprToJSON fs
                                              ]
-exprToJSON (Abs ann p b)            = object [ "type"        .= "Abs"
+exprToJSON (Abs ann ty p b)         = object [ "kind"        .= "Abs"
+                                             , "type"        .= toJSON ty
                                              , "annotation"  .= annToJSON ann
                                              , "argument"    .= identToJSON p
                                              , "body"        .= exprToJSON b
                                              ]
-exprToJSON (App ann f x)            = object [ "type"        .= "App"
+exprToJSON (App ann ty f x)         = object [ "kind"        .= "App"
+                                             , "type"        .= toJSON ty
                                              , "annotation"  .= annToJSON ann
                                              , "abstraction" .= exprToJSON f
                                              , "argument"    .= exprToJSON x
                                              ]
-exprToJSON (Case ann ss cs)         = object [ "type"        .= "Case"
+exprToJSON (Case ann ty ss cs)      = object [ "kind"        .= "Case"
+                                             , "type"        .= toJSON ty
                                              , "annotation"  .= annToJSON ann
                                              , "caseExpressions"
                                                                     .= map exprToJSON ss
                                              , "caseAlternatives"
                                                                     .= map caseAlternativeToJSON cs
                                              ]
-exprToJSON (Let ann bs e)           = object [ "type"        .= "Let" 
+exprToJSON (Let ann ty bs e)        = object [ "kind"        .= "Let"
+                                             , "type"        .= toJSON ty
                                              , "annotation"  .= annToJSON ann
                                              , "binds"       .= map bindToJSON bs
                                              , "expression"  .= exprToJSON e

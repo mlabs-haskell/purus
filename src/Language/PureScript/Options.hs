@@ -20,7 +20,7 @@ data Options = Options
 defaultOptions :: Options
 defaultOptions = Options False False (S.singleton JS)
 
-data CodegenTarget = JS | JSSourceMap | CoreFn | Docs | UPLC
+data CodegenTarget = JS | JSSourceMap | Docs | UPLC
   deriving (Eq, Ord, Show)
 
 codegenTargets :: Map String CodegenTarget
@@ -28,6 +28,6 @@ codegenTargets = Map.fromList
   [ ("js", JS)
   , ("uplc", UPLC)
   , ("sourcemaps", JSSourceMap)
-  , ("corefn", CoreFn)
+  -- , ("corefn", CoreFn)
   , ("docs", Docs)
   ]

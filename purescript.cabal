@@ -233,9 +233,6 @@ library
     Language.PureScript.Bundle
     Language.PureScript.CodeGen
     Language.PureScript.CodeGen.UPLC
-    Language.PureScript.CodeGen.JS
-    Language.PureScript.CodeGen.JS.Common
-    Language.PureScript.CodeGen.JS.Printer
     Language.PureScript.Constants.Libs
     Language.PureScript.CoreFn
     Language.PureScript.CoreFn.Ann
@@ -244,16 +241,12 @@ library
     Language.PureScript.CoreFn.Desugar
     Language.PureScript.CoreFn.Expr
     Language.PureScript.CoreFn.FromJSON
-    Language.PureScript.CoreFn.Laziness
     Language.PureScript.CoreFn.Meta
     Language.PureScript.CoreFn.Module
     Language.PureScript.CoreFn.Optimizer
+    Language.PureScript.CoreFn.Pretty
     Language.PureScript.CoreFn.ToJSON
     Language.PureScript.CoreFn.Traversals
-    Language.PureScript.CoreFn.Typed
-    Language.PureScript.CoreFn.Typed.Pretty
-    Language.PureScript.CoreFn.Typed.Expr
-    Language.PureScript.CoreFn.Typed.Module
     Language.PureScript.CoreImp
     Language.PureScript.CoreImp.AST
     Language.PureScript.CoreImp.Module

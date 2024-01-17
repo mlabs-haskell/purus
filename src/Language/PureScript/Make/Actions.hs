@@ -32,12 +32,10 @@ import Data.Text qualified as T
 import Data.Text.IO qualified as TIO
 import Data.Text.Encoding qualified as TE
 import Data.Time.Clock (UTCTime)
-import Data.Version (showVersion)
+import Data.Version (showVersion, makeVersion)
 import Language.JavaScript.Parser qualified as JS
 import Language.PureScript.AST (SourcePos(..))
 import Language.PureScript.Bundle qualified as Bundle
-import Language.PureScript.CodeGen.JS qualified as J
-import Language.PureScript.CodeGen.JS.Printer (prettyPrintJS, prettyPrintJSWithSourceMaps)
 import Language.PureScript.CodeGen.UPLC qualified as PC
 import Language.PureScript.CoreFn qualified as CF
 import Language.PureScript.CoreFn.ToJSON qualified as CFJ
@@ -59,6 +57,7 @@ import System.Directory (getCurrentDirectory)
 import System.FilePath ((</>), makeRelative, splitPath, normalise, splitDirectories)
 import System.FilePath.Posix qualified as Posix
 import System.IO (stderr)
+import Language.PureScript.CoreFn.ToJSON (moduleToJSON)
 
 -- | Determines when to rebuild a module
 data RebuildPolicy
@@ -204,8 +203,9 @@ buildMakeActions outputDir filePathMap foreigns usePrefix =
   targetFilename mn = \case
     JS -> outputFilename mn "index.js"
     JSSourceMap -> outputFilename mn "index.js.map"
-    CoreFn -> outputFilename mn "corefn.json"
+    -- CoreFn -> outputFilename mn "corefn.json"
     Docs -> outputFilename mn "docs.json"
+    UPLC -> outputFilename mn "index.cfn"
 
   getOutputTimestamp :: ModuleName -> Make (Maybe UTCTime)
   getOutputTimestamp mn = do
@@ -251,11 +251,12 @@ buildMakeActions outputDir filePathMap foreigns usePrefix =
     let mn = CF.moduleName m
     lift $ writeCborFile (outputFilename mn externsFileName) exts
     codegenTargets <- lift $ asks optionsCodegenTargets
-    when (S.member CoreFn codegenTargets) $ do
-      let coreFnFile = targetFilename mn CoreFn
+    when (S.member UPLC codegenTargets) $ do
+      let coreFnFile = targetFilename mn UPLC
           json = CFJ.moduleToJSON Paths.version m
       lift $ writeJSONFile coreFnFile json
-    when (S.member JS codegenTargets) $ do
+     {-
+     when (S.member JS codegenTargets) $ do
       foreignInclude <- case mn `M.lookup` foreigns of
         Just _
           | not $ requiresForeign m -> do
@@ -264,7 +265,7 @@ buildMakeActions outputDir filePathMap foreigns usePrefix =
               return $ Just "./foreign.js"
         Nothing | requiresForeign m -> throwError . errorMessage' (CF.moduleSourceSpan m) $ MissingFFIModule mn
                 | otherwise -> return Nothing
-      rawJs <- J.moduleToJs m foreignInclude
+     rawJs <- J.moduleToJs m foreignInclude
       dir <- lift $ makeIO "get the current directory" getCurrentDirectory
       let sourceMaps = S.member JSSourceMap codegenTargets
           (pjs, mappings) = if sourceMaps then prettyPrintJSWithSourceMaps rawJs else (prettyPrintJS rawJs, [])
@@ -276,11 +277,13 @@ buildMakeActions outputDir filePathMap foreigns usePrefix =
       lift $ do
         writeTextFile jsFile (TE.encodeUtf8 $ js <> mapRef)
         when sourceMaps $ genSourceMap dir mapFile (length prefix) mappings
+    -}
     when (S.member Docs codegenTargets) $ do
       lift $ writeJSONFile (outputFilename mn "docs.json") docs
     when (S.member UPLC codegenTargets) $ do
-      uplc <- PC.moduleToUPLC m
-      lift $ PC.printUPLC uplc
+      lift $ writeJSONFile (targetFilename mn UPLC) (moduleToJSON (makeVersion [0,0,1]) m)
+      -- uplc <- PC.moduleToUPLC m
+      -- lift $ PC.printUPLC uplc
 
   ffiCodegen :: CF.Module CF.Ann -> Make ()
   ffiCodegen m = do

@@ -17,6 +17,7 @@ module Language.PureScript.Pretty.Types
   ) where
 
 import Prelude hiding ((<>))
+import Prelude qualified as P
 
 import Control.Arrow ((<+>))
 import Control.Lens (_2, (%~))
@@ -36,7 +37,6 @@ import Language.PureScript.Label (Label(..))
 
 import Text.PrettyPrint.Boxes (Box(..), hcat, hsep, left, moveRight, nullBox, render, text, top, vcat, (<>))
 
-import Debug.Trace
 
 data PrettyPrintType
   = PPTUnknown Int
@@ -121,7 +121,7 @@ constraintAsBox (pn, ks, tys) = typeAsBox' (foldl PPTypeApp (foldl (\a b -> PPTy
 -- Generate a pretty-printed string representing a Row
 --
 prettyPrintRowWith :: TypeRenderOptions -> Char -> Char -> [(Label, PrettyPrintType)] -> Maybe PrettyPrintType -> Box
-prettyPrintRowWith tro open close labels rest = trace ("prettyPrintRowWith: \n" `mappend` show labels `mappend` "\n" `mappend` show rest) $
+prettyPrintRowWith tro open close labels rest =
   case (labels, rest) of
     ([], Nothing) ->
       if troRowAsDiff tro then text [ open, ' ' ] <> text "..." <> text [ ' ', close ] else text [ open, close ]
@@ -195,7 +195,7 @@ matchTypeAtom tro@TypeRenderOptions{troSuggesting = suggesting} =
         | suggesting = Just $ text "_"
         | otherwise = Just $ text $ 't' : show u
       match (PPSkolem name s)
-        | suggesting =  Just $ text $ T.unpack name
+        | suggesting =  Just $ text $ "skolem[" P.<> show s P.<> "]=" P.<> T.unpack name
         | otherwise = Just $ text $ T.unpack name ++ show s
       match (PPRecord labels tail_) = Just $ prettyPrintRowWith tro '{' '}' labels tail_
       match (PPRow labels tail_) = Just $ prettyPrintRowWith tro '(' ')' labels tail_

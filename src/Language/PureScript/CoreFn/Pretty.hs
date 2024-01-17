@@ -1,4 +1,4 @@
-module Language.PureScript.CoreFn.Typed.Pretty where
+module Language.PureScript.CoreFn.Pretty where
 
 import Prelude hiding ((<>))
 
@@ -10,8 +10,8 @@ import Data.Monoid qualified as Monoid ((<>))
 import Data.Text qualified as T
 
 import Language.PureScript.Environment
-import Language.PureScript.CoreFn.Typed.Expr
-import Language.PureScript.CoreFn.Typed.Module
+import Language.PureScript.CoreFn.Expr
+import Language.PureScript.CoreFn.Module
 import Language.PureScript.AST.Literals
 import Language.PureScript.CoreFn.Binders
 import Language.PureScript.Crash (internalError)
@@ -109,12 +109,12 @@ prettyPrintDeclaration :: Int -> Bind a -> Box
 prettyPrintDeclaration d b = case b of
   NonRec _ ident expr ->
     vcat left [
-      text (oneLine $ T.unpack (showIdent ident) ++ " :: " ++ ppType 0 (exprType expr) ),
+      text (oneLine $ T.unpack (showIdent ident) ++ " :: " ++ ppType 0 (exprType expr)  ),
       text (T.unpack (showIdent ident) ++ " = ") <> prettyPrintValue d expr -- not sure about the d here
     ]
   Rec bindings -> vsep 1 left $ map (\((_,ident),expr) ->
         vcat left [
-          text (oneLine $ T.unpack (showIdent ident) ++ " :: " ++ ppType 0 (exprType expr) ),
+          text (oneLine $ T.unpack (showIdent ident) ++ " :: " ++ ppType 0 (exprType expr)  ),
           text (T.unpack (showIdent ident) ++ " = ") <> prettyPrintValue (d-1) expr
       ]) bindings
 
@@ -153,6 +153,9 @@ prettyPrintModule (Module modSS modComments modName modPath modImports modExport
 
 prettyPrintModule' :: Module a -> String
 prettyPrintModule' = render . prettyPrintModule
+
+renderExpr :: Int -> Expr a -> String
+renderExpr i e = render $ prettyPrintValue i e
 {-
   prettyPrintResult [GuardedExpr [] v] = text " -> " <> prettyPrintValue (d - 1) v
   prettyPrintResult gs =
