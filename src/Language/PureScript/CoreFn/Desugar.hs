@@ -21,7 +21,7 @@ import Language.PureScript.CoreFn.Module (Module(..))
 import Language.PureScript.Crash (internalError)
 import Language.PureScript.Environment (DataDeclType(..), Environment(..), NameKind(..), isDictTypeName, lookupConstructor, lookupValue, purusFun, NameVisibility (..), tyBoolean)
 import Language.PureScript.Label (Label(..))
-import Language.PureScript.Names (pattern ByNullSourcePos, Ident(..), ModuleName, ProperName(..), ProperNameType(..), Qualified(..), QualifiedBy(..), getQual, mkQualified, showIdent)
+import Language.PureScript.Names (pattern ByNullSourcePos, Ident(..), ModuleName, ProperName(..), ProperNameType(..), Qualified(..), QualifiedBy(..), disqualify, getQual, mkQualified, showIdent, runIdent)
 import Language.PureScript.PSString (PSString)
 import Language.PureScript.Types (pattern REmptyKinded, SourceType, Type(..))
 import Language.PureScript.AST.Binders qualified as A
@@ -29,9 +29,9 @@ import Language.PureScript.AST.Declarations qualified as A
 import Language.PureScript.AST.SourcePos qualified as A
 import Language.PureScript.Constants.Prim qualified as C
 import Control.Monad.Supply.Class (MonadSupply)
-import Control.Monad.State.Strict (MonadState, gets, modify)
+import Control.Monad.State.Strict (MonadState, gets, modify, MonadIO (liftIO))
 import Control.Monad.Writer.Class ( MonadWriter )
-import Language.PureScript.TypeChecker (CheckState (checkEnv, checkCurrentModule), withBindingGroupVisible, bindLocalVariables, withScopedTypeVars, bindNames, replaceAllTypeSynonyms, kindOfWithScopedVars, warnAndRethrowWithPositionTC, makeBindingGroupVisible)
+import Language.PureScript.TypeChecker (CheckState (checkEnv, checkCurrentModule), withBindingGroupVisible, bindLocalVariables, withScopedTypeVars, bindNames, replaceAllTypeSynonyms, kindOfWithScopedVars, warnAndRethrowWithPositionTC, makeBindingGroupVisible, bindLocalTypeVariables)
 import Control.Monad.Error (MonadError)
 import Language.PureScript.TypeChecker.Types
     ( kindType,
@@ -54,7 +54,7 @@ import Language.PureScript.Errors (MultipleErrors, parU)
 import Debug.Trace (traceM)
 import Language.PureScript.CoreFn.Pretty
 import qualified Data.Text as T
-import Language.PureScript.Pretty.Types
+import Language.PureScript.Pretty.Values (renderValue)
 type M m = (MonadSupply m, MonadState CheckState m, MonadError MultipleErrors m, MonadWriter MultipleErrors m)
 
 purusTy :: Type a -> PurusType
@@ -64,6 +64,8 @@ unFun :: Type a -> Either (Type a) (Type a,Type a)
 unFun = \case
   TypeApp _ (TypeApp _ (TypeConstructor _ C.Function) a) b -> Right (a,b)
   other -> Left other
+
+
 
 -- We're going to run this *after* a pass of the unmodified typechecker, using the Env of the already-typechecked-by-the-default-checker module
 -- That *should* allow us to avoid repeating the entire TC process, and simply infer/lookup types when we need them. Hopefully.
@@ -104,14 +106,40 @@ ssA :: SourceSpan -> Ann
 ssA ss = (ss, [], Nothing)
 
 
-lookupType :: M m => ModuleName -> Ident -> m (SourceType,NameVisibility)
-lookupType mn tn = do
+lookupType :: forall m. M m => A.SourcePos -> Ident -> m (SourceType,NameVisibility)
+lookupType sp tn = do
+  mn <- Language.PureScript.CoreFn.Desugar.moduleName
   env <- gets checkEnv
-  case M.lookup (mkQualified tn mn) (names env) of
-    Nothing -> error $ "No type found for " <> show tn
+  printEnv >>= traceM
+  case M.lookup  (Qualified (BySourcePos sp) tn) (names env) of
+    Nothing -> case M.lookup (mkQualified tn mn) (names env) of
+      Nothing -> error $ "No type found for " <> show tn
+      Just (ty,nk,nv) -> do
+        traceM $ "lookupType: " <> T.unpack (showIdent tn) <> " :: " <> ppType 10 ty
+        pure (ty,nv)
     Just (ty,nk,nv) -> do
       traceM $ "lookupType: " <> T.unpack (showIdent tn) <> " :: " <> ppType 10 ty
       pure (ty,nv)
+ where
+     printEnv :: m String
+     printEnv = do
+       env <- gets checkEnv
+       let ns = map (\(i,(st,_,_)) -> (i,st)) . M.toList $ names env
+       pure $ concatMap (\(i,st) -> "ENV:= " <> T.unpack (runIdent . disqualify $  i) <> " :: " <> ppType 10 st <> "\n") ns
+
+
+
+lookupType' :: forall m. M m => A.SourcePos -> Ident -> m (SourceType,NameVisibility)
+lookupType' sp tn = do
+  traceM $ "lookupType': " <> show tn
+  env <- gets checkEnv
+  --traceM $ show env
+  case M.lookup (Qualified (BySourcePos sp) tn) (names env) of
+    Nothing -> error $ "(2) No type found for " <> show tn
+    Just (ty,nk,nv) -> do
+      traceM $ "lookupType: " <> T.unpack (showIdent tn) <> " :: " <> ppType 10 ty
+      pure (ty,nv)
+
 
 lookupCtorDeclTy :: M m => ModuleName -> A.DataConstructorDeclaration -> m SourceType
 lookupCtorDeclTy mn (A.DataConstructorDeclaration ann ctorName fields)= do
@@ -154,21 +182,24 @@ declToCoreFn mn (A.DataBindingGroupDeclaration ds) =
 declToCoreFn  mn (A.ValueDecl (ss, com) name _ _ [A.MkUnguarded e]) = do
   --traceM $ "decltoCoreFn " <> show name
   -- env <- gets checkEnv
-  (valDeclTy,nv) <- lookupType mn name
+  (valDeclTy,nv) <- lookupType (spanStart ss) name
   traceM $ "decltoCoreFn " <> show name <> " :: " <> ppType 10 valDeclTy
   bindLocalVariables [(ss,name,valDeclTy,nv)] $ do
       expr <- exprToCoreFn mn ss (Just valDeclTy)  e -- maybe wrong? might need to bind something here?
-      pure $ [NonRec (ssA ss) name expr]
+      pure [NonRec (ssA ss) name expr]
 
 declToCoreFn  mn (A.BindingGroupDeclaration ds) = do
   let stripped :: [((A.SourceAnn, Ident), A.Expr)] = NE.toList $  (\(((ss, com), name), _, e) -> (((ss, com), name), e)) <$> ds
-  -- types <- typesOf RecursiveBindingGroup mn stripped -- kind of redundant, this has already been performed in normal typechecking so we could just look up the types for each value decl ident
-  types <- traverse lookupTypes stripped
-  recBody <- traverse goRecBindings types
+  types <- typesOf RecursiveBindingGroup mn stripped -- kind of redundant, this has already been performed in normal typechecking so we could just look up the types for each value decl ident
+  -- types <- traverse lookupTypes stripped
+  recBody <- bindLocalVariables (prepareBind <$> types) $ traverse goRecBindings types
   pure [Rec recBody]
  where
-   lookupTypes :: ((A.SourceAnn, Ident), A.Expr) -> m ((A.SourceAnn, Ident), (A.Expr, SourceType))
-   lookupTypes ((ann,ident),exp) = lookupType mn ident >>= \(ty,_) -> pure ((ann,ident),(exp,ty))
+   prepareBind :: ((A.SourceAnn, Ident), (A.Expr, SourceType)) -> (SourceSpan, Ident, SourceType, NameVisibility)
+   prepareBind (((ss',_),ident),(e,sty)) = (ss',ident,sty,Defined)
+
+   -- lookupTypes :: ((A.SourceAnn, Ident), A.Expr) -> m ((A.SourceAnn, Ident), (A.Expr, SourceType))
+   -- lookupTypes ((ann,ident),exp) = lookupType mn ident >>= \(ty,_) -> pure ((ann,ident),(exp,ty))
 
    goRecBindings ::  ((A.SourceAnn, Ident), (A.Expr, SourceType)) -> m ((Ann, Ident), Expr Ann)
    goRecBindings ((ann,ident),(expr,ty)) = do
@@ -225,24 +256,26 @@ exprToCoreFn mn ss mTy objUpd@(A.ObjectUpdate obj vs) = do
       collect _ = Nothing
   unchangedRecordFields _ _ = Nothing
 exprToCoreFn mn ss (Just ty) lam@(A.Abs (A.VarBinder ssb name) v) = do
-  traceM $ "exprToCoreFn lam " <>  " :: " <>  ppType 10 ty
-  -- (lam', lamTy) <- instantiatePolyTypeWithUnknowns lam ty
-  traceM $ "IPTU lamTy: " <> ppType 10 ty
-  case unFun ty of
-    Right (a,b) -> do
-      let toBind = [(ssb, name, a, Defined )]
-      bindLocalVariables toBind $ do
-        body <- exprToCoreFn mn ss (Just b) v
-        pure $ Abs (ssA ssb) (purusTy ty) name body
-    Left e -> case e of
-      ForAll ann vis var mbK qty mSkol -> do
-        freshTy <- case mbK of
-                    Nothing -> freshType
-                    Just k  -> freshTypeWithKind k
-        bindLocalVariables [(ssb, (Ident var), freshTy, Defined)] $ do
-          body <- exprToCoreFn mn ss (Just qty) v
-          pure $ Abs (ssA ssb) (ForAll () vis var (purusTy <$> mbK) (purusTy qty) mSkol)  name body
-      _ -> error "All lambda abstractions should have either a function type or a quantified function type"
+  traceM $ "exprToCoreFn lam " <>  T.unpack (showIdent name) <> " :: " <>  ppType 10 ty
+
+  case ty of
+    ft@(ForAll ann vis var mbk qty mSkol) -> case unFun qty of
+      Right (a,b) ->  do
+        traceM "ForAll branch"
+        traceM $ "arg: " <> ppType 10 a
+        traceM $ "result: " <> ppType 10 b
+        let toBind = [(ssb, name, a, Defined)]
+        bindLocalVariables toBind $ do
+          body <- exprToCoreFn mn ss (Just b) v
+          pure $ Abs (ssA ssb) (ForAll () vis var (purusTy <$> mbk) (purusFun a b) mSkol) name body
+      Left e -> error $ "All lambda abstractions should have either a function type or a quantified function type: " <> ppType 10 e
+    other -> case unFun other of
+      Right (a,b) -> do
+        let toBind = [(ssb, name, a, Defined )]
+        bindLocalVariables toBind $ do
+          body <- exprToCoreFn mn ss (Just b) v
+          pure $ Abs (ssA ssb) (purusFun a b) name body
+      Left e ->  error $ "All lambda abstractions should have either a function type or a quantified function type: " <> ppType 10 e
   -- error "boom"
 
   {- (unFun <$> inferType (Just ty) lam) >>= \case
@@ -277,8 +310,8 @@ exprToCoreFn mn ss mTy app@(A.App v1 v2) = do
 exprToCoreFn mn ss  _ (A.Unused _) = -- ????? need to figure out what this _is_
   error "Don't know what to do w/ exprToCoreFn A.Unused"
   -- pure $ Var (ss, com, Nothing) C.I_undefined
-exprToCoreFn mn _ (Just ty) (A.Var ss ident) = gets checkEnv >>= \env ->
-  pure $ Var (ss, [], getValueMeta env ident) (purusTy ty) ident
+-- exprToCoreFn mn _ (Just ty) (A.Var ss ident) = gets checkEnv >>= \env ->
+--   pure $ Var (ss, [], getValueMeta env ident) (purusTy ty) ident
 exprToCoreFn mn _ _ (A.Var ss ident) =
   gets checkEnv >>= \env -> case lookupValue env ident of
     Just (ty,_,_) -> pure $ Var (ss, [], getValueMeta env ident) (purusTy ty) ident
@@ -289,7 +322,7 @@ exprToCoreFn mn ss mTy ifte@(A.IfThenElse cond th el) = do
   thE <- exprToCoreFn mn ss Nothing th
   elE <- exprToCoreFn mn ss Nothing  el
   pure $ Case (ss, [], Nothing) (purusTy ifteTy) [condE]
-    [ CaseAlternative [LiteralBinder (ssAnn ss) $ BooleanLiteral True] -- no clue what the binder type should be but we'll probably never inspect it
+    [ CaseAlternative [LiteralBinder (ssAnn ss) $ BooleanLiteral True]
                       (Right thE)
     , CaseAlternative [NullBinder (ssAnn ss)] -- *
                       (Right elE) ]
@@ -307,10 +340,38 @@ exprToCoreFn  mn ss  (Just ty) (A.TypedValue _ v _) =
   exprToCoreFn mn ss (Just ty) v
 exprToCoreFn mn ss Nothing (A.TypedValue _ v ty) =
   exprToCoreFn mn ss (Just ty) v
-exprToCoreFn  mn ss mTy astLet@(A.Let w ds v) = do
-  letTy <- inferType mTy astLet
-  (ds', expr) <- transformLetBindings mn ss [] ds v
-  pure $ Let (ss, [], getLetMeta w) (purusTy letTy) ds' expr
+exprToCoreFn  mn ss mTy astLet@(A.Let w ds v) = case NE.nonEmpty ds of
+  Nothing -> error "declarations in a let binding can't be empty"
+  Just ds' -> do
+    traceM $ "exprToCoreFn LET: " <> show astLet
+    types <- typesOf RecursiveBindingGroup  mn $  fmap stripDecls ds
+    traceM $ concatMap (\x -> show x <> "\n\n") types
+    bindLocalVariables (prepareBind <$> types) $ do
+      printEnv
+      expr <- exprToCoreFn mn ss Nothing v
+      decls <- concat <$> traverse (declToCoreFn mn) (toValueDecl <$> types)
+    -- (ds', expr) <- transformLetBindings mn ss [] ds v
+      pure $ Let (ss, [], getLetMeta w) (exprType expr) decls expr
+   where
+     toValueDecl ::  ((A.SourceAnn, Ident), (A.Expr, SourceType)) -> A.Declaration
+     toValueDecl ((ss',ident),(exp,ty)) = A.ValueDecl ss' ident Public [] [A.MkUnguarded exp]
+
+     printEnv :: m ()
+     printEnv = do
+       env <- gets checkEnv
+       let ns = map (\(i,(st,_,_)) -> (i,st)) . M.toList $ names env
+       mapM_ (\(i,st) -> traceM $  T.unpack (runIdent . disqualify $  i) <> " :: " <> ppType 10 st) ns
+
+     prepareBind :: ((A.SourceAnn, Ident), (A.Expr, SourceType)) -> (SourceSpan, Ident, SourceType, NameVisibility)
+     prepareBind (((ss',_),ident),(e,sty)) = (ss',ident,sty,Defined)
+
+     transformBind :: ((Ann, Ident), Expr Ann) -> (SourceSpan, Ident, SourceType, NameVisibility)
+     transformBind (((ss',_,_),ident),expr) = (ss',ident,const (ss',[]) <$> exprType expr, Defined)
+     -- Everything here *should* be a value declaration. I hope?
+     stripDecls ::  A.Declaration-> ((A.SourceAnn, Ident),  A.Expr)
+     stripDecls = \case
+       A.ValueDecl ann ident nKind [] [A.MkUnguarded e] -> ((ann,ident), e)
+       other -> error $ "let bindings should only contain value declarations w/ desugared binders and a single expr. this doesn't: " <> show other
 exprToCoreFn  mn _ ty (A.PositionedValue ss _ v) =
   exprToCoreFn mn ss ty v
 exprToCoreFn _ _   _ e =

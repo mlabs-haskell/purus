@@ -118,6 +118,7 @@ rebuildModuleWithIndex MakeActions{..} exEnv externs m@(Module _ _ moduleName _ 
   regrouped <- createBindingGroups moduleName . collapseBindingGroups $ deguarded
 
   let mod' = Module ss coms moduleName regrouped exps
+  traceM "PURUS START HERE"
   ((coreFn,chkSt),nextVar'') <- runSupplyT nextVar' $ runStateT (CFT.moduleToCoreFn mod') (emptyCheckState env')
   traceM $ prettyEnv (checkEnv chkSt)
   --mapM_ (traceM . show) . CFT.moduleDecls $ coreFn

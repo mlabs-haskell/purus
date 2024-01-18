@@ -75,7 +75,7 @@ prettyPrintValue :: Int -> Expr a -> Box
 prettyPrintValue d (Accessor _ ty prop val) = prettyPrintValueAtom (d - 1) val `before` textT ("." Monoid.<> prettyPrintObjectKey prop)
 prettyPrintValue d (ObjectUpdate ann _ty o _copyFields ps) = prettyPrintValueAtom (d - 1) o `beforeWithSpace` list '{' '}' (uncurry (prettyPrintUpdateEntry d)) ps
 prettyPrintValue d (App ann _ val arg) = prettyPrintValueAtom (d - 1) val `beforeWithSpace` prettyPrintValueAtom (d - 1) arg
-prettyPrintValue d (Abs ann ty arg val) = text (oneLine $ '\\' : T.unpack (showIdent arg) ++ ": " ++ ppType (d) (getFunArgTy ty) ++ " -> ") //  (prettyPrintValue (d-1)  val)
+prettyPrintValue d (Abs ann ty arg val) = text (oneLine $ '\\' : "(" ++ T.unpack (showIdent arg) ++ ": " ++ ppType (d) (getFunArgTy ty) ++ ") -> ") //  (prettyPrintValue (d-1)  val)
 prettyPrintValue d (Case ann ty values binders) =
   (text "case " <> foldr beforeWithSpace (text "of") (map (prettyPrintValueAtom (d - 1)) values)) //
     moveRight 2 (vcat left (map (prettyPrintCaseAlternative (d - 1)) binders))
