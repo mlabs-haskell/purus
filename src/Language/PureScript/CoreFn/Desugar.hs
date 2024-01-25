@@ -1,41 +1,39 @@
+{- HLINT ignore "Use void" -}
+{- HLINT ignore "Use <$" -}
 {-# LANGUAGE TypeApplications #-}
-{-# LANGUAGE PolyKinds #-}
-{-# LANGUAGE GADTs #-}
+
 module Language.PureScript.CoreFn.Desugar(moduleToCoreFn) where
 
 import Prelude
 import Protolude (ordNub, orEmpty, zipWithM, MonadError (..))
 
 
-import Data.Function (on)
 import Data.Maybe (mapMaybe)
-import Data.Tuple (swap)
 import Data.List.NonEmpty qualified as NEL
 import Data.Map qualified as M
 
 import Language.PureScript.AST.Literals (Literal(..))
 import Language.PureScript.AST.SourcePos (pattern NullSourceSpan, SourceSpan(..))
-import Language.PureScript.AST.Traversals (everythingOnValues)
 import Language.PureScript.CoreFn.Ann (Ann, ssAnn)
 import Language.PureScript.CoreFn.Binders (Binder(..))
-import Language.PureScript.CoreFn.Expr (Bind(..), CaseAlternative(..), Expr(..), Guard, PurusType, exprType)
-import Language.PureScript.CoreFn.Meta (ConstructorType(..), Meta(..))
+import Language.PureScript.CoreFn.Expr (Bind(..), CaseAlternative(..), Expr(..), Guard, exprType)
+import Language.PureScript.CoreFn.Meta (Meta(..))
 import Language.PureScript.CoreFn.Module (Module(..))
 import Language.PureScript.Crash (internalError)
-import Language.PureScript.Environment (tyArray, pattern (:->), DataDeclType(..), Environment(..), NameKind(..), isDictTypeName, lookupConstructor, lookupValue, purusFun, NameVisibility (..), tyBoolean, dictTypeName, TypeClassData (typeClassArguments), function, kindRow, tyFunction, tyRecord, tyString, tyChar, tyInt, tyNumber)
+import Language.PureScript.Environment (tyArray, pattern (:->), DataDeclType(..), Environment(..), NameKind(..), isDictTypeName, lookupConstructor, lookupValue, purusFun, NameVisibility (..), tyBoolean, kindRow, tyFunction, tyRecord, tyString, tyChar, tyInt, tyNumber)
 import Language.PureScript.Label (Label(..))
-import Language.PureScript.Names (pattern ByNullSourcePos, Ident(..), ModuleName, ProperName(..), ProperNameType(..), Qualified(..), QualifiedBy(..), disqualify, getQual, mkQualified, showIdent, runIdent, coerceProperName, Name (DctorName))
+import Language.PureScript.Names (pattern ByNullSourcePos, Ident(..), ModuleName, ProperName(..), ProperNameType(..), Qualified(..), QualifiedBy(..), mkQualified, showIdent, runIdent, coerceProperName, Name (DctorName))
 import Language.PureScript.PSString (PSString)
-import Language.PureScript.Types (pattern REmptyKinded, SourceType, Type(..), Constraint (..), TypeVarVisibility (..), srcTypeConstructor, srcTypeVar, srcTypeApp, quantify, eqType, srcRCons)
+import Language.PureScript.Types (pattern REmptyKinded, SourceType, Type(..), srcTypeConstructor, srcTypeVar, srcTypeApp, quantify, eqType, srcRCons)
 import Language.PureScript.AST.Binders qualified as A
 import Language.PureScript.AST.Declarations qualified as A
 import Language.PureScript.AST.SourcePos qualified as A
 import Language.PureScript.Constants.Prim qualified as C
-import Control.Monad.Supply.Class (MonadSupply)
-import Control.Monad.State.Strict (MonadState, gets, modify, MonadIO (liftIO))
+import Control.Monad.State.Strict (MonadState, gets, modify)
 import Control.Monad.Writer.Class ( MonadWriter )
-import Language.PureScript.TypeChecker (CheckState (checkEnv, checkCurrentModule), withBindingGroupVisible, bindLocalVariables, withScopedTypeVars, bindNames, replaceAllTypeSynonyms, kindOfWithScopedVars, warnAndRethrowWithPositionTC, makeBindingGroupVisible, bindLocalTypeVariables, debugEnv, instantiateForBinders, kindOf)
-import Control.Monad.Error (MonadError)
+import Language.PureScript.TypeChecker.Kinds ( kindOf )
+import Language.PureScript.TypeChecker.Synonyms
+    ( replaceAllTypeSynonyms )
 import Language.PureScript.TypeChecker.Types
     ( kindType,
       checkTypeKind,
@@ -47,105 +45,69 @@ import Language.PureScript.TypeChecker.Types
       typeDictionaryForBindingGroup,
       checkTypedBindingGroupElement,
       typeForBindingGroupElement,
-      infer,
-      check, tvToExpr, instantiatePolyTypeWithUnknowns, inferBinder )
+      infer )
 import Data.List.NonEmpty qualified as NE
-import Language.PureScript.TypeChecker.Unify (unifyTypes, replaceTypeWildcards, freshType)
-import Control.Monad (forM, (<=<), (>=>), unless)
+import Language.PureScript.TypeChecker.Unify (unifyTypes, replaceTypeWildcards)
+import Control.Monad (forM, (<=<), (>=>))
 import Language.PureScript.TypeChecker.Skolems (introduceSkolemScope)
-import Language.PureScript.Errors (MultipleErrors, parU)
-import Debug.Trace (traceM, trace)
-import Language.PureScript.CoreFn.Pretty
-import qualified Data.Text as T
+import Language.PureScript.Errors
+    ( MultipleErrors, parU, errorMessage', SimpleErrorMessage(..) )
+import Debug.Trace (traceM)
+import Language.PureScript.CoreFn.Pretty ( ppType )
+import Data.Text qualified as T
 import Language.PureScript.Pretty.Values (renderValue)
-import Language.PureScript.TypeClassDictionaries (NamedDict)
-import Text.Pretty.Simple (pShowNoColor, pShow)
-import qualified Data.Text.Lazy as LT
-import Language.PureScript.AST.SourcePos (SourcePos(SourcePos))
 import Language.PureScript.TypeChecker.Monad
-import Language.PureScript.Errors (errorMessage',SimpleErrorMessage(..))
-import qualified Data.Kind as K
+    ( bindLocalVariables,
+      bindNames,
+      getEnv,
+      makeBindingGroupVisible,
+      warnAndRethrowWithPositionTC,
+      withBindingGroupVisible,
+      CheckState(checkEnv, checkCurrentModule) )
+import Language.PureScript.CoreFn.Desugar.Utils
+    ( binderToCoreFn,
+      dedupeImports,
+      exportToCoreFn,
+      externToCoreFn,
+      findQualModules,
+      getConstructorMeta,
+      getLetMeta,
+      getModuleName,
+      getTypeClassArgs,
+      getValueMeta,
+      importToCoreFn,
+      inferType,
+      instantiatePolyType,
+      pTrace,
+      printEnv,
+      properToIdent,
+      purusTy,
+      reExportsToCoreFn,
+      showIdent',
+      ssA,
+      toReExportRef,
+      traverseLit,
+      wrapTrace,
+      M )
 
-type M m = (MonadSupply m, MonadState CheckState m, MonadError MultipleErrors m, MonadWriter MultipleErrors m)
+{-
+    CONVERSION MACHINERY
 
+    NOTE: We run this *after* the initial typechecking/desugaring phase, using the Environment returned from that
+          initial pass. It's important to keep that in mind, for a few reasons:
+            - We know that everything is well-typed/scoped/properly renamed/desugared/etc. This assumption lets us safely do a bunch of things that wouldn't otherwise be safe.
+            - We have access to all of the type signatures for top-level declarations
+            - We have to fix the "lies" in the type signatures that emerge after desugaring, e.g. types w/ a class constraint represent values that take an additional dict argument
 
--- We strip leading quantifiers, returning the non-quantified inner type, a function to replace the stripped quantifiers, and a monadic action that binds all the relevant tyvars
--- N.B. This is kind of like `instantiatePolyTypeWithUnknowns` except we don't instantiate to unknowns. This should be fine, we're working on an already-checked syntax tree.
-
-{- This function more-or-less contains our strategy for handling polytypes (quantified or constrained types). It returns a tuple T such that:
-     - T[0] is the inner type, where all of the quantifiers and constraints have been removed. We just instantiate the quantified type variables to themselves (I guess?) - the previous
-       typchecker passes should ensure that quantifiers are all well scoped and that all essential renaming has been performed. Typically, the inner type should be a function.
-       Constraints are eliminated by replacing the constraint argument w/ the appropriate dictionary type.
-
-     - T[1] is a function to transform the eventual expression such that it is properly typed. Basically: It puts the quantifiers back, (hopefully) in the right order and with
-       the correct visibility, skolem scope, etc.
-
-     - T[2] is a monadic action which binds local variables or type variables so that we can use type inference machinery on the expression corresponding to this type.
+   NOTE: All of the "pure" conversion functions (i.e. which don't require the typechecker monad stack) are in Language.PureScript.CoreFn.Desugar.Utils.
+         This module is hard enough to understand, best to minimize its size.
 -}
-instantiatePolyType :: M m => ModuleName -> SourceType-> (SourceType, Expr b -> Expr b, m a -> m a)
-instantiatePolyType mn = \case
-  ForAll _ vis var mbk t mSkol -> case instantiatePolyType mn t of
-    (inner,g,act) ->
-      let f = \case
-                Abs ann' ty' ident' expr' -> Abs ann' (ForAll () vis var (purusTy <$> mbk) (purusTy ty') mSkol) ident' expr'
-                other -> other
-          act' ma = withScopedTypeVars mn [(var,kindType)] $ act ma -- Might need to pattern match on mbk and use the real kind (though in practice this should always be of kind Type, I think?)
-      in (inner, f . g, act')
-  ConstrainedType ann c@Constraint{..} t -> case instantiatePolyType mn t of
-    (inner,g,act) ->
-      let dictTyName :: Qualified (ProperName 'TypeName) = dictTypeName . coerceProperName <$> constraintClass
-          dictTyCon = srcTypeConstructor dictTyName
-          dictTy = foldl srcTypeApp dictTyCon constraintArgs
-          act' ma = bindLocalVariables [(NullSourceSpan,Ident "dict",dictTy,Defined)] $ act ma
-      in (function dictTy inner,g,act')
-  other -> (other,id,id)
-
-
-pTrace :: (Monad m, Show a) => a -> m ()
-pTrace = traceM . LT.unpack . pShow
-
-
-wrapTrace :: Monad m => String -> m a -> m a
-wrapTrace msg act = do
-  traceM startMsg
-  res <- act
-  traceM endMsg
-  pure res
- where
-   padding = replicate 10 '='
-   pad str = padding <> str <> padding
-   startMsg = pad $ "BEGIN " <> msg
-   endMsg = pad $ "END " <> msg
-(</>) :: String -> String -> String
-x </> y = x <> "\n" <> y
-
-purusTy :: Type a -> PurusType
-purusTy = fmap (const ())
-
-unFun :: Type a -> Either (Type a) (Type a,Type a)
-unFun = \case
-  TypeApp _ (TypeApp _ (TypeConstructor _ C.Function) a) b -> Right (a,b)
-  other -> Left other
-
-getTypeClassData :: M m => Qualified (ProperName 'ClassName) -> m TypeClassData
-getTypeClassData nm = do
-  env <- getEnv
-  case M.lookup nm (typeClasses env) of
-    Nothing -> error $ "No type class data for " </> show nm </> "  found in" </> show (typeClasses env)
-    Just cls -> pure cls
-
-getTypeClassArgs :: M m => Qualified (ProperName 'ClassName) -> m [(T.Text,Maybe SourceType)]
-getTypeClassArgs nm = getTypeClassData nm >>= (pure . typeClassArguments)
-
--- We're going to run this *after* a pass of the unmodified typechecker, using the Env of the already-typechecked-by-the-default-checker module
--- That *should* allow us to avoid repeating the entire TC process, and simply infer/lookup types when we need them. Hopefully.
 
 -- | Desugars a module from AST to CoreFn representation.
 moduleToCoreFn :: forall m. M m => A.Module -> m (Module Ann)
 moduleToCoreFn  (A.Module _ _ _ _ Nothing) =
   internalError "Module exports were not elaborated before moduleToCoreFn"
-moduleToCoreFn mod@(A.Module modSS coms mn decls (Just exps)) = do
-  -- traceM $ LT.unpack (pShowNoColor mod)
+moduleToCoreFn (A.Module modSS coms mn decls (Just exps)) = do
   setModuleName
   let importHelper ds = fmap (ssAnn modSS,) (findQualModules ds)
       imports = dedupeImports $ mapMaybe importToCoreFn decls ++ importHelper decls
@@ -157,78 +119,52 @@ moduleToCoreFn mod@(A.Module modSS coms mn decls (Just exps)) = do
  where
    setModuleName = modify $ \cs ->
      cs {checkCurrentModule = Just mn}
-  -- Creates a map from a module name to the re-export references defined in
-  -- that module.
-reExportsToCoreFn :: (ModuleName, A.DeclarationRef) -> M.Map ModuleName [Ident]
-reExportsToCoreFn (mn', ref') = M.singleton mn' (exportToCoreFn ref')
 
-toReExportRef :: A.DeclarationRef -> Maybe (ModuleName, A.DeclarationRef)
-toReExportRef (A.ReExportRef _ src ref) =
-      fmap
-        (, ref)
-        (A.exportSourceImportedFrom src)
-toReExportRef _ = Nothing
+{- | Given a SourcePos and Identifier, look up the type of that identifier, also returning its NameVisiblity.
 
-  -- Remove duplicate imports
-dedupeImports :: [(Ann, ModuleName)] -> [(Ann, ModuleName)]
-dedupeImports = fmap swap . M.toList . M.fromListWith const . fmap swap
+     NOTE: Local variables should all be qualified by their SourcePos, whereas imports (and maybe top level decls in the module? can't remember)
+           are qualified by their ModuleName. What we do here is first look for a "local" type for the identifier using the provided source position,
+           then, if that fails, look up the identifier in the "global" scope using a module name.
 
-ssA :: SourceSpan -> Ann
-ssA ss = (ss, [], Nothing)
-
-
+           I *think* this is fine but I'm not *certain*.
+-}
 lookupType :: forall m. M m => A.SourcePos -> Ident -> m (SourceType,NameVisibility)
 lookupType sp tn = do
-  mn <- Language.PureScript.CoreFn.Desugar.moduleName
+  mn <- getModuleName
   env <- gets checkEnv
-  -- printEnv >>= traceM
   case M.lookup  (Qualified (BySourcePos sp) tn) (names env) of
     Nothing -> case M.lookup (mkQualified tn mn) (names env) of
       Nothing -> do
         pEnv <- printEnv
         error $ "No type found for " <> show tn <> "\n  in env:\n" <> pEnv
-      Just (ty,nk,nv) -> do
+      Just (ty,_,nv) -> do
         traceM $ "lookupType: " <> T.unpack (showIdent tn) <> " :: " <> ppType 10 ty
         pure (ty,nv)
-    Just (ty,nk,nv) -> do
+    Just (ty,_,nv) -> do
       traceM $ "lookupType: " <> T.unpack (showIdent tn) <> " :: " <> ppType 10 ty
       pure (ty,nv)
 
-printEnv :: M m => m String
-printEnv = do
-   env <- gets checkEnv
-   let ns = map (\(i,(st,_,_)) -> (i,st)) . M.toList $ names env
-   pure $ concatMap (\(i,st) -> "ENV:= " <> T.unpack (runIdent . disqualify $  i) <> " :: " <> ppType 10 st <> "\n") ns
+{- Converts declarations from their AST to CoreFn representation, deducing types when possible & inferring them when not possible.
 
-lookupCtorDeclTy :: M m => ModuleName -> A.DataConstructorDeclaration -> m SourceType
-lookupCtorDeclTy mn (A.DataConstructorDeclaration ann ctorName fields)= do
-  env <- gets checkEnv
-  case M.lookup (mkQualified ctorName mn) (dataConstructors env) of
-    Nothing -> error $ "No constr decl info found for " <> show ctorName
-    Just (_declType,_tyName,ty,_idents) -> pure ty
+   TODO: The module name can be retrieved from the monadic context and doesn't need to be passed around
+-}
 
-
-moduleName :: M m => m ModuleName
-moduleName = gets checkCurrentModule >>= \case
-  Just mn -> pure mn
-  Nothing -> error "No module name found in checkState"
-
--- Desugars member declarations from AST to CoreFn representation.
+-- newtype T = T Foo turns into T :: Foo -> Foo
 declToCoreFn :: forall m. M m => ModuleName -> A.Declaration -> m [Bind Ann]
-declToCoreFn mn (A.DataDeclaration (ss, com) Newtype name args [ctor]) = wrapTrace ("decltoCoreFn NEWTYPE " <> show name) $ case A.dataCtorFields ctor of
+declToCoreFn _ (A.DataDeclaration (ss, com) Newtype name _ [ctor]) = wrapTrace ("decltoCoreFn NEWTYPE " <> show name) $ case A.dataCtorFields ctor of
   [(_,wrappedTy)] -> do
     traceM (show ctor)
-    -- declTy <- lookupType mn name           // might need this?
     let innerFunTy = quantify $ purusFun wrappedTy wrappedTy
-    pure [NonRec ((ss, [], declMeta)) (properToIdent $ A.dataCtorName ctor) $
+    pure [NonRec (ss, [], declMeta) (properToIdent $ A.dataCtorName ctor) $
       Abs (ss, com, Just IsNewtype) innerFunTy (Ident "x") (Var (ssAnn ss) (purusTy wrappedTy) $ Qualified ByNullSourcePos (Ident "x"))]
   _ -> error "Found newtype with multiple fields"
   where
   declMeta = isDictTypeName (A.dataCtorName ctor) `orEmpty` IsTypeClassConstructor
+-- Reject newtypes w/ multiple constructors
 declToCoreFn _ d@(A.DataDeclaration _ Newtype _ _ _) =
   error $ "Found newtype with multiple constructors: " ++ show d
+-- Data declarations get turned into value declarations for the constructor(s)
 declToCoreFn  mn (A.DataDeclaration (ss, com) Data tyName _ ctors) = wrapTrace ("declToCoreFn DATADEC " <>  T.unpack (runProperName tyName)) $ do
-
   traceM $ show ctors
   traverse go ctors
  where
@@ -236,13 +172,11 @@ declToCoreFn  mn (A.DataDeclaration (ss, com) Data tyName _ ctors) = wrapTrace (
     env <- gets checkEnv
     let ctor = A.dataCtorName ctorDecl
         (_, _, ctorTy, fields) = lookupConstructor  env (Qualified (ByModuleName mn) ctor)
-    -- ctorDeclTy <- lookupCtorDeclTy mn ctorDecl
     pure $ NonRec (ssA ss) (properToIdent ctor) $ Constructor (ss, com, Nothing) (purusTy ctorTy) tyName ctor fields
-declToCoreFn mn (A.DataBindingGroupDeclaration ds) = wrapTrace  "declToCoreFn DATA GROUP DECL" $ do
-  concat <$> traverse (declToCoreFn  mn) ds
-declToCoreFn  mn (A.ValueDecl (ss, com) name _ _ [A.MkUnguarded e]) = wrapTrace ("decltoCoreFn VALDEC " <> show name) $ do
-  --traceM $ "decltoCoreFn " <> show name
-  -- env <- gets checkEnv
+-- NOTE: This should be OK because you can data declarations can only appear at the top-level.
+declToCoreFn mn (A.DataBindingGroupDeclaration ds) = wrapTrace  "declToCoreFn DATA GROUP DECL" $ concat <$> traverse (declToCoreFn  mn) ds
+-- Essentially a wrapper over `exprToCoreFn`. Not 100% sure if binding the type of the declaration is necessary here?
+declToCoreFn  mn (A.ValueDecl (ss, _) name _ _ [A.MkUnguarded e]) = wrapTrace ("decltoCoreFn VALDEC " <> show name) $ do
   (valDeclTy,nv) <- lookupType (spanStart ss) name
   traceM $ ppType 10 valDeclTy
   traceM $ renderValue 100 e
@@ -250,19 +184,15 @@ declToCoreFn  mn (A.ValueDecl (ss, com) name _ _ [A.MkUnguarded e]) = wrapTrace 
   bindLocalVariables [(ss,name,valDeclTy,nv)] $ do
       expr <- exprToCoreFn mn ss (Just valDeclTy)  e -- maybe wrong? might need to bind something here?
       pure [NonRec (ssA ss) name expr]
-
+-- Recursive binding groups. This is tricky. Calling `typedOf` saves us a lot of work, but it's hard to tell whether that's 100% safe here
 declToCoreFn  mn (A.BindingGroupDeclaration ds) = wrapTrace "declToCoreFn BINDING GROUP" $ do
   let stripped :: [((A.SourceAnn, Ident), A.Expr)] = NE.toList $  (\(((ss, com), name), _, e) -> (((ss, com), name), e)) <$> ds
-  types <- typesOf RecursiveBindingGroup mn stripped -- kind of redundant, this has already been performed in normal typechecking so we could just look up the types for each value decl ident
-  --types <- traverse lookupTypes stripped
+  types <- typesOf RecursiveBindingGroup mn stripped -- NOTE: If something weird breaks, look here. It's possible that `typesOf` makes calls to type CHECKING machinery that we don't want to ever invoke.
   recBody <- bindLocalVariables (prepareBind <$> types) $ traverse goRecBindings types
   pure [Rec recBody]
  where
    prepareBind :: ((A.SourceAnn, Ident), (A.Expr, SourceType)) -> (SourceSpan, Ident, SourceType, NameVisibility)
-   prepareBind (((ss',_),ident),(e,sty)) = (ss',ident,sty,Defined)
-
-   -- lookupTypes :: ((A.SourceAnn, Ident), A.Expr) -> m ((A.SourceAnn, Ident), (A.Expr, SourceType))
-   -- lookupTypes ((ann,ident),exp) = lookupType mn ident >>= \(ty,_) -> pure ((ann,ident),(exp,ty))
+   prepareBind (((ss',_),ident),(_,sty)) = (ss',ident,sty,Defined)
 
    goRecBindings ::  ((A.SourceAnn, Ident), (A.Expr, SourceType)) -> m ((Ann, Ident), Expr Ann)
    goRecBindings ((ann,ident),(expr,ty)) = do
@@ -270,32 +200,19 @@ declToCoreFn  mn (A.BindingGroupDeclaration ds) = wrapTrace "declToCoreFn BINDIN
      pure ((ssA $ fst ann,ident), expr')
 declToCoreFn _ _ = pure []
 
-traverseLit :: forall m a b. Monad m => (a -> m b) -> Literal a -> m (Literal b)
-traverseLit f = \case
-  NumericLiteral x -> pure $ NumericLiteral x
-  StringLiteral x -> pure $ StringLiteral x
-  CharLiteral x -> pure $ CharLiteral x
-  BooleanLiteral x -> pure $ BooleanLiteral x
-  ArrayLiteral xs  -> ArrayLiteral <$> traverse f xs
-  ObjectLiteral xs -> ObjectLiteral <$> traverse (\(str,x) -> f x >>= \b -> pure (str,b)) xs
-
-inferType :: M m => Maybe SourceType -> A.Expr -> m SourceType
-inferType (Just t) _ = pure t
-inferType Nothing e = infer e >>= \case
-  TypedValue' _ _ t -> pure t
-
--- Desugars expressions from AST to CoreFn representation.
+-- Desugars expressions from AST to typed CoreFn representation.
 exprToCoreFn :: forall m. M m => ModuleName -> SourceSpan ->  Maybe SourceType -> A.Expr -> m (Expr Ann)
+-- Literal case is straightforward
 exprToCoreFn mn _ mTy astLit@(A.Literal ss lit) = wrapTrace ("exprToCoreFn LIT " <> renderValue 100 astLit) $ do
   litT <- purusTy <$> inferType mTy astLit
   lit' <- traverseLit (exprToCoreFn mn ss Nothing) lit
   pure $ Literal (ss, [], Nothing)  litT lit'
-
+-- Accessor case is straightforward
 exprToCoreFn mn ss mTy accessor@(A.Accessor name v) = wrapTrace ("exprToCoreFn ACCESSOR " <> renderValue 100 accessor) $ do
   expT <- purusTy <$> inferType mTy accessor
   expr  <- exprToCoreFn mn ss Nothing v
   pure $ Accessor (ssA ss) expT name expr
-
+-- Object update is straightforward (this is basically a monadic wrapper around the old non-typed exprToCoreFn)
 exprToCoreFn mn ss mTy objUpd@(A.ObjectUpdate obj vs) = wrapTrace ("exprToCoreFn OBJ UPDATE " <> renderValue 100 objUpd) $ do
   expT <- purusTy <$> inferType mTy objUpd
   obj' <- exprToCoreFn mn ss Nothing obj
@@ -318,17 +235,21 @@ exprToCoreFn mn ss mTy objUpd@(A.ObjectUpdate obj vs) = wrapTrace ("exprToCoreFn
       collect (RCons _ (Label l) _ r) = (if l `elem` updated then id else (l :)) <$> collect r
       collect _ = Nothing
   unchangedRecordFields _ _ = Nothing
-exprToCoreFn mn ss (Just t) lam@(A.Abs (A.VarBinder ssb name) v) = wrapTrace ("exprToCoreFn " <> T.unpack (showIdent name)) $ do
-  let (inner,f,bindAct) = instantiatePolyType mn t
+-- Lambda abstraction. See the comments on `instantiatePolyType` above for an explanation of the strategy here.
+exprToCoreFn mn _ (Just t) (A.Abs (A.VarBinder ssb name) v) = wrapTrace ("exprToCoreFn " <> T.unpack (showIdent name)) $ do
+  let (inner,f,bindAct) = instantiatePolyType mn t -- Strip the quantifiers & constrained type wrappers and get the innermost not-polymorphic type, a function that puts the quantifiers back, and a monadic action to bind the necessary vars/tyvars
   case inner of
     a :-> b -> do
       body <- bindAct $ exprToCoreFn mn ssb (Just b) v
       pure . f $ Abs (ssA ssb) (purusFun a b) name body
     other -> error $ "Invalid function type " <> ppType 100 other
+-- By the time we receive the AST, only Lambdas w/ a VarBinder should remain
 exprToCoreFn _  _ t lam@(A.Abs _ _) =
-  internalError $ "Abs with Binder argument was not desugared before exprToCoreFn mn: \n" <> show lam <> "\n\n" <> show (fmap (const ()) <$> t)
+  internalError $ "Abs with Binder argument was not desugared before exprToCoreFn mn: \n" <> show lam <> "\n\n" <> show (const () <$> t)
+-- Ad hoc machinery for handling desugared type class dictionaries. As noted above, the types "lie" in generated code.
+-- NOTE: Not 100% sure this is necessary anymore now that we have instantiatePolyType
 exprToCoreFn mn ss mTy app@(A.App v1 v2)
-  | isDictCtor v2 && isDictInstCase v1 = wrapTrace ("exprToCoreFn APP DICT") $ do
+  | isDictCtor v2 && isDictInstCase v1 = wrapTrace "exprToCoreFn APP DICT" $ do
       v2' <- exprToCoreFn mn ss Nothing v2
       toBind <- mkDictInstBinder v1
       v1' <- bindLocalVariables toBind $ exprToCoreFn mn ss Nothing v1
@@ -336,7 +257,7 @@ exprToCoreFn mn ss mTy app@(A.App v1 v2)
       pure $ App (ss, [], Just IsSyntheticApp) (purusTy appT) v1' v2'
 
 
-  | otherwise  = wrapTrace ("exprToCoreFn APP") $ do
+  | otherwise  = wrapTrace "exprToCoreFn APP" $ do
       appT <- inferType mTy app
       traceM $ "AppTy: " <> ppType 10 appT
       traceM $ "expr: " <> renderValue 10 app
@@ -350,13 +271,12 @@ exprToCoreFn mn ss mTy app@(A.App v1 v2)
       traceM $ "ArgTy: " <> ppType 10 (exprType v2')
       pure $ App (ss, [], (isDictCtor v1 || isSynthetic v2) `orEmpty` IsSyntheticApp) (purusTy appT) v1' v2'
   where
-
   mkDictInstBinder = \case
     A.TypedValue _ e _ -> mkDictInstBinder e
-    A.Abs (A.VarBinder _ss1 (Ident "dict")) (A.Case [A.Var ss (Qualified _ (Ident "dict"))] [A.CaseAlternative [A.ConstructorBinder ctorSS cn@(Qualified cnameQB cname) _] [A.MkUnguarded _acsr]]) -> do
+    A.Abs (A.VarBinder _ss1 (Ident "dict")) (A.Case [A.Var _ (Qualified _ (Ident "dict"))] [A.CaseAlternative [A.ConstructorBinder _ cn@(Qualified _ _) _] [A.MkUnguarded _acsr]]) -> do
       let className :: Qualified (ProperName 'ClassName) = coerceProperName <$> cn
       args' <- getTypeClassArgs className
-      let args = zipWith (\i _ -> srcTypeVar $ "dictArg" <> T.pack (show i)) [1..] args'
+      let args = zipWith (\i _ -> srcTypeVar $ "dictArg" <> T.pack (show @Int i)) [1..] args'
           dictTyCon = srcTypeConstructor  (coerceProperName <$> cn)
           dictTyFreeVars = foldl srcTypeApp dictTyCon args
           ty = quantify dictTyFreeVars
@@ -365,7 +285,7 @@ exprToCoreFn mn ss mTy app@(A.App v1 v2)
 
   isDictInstCase = \case
     A.TypedValue _ e _ -> isDictInstCase e
-    A.Abs (A.VarBinder _ss1 (Ident "dict")) (A.Case [A.Var ss (Qualified ByNullSourcePos (Ident "dict"))] [A.CaseAlternative [A.ConstructorBinder _ (Qualified _ name) _] [A.MkUnguarded _acsr]]) -> isDictTypeName name
+    A.Abs (A.VarBinder _ss1 (Ident "dict")) (A.Case [A.Var _ (Qualified ByNullSourcePos (Ident "dict"))] [A.CaseAlternative [A.ConstructorBinder _ (Qualified _ name) _] [A.MkUnguarded _acsr]]) -> isDictTypeName name
     _ -> False
 
   isDictCtor = \case
@@ -377,19 +297,20 @@ exprToCoreFn mn ss mTy app@(A.App v1 v2)
     A.Var NullSourceSpan _ -> True
     A.Unused{}             -> True
     _                      -> False
-exprToCoreFn mn ss  _ (A.Unused _) = -- ????? need to figure out what this _is_
+-- Dunno what to do here. Haven't encountered an Unused so far, will need to see one to figure out how to handle them
+exprToCoreFn _ _  _ (A.Unused _) = -- ????? need to figure out what this _is_
   error "Don't know what to do w/ exprToCoreFn A.Unused"
-  -- pure $ Var (ss, com, Nothing) C.I_undefined
--- exprToCoreFn mn _ (Just ty) (A.Var ss ident) = gets checkEnv >>= \env ->
---   pure $ Var (ss, [], getValueMeta env ident) (purusTy ty) ident
-exprToCoreFn mn _ _ (A.Var ss ident) = wrapTrace ("exprToCoreFn VAR " <> show ident) $
+-- Variables should *always* be bound & typed in the Environment before we encounter them.
+-- NOTE: Not sure if we should ignore a type passed in? Generally we shouldn't *pass* types here, but bind variables
+exprToCoreFn _ _ _ (A.Var ss ident) = wrapTrace ("exprToCoreFn VAR " <> show ident) $
   gets checkEnv >>= \env -> case lookupValue env ident of
     Just (ty,_,_) -> pure $ Var (ss, [], getValueMeta env ident) (purusTy ty) ident
     Nothing -> do
       -- pEnv <- printEnv
       traceM $ "No known type for identifier " <> show ident -- <> "\n    in:\n" <> LT.unpack (pShow $ names env)
       error "boom"
-exprToCoreFn mn ss mTy ifte@(A.IfThenElse cond th el) = wrapTrace ("exprToCoreFn IFTE") $ do
+-- If-Then-Else Turns into a case expression
+exprToCoreFn mn ss mTy ifte@(A.IfThenElse cond th el) = wrapTrace "exprToCoreFn IFTE" $ do
   ifteTy <- inferType mTy ifte
   condE <- exprToCoreFn mn ss (Just tyBoolean) cond
   thE <- exprToCoreFn mn ss Nothing th
@@ -397,82 +318,115 @@ exprToCoreFn mn ss mTy ifte@(A.IfThenElse cond th el) = wrapTrace ("exprToCoreFn
   pure $ Case (ss, [], Nothing) (purusTy ifteTy) [condE]
     [ CaseAlternative [LiteralBinder (ssAnn ss) $ BooleanLiteral True]
                       (Right thE)
-    , CaseAlternative [NullBinder (ssAnn ss)] -- *
+    , CaseAlternative [NullBinder (ssAnn ss)]
                       (Right elE) ]
-exprToCoreFn mn _  mTy ctor@(A.Constructor ss name) = wrapTrace ("exprToCoreFn CTOR " <> show name) $ do
+-- Constructor case is straightforward, we should already have all of the type info
+exprToCoreFn _ _  mTy ctor@(A.Constructor ss name) = wrapTrace ("exprToCoreFn CTOR " <> show name) $ do
   env <- gets checkEnv
   let ctorMeta = getConstructorMeta env name
   ctorType <- inferType mTy ctor
   pure $ Var (ss, [], Just ctorMeta) (purusTy ctorType) $ fmap properToIdent name
-exprToCoreFn mn ss mTy astCase@(A.Case vs alts) = wrapTrace ("exprToCoreFn CASE") $ do
+-- Case expressions
+exprToCoreFn mn ss mTy astCase@(A.Case vs alts) = wrapTrace "exprToCoreFn CASE" $ do
   traceM $ renderValue 100 astCase
-  caseTy <- inferType mTy astCase
-  ts <- traverse (infer >=> pure . tvType)  vs -- instantiateForBinders vs alts -- might be wrong, instantiation might screw up the tyvars NOTE/FIXME: Definitely wrong
+  caseTy <- inferType mTy astCase -- the return type of the branches. This will usually be passed in.
+  ts <- traverse (infer >=> pure . tvType)  vs -- extract type information for the *scrutinees* (need this to properly type the binders. still not sure why exactly this is a list)
   traceM $ ppType 100 caseTy
   pTrace vs
-  vs' <- traverse (exprToCoreFn mn ss Nothing) vs -- maybe?
-  alts' <- traverse (altToCoreFn mn ss caseTy ts) alts
+  vs' <- traverse (exprToCoreFn mn ss Nothing) vs -- maybe zipWithM
+  alts' <- traverse (altToCoreFn mn ss caseTy ts) alts -- see explanation in altToCoreFn. We pass in the types of the scrutinee(s)
   pure $ Case (ssA ss) (purusTy caseTy) vs' alts'
  where
    tvType (TypedValue' _ _ t) = t
-
-exprToCoreFn  mn ss  (Just ty) (A.TypedValue _ v _) = wrapTrace ("exprToCoreFn TV1") $
+-- We prioritize the supplied type over the inferred type, since a type should only ever be passed when known to be correct.
+exprToCoreFn  mn ss  (Just ty) (A.TypedValue _ v _) = wrapTrace "exprToCoreFn TV1" $
   exprToCoreFn mn ss (Just ty) v
-exprToCoreFn mn ss Nothing (A.TypedValue _ v ty) = wrapTrace ("exprToCoreFn TV2") $
+exprToCoreFn mn ss Nothing (A.TypedValue _ v ty) = wrapTrace "exprToCoreFn TV2" $
   exprToCoreFn mn ss (Just ty) v
-exprToCoreFn  mn ss mTy astLet@(A.Let w ds v) = wrapTrace ("exprToCoreFn LET") $ case NE.nonEmpty ds of
+-- Let bindings. Complicated.
+exprToCoreFn  mn ss _ (A.Let w ds v) = wrapTrace "exprToCoreFn LET" $ case NE.nonEmpty ds of
   Nothing -> error "declarations in a let binding can't be empty"
-  Just ds' -> do
-    traceM $ "exprToCoreFn LET: "
-    (decls,expr) <- transformLetBindings mn ss [] ds v -- typesOf RecursiveBindingGroup  mn $  fmap stripDecls ds
+  Just _ -> do
+    traceM  "exprToCoreFn LET"
+    (decls,expr) <- transformLetBindings mn ss [] ds v -- see transformLetBindings
     pure $ Let (ss, [], getLetMeta w) (exprType expr) decls expr
 exprToCoreFn  mn _ ty (A.PositionedValue ss _ v) = wrapTrace "exprToCoreFn POSVAL" $
   exprToCoreFn mn ss ty v
 exprToCoreFn _ _   _ e =
   error $ "Unexpected value in exprToCoreFn mn: " ++ show e
 
+-- Desugars case alternatives from AST to CoreFn representation.
+altToCoreFn ::  forall m
+             . M m
+            => ModuleName
+            -> SourceSpan
+            -> SourceType -- The "return type", i.e., the type of the expr to the right of the -> in a case match branch
+            -> [SourceType] -- The types of the *scrutinees*, i.e. the `x` in `case x of (...)`. NOTE: Still not sure why there can be more than one
+            -> A.CaseAlternative
+            -> m (CaseAlternative Ann)
+altToCoreFn  mn ss ret boundTypes (A.CaseAlternative bs vs) = wrapTrace "altToCoreFn" $ do
+    env <- gets checkEnv
+    bTypes <- M.unions <$> zipWithM inferBinder' boundTypes bs -- Inferring the types for binders requires some special machinery & knowledge of the scrutinee type. NOTE: Not sure why multiple binders?
+    let toBind = (\(n',(ss',ty')) -> (ss',n',ty',Defined)) <$> M.toList bTypes
+        binders = binderToCoreFn env mn ss <$> bs
+    traceM $ concatMap (\x -> show x <> "\n") toBind
+    ege <- go toBind vs
+    pure $ CaseAlternative binders ege
+  where
+  go :: [(SourceSpan, Ident, SourceType, NameVisibility)] -> [A.GuardedExpr] -> m (Either [(Guard Ann, Expr Ann)] (Expr Ann))
+  go toBind [A.MkUnguarded e] = wrapTrace "altToCoreFn GO" $ do
+    expr <- bindLocalVariables toBind $ exprToCoreFn mn ss (Just ret) e -- need to bind all variables that occur in the binders. We know the type of the right hand side (as it was passed in)
+    pure $ Right expr
+  -- NOTE: Not sure whether this works / TODO: Make a test case that uses guards in case expressions
+  go _ gs = do
+    ges <- forM gs $ \case
+      A.GuardedExpr g e -> do
+        let cond = guardToExpr g
+        condE <- exprToCoreFn mn ss Nothing cond
+        eE    <- exprToCoreFn mn ss (Just ret) e
+        pure (condE,eE)
+    pure . Left $ ges
+  guardToExpr [A.ConditionGuard cond] = cond
+  guardToExpr _ = internalError "Guard not correctly desugared"
+
+{- Dirty hacks. If something breaks, odds are pretty good that it has something do with something here.
+
+   These two functions are adapted from utilities in Language.PureScript.TypeChecker.Types:
+     - transformLetBindings is a modification of inferLetBindings
+     - inferBinder' is a modification of inferBinder'
+
+   We need functions that perform the same tasks as those in TypeChecker.Types, but we cannot use the
+   existing functions because they call instantiatePolyTypeWithUnknowns. Instantiating a polytype to
+   an unknown type is correct *during the initial typechecking phase*, but it is disastrous for us
+   because we need to preserve the quantifiers explicitly in the typed AST.
+
+   Both of these functions work for reasonably simple examples, but may fail in more complex cases.
+   The primary reason for this is: I'm not sure how to write PS source that contains some of the
+   weirder cases in the AST. We'll have to deal with any problems once we have examples that
+   clearly isolate the problematic syntax nodes.
+-}
+
+
 transformLetBindings :: forall m. M m => ModuleName -> SourceSpan -> [Bind Ann] -> [A.Declaration] -> A.Expr -> m ([Bind Ann], Expr Ann)
-transformLetBindings mn ss seen [] ret =(seen,) <$> withBindingGroupVisible (exprToCoreFn mn ss Nothing ret)
--- for typed values (this might be wrong?)
-transformLetBindings mn _ss seen ((A.ValueDecl sa@(ss,_) ident nameKind [] [A.MkUnguarded (A.TypedValue checkType val ty)]) : rest) ret = do
-  traceM $ "transformLetBindings 1 " <> T.unpack (showIdent ident)
-  {- -TypedValue' _ val' ty'' <- warnAndRethrowWithPositionTC ss $ do
-    traceM $ "transformLetBindings 1.1"
-    ((args, elabTy), kind) <- kindOfWithScopedVars ty
-    traceM $ "transformLetBindings 1.2"
-    checkTypeKind ty kind
-    traceM $ "transformLetBindings 1.3"
-    let dict = M.singleton (Qualified (BySourcePos $ spanStart ss) ident) (elabTy, nameKind, Undefined)
-    traceM $ "transformLetBindings 1.4"
-    ty' <- introduceSkolemScope <=< replaceAllTypeSynonyms <=< replaceTypeWildcards $ elabTy
-    traceM $ "transformLetBindings 1.5"
-    if checkType
-      then withScopedTypeVars mn args $ bindNames dict $ check val ty'
-      else return (TypedValue' checkType val elabTy)
-  -}
-  traceM $ "transformLetBindings 1.6"
-  bindNames (M.singleton (Qualified (BySourcePos $ spanStart ss) ident) (ty, nameKind, Defined)) $ do
-    traceM $ "transformLetBindings 1.7"
-    thisDecl <- declToCoreFn mn (A.ValueDecl sa ident nameKind [] [A.MkUnguarded (A.TypedValue checkType val ty)])
-    traceM $ "transformLetBindings 1.8"
-    let seen' = seen ++ thisDecl
-    transformLetBindings mn _ss seen' rest ret
+transformLetBindings mn ss seen [] ret = (seen,) <$> withBindingGroupVisible (exprToCoreFn mn ss Nothing ret)
+transformLetBindings mn _ss seen ((A.ValueDecl sa@(ss,_) ident nameKind [] [A.MkUnguarded (A.TypedValue checkType val ty)]) : rest) ret =
+  wrapTrace ("transformLetBindings VALDEC TYPED" <> showIdent' ident) $ bindNames (M.singleton (Qualified (BySourcePos $ spanStart ss) ident) (ty, nameKind, Defined)) $ do
+  thisDecl <- declToCoreFn mn (A.ValueDecl sa ident nameKind [] [A.MkUnguarded (A.TypedValue checkType val ty)])
+  let seen' = seen ++ thisDecl
+  transformLetBindings mn _ss seen' rest ret
 -- TODO / FIXME: Rewrite the below definitions to avoid doing any type checking
-transformLetBindings mn _ss seen (A.ValueDecl sa@(ss,_) ident nameKind [] [A.MkUnguarded val] : rest) ret = do
-  traceM $ "transformLetBindings 2 " <> T.unpack (showIdent ident)
+transformLetBindings mn _ss seen (A.ValueDecl sa@(ss,_) ident nameKind [] [A.MkUnguarded val] : rest) ret = wrapTrace ("transformLetBindings VALDEC " <> showIdent' ident) $ do
   valTy <- freshTypeWithKind kindType
   TypedValue' _ val' valTy' <- warnAndRethrowWithPositionTC ss $ do
     let dict = M.singleton (Qualified (BySourcePos $ spanStart ss) ident) (valTy, nameKind, Undefined)
     bindNames dict $ infer val
-  traceM "transformLetBindings 2.1"
   warnAndRethrowWithPositionTC ss $ unifyTypes valTy valTy'
-  traceM "transformLetBindings 2.2"
   bindNames (M.singleton (Qualified (BySourcePos $ spanStart ss) ident) (valTy', nameKind, Defined)) $ do
     thisDecl <- declToCoreFn mn (A.ValueDecl sa ident nameKind [] [A.MkUnguarded val'])
     let seen' = seen ++ thisDecl
     transformLetBindings mn _ss seen' rest ret
-transformLetBindings mn _ss seen (A.BindingGroupDeclaration ds : rest) ret = do
-  traceM $ "transformLetBindings bindingGroup"
+transformLetBindings mn _ss seen (A.BindingGroupDeclaration ds : rest) ret = wrapTrace "transformLetBindings BINDINGGROUPDEC" $ do
+  traceM "transformLetBindings bindingGroup"
   SplitBindingGroup untyped typed dict <- typeDictionaryForBindingGroup Nothing . NEL.toList $ fmap (\(i, _, v) -> (i, v)) ds
   ds1' <- parU typed $ \e -> checkTypedBindingGroupElement mn e dict
   ds2' <- forM untyped $ \e -> typeForBindingGroupElement e dict
@@ -484,151 +438,7 @@ transformLetBindings mn _ss seen (A.BindingGroupDeclaration ds : rest) ret = do
     transformLetBindings mn _ss seen' rest ret
 transformLetBindings _ _ _ _ _ = error "Invalid argument to TransformLetBindings"
 
-
--- Desugars case alternatives from AST to CoreFn representation.
-altToCoreFn ::  forall m. M m => ModuleName -> SourceSpan -> SourceType -> [SourceType] -> A.CaseAlternative -> m (CaseAlternative Ann)
-altToCoreFn  mn ss ret boundTypes (A.CaseAlternative bs vs) = wrapTrace "altToCoreFn" $ do
-    env <- gets checkEnv
-    bTypes <- M.unions <$> zipWithM inferBinder' boundTypes  bs
-    let toBind = (\(n',(ss',ty')) -> (ss',n',ty',Defined)) <$> M.toList bTypes
-        binders = binderToCoreFn env mn ss <$> bs
-    traceM $ concatMap (\x -> show x <> "\n") toBind
-    ege <- go toBind vs
-    pure $ CaseAlternative binders ege
-  where
-  go :: [(SourceSpan, Ident, SourceType, NameVisibility)] -> [A.GuardedExpr] -> m (Either [(Guard Ann, Expr Ann)] (Expr Ann))
-  go toBind [A.MkUnguarded e] = wrapTrace "altToCoreFn GO" $ do
-    expr <- bindLocalVariables toBind $ exprToCoreFn mn ss (Just ret) e
-    pure $ Right expr
-  go _ gs = do
-    ges <- forM gs $ \case
-      A.GuardedExpr g e -> do
-        let cond = guardToExpr g
-        condE <- exprToCoreFn mn ss Nothing cond
-        eE    <- exprToCoreFn mn ss Nothing e
-        pure (condE,eE)
-    pure . Left $ ges
-  guardToExpr [A.ConditionGuard cond] = cond
-  guardToExpr _ = internalError "Guard not correctly desugared"
-
--- Desugars case binders from AST to CoreFn representation.
-binderToCoreFn ::  Environment -> ModuleName -> SourceSpan -> A.Binder -> Binder Ann
-binderToCoreFn  env mn _ss (A.LiteralBinder ss lit) =
-  let lit' = binderToCoreFn env mn ss <$> lit
-  in  LiteralBinder (ss, [], Nothing) lit'
-binderToCoreFn _ mn ss A.NullBinder =
-  NullBinder (ss, [], Nothing)
-binderToCoreFn _ mn _ss vb@(A.VarBinder ss name) = trace ("binderToCoreFn: " <> show vb ) $
-  VarBinder (ss, [], Nothing) name
-binderToCoreFn env mn _ss (A.ConstructorBinder ss dctor@(Qualified mn' _) bs) =
-  let (_, tctor, _, _) = lookupConstructor env dctor
-      args = binderToCoreFn env mn _ss <$> bs
-  in  ConstructorBinder (ss, [], Just $ getConstructorMeta env dctor) (Qualified mn' tctor) dctor args
-binderToCoreFn env mn _ss (A.NamedBinder ss name b) =
-  let arg = binderToCoreFn env mn _ss b
-  in  NamedBinder (ss, [], Nothing) name arg
-binderToCoreFn env mn _ss (A.PositionedBinder ss _ b) =
-  binderToCoreFn env mn ss  b
-binderToCoreFn env mn ss  (A.TypedBinder _ b) =
-  binderToCoreFn env mn ss  b
-binderToCoreFn _ _ _  A.OpBinder{} =
-  internalError "OpBinder should have been desugared before binderToCoreFn"
-binderToCoreFn _ _ _  A.BinaryNoParensBinder{} =
-  internalError "BinaryNoParensBinder should have been desugared before binderToCoreFn"
-binderToCoreFn _ _ _  A.ParensInBinder{} =
-  internalError "ParensInBinder should have been desugared before binderToCoreFn"
-
--- Gets metadata for let bindings.
-getLetMeta :: A.WhereProvenance -> Maybe Meta
-getLetMeta A.FromWhere = Just IsWhere
-getLetMeta A.FromLet = Nothing
-
--- Gets metadata for values.
-getValueMeta :: Environment -> Qualified Ident -> Maybe Meta
-getValueMeta env name =
-  case lookupValue env name of
-    Just (_, External, _) -> Just IsForeign
-    _ -> Nothing
-
--- Gets metadata for data constructors.
-getConstructorMeta :: Environment -> Qualified (ProperName 'ConstructorName) -> Meta
-getConstructorMeta env ctor =
-  case lookupConstructor env ctor of
-    (Newtype, _, _, _) -> IsNewtype
-    dc@(Data, _, _, fields) ->
-      let constructorType = if numConstructors (ctor, dc) == 1 then ProductType else SumType
-      in IsConstructor constructorType fields
-  where
-
-  numConstructors
-    :: (Qualified (ProperName 'ConstructorName), (DataDeclType, ProperName 'TypeName, SourceType, [Ident]))
-    -> Int
-  numConstructors ty = length $ filter (((==) `on` typeConstructor) ty) $ M.toList $ dataConstructors env
-
-  typeConstructor
-    :: (Qualified (ProperName 'ConstructorName), (DataDeclType, ProperName 'TypeName, SourceType, [Ident]))
-    -> (ModuleName, ProperName 'TypeName)
-  typeConstructor (Qualified (ByModuleName mn') _, (_, tyCtor, _, _)) = (mn', tyCtor)
-  typeConstructor _ = internalError "Invalid argument to typeConstructor"
-
--- | Find module names from qualified references to values. This is used to
--- ensure instances are imported from any module that is referenced by the
--- current module, not just from those that are imported explicitly (#667).
-findQualModules :: [A.Declaration] -> [ModuleName]
-findQualModules decls =
- let (f, _, _, _, _) = everythingOnValues (++) fqDecls fqValues fqBinders (const []) (const [])
- in f `concatMap` decls
-
-fqDecls :: A.Declaration -> [ModuleName]
-fqDecls (A.TypeInstanceDeclaration _ _ _ _ _ _ q _ _) = getQual' q
-fqDecls (A.ValueFixityDeclaration _ _ q _) = getQual' q
-fqDecls (A.TypeFixityDeclaration _ _ q _) = getQual' q
-fqDecls _ = []
-
-fqValues :: A.Expr -> [ModuleName]
-fqValues (A.Var _ q) = getQual' q
-fqValues (A.Constructor _ q) = getQual' q
-fqValues _ = []
-
-fqBinders :: A.Binder -> [ModuleName]
-fqBinders (A.ConstructorBinder _ q _) = getQual' q
-fqBinders _ = []
-
-getQual' :: Qualified a -> [ModuleName]
-getQual' = maybe [] return . getQual
-
--- | Desugars import declarations from AST to CoreFn representation.
-importToCoreFn :: A.Declaration -> Maybe (Ann, ModuleName)
--- TODO: We probably *DO* want types here
-importToCoreFn (A.ImportDeclaration (ss, com) name _ _) = Just ((ss, com, Nothing), name)
-importToCoreFn _ = Nothing
-
--- | Desugars foreign declarations from AST to CoreFn representation.
-externToCoreFn :: A.Declaration -> Maybe Ident
-externToCoreFn (A.ExternDeclaration _ name _) = Just name
-externToCoreFn _ = Nothing
-
--- | Desugars export declarations references from AST to CoreFn representation.
--- CoreFn modules only export values, so all data constructors, instances and
--- values are flattened into one list.
-exportToCoreFn :: A.DeclarationRef -> [Ident]
-exportToCoreFn (A.TypeRef _ _ (Just dctors)) = fmap properToIdent dctors
-exportToCoreFn (A.TypeRef _ _ Nothing) = []
-exportToCoreFn (A.TypeOpRef _ _) = []
-exportToCoreFn (A.ValueRef _ name) = [name]
-exportToCoreFn (A.ValueOpRef _ _) = []
-exportToCoreFn (A.TypeClassRef _ _) = []
-exportToCoreFn (A.TypeInstanceRef _ name _) = [name]
-exportToCoreFn (A.ModuleRef _ _) = []
-exportToCoreFn (A.ReExportRef _ _ _) = []
-
--- | Converts a ProperName to an Ident.
-properToIdent :: ProperName a -> Ident
-properToIdent = Ident . runProperName
-
--- We need a version that *doesn't* instantiate polytypes to unknowns
-
--- | Infer the types of variables brought into scope by a binder
+-- | Infer the types of variables brought into scope by a binder *without* instantiating polytypes to unknowns.
 inferBinder'
   :: forall m
    . (MonadState CheckState m, MonadError MultipleErrors m, MonadWriter MultipleErrors m)
@@ -636,35 +446,30 @@ inferBinder'
   -> A.Binder
   -> m (M.Map Ident (SourceSpan, SourceType))
 inferBinder' _ A.NullBinder = return M.empty
-inferBinder' val (A.LiteralBinder _ (StringLiteral _)) = unifyTypes val tyString >> return M.empty
-inferBinder' val (A.LiteralBinder _ (CharLiteral _)) = unifyTypes val tyChar >> return M.empty
-inferBinder' val (A.LiteralBinder _ (NumericLiteral (Left _))) = unifyTypes val tyInt >> return M.empty
-inferBinder' val (A.LiteralBinder _ (NumericLiteral (Right _))) = unifyTypes val tyNumber >> return M.empty
-inferBinder' val (A.LiteralBinder _ (BooleanLiteral _)) = unifyTypes val tyBoolean >> return M.empty
-inferBinder' val (A.VarBinder ss name) = return $ M.singleton name (ss, val)
-inferBinder' val (A.ConstructorBinder ss ctor binders) = wrapTrace ("inferBinder CTOR: " <> show ctor) $ do
+inferBinder' val (A.LiteralBinder _ (StringLiteral _)) = wrapTrace "inferBinder' STRLIT" $ unifyTypes val tyString >> return M.empty
+inferBinder' val (A.LiteralBinder _ (CharLiteral _)) = wrapTrace "inferBinder' CHARLIT" $ unifyTypes val tyChar >> return M.empty
+inferBinder' val (A.LiteralBinder _ (NumericLiteral (Left _))) = wrapTrace "inferBinder' LITINT" $ unifyTypes val tyInt >> return M.empty
+inferBinder' val (A.LiteralBinder _ (NumericLiteral (Right _))) = wrapTrace "inferBinder' NUMBERLIT" $ unifyTypes val tyNumber >> return M.empty
+inferBinder' val (A.LiteralBinder _ (BooleanLiteral _)) = wrapTrace "inferBinder' BOOLLIT" $ unifyTypes val tyBoolean >> return M.empty
+inferBinder' val (A.VarBinder ss name) = wrapTrace ("inferBinder' VAR " <> T.unpack (runIdent name))  $ return $ M.singleton name (ss, val)
+inferBinder' val (A.ConstructorBinder ss ctor binders) = wrapTrace ("inferBinder' CTOR: " <> show ctor) $ do
   env <- getEnv
   case M.lookup ctor (dataConstructors env) of
     Just (_, _, ty, _) -> do
       traceM (ppType 100 ty)
-      -- (_, fn') <- instantiatePolyTypeWithUnknowns (internalError "Data constructor types cannot contain constraints") ty
-      -- traceM (ppType 100 fn')
       let (args, ret) = peelArgs ty
-          expected = length args
-          actual = length binders
-      -- unless (expected == actual) . throwError . errorMessage' ss $ IncorrectConstructorArity ctor expected actual
       unifyTypes ret val
       M.unions <$> zipWithM inferBinder' (reverse args) binders
     _ -> throwError . errorMessage' ss . UnknownName . fmap DctorName $ ctor
   where
-  peelArgs :: Type a -> ([Type a], Type a)
+  peelArgs :: Type a -> ([Type a], Type a) -- NOTE: Not sure if we want to "peel constraints" too. Need to think of an example to test.
   peelArgs = go []
     where
     go args (ForAll _ _ _ _ innerTy _) = go args innerTy
     go args (TypeApp _ (TypeApp _ fn arg) ret) | eqType fn tyFunction = go (arg : args) ret
     go args ret = (args, ret)
 -- TODO/FIXME: The cases below need to be scrutinized/rewritten to avoid any subtle polytype instantiation
-inferBinder' val (A.LiteralBinder _ (ObjectLiteral props)) = do
+inferBinder' val (A.LiteralBinder _ (ObjectLiteral props)) = wrapTrace "inferBinder' OBJECTLIT" $ do
   row <- freshTypeWithKind (kindRow kindType)
   rest <- freshTypeWithKind (kindRow kindType)
   m1 <- inferRowProperties row rest props
@@ -678,21 +483,22 @@ inferBinder' val (A.LiteralBinder _ (ObjectLiteral props)) = do
     m1 <- inferBinder' propTy binder
     m2 <- inferRowProperties nrow (srcRCons (Label name) propTy row) binders
     return $ m1 `M.union` m2
-inferBinder' val (A.LiteralBinder _ (ArrayLiteral binders)) = do
+inferBinder' val (A.LiteralBinder _ (ArrayLiteral binders)) = wrapTrace "inferBinder' ARRAYLIT" $  do
   el <- freshTypeWithKind kindType
   m1 <- M.unions <$> traverse (inferBinder' el) binders
   unifyTypes val (srcTypeApp tyArray el)
   return m1
-inferBinder' val (A.NamedBinder ss name binder) =
+-- NOTE/TODO/FIXME: I'm not sure how to construct an expression with the following binders, which makes it hard to tell whether this works!
+inferBinder' val (A.NamedBinder ss name binder) = wrapTrace ("inferBinder' NAMEDBINDER " <> T.unpack (runIdent name)) $
   warnAndRethrowWithPositionTC ss $ do
     m <- inferBinder' val binder
     return $ M.insert name (ss, val) m
-inferBinder' val (A.PositionedBinder pos _ binder) =
+inferBinder' val (A.PositionedBinder pos _ binder) = wrapTrace "inferBinder' POSITIONEDBINDER" $
   warnAndRethrowWithPositionTC pos $ inferBinder' val binder
-inferBinder' val (A.TypedBinder ty binder) = do
+inferBinder' val (A.TypedBinder ty binder) = wrapTrace "inferBinder' TYPEDBINDER" $ do
   (elabTy, kind) <- kindOf ty
   checkTypeKind ty kind
-  ty1 <- introduceSkolemScope <=< replaceAllTypeSynonyms <=< replaceTypeWildcards $ elabTy
+  ty1 <- introduceSkolemScope <=< replaceAllTypeSynonyms <=< replaceTypeWildcards $ elabTy -- FIXME: This is almost certainly wrong (but I dunno how to get a typed binder to test it on)
   unifyTypes val ty1
   inferBinder' ty1 binder
 inferBinder' _ A.OpBinder{} =
