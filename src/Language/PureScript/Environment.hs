@@ -369,16 +369,16 @@ purusFun = f . g
     tyFunctionNoAnn = TypeConstructor () C.Function
 
 -- This is borderline necessary
-pattern (:->) :: Type () -> Type () -> Type ()
-pattern a :-> b =
-  TypeApp ()
-    (TypeApp () (TypeConstructor () C.Function) a)
+pattern (:->) :: Type a -> Type a -> Type a
+pattern a :-> b <-
+  TypeApp _
+    (TypeApp _ (TypeConstructor _ C.Function) a)
     b
 
 getFunArgTy :: Type () -> Type ()
 getFunArgTy = \case
   a :-> _ -> a
-  ForAll _ _ _ _ (a :-> _) _ -> a
+  ForAll _ _ _ _ t  _ -> getFunArgTy t
   other -> other
 
 -- To make reading the kind signatures below easier

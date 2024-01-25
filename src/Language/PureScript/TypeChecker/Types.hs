@@ -12,6 +12,7 @@ module Language.PureScript.TypeChecker.Types
   , kindType
   , TypedValue' (..)
   , instantiatePolyTypeWithUnknowns
+  , instantiateForBinders
   , tvToExpr
   , SplitBindingGroup(..)
   , typeDictionaryForBindingGroup
@@ -725,9 +726,9 @@ instantiateForBinders vals cas = unzip <$> zipWithM (\val inst -> do
 --
 checkBinders
   :: (MonadSupply m, MonadState CheckState m, MonadError MultipleErrors m, MonadWriter MultipleErrors m)
-  => [SourceType]
-  -> SourceType
-  -> [CaseAlternative]
+  => [SourceType] -- the types of the scrutinee values
+  -> SourceType   -- return type of case expr
+  -> [CaseAlternative] -- the binders
   -> m [CaseAlternative]
 checkBinders _ _ [] = return []
 checkBinders nvals ret (CaseAlternative binders result : bs) = do
