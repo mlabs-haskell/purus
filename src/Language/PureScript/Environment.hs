@@ -378,7 +378,7 @@ pattern a :-> b <-
 getFunArgTy :: Type () -> Type ()
 getFunArgTy = \case
   a :-> _ -> a
-  ForAll _ _ _ _ (a :-> _) _ -> a
+  ForAll _ _ _ _ t  _ -> getFunArgTy t
   other -> other
 
 -- To make reading the kind signatures below easier

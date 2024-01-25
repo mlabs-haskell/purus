@@ -300,7 +300,7 @@ typeClassMemberToDictionaryAccessor mn name args (TypeDeclaration (TypeDeclarati
       dictIdent = Ident "dict"
       dictObjIdent = Ident "v"
       ctor = ConstructorBinder ss (coerceProperName . dictTypeName <$> className) [VarBinder ss dictObjIdent]
-      -- N.B. changing this from ByNullSourcePos to the real source pos to hopefully make conversion to typed CoreFn AST work
+      -- NOTE: changing this from ByNullSourcePos to the real source pos to hopefully make conversion to typed CoreFn AST work
       acsr = Accessor (mkString $ runIdent ident) (Var ss (Qualified {- -ByNullSourcePos -} (BySourcePos $ spanStart ss) dictObjIdent))
       visibility = second (const TypeVarVisible) <$> args
   in ValueDecl sa ident Private []

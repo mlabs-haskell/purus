@@ -1,4 +1,6 @@
 {-# LANGUAGE TypeApplications #-}
+{-# LANGUAGE PolyKinds #-}
+{-# LANGUAGE GADTs #-}
 module Language.PureScript.CoreFn.Desugar(moduleToCoreFn) where
 
 import Prelude
@@ -62,8 +64,41 @@ import qualified Data.Text.Lazy as LT
 import Language.PureScript.AST.SourcePos (SourcePos(SourcePos))
 import Language.PureScript.TypeChecker.Monad
 import Language.PureScript.Errors (errorMessage',SimpleErrorMessage(..))
+import qualified Data.Kind as K
 
 type M m = (MonadSupply m, MonadState CheckState m, MonadError MultipleErrors m, MonadWriter MultipleErrors m)
+
+
+-- We strip leading quantifiers, returning the non-quantified inner type, a function to replace the stripped quantifiers, and a monadic action that binds all the relevant tyvars
+-- N.B. This is kind of like `instantiatePolyTypeWithUnknowns` except we don't instantiate to unknowns. This should be fine, we're working on an already-checked syntax tree.
+
+{- This function more-or-less contains our strategy for handling polytypes (quantified or constrained types). It returns a tuple T such that:
+     - T[0] is the inner type, where all of the quantifiers and constraints have been removed. We just instantiate the quantified type variables to themselves (I guess?) - the previous
+       typchecker passes should ensure that quantifiers are all well scoped and that all essential renaming has been performed. Typically, the inner type should be a function.
+       Constraints are eliminated by replacing the constraint argument w/ the appropriate dictionary type.
+
+     - T[1] is a function to transform the eventual expression such that it is properly typed. Basically: It puts the quantifiers back, (hopefully) in the right order and with
+       the correct visibility, skolem scope, etc.
+
+     - T[2] is a monadic action which binds local variables or type variables so that we can use type inference machinery on the expression corresponding to this type.
+-}
+instantiatePolyType :: M m => ModuleName -> SourceType-> (SourceType, Expr b -> Expr b, m a -> m a)
+instantiatePolyType mn = \case
+  ForAll _ vis var mbk t mSkol -> case instantiatePolyType mn t of
+    (inner,g,act) ->
+      let f = \case
+                Abs ann' ty' ident' expr' -> Abs ann' (ForAll () vis var (purusTy <$> mbk) (purusTy ty') mSkol) ident' expr'
+                other -> other
+          act' ma = withScopedTypeVars mn [(var,kindType)] $ act ma -- Might need to pattern match on mbk and use the real kind (though in practice this should always be of kind Type, I think?)
+      in (inner, f . g, act')
+  ConstrainedType ann c@Constraint{..} t -> case instantiatePolyType mn t of
+    (inner,g,act) ->
+      let dictTyName :: Qualified (ProperName 'TypeName) = dictTypeName . coerceProperName <$> constraintClass
+          dictTyCon = srcTypeConstructor dictTyName
+          dictTy = foldl srcTypeApp dictTyCon constraintArgs
+          act' ma = bindLocalVariables [(NullSourceSpan,Ident "dict",dictTy,Defined)] $ act ma
+      in (function dictTy inner,g,act')
+  other -> (other,id,id)
 
 
 pTrace :: (Monad m, Show a) => a -> m ()
@@ -283,90 +318,15 @@ exprToCoreFn mn ss mTy objUpd@(A.ObjectUpdate obj vs) = wrapTrace ("exprToCoreFn
       collect (RCons _ (Label l) _ r) = (if l `elem` updated then id else (l :)) <$> collect r
       collect _ = Nothing
   unchangedRecordFields _ _ = Nothing
-exprToCoreFn mn ss (Just (ForAll ann vis var mbk (a :-> b) mSkol)) lam@(A.Abs (A.VarBinder ssb name) v) = wrapTrace ("exprToCoreFn LAM FORALL " <> T.unpack (showIdent name)) $ do
-  traceM $ renderValue 10 v
-  env <- gets checkEnv
-  pTrace (M.keys $ names env) -- mapM_ traceM (debugEnv env)
-  let toBind = [(ssb, name, a, Defined)]
-  withScopedTypeVars mn [(var,kindType)] $ bindLocalVariables toBind $ do
-    body <- exprToCoreFn mn ss (Just b) v
-    pure $ Abs (ssA ssb) (ForAll () vis var (purusTy <$> mbk) (purusFun a b) mSkol) name body
--- TODO/FIXME: Make it work with MPTCs
-exprToCoreFn mn ss (Just fa@(ForAll ann vis var mbk (ConstrainedType cann c@Constraint{..} r) mSkol))  lam@(A.Abs (A.VarBinder vbss name@(Ident "dict")) _) = wrapTrace ("exprToCoreFn LAM FORALL CONSTRAINED " <> T.unpack (showIdent name)) $ do
-  traceM $ show name
-  --traceM $ ppType 100 fa
-  --traceM $ ppType 100 r
-  traceM $ renderValue 100 lam
-  -- NOTE: This won't work for MPTCs, just trying to see if it works for the single arg case right now
-  let dictTyName :: Qualified (ProperName TypeName) = dictTypeName . coerceProperName <$> constraintClass
-      dictTy =  srcTypeConstructor dictTyName
-      innerTy = srcTypeApp dictTy (srcTypeVar var)
-  --traceM $ ppType 100 dictTy
-  bindLocalVariables [(NullSourceSpan,name,innerTy,Defined)] $ exprToCoreFn mn ss (Just (ForAll ann vis var mbk (function innerTy r) mSkol)) lam
-exprToCoreFn mn ss (Just ab@(a :-> b)) lam@(A.Abs (A.VarBinder ssb name) v) = wrapTrace ("exprToCoreFn LAM " <> T.unpack (showIdent name)) $ do
-  traceM $ ppType 100 ab
-  traceM $ renderValue 100 lam
-  let toBind = [(ssb,name,a,Defined)]
-  bindLocalVariables toBind $ do
-    body <- exprToCoreFn mn ss (Just b) v
-    pure $ Abs (ssA ssb) (purusFun a b) name body
-exprToCoreFn mn ss (Just ct@(ConstrainedType cann c@Constraint{..} r)) lam@(A.Abs (A.VarBinder _ name) _) = wrapTrace ("exprToCoreFn LAM CONSTRAINED" <> T.unpack (showIdent name)) $ do
-  traceM $ ppType 100 ct
-  traceM $ ppType 100 r
-  traceM $ renderValue 100 lam
-  exprToCoreFn mn ss (Just r) lam >>= \case
-    Abs ss' r' name' lam' -> pure $ Abs ss' (ConstrainedType () (const () <$> c) r') name' lam'
-    _ -> error "Internal error: Something went horribly wrong in exprToCoreFn with a constrained type (should be impossible)"
-{-
-exprToCoreFn mn ss (Just ty) lam@(A.Abs (A.VarBinder ssb name) v) = do
-  traceM $ "exprToCoreFn lam " <>  T.unpack (showIdent name) <> " :: " <>  ppType 10 ty
-  case ty of
-    ft@(ForAll ann vis var mbk qty mSkol) -> case unFun qty of
-      Right (a,b) ->  do
-        traceM "ForAll branch"
-        traceM $ "arg: " <> ppType 10 a
-        traceM $ "result: " <> ppType 10 b
-        let toBind = [(ssb, name, a, Defined)]
-        withScopedTypeVars mn [] $ bindLocalVariables toBind $ do
-          body <- exprToCoreFn mn ss (Just b) v
-          pure $ Abs (ssA ssb) (ForAll () vis var (purusTy <$> mbk) (purusFun a b) mSkol) name body
-      Left e -> error
-                $ "All lambda abstractions should have either a function type or a quantified function type: " <> ppType 10 e
-                <> "\n" <>  show e
-    ConstrainedType ann c ty -> case unFun ty of
-      Right (a,b) -> do
-        traceM $ "Constrained type branch"
-        let toBind = [(ssb,name,a,Defined)]
-        bindLocalVariables toBind $ do
-          body <- exprToCoreFn mn ss (Just b) v
-          pure $ Abs (ssA ssb) (purusFun a b) name body
-    other -> case unFun other of
-      Right (a,b) -> do
-        traceM "Normal function branch"
-        let toBind = [(ssb, name, a, Defined )]
-        bindLocalVariables toBind $ do
-          body <- exprToCoreFn mn ss (Just b) v
-          pure $ Abs (ssA ssb) (purusFun a b) name body
-      Left e ->  error
-                 $ "All lambda abstractions should have either a function type or a quantified function type: " <> ppType 10 e
-                   <> "\n" <>  show e
-  -- error "boom"
-
-  {- (unFun <$> inferType (Just ty) lam) >>= \case
-    Right (a,b) -> do
-      traceM $ "function lam " <> ppType 10 ty -- prettyPrintType 0 (purusFun a b)
-      let toBind = [(ssb, name, a, Defined )]
-      bindLocalVariables toBind $ do
-        body <- exprToCoreFn mn ss Nothing v -- (Just b) v
-        pure $ Abs (ssA ssb) {- (purusFun a b) -} (purusTy ty) name body
-    Left _ty -> do
-      traceM $ "??? lam " <> prettyPrintType 0 _ty
-      body <- exprToCoreFn mn ss Nothing v
-      pure $ Abs (ssA ssb) (purusTy ty) name body
--}
--}
-exprToCoreFn _  _ _ lam@(A.Abs _ _) =
-  internalError $ "Abs with Binder argument was not desugared before exprToCoreFn mn" <> show lam
+exprToCoreFn mn ss (Just t) lam@(A.Abs (A.VarBinder ssb name) v) = wrapTrace ("exprToCoreFn " <> T.unpack (showIdent name)) $ do
+  let (inner,f,bindAct) = instantiatePolyType mn t
+  case inner of
+    a :-> b -> do
+      body <- bindAct $ exprToCoreFn mn ssb (Just b) v
+      pure . f $ Abs (ssA ssb) (purusFun a b) name body
+    other -> error $ "Invalid function type " <> ppType 100 other
+exprToCoreFn _  _ t lam@(A.Abs _ _) =
+  internalError $ "Abs with Binder argument was not desugared before exprToCoreFn mn: \n" <> show lam <> "\n\n" <> show (fmap (const ()) <$> t)
 exprToCoreFn mn ss mTy app@(A.App v1 v2)
   | isDictCtor v2 && isDictInstCase v1 = wrapTrace ("exprToCoreFn APP DICT") $ do
       v2' <- exprToCoreFn mn ss Nothing v2
@@ -466,26 +426,6 @@ exprToCoreFn  mn ss mTy astLet@(A.Let w ds v) = wrapTrace ("exprToCoreFn LET") $
     traceM $ "exprToCoreFn LET: "
     (decls,expr) <- transformLetBindings mn ss [] ds v -- typesOf RecursiveBindingGroup  mn $  fmap stripDecls ds
     pure $ Let (ss, [], getLetMeta w) (exprType expr) decls expr
-   where
-     toValueDecl ::  ((A.SourceAnn, Ident), (A.Expr, SourceType)) -> A.Declaration
-     toValueDecl ((ss',ident),(exp,ty)) = A.ValueDecl ss' ident Public [] [A.MkUnguarded exp]
-
-     printEnv :: m ()
-     printEnv = do
-       env <- gets checkEnv
-       let ns = map (\(i,(st,_,_)) -> (i,st)) . M.toList $ names env
-       mapM_ (\(i,st) -> traceM $  T.unpack (runIdent . disqualify $  i) <> " :: " <> ppType 10 st) ns
-
-     prepareBind :: ((A.SourceAnn, Ident), (A.Expr, SourceType)) -> (SourceSpan, Ident, SourceType, NameVisibility)
-     prepareBind (((ss',_),ident),(e,sty)) = (ss',ident,sty,Defined)
-
-     transformBind :: ((Ann, Ident), Expr Ann) -> (SourceSpan, Ident, SourceType, NameVisibility)
-     transformBind (((ss',_,_),ident),expr) = (ss',ident,const (ss',[]) <$> exprType expr, Defined)
-     -- Everything here *should* be a value declaration. I hope?
-     stripDecls ::  A.Declaration-> ((A.SourceAnn, Ident),  A.Expr)
-     stripDecls = \case
-       A.ValueDecl ann ident nKind [] [A.MkUnguarded e] -> ((ann,ident), e)
-       other -> error $ "let bindings should only contain value declarations w/ desugared binders and a single expr. this doesn't: " <> show other
 exprToCoreFn  mn _ ty (A.PositionedValue ss _ v) = wrapTrace "exprToCoreFn POSVAL" $
   exprToCoreFn mn ss ty v
 exprToCoreFn _ _   _ e =
@@ -571,10 +511,6 @@ altToCoreFn  mn ss ret boundTypes (A.CaseAlternative bs vs) = wrapTrace "altToCo
   guardToExpr [A.ConditionGuard cond] = cond
   guardToExpr _ = internalError "Guard not correctly desugared"
 
-
--- TODO/FIXME This needs to be monad and/or  we need to pass in the type of the binder if known.
---       Also might need to pattern match on the NullSourceSpan (Ident "dict") that they use to identify
---       a var that represents a type class dictionary. ugh.
 -- Desugars case binders from AST to CoreFn representation.
 binderToCoreFn ::  Environment -> ModuleName -> SourceSpan -> A.Binder -> Binder Ann
 binderToCoreFn  env mn _ss (A.LiteralBinder ss lit) =
