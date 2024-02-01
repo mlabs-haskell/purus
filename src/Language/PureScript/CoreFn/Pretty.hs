@@ -110,12 +110,14 @@ prettyPrintDeclaration d b = case b of
   NonRec _ ident expr ->
     vcat left [
       text (oneLine $ T.unpack (showIdent ident) ++ " :: " ++ ppType 0 (exprType expr)  ),
-      text (T.unpack (showIdent ident) ++ " = ") <> prettyPrintValue d expr -- not sure about the d here
+      text (T.unpack (showIdent ident) ++ " = ") <> prettyPrintValue d expr, -- not sure about the d here
+      text "\n"
     ]
   Rec bindings -> vsep 1 left $ map (\((_,ident),expr) ->
         vcat left [
           text (oneLine $ T.unpack (showIdent ident) ++ " :: " ++ ppType 0 (exprType expr)  ),
-          text (T.unpack (showIdent ident) ++ " = ") <> prettyPrintValue (d-1) expr
+          text (T.unpack (showIdent ident) ++ " = ") <> prettyPrintValue (d-1) expr,
+          text "\n"
       ]) bindings
 
 prettyPrintCaseAlternative :: Int -> CaseAlternative a -> Box
