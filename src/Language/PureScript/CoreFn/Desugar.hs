@@ -462,19 +462,16 @@ transformLetBindings mn _ss seen (A.ValueDecl sa@(ss,_) ident nameKind [] [A.MkU
     transformLetBindings mn _ss seen' rest ret
 -- NOTE/TODO: This is super hack-ey. Ugh.
 transformLetBindings mn _ss seen (A.BindingGroupDeclaration ds : rest) ret = wrapTrace "transformLetBindings BINDINGGROUPDEC" $ do
-  traceM "a"
   SplitBindingGroup untyped typed dict <- typeDictionaryForBindingGroup Nothing . NEL.toList $ fmap (\(i, _, v) -> (i, v)) ds
   if null untyped
     then do
-      traceM "b"
       let ds' =  flip map typed $ \((sann,iden),(expr,_,ty,_)) ->  A.ValueDecl sann iden Private [] [A.MkUnguarded (A.TypedValue False expr ty)]
-      traceM "c"
       bindNames dict $ do
         makeBindingGroupVisible
         thisDecl <- concat <$> traverse (declToCoreFn mn)  ds'
-        traceM "e"
         let seen' = seen ++ thisDecl
         transformLetBindings mn _ss seen' rest ret
+    -- Because this has already been through the typechecker once, every value in the binding group should have an explicit type. I hope.
     else error $ "untyped binding group element after initial typechecker pass: \n" <> LT.unpack (pShow untyped)
 transformLetBindings _ _ _ _ _ = error "Invalid argument to TransformLetBindings"
 
@@ -496,7 +493,7 @@ generalizeUnknowns t = do
 
     gogo :: Type a -> IS.Key -> m (Type a)
     gogo acc i = lookupUnkName i >>= \case
-      Just nm -> go nm i acc
+      Just nm -> everywhereOnTypesM (go nm i) acc
       Nothing -> do
         fresh <- runIdent <$> freshIdent'
         everywhereOnTypesM (go fresh i) acc
