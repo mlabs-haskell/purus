@@ -42,6 +42,7 @@ import Language.PureScript.TypeChecker.Monad
       getEnv,
       withScopedTypeVars,
       CheckState(checkCurrentModule, checkEnv) )
+import Language.PureScript.Pretty.Values (renderValue)
 
 
 {- UTILITIES -}
@@ -62,8 +63,9 @@ traverseLit f = \case
 -- | When we call `exprToCoreFn` we sometimes know the type, and sometimes have to infer it. This just simplifies the process of getting the type we want (cuts down on duplicated code)
 inferType :: M m => Maybe SourceType -> A.Expr -> m SourceType
 inferType (Just t) _ = pure t
-inferType Nothing e = infer e >>= \case
-  TypedValue' _ _ t -> pure t
+inferType Nothing e = traceM ("**********HAD TO INFER TYPE FOR: " <> renderValue 100 e) >>
+  infer e >>= \case
+    TypedValue' _ _ t -> pure t
 
 {- This function more-or-less contains our strategy for handling polytypes (quantified or constrained types). It returns a tuple T such that:
      - T[0] is the inner type, where all of the quantifiers and constraints have been removed. We just instantiate the quantified type variables to themselves (I guess?) - the previous
@@ -74,14 +76,20 @@ inferType Nothing e = infer e >>= \case
        the correct visibility, skolem scope, etc.
 
      - T[2] is a monadic action which binds local variables or type variables so that we can use type inference machinery on the expression corresponding to this type.
+       NOTE: The only local vars this will bind are "dict" identifiers introduced to type desguared typeclass constraints.
+             That is: If you're using this on a function type, you'll still have to bind the antecedent type to the
+                      identifier bound in the VarBinder.
 -}
+-- TODO: Explicitly return two sourcetypes for arg/return types
 instantiatePolyType :: M m => ModuleName -> SourceType-> (SourceType, Expr b -> Expr b, m a -> m a)
 instantiatePolyType mn = \case
   ForAll _ vis var mbk t mSkol -> case instantiatePolyType mn t of
     (inner,g,act) ->
       let f = \case
-                Abs ann' ty' ident' expr' -> Abs ann' (ForAll () vis var (purusTy <$> mbk) (purusTy ty') mSkol) ident' expr'
+                Abs ann' ty' ident' expr' ->
+                  Abs ann' (ForAll () vis var (purusTy <$> mbk) (purusTy ty') mSkol) ident' expr'
                 other -> other
+          -- FIXME: kindType?
           act' ma = withScopedTypeVars mn [(var,kindType)] $ act ma -- NOTE: Might need to pattern match on mbk and use the real kind (though in practice this should always be of kind Type, I think?)
       in (inner, f . g, act')
   ConstrainedType _  Constraint{..} t -> case instantiatePolyType mn t of
