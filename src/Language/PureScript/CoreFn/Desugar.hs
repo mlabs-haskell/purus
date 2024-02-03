@@ -1,13 +1,10 @@
 {- HLINT ignore "Use void" -}
 {- HLINT ignore "Use <$" -}
 {-# LANGUAGE TypeApplications #-}
-
 module Language.PureScript.CoreFn.Desugar(moduleToCoreFn) where
 
 import Prelude
 import Protolude (ordNub, orEmpty, zipWithM, MonadError (..), Foldable (toList))
-
-
 
 import Data.Maybe (mapMaybe)
 import Data.List.NonEmpty qualified as NEL
@@ -60,7 +57,7 @@ import Language.PureScript.Types (
   SourceType,
   Type(..),
   srcTypeConstructor,
-  srcTypeVar, srcTypeApp, quantify, eqType, srcRCons, unknowns, everywhereOnTypesM)
+  srcTypeVar, srcTypeApp, quantify, eqType, srcRCons, unknowns, everywhereOnTypesM, containsUnknowns)
 import Language.PureScript.AST.Binders qualified as A
 import Language.PureScript.AST.Declarations qualified as A
 import Language.PureScript.AST.SourcePos qualified as A
@@ -124,7 +121,9 @@ import Language.PureScript.CoreFn.Desugar.Utils
       toReExportRef,
       traverseLit,
       wrapTrace,
-      M )
+      traceNameTypes,
+      M,
+      )
 import Text.Pretty.Simple (pShow)
 import Data.Text.Lazy qualified as LT
 
@@ -221,18 +220,20 @@ declToCoreFn  mn (A.ValueDecl (ss, _) name _ _ [A.MkUnguarded e]) = wrapTrace ("
       pure [NonRec (ssA ss) name expr]
 -- Recursive binding groups. This is tricky. Calling `typedOf` saves us a lot of work, but it's hard to tell whether that's 100% safe here
 declToCoreFn  mn (A.BindingGroupDeclaration ds) = wrapTrace "declToCoreFn BINDING GROUP" $ do
-  let stripped :: [((A.SourceAnn, Ident), A.Expr)] = NE.toList $  (\(((ss, com), name), _, e) -> (((ss, com), name), e)) <$> ds
-  types <- typesOf RecursiveBindingGroup mn stripped -- NOTE: If something weird breaks, look here. It's possible that `typesOf` makes calls to type CHECKING machinery that we don't want to ever invoke.
-  recBody <- bindLocalVariables (prepareBind <$> types) $ traverse goRecBindings types
+  let typed  = NE.toList $ extractTypeAndPrepareBind <$> ds
+      toBind = snd <$> typed
+  recBody <- bindLocalVariables toBind $ traverse goRecBindings typed
   pure [Rec recBody]
  where
-   prepareBind :: ((A.SourceAnn, Ident), (A.Expr, SourceType)) -> (SourceSpan, Ident, SourceType, NameVisibility)
-   prepareBind (((ss',_),ident),(_,sty)) = (ss',ident,sty,Defined)
+   -- If we only ever call this on a top-level binding group then this should be OK, all the exprs should be explicitly typed
+   extractTypeAndPrepareBind :: ((A.SourceAnn, Ident), NameKind,  A.Expr) -> (A.Expr, (SourceSpan,Ident,SourceType,NameVisibility))
+   extractTypeAndPrepareBind (((ss',_),ident),_,A.TypedValue _ e ty) = (e,(ss',ident,ty,Defined))
+   extractTypeAndPrepareBind (((ss',_),ident),_,_) = error $ "Top level declaration " <> (showIdent' ident) <> " should have a type annotation, but does not"
 
-   goRecBindings ::  ((A.SourceAnn, Ident), (A.Expr, SourceType)) -> m ((Ann, Ident), Expr Ann)
-   goRecBindings ((ann,ident),(expr,ty)) = do
-     expr' <- exprToCoreFn mn (fst ann) (Just ty) expr
-     pure ((ssA $ fst ann,ident), expr')
+   goRecBindings :: (A.Expr, (SourceSpan,Ident,SourceType,NameVisibility)) -> m ((Ann, Ident), Expr Ann)
+   goRecBindings (expr,(ss',ident,ty,nv)) = do
+     expr' <- exprToCoreFn mn ss' (Just ty) expr
+     pure ((ssA ss',ident), expr')
 -- TODO: Avoid catchall case
 declToCoreFn _ _ = pure []
 
@@ -281,6 +282,7 @@ exprToCoreFn mn _ (Just t) (A.Abs (A.VarBinder ssb name) v) = wrapTrace ("exprTo
       pure . f $ Abs (ssA ssb) (purusFun a b) name body
     other -> error $ "Invalid function type " <> ppType 100 other
 -- By the time we receive the AST, only Lambdas w/ a VarBinder should remain
+-- TODO: Better failure message if we pass in 'Nothing' as the (Maybe Type) arg for an Abstraction
 exprToCoreFn _  _ t lam@(A.Abs _ _) =
   internalError $ "Abs with Binder argument was not desugared before exprToCoreFn mn: \n" <> show lam <> "\n\n" <> show (const () <$> t)
 -- Ad hoc machinery for handling desugared type class dictionaries. As noted above, the types "lie" in generated code.
@@ -445,6 +447,8 @@ altToCoreFn  mn ss ret boundTypes (A.CaseAlternative bs vs) = wrapTrace "altToCo
    weirder cases in the AST. We'll have to deal with any problems once we have examples that
    clearly isolate the problematic syntax nodes.
 -}
+-- TODO: Figure out why exprs in a valuedec are a list, maybe fix?
+-- TODO: Trees that grow (paper)
 transformLetBindings :: forall m. M m => ModuleName -> SourceSpan -> [Bind Ann] -> [A.Declaration] -> A.Expr -> m ([Bind Ann], Expr Ann)
 transformLetBindings mn ss seen [] ret = (seen,) <$> withBindingGroupVisible (exprToCoreFn mn ss Nothing ret)
 transformLetBindings mn _ss seen ((A.ValueDecl sa@(ss,_) ident nameKind [] [A.MkUnguarded (A.TypedValue checkType val ty)]) : rest) ret =
@@ -453,50 +457,34 @@ transformLetBindings mn _ss seen ((A.ValueDecl sa@(ss,_) ident nameKind [] [A.Mk
     thisDecl <- declToCoreFn mn (A.ValueDecl sa ident nameKind [] [A.MkUnguarded (A.TypedValue checkType val ty)])
     let seen' = seen ++ thisDecl
     transformLetBindings mn _ss seen' rest ret
+-- TODO: Write a question where I ask what can legitimately be inferred as a type in a let binding context
 transformLetBindings mn _ss seen (A.ValueDecl sa@(ss,_) ident nameKind [] [A.MkUnguarded val] : rest) ret = wrapTrace ("transformLetBindings VALDEC " <> showIdent' ident <> " = " <> renderValue 100 val) $ do
-  _ty <- inferType Nothing val {- FIXME: This sometimes gives us a type w/ unknowns, but we don't have any other way to get at the type -}
-  ty <- generalizeUnknowns _ty
-  bindNames (M.singleton (Qualified (BySourcePos $ spanStart ss) ident) (ty, nameKind, Defined)) $ do
-    thisDecl <- declToCoreFn mn (A.ValueDecl sa ident nameKind [] [A.MkUnguarded (A.TypedValue False val ty)])
-    let seen' = seen ++ thisDecl
-    transformLetBindings mn _ss seen' rest ret
+  ty <- inferType Nothing val {- FIXME: This sometimes gives us a type w/ unknowns, but we don't have any other way to get at the type -}
+  if not (containsUnknowns ty)
+    then bindNames (M.singleton (Qualified (BySourcePos $ spanStart ss) ident) (ty, nameKind, Defined)) $ do
+      thisDecl <- declToCoreFn mn (A.ValueDecl sa ident nameKind [] [A.MkUnguarded (A.TypedValue False val ty)])
+      let seen' = seen ++ thisDecl
+      transformLetBindings mn _ss seen' rest ret
+    else  error
+            $ "The inferred type for let-bound identifier \n   '"
+              <> showIdent' ident
+              <> "'\ncontains unification variables:\n "
+              <> ppType 1000 ty
+              <> "\nPlease add a type signature for '" <> showIdent' ident <> "'"
 -- NOTE/TODO: This is super hack-ey. Ugh.
 transformLetBindings mn _ss seen (A.BindingGroupDeclaration ds : rest) ret = wrapTrace "transformLetBindings BINDINGGROUPDEC" $ do
   SplitBindingGroup untyped typed dict <- typeDictionaryForBindingGroup Nothing . NEL.toList $ fmap (\(i, _, v) -> (i, v)) ds
   if null untyped
     then do
-      let ds' =  flip map typed $ \((sann,iden),(expr,_,ty,_)) ->  A.ValueDecl sann iden Private [] [A.MkUnguarded (A.TypedValue False expr ty)]
+      let ds' =  flip map typed $ \((sann,iden),(expr,_,ty,_)) -> A.ValueDecl sann iden Private [] [A.MkUnguarded (A.TypedValue False expr ty)]
       bindNames dict $ do
         makeBindingGroupVisible
-        thisDecl <- concat <$> traverse (declToCoreFn mn)  ds'
+        thisDecl <- concat <$> traverse (declToCoreFn mn) ds'
         let seen' = seen ++ thisDecl
         transformLetBindings mn _ss seen' rest ret
     -- Because this has already been through the typechecker once, every value in the binding group should have an explicit type. I hope.
-    else error $ "untyped binding group element after initial typechecker pass: \n" <> LT.unpack (pShow untyped)
+    else error $ "untyped binding group element in mutually recursive LET binding group after initial typechecker pass: \n" <> LT.unpack (pShow untyped)
 transformLetBindings _ _ _ _ _ = error "Invalid argument to TransformLetBindings"
-
--- TODO: Make less convoluted
--- Problem: Doesn't give us kind information. Do we need it?
-generalizeUnknowns :: forall (m :: * -> *) (a :: *). M m => Type a -> m (Type a)
-generalizeUnknowns t = do
-  let unks = IS.toList $  unknowns t
-  t' <- foldM gogo t unks
-  pure . quantify $ t'
-  where
-    go :: T.Text -> Int -> Type a -> m (Type a)
-    go nm ti = \case
-      tu@(TUnknown ann i) ->
-        if i == ti
-          then pure $ TypeVar ann nm
-          else pure tu
-      other -> pure other
-
-    gogo :: Type a -> IS.Key -> m (Type a)
-    gogo acc i = lookupUnkName i >>= \case
-      Just nm -> everywhereOnTypesM (go nm i) acc
-      Nothing -> do
-        fresh <- runIdent <$> freshIdent'
-        everywhereOnTypesM (go fresh i) acc
 
 
 -- | Infer the types of variables brought into scope by a binder *without* instantiating polytypes to unknowns.

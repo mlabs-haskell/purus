@@ -4,7 +4,8 @@
 module Language.PureScript.CoreFn.Desugar.Utils where
 
 import Prelude
-import Protolude (MonadError (..))
+import Prelude qualified as P
+import Protolude (MonadError (..), traverse_)
 
 import Data.Function (on)
 import Data.Tuple (swap)
@@ -24,7 +25,7 @@ import Language.PureScript.Types (SourceType, Type(..), Constraint (..), srcType
 import Language.PureScript.AST.Binders qualified as A
 import Language.PureScript.AST.Declarations qualified as A
 import Control.Monad.Supply.Class (MonadSupply)
-import Control.Monad.State.Strict (MonadState, gets)
+import Control.Monad.State.Strict (MonadState, gets, modify')
 import Control.Monad.Writer.Class ( MonadWriter )
 import Language.PureScript.TypeChecker.Types
     ( kindType,
@@ -41,7 +42,7 @@ import Language.PureScript.TypeChecker.Monad
     ( bindLocalVariables,
       getEnv,
       withScopedTypeVars,
-      CheckState(checkCurrentModule, checkEnv) )
+      CheckState(checkCurrentModule, checkEnv), debugNames )
 import Language.PureScript.Pretty.Values (renderValue)
 
 
@@ -63,9 +64,11 @@ traverseLit f = \case
 -- | When we call `exprToCoreFn` we sometimes know the type, and sometimes have to infer it. This just simplifies the process of getting the type we want (cuts down on duplicated code)
 inferType :: M m => Maybe SourceType -> A.Expr -> m SourceType
 inferType (Just t) _ = pure t
-inferType Nothing e = traceM ("**********HAD TO INFER TYPE FOR: " <> renderValue 100 e) >>
+inferType Nothing e = traceM ("**********HAD TO INFER TYPE FOR: (" <> renderValue 100 e <> ")") >>
   infer e >>= \case
-    TypedValue' _ _ t -> pure t
+    TypedValue' _ _ t -> do
+      traceM ("TYPE: " <> ppType 100 t)
+      pure t
 
 {- This function more-or-less contains our strategy for handling polytypes (quantified or constrained types). It returns a tuple T such that:
      - T[0] is the inner type, where all of the quantifiers and constraints have been removed. We just instantiate the quantified type variables to themselves (I guess?) - the previous
@@ -100,6 +103,42 @@ instantiatePolyType mn = \case
           act' ma = bindLocalVariables [(NullSourceSpan,Ident "dict",dictTy,Defined)] $ act ma
       in (function dictTy inner,g,act')
   other -> (other,id,id)
+
+
+traceNameTypes :: M m => m ()
+traceNameTypes  = do
+  nametypes <- getEnv >>= pure . debugNames
+  traverse_ traceM nametypes
+
+{- Since we operate on an AST where constraints have been desugared to dictionaries at the *expr* level,
+   using a typechecker context which contains ConstrainedTypes, looking up the type for a class method
+   will always give us a "wrong" type. Let's try fixing them in the context!
+
+-}
+desugarConstraintType' :: SourceType -> SourceType
+desugarConstraintType' = \case
+  ForAll a vis var mbk t mSkol ->
+    let t' = desugarConstraintType' t
+    in ForAll a vis var mbk t' mSkol
+  ConstrainedType _ Constraint{..} t ->
+    let inner = desugarConstraintType' t
+        dictTyName :: Qualified (ProperName 'TypeName) = dictTypeName . coerceProperName <$> constraintClass
+        dictTyCon = srcTypeConstructor dictTyName
+        dictTy = foldl srcTypeApp dictTyCon constraintArgs
+    in function dictTy inner
+  other -> other
+
+desugarConstraintType :: M m => Qualified Ident -> m ()
+desugarConstraintType i = do
+  env <- getEnv
+  let oldNameTypes = names env
+  case M.lookup i oldNameTypes of
+    Just (t,k,v) -> do
+      let newVal = (desugarConstraintType' t, k, v)
+          newNameTypes = M.insert i newVal oldNameTypes
+          newEnv = env {names = newNameTypes}
+      modify' $ \checkstate -> checkstate {checkEnv = newEnv}
+
 
 
 -- Gives much more readable output (with colors for brackets/parens!) than plain old `show`
