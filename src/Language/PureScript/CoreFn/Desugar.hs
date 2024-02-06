@@ -4,14 +4,14 @@
 module Language.PureScript.CoreFn.Desugar(moduleToCoreFn) where
 
 import Prelude
-import Protolude (ordNub, orEmpty, zipWithM, MonadError (..), Foldable (toList))
+import Protolude (ordNub, orEmpty, zipWithM, MonadError (..), sortOn)
 
 import Data.Maybe (mapMaybe)
 import Data.List.NonEmpty qualified as NEL
 import Data.Map qualified as M
 
 import Language.PureScript.AST.Literals (Literal(..))
-import Language.PureScript.AST.SourcePos (pattern NullSourceSpan, SourceSpan(..), nullSourceAnn)
+import Language.PureScript.AST.SourcePos (pattern NullSourceSpan, SourceSpan(..))
 import Language.PureScript.CoreFn.Ann (Ann, ssAnn)
 import Language.PureScript.CoreFn.Binders (Binder(..))
 import Language.PureScript.CoreFn.Expr (Bind(..), CaseAlternative(..), Expr(..), Guard, exprType)
@@ -19,7 +19,6 @@ import Language.PureScript.CoreFn.Meta (Meta(..))
 import Language.PureScript.CoreFn.Module (Module(..))
 import Language.PureScript.Crash (internalError)
 import Language.PureScript.Environment (
-  tyArray,
   pattern (:->),
   pattern ArrayT,
   DataDeclType(..),
@@ -31,15 +30,12 @@ import Language.PureScript.Environment (
   purusFun,
   NameVisibility (..),
   tyBoolean,
-  kindRow,
   tyFunction,
-  tyRecord,
   tyString,
   tyChar,
   tyInt,
   tyNumber )
 import Language.PureScript.Label (Label(..))
-import Data.IntSet qualified as IS
 import Language.PureScript.Names (
   pattern ByNullSourcePos, Ident(..),
   ModuleName,
@@ -50,14 +46,14 @@ import Language.PureScript.Names (
   mkQualified,
   runIdent,
   coerceProperName,
-  Name (DctorName), freshIdent')
+  Name (DctorName))
 import Language.PureScript.PSString (PSString)
 import Language.PureScript.Types (
   pattern REmptyKinded,
   SourceType,
   Type(..),
   srcTypeConstructor,
-  srcTypeVar, srcTypeApp, quantify, eqType, srcRCons, unknowns, everywhereOnTypesM, containsUnknowns)
+  srcTypeVar, srcTypeApp, quantify, eqType, containsUnknowns)
 import Language.PureScript.AST.Binders qualified as A
 import Language.PureScript.AST.Declarations qualified as A
 import Language.PureScript.AST.SourcePos qualified as A
@@ -65,26 +61,17 @@ import Language.PureScript.Constants.Prim qualified as C
 import Control.Monad.State.Strict (MonadState, gets, modify)
 import Control.Monad.Writer.Class ( MonadWriter )
 import Language.PureScript.TypeChecker.Kinds ( kindOf )
-import Language.PureScript.TypeChecker.Synonyms
-    ( replaceAllTypeSynonyms )
 import Language.PureScript.TypeChecker.Types
-    ( kindType,
-      checkTypeKind,
-      freshTypeWithKind,
+    ( checkTypeKind,
       SplitBindingGroup(SplitBindingGroup),
       TypedValue'(TypedValue'),
-      BindingGroupType(RecursiveBindingGroup),
-      typesOf,
       typeDictionaryForBindingGroup,
-      checkTypedBindingGroupElement,
-      typeForBindingGroupElement,
       infer )
 import Data.List.NonEmpty qualified as NE
-import Language.PureScript.TypeChecker.Unify (unifyTypes, replaceTypeWildcards)
-import Control.Monad (forM, (<=<), (>=>), foldM)
-import Language.PureScript.TypeChecker.Skolems (introduceSkolemScope)
+import Language.PureScript.TypeChecker.Unify (unifyTypes)
+import Control.Monad (forM, (>=>))
 import Language.PureScript.Errors
-    ( MultipleErrors, parU, errorMessage', SimpleErrorMessage(..) )
+    ( MultipleErrors, errorMessage', SimpleErrorMessage(..))
 import Debug.Trace (traceM)
 import Language.PureScript.CoreFn.Pretty ( ppType )
 import Data.Text qualified as T
@@ -96,7 +83,7 @@ import Language.PureScript.TypeChecker.Monad
       makeBindingGroupVisible,
       warnAndRethrowWithPositionTC,
       withBindingGroupVisible,
-      CheckState(checkEnv, checkCurrentModule), lookupUnkName )
+      CheckState(checkEnv, checkCurrentModule) )
 import Language.PureScript.CoreFn.Desugar.Utils
     ( binderToCoreFn,
       dedupeImports,
@@ -121,11 +108,11 @@ import Language.PureScript.CoreFn.Desugar.Utils
       toReExportRef,
       traverseLit,
       wrapTrace,
-      traceNameTypes,
-      M,
+      M, unwrapRecord, withInstantiatedFunType,
       )
 import Text.Pretty.Simple (pShow)
 import Data.Text.Lazy qualified as LT
+import Data.Set qualified as S
 
 {-
     CONVERSION MACHINERY
@@ -274,13 +261,11 @@ exprToCoreFn mn ss mTy objUpd@(A.ObjectUpdate obj vs) = wrapTrace ("exprToCoreFn
       collect _ = Nothing
   unchangedRecordFields _ _ = Nothing
 -- Lambda abstraction. See the comments on `instantiatePolyType` above for an explanation of the strategy here.
-exprToCoreFn mn _ (Just t) (A.Abs (A.VarBinder ssb name) v) = wrapTrace ("exprToCoreFn " <> showIdent' name) $ do
-  let (inner,f,bindAct) = instantiatePolyType mn t -- Strip the quantifiers & constrained type wrappers and get the innermost not-polymorphic type, a function that puts the quantifiers back, and a monadic action to bind the necessary vars/tyvars
-  case inner of
-    a :-> b -> do
-      body <- bindAct $ bindLocalVariables [(ssb,name,a,Defined)] $ exprToCoreFn mn ssb (Just b) v
-      pure . f $ Abs (ssA ssb) (purusFun a b) name body
-    other -> error $ "Invalid function type " <> ppType 100 other
+exprToCoreFn mn _ (Just t) (A.Abs (A.VarBinder ssb name) v) = wrapTrace ("exprToCoreFn " <> showIdent' name) $
+  withInstantiatedFunType mn t $ \a b -> do
+      body <-  bindLocalVariables [(ssb,name,a,Defined)] $ exprToCoreFn mn ssb (Just b) v
+      pure $ Abs (ssA ssb) (purusFun a b) name body
+
 -- By the time we receive the AST, only Lambdas w/ a VarBinder should remain
 -- TODO: Better failure message if we pass in 'Nothing' as the (Maybe Type) arg for an Abstraction
 exprToCoreFn _  _ t lam@(A.Abs _ _) =
@@ -299,16 +284,8 @@ exprToCoreFn mn ss mTy app@(A.App v1 v2)
 
   | otherwise  = wrapTrace "exprToCoreFn APP" $ do
       appT <- inferType mTy app
-      traceM $ "AppTy: " <> ppType 10 appT
-      traceM $ "expr: " <> renderValue 10 app
-      traceM $ "fun expr: " <> renderValue 10 v1
-      traceM $ "arg expr: " <> renderValue 10 v2
       v1' <- exprToCoreFn mn ss Nothing v1
-
-      traceM $ "FunTy: " <> ppType 10 (exprType v1')
       v2' <- exprToCoreFn mn ss Nothing v2
-
-      traceM $ "ArgTy: " <> ppType 10 (exprType v2')
       pure $ App (ss, [], (isDictCtor v1 || isSynthetic v2) `orEmpty` IsSyntheticApp) (purusTy appT) v1' v2'
   where
   mkDictInstBinder = \case
@@ -420,11 +397,11 @@ altToCoreFn  mn ss ret boundTypes (A.CaseAlternative bs vs) = wrapTrace "altToCo
     expr <- bindLocalVariables toBind $ exprToCoreFn mn ss (Just ret) e -- need to bind all variables that occur in the binders. We know the type of the right hand side (as it was passed in)
     pure $ Right expr
   -- NOTE: Not sure whether this works / TODO: Make a test case that uses guards in case expressions
-  go _ gs = do
+  go toBind gs = bindLocalVariables toBind $ do
     ges <- forM gs $ \case
       A.GuardedExpr g e -> do
         let cond = guardToExpr g
-        condE <- exprToCoreFn mn ss Nothing cond -- (Just tyBoolean)?
+        condE <- exprToCoreFn mn ss (Just tyBoolean) cond -- (Just tyBoolean)?
         eE    <- exprToCoreFn mn ss (Just ret) e
         pure (condE,eE)
     pure . Left $ ges
@@ -447,8 +424,6 @@ altToCoreFn  mn ss ret boundTypes (A.CaseAlternative bs vs) = wrapTrace "altToCo
    weirder cases in the AST. We'll have to deal with any problems once we have examples that
    clearly isolate the problematic syntax nodes.
 -}
--- TODO: Figure out why exprs in a valuedec are a list, maybe fix?
--- TODO: Trees that grow (paper)
 transformLetBindings :: forall m. M m => ModuleName -> SourceSpan -> [Bind Ann] -> [A.Declaration] -> A.Expr -> m ([Bind Ann], Expr Ann)
 transformLetBindings mn ss seen [] ret = (seen,) <$> withBindingGroupVisible (exprToCoreFn mn ss Nothing ret)
 transformLetBindings mn _ss seen ((A.ValueDecl sa@(ss,_) ident nameKind [] [A.MkUnguarded (A.TypedValue checkType val ty)]) : rest) ret =
@@ -483,7 +458,9 @@ transformLetBindings mn _ss seen (A.BindingGroupDeclaration ds : rest) ret = wra
         let seen' = seen ++ thisDecl
         transformLetBindings mn _ss seen' rest ret
     -- Because this has already been through the typechecker once, every value in the binding group should have an explicit type. I hope.
-    else error $ "untyped binding group element in mutually recursive LET binding group after initial typechecker pass: \n" <> LT.unpack (pShow untyped)
+    else error
+         $ "untyped binding group element in mutually recursive LET binding group after initial typechecker pass: \n"
+         <> LT.unpack (pShow untyped)
 transformLetBindings _ _ _ _ _ = error "Invalid argument to TransformLetBindings"
 
 
@@ -520,24 +497,33 @@ inferBinder' val (A.ConstructorBinder ss ctor binders) = wrapTrace ("inferBinder
     go args (TypeApp _ (TypeApp _ fn arg) ret) | eqType fn tyFunction = go (arg : args) ret
     go args ret = (args, ret)
 inferBinder' val (A.LiteralBinder _ (ObjectLiteral props)) = wrapTrace "inferBinder' OBJECTLIT" $ do
-  row <- freshTypeWithKind (kindRow kindType)
-  rest <- freshTypeWithKind (kindRow kindType)
-  m1 <- inferRowProperties row rest props
-  unifyTypes val (srcTypeApp tyRecord row)
-  return m1
+  let props' = sortOn fst props
+  case unwrapRecord val of
+    Left notARecord -> error
+         $ "Internal error while desugaring binders to CoreFn: \nType "
+           <> ppType 100 notARecord
+           <> "\n is not a record type"
+    Right rowItems -> do
+      let typeKeys = S.fromList $ fst <$> rowItems
+          exprKeys = S.fromList $ fst <$> props'
+          -- The type-level labels are authoritative
+          diff = S.difference typeKeys exprKeys
+      if S.null diff
+        then deduceRowProperties (M.fromList rowItems) props' -- M.unions <$> zipWithM inferBinder' (snd <$> rowItems) (snd <$> props')
+        else error $ "Error. Object literal in a pattern match is missing fields: " <> show diff
   where
-  inferRowProperties :: SourceType -> SourceType -> [(PSString, A.Binder)] -> m (M.Map Ident (SourceSpan, SourceType))
-  inferRowProperties nrow row [] = unifyTypes nrow row >> return M.empty
-  inferRowProperties nrow row ((name, binder):binders) = do
-    propTy <- freshTypeWithKind kindType
-    m1 <- inferBinder' propTy binder
-    m2 <- inferRowProperties nrow (srcRCons (Label name) propTy row) binders
-    return $ m1 `M.union` m2
+  deduceRowProperties :: M.Map PSString SourceType -> [(PSString,A.Binder)] -> m (M.Map Ident (SourceSpan,SourceType))
+  deduceRowProperties types [] = pure M.empty
+  deduceRowProperties types ((lbl,bndr):rest) = case M.lookup lbl types of
+    Nothing -> error $ "Cannot deduce type information for record with label " <> show lbl -- should be impossible after typechecking
+    Just ty -> do
+      x <- inferBinder' ty bndr
+      xs <- deduceRowProperties types rest
+      pure $ M.union x xs
 -- TODO: Remove ArrayT pattern synonym
 inferBinder' (ArrayT val) (A.LiteralBinder _ (ArrayLiteral binders)) = wrapTrace "inferBinder' ARRAYLIT" $  do
   M.unions <$> traverse (inferBinder' val) binders
 inferBinder' _ (A.LiteralBinder _ (ArrayLiteral _)) = internalError "bad type in array binder "
--- NOTE/TODO/FIXME: I'm not sure how to construct an expression with the following binders, which makes it hard to tell whether this works!
 inferBinder' val (A.NamedBinder ss name binder) = wrapTrace ("inferBinder' NAMEDBINDER " <> T.unpack (runIdent name)) $
   warnAndRethrowWithPositionTC ss $ do
     m <- inferBinder' val binder
@@ -547,7 +533,7 @@ inferBinder' val (A.PositionedBinder pos _ binder) = wrapTrace "inferBinder' POS
 inferBinder' val (A.TypedBinder ty binder) = wrapTrace "inferBinder' TYPEDBINDER" $ do
   (elabTy, kind) <- kindOf ty
   checkTypeKind ty kind -- NOTE: Check whether we really need to do anything except inferBinder' the inner
-  unifyTypes val elabTy -- ty1
+  unifyTypes val elabTy
   inferBinder' elabTy binder
 inferBinder' _ A.OpBinder{} =
   internalError "OpBinder should have been desugared before inferBinder'"

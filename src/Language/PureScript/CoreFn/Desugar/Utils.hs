@@ -19,9 +19,20 @@ import Language.PureScript.CoreFn.Binders (Binder(..))
 import Language.PureScript.CoreFn.Expr (Expr(..), PurusType)
 import Language.PureScript.CoreFn.Meta (ConstructorType(..), Meta(..))
 import Language.PureScript.Crash (internalError)
-import Language.PureScript.Environment ( DataDeclType(..), Environment(..), NameKind(..), lookupConstructor, lookupValue, NameVisibility (..), dictTypeName, TypeClassData (typeClassArguments), function)
+import Language.PureScript.Environment (
+  pattern RecordT,
+  DataDeclType(..),
+  Environment(..),
+  NameKind(..),
+  lookupConstructor,
+  lookupValue,
+  NameVisibility (..),
+  dictTypeName,
+  TypeClassData (typeClassArguments),
+  function,
+  pattern (:->))
 import Language.PureScript.Names (Ident(..), ModuleName, ProperName(..), ProperNameType(..), Qualified(..), QualifiedBy(..), disqualify, getQual, runIdent, coerceProperName)
-import Language.PureScript.Types (SourceType, Type(..), Constraint (..), srcTypeConstructor, srcTypeApp)
+import Language.PureScript.Types (SourceType, Type(..), Constraint (..), srcTypeConstructor, srcTypeApp, rowToSortedList, RowListItem(..))
 import Language.PureScript.AST.Binders qualified as A
 import Language.PureScript.AST.Declarations qualified as A
 import Control.Monad.Supply.Class (MonadSupply)
@@ -44,6 +55,8 @@ import Language.PureScript.TypeChecker.Monad
       withScopedTypeVars,
       CheckState(checkCurrentModule, checkEnv), debugNames )
 import Language.PureScript.Pretty.Values (renderValue)
+import Language.PureScript.PSString (PSString)
+import Language.PureScript.Label (Label(..))
 
 
 {- UTILITIES -}
@@ -70,6 +83,12 @@ inferType Nothing e = traceM ("**********HAD TO INFER TYPE FOR: (" <> renderValu
       traceM ("TYPE: " <> ppType 100 t)
       pure t
 
+-- Wrapper around instantiatePolyType to provide a better interface
+withInstantiatedFunType :: M m => ModuleName -> SourceType -> (SourceType -> SourceType -> m (Expr Ann)) -> m (Expr Ann)
+withInstantiatedFunType mn ty act = case instantiatePolyType mn ty of
+  (a :-> b, replaceForalls, bindAct) -> bindAct $ replaceForalls <$> act a b
+  (other,_,_) -> error
+                 $ "Internal error. Expected a function type, but got: " <> ppType 1000 other
 {- This function more-or-less contains our strategy for handling polytypes (quantified or constrained types). It returns a tuple T such that:
      - T[0] is the inner type, where all of the quantifiers and constraints have been removed. We just instantiate the quantified type variables to themselves (I guess?) - the previous
        typchecker passes should ensure that quantifiers are all well scoped and that all essential renaming has been performed. Typically, the inner type should be a function.
@@ -104,6 +123,14 @@ instantiatePolyType mn = \case
       in (function dictTy inner,g,act')
   other -> (other,id,id)
 
+-- In a context where we expect a Record type (object literals, etc), unwrap the record and get at the underlying rowlist
+unwrapRecord :: Type a -> Either (Type a) [(PSString,Type a)]
+unwrapRecord = \case
+  RecordT lts -> Right $ go <$> fst (rowToSortedList lts)
+  other -> Left other
+ where
+  go :: RowListItem a -> (PSString, Type a)
+  go RowListItem{..} = (runLabel rowListLabel, rowListType)
 
 traceNameTypes :: M m => m ()
 traceNameTypes  = do
