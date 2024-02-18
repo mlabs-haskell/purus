@@ -12,3 +12,7 @@ repository cardano-haskell-packages
 
 packages:
   purescript.cabal
+
+-- HACK: plutus core cannot build without it, remove after bump.
+constraints:
+  nothunks < 0.2
