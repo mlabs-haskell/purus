@@ -72,21 +72,6 @@
                 mkHaskellPackage = config.libHaskell.mkPackage;
               });
             };
-
-            settings = {
-              latexindent.flags = config.libUtils.mkCli {
-                yaml = "\"defaultIndent:'  ', onlyOneBackUp: 1\"";
-                local = true;
-                silent = true;
-                overwriteIfDifferent = true;
-                logfile = "/dev/null";
-              };
-              deadnix.edit = true;
-            };
-
-            excludes = [
-              ".materialized"
-            ];
           };
 
           devShells = {
@@ -95,10 +80,6 @@
 
               inputsFrom = [
                 self'.devShells.purus
-              ];
-
-              nativeBuildInputs = [
-                pkgs.fd
               ];
             };
           };
