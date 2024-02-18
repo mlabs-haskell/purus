@@ -64,7 +64,6 @@
               # TODO: Enable in separate PR, causes mass changes.
               # fourmolu.enable = true;
               nixpkgs-fmt.enable = true;
-              typos.enable = true;
             };
 
             tools = {
