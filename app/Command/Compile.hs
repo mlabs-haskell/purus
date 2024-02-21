@@ -130,11 +130,11 @@ codegenTargets :: Opts.Parser [P.CodegenTarget]
 codegenTargets = Opts.option targetParser $
      Opts.short 'g'
   <> Opts.long "codegen"
-  <> Opts.value [P.JS]
+  <> Opts.value [P.CoreFn]
   <> Opts.help
       ( "Specifies comma-separated codegen targets to include. "
       <> targetsMessage
-      <> " The default target is 'js', but if this option is used only the targets specified will be used."
+      <> " The default target is 'coreFn', but if this option is used only the targets specified will be used."
       )
 
 targetsMessage :: String
@@ -158,7 +158,7 @@ options =
   where
     -- Ensure that the JS target is included if sourcemaps are
     handleTargets :: [P.CodegenTarget] -> S.Set P.CodegenTarget
-    handleTargets ts = S.fromList (if P.JSSourceMap `elem` ts then P.JS : ts else ts)
+    handleTargets ts = S.fromList ts
 
 pscMakeOptions :: Opts.Parser PSCMakeOptions
 pscMakeOptions = PSCMakeOptions <$> many inputFile

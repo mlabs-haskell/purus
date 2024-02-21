@@ -5,6 +5,7 @@
 --
 module Language.PureScript.CoreFn.ToJSON
   ( moduleToJSON
+  , moduleToJSON'
   ) where
 
 import Prelude
@@ -138,6 +139,29 @@ moduleToJSON v m = object
 
   reExportsToJSON :: M.Map ModuleName [Ident] -> Value
   reExportsToJSON = toJSON . M.map (map runIdent)
+
+
+moduleToJSON' ::  Module Ann -> Value
+moduleToJSON' m = object
+  [ "sourceSpan" .= sourceSpanToJSON (moduleSourceSpan m)
+  , "moduleName" .= moduleNameToJSON (moduleName m)
+  , "modulePath" .= toJSON (modulePath m)
+  , "imports"    .= map importToJSON (moduleImports m)
+  , "exports"    .= map identToJSON (moduleExports m)
+  , "reExports"  .= reExportsToJSON (moduleReExports m)
+  , "foreign"    .= map identToJSON (moduleForeign m)
+  , "decls"      .= map bindToJSON (moduleDecls m)
+  , "comments"   .= map toJSON (moduleComments m)
+  ]
+  where
+  importToJSON (ann,mn) = object
+    [ "annotation" .= annToJSON ann
+    , "moduleName" .= moduleNameToJSON mn
+    ]
+
+  reExportsToJSON :: M.Map ModuleName [Ident] -> Value
+  reExportsToJSON = toJSON . M.map (map runIdent)
+
 
 bindToJSON :: Bind Ann -> Value
 bindToJSON (NonRec ann n e)

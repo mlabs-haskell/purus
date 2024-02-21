@@ -50,7 +50,6 @@ import Language.PureScript.Make.Monad as Monad
 import Language.PureScript.CoreFn qualified as CF
 import Language.PureScript.CoreFn qualified as CFT
 import Language.PureScript.CoreFn.Pretty qualified as CFT
-import Language.PureScript.CoreFn.Module qualified as CFT
 import System.Directory (doesFileExist)
 import System.FilePath (replaceExtension)
 
@@ -121,7 +120,6 @@ rebuildModuleWithIndex MakeActions{..} exEnv externs m@(Module _ _ moduleName _ 
   traceM "PURUS START HERE"
   ((coreFn,chkSt),nextVar'') <- runSupplyT nextVar' $ runStateT (CFT.moduleToCoreFn mod') (emptyCheckState env')
   traceM $ prettyEnv (checkEnv chkSt)
-  --mapM_ (traceM . show) . CFT.moduleDecls $ coreFn
   traceM $ CFT.prettyPrintModule'  coreFn
   let corefn = coreFn
       (optimized, nextVar''') = runSupply nextVar'' $ CF.optimizeCoreFn corefn
@@ -173,7 +171,7 @@ make ma@MakeActions{..} ms = do
 
   (buildPlan, newCacheDb) <- BuildPlan.construct ma cacheDb (sorted, graph)
 
-  let toBeRebuilt = filter (BuildPlan.needsRebuild buildPlan . getModuleName . CST.resPartial) sorted
+  let toBeRebuilt = sorted  -- filter (BuildPlan.needsRebuild buildPlan . getModuleName . CST.resPartial) sorted
   let totalModuleCount = length toBeRebuilt
   for_ toBeRebuilt $ \m -> fork $ do
     let moduleName = getModuleName . CST.resPartial $ m

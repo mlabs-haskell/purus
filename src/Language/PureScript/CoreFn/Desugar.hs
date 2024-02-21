@@ -445,7 +445,8 @@ transformLetBindings mn _ss seen (A.ValueDecl sa@(ss,_) ident nameKind [] [A.MkU
               <> showIdent' ident
               <> "'\ncontains unification variables:\n "
               <> ppType 1000 ty
-              <> "\nPlease add a type signature for '" <> showIdent' ident <> "'"
+              <> "\nIf this let-bound identifier occurs in a user-defined `let-binding`, please add a type signature for '" <> showIdent' ident <> "'"
+              <> "\nIf the identifier occurs in a compiler-generated `let-binding` with guards (e.g. in a guarded case branch), try removing the guarded expression (e.g. use a normal if-then expression)"
 -- NOTE/TODO: This is super hack-ey. Ugh.
 transformLetBindings mn _ss seen (A.BindingGroupDeclaration ds : rest) ret = wrapTrace "transformLetBindings BINDINGGROUPDEC" $ do
   SplitBindingGroup untyped typed dict <- typeDictionaryForBindingGroup Nothing . NEL.toList $ fmap (\(i, _, v) -> (i, v)) ds
