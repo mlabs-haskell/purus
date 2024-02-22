@@ -379,6 +379,9 @@ pattern ArrayT :: Type a -> Type a
 pattern ArrayT a <-
   TypeApp _ (TypeConstructor _ C.Array) a
 
+arrayT :: Type a -> Type ()
+arrayT = TypeApp () (TypeConstructor () C.Array) . fmap (const ())
+
 pattern RecordT :: Type a -> Type a
 pattern RecordT a <-
   TypeApp _ (TypeConstructor _ C.Record) a

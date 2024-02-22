@@ -486,11 +486,11 @@ inferBinder' val (A.ConstructorBinder ss ctor binders) = wrapTrace ("inferBinder
     Just (_, _, ty, _) -> do
       traceM (ppType 100 ty)
       let (args, ret) = peelArgs ty
-      unifyTypes ret val -- TODO: Check whether necesseary?
+      -- unifyTypes ret val -- TODO: Check whether necesseary?
       M.unions <$> zipWithM inferBinder' (reverse args) binders
     _ -> throwError . errorMessage' ss . UnknownName . fmap DctorName $ ctor
   where
-  -- NOTE: Maybe forbid invalid return types?
+  -- REVIEW: Instantiating the quantifier might not be safe here?
   peelArgs :: Type a -> ([Type a], Type a) -- NOTE: Not sure if we want to "peel constraints" too. Need to think of an example to test.
   peelArgs = go []
     where

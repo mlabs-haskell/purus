@@ -1,4 +1,4 @@
-module Command.Compile (command) where
+module Command.Compile  where
 
 import Prelude
 
@@ -31,7 +31,7 @@ data PSCMakeOptions = PSCMakeOptions
   , pscmOpts         :: P.Options
   , pscmUsePrefix    :: Bool
   , pscmJSONErrors   :: Bool
-  }
+  } deriving Show
 
 -- | Arguments: verbose, use JSON, warnings, errors
 printWarningsAndErrors :: Bool -> Bool -> [(FilePath, T.Text)] -> P.MultipleErrors -> Either P.MultipleErrors a -> IO ()
@@ -71,6 +71,25 @@ compile PSCMakeOptions{..} = do
     P.make makeActions (map snd ms)
   printWarningsAndErrors (P.optionsVerboseErrors pscmOpts) pscmJSONErrors moduleFiles makeWarnings makeErrors
   exitSuccess
+
+compileForTests :: PSCMakeOptions -> IO ()
+compileForTests PSCMakeOptions{..} = do
+  included <- globWarningOnMisses warnFileTypeNotFound pscmInput
+  excluded <- globWarningOnMisses warnFileTypeNotFound pscmExclude
+  let input = included \\ excluded
+  if (null input) then  do
+    hPutStr stderr $ unlines [ "purs compile: No input files."
+                             , "Usage: For basic information, try the `--help' option."
+                             ]
+  else do
+    moduleFiles <- readUTF8FilesT input
+    (makeErrors, makeWarnings) <- runMake pscmOpts $ do
+      ms <- CST.parseModulesFromFiles id moduleFiles
+      let filePathMap = M.fromList $ map (\(fp, pm) -> (P.getModuleName $ CST.resPartial pm, Right fp)) ms
+      foreigns <- inferForeignModules filePathMap
+      let makeActions = buildMakeActions pscmOutputDir filePathMap foreigns pscmUsePrefix
+      P.make makeActions (map snd ms)
+    printWarningsAndErrors (P.optionsVerboseErrors pscmOpts) pscmJSONErrors moduleFiles makeWarnings makeErrors
 
 warnFileTypeNotFound :: String -> IO ()
 warnFileTypeNotFound = hPutStrLn stderr . ("purs compile: No files found using pattern: " ++)

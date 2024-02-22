@@ -409,13 +409,35 @@ executable purs
     exceptions >=0.10.4 && <0.11,
     network >=3.1.2.7 && <3.2,
     optparse-applicative >=0.17.0.0 && <0.18,
-    purescript
+    purescript,
+    purs-lib
   if flag(release)
     cpp-options: -DRELEASE
   else
     build-depends:
       gitrev >=1.2.0 && <1.4
   other-modules:
+    Paths_purescript
+  autogen-modules:
+    Paths_purescript
+
+library purs-lib
+  import: defaults
+  hs-source-dirs: purs-lib
+  -- main-is: Main.hs
+  ghc-options: -fno-warn-unused-do-bind -threaded -rtsopts -with-rtsopts=-N -Wno-unused-packages
+  build-depends:
+    ansi-wl-pprint >=0.6.9 && <0.7,
+    exceptions >=0.10.4 && <0.11,
+    network >=3.1.2.7 && <3.2,
+    optparse-applicative >=0.17.0.0 && <0.18,
+    purescript
+  if flag(release)
+    cpp-options: -DRELEASE
+  else
+    build-depends:
+      gitrev >=1.2.0 && <1.4
+  exposed-modules:
     Command.Bundle
     Command.Compile
     Command.Docs
@@ -440,6 +462,7 @@ test-suite tests
   ghc-options: -Wno-incomplete-uni-patterns -Wno-unused-packages
   build-depends:
     purescript,
+    purs-lib,
     generic-random >=1.5.0.1 && <1.6,
     hspec >= 2.10.7 && < 3,
     HUnit >=1.6.2.0 && <1.7,
@@ -480,6 +503,7 @@ test-suite tests
     TestPsci.EvalTest
     TestPsci.TestEnv
     TestPscPublish
+    TestPurus
     TestSourceMaps
     TestUtils
     Paths_purescript

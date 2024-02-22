@@ -164,7 +164,7 @@ spec = do
       let modulePath = sourcesDir </> "Module.purs"
           moduleContent1 = "module Module where\nx :: Int\nx = 1"
           moduleContent2 = moduleContent1 <> "\ny :: Int\ny = 1"
-          optsWithDocs = P.defaultOptions { P.optionsCodegenTargets = Set.fromList [P.JS, P.Docs] }
+          optsWithDocs = P.defaultOptions { P.optionsCodegenTargets = Set.fromList [P.CoreFn, P.Docs] }
           go opts = compileWithOptions opts [modulePath] >>= assertSuccess
           oneSecond = 10 ^ (6::Int) -- microseconds.
 
