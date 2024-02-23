@@ -24,7 +24,6 @@
     let
       flakeModules = {
         haskell = ./nix/haskell;
-        plutarch = ./nix/plutarch;
         utils = ./nix/utils;
       };
     in

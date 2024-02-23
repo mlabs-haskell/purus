@@ -1,3 +1,5 @@
+# Adapted from https://github.com/mlabs-haskell/mlabs-tooling.nix/blob/cd0cf0d29f17980befe384248c16937589912c69/mk-hackage.nix
+
 { gzip
 , runCommand
 , lib
