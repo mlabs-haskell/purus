@@ -11,9 +11,10 @@ import Data.Function (on)
 import Data.Tuple (swap)
 import Data.Map qualified as M
 
+import Language.PureScript.AST qualified as A
 import Language.PureScript.AST.Literals (Literal(..))
 import Language.PureScript.AST.SourcePos (pattern NullSourceSpan, SourceSpan(..))
-import Language.PureScript.AST.Traversals (everythingOnValues)
+import Language.PureScript.AST.Traversals (everythingOnValues, overTypes)
 import Language.PureScript.CoreFn.Ann (Ann)
 import Language.PureScript.CoreFn.Binders (Binder(..))
 import Language.PureScript.CoreFn.Expr (Expr(..), PurusType)
@@ -30,9 +31,9 @@ import Language.PureScript.Environment (
   dictTypeName,
   TypeClassData (typeClassArguments),
   function,
-  pattern (:->))
+  pattern (:->), pattern (:$), isDictTypeName)
 import Language.PureScript.Names (Ident(..), ModuleName, ProperName(..), ProperNameType(..), Qualified(..), QualifiedBy(..), disqualify, getQual, runIdent, coerceProperName)
-import Language.PureScript.Types (SourceType, Type(..), Constraint (..), srcTypeConstructor, srcTypeApp, rowToSortedList, RowListItem(..))
+import Language.PureScript.Types (SourceType, Type(..), Constraint (..), srcTypeConstructor, srcTypeApp, rowToSortedList, RowListItem(..), replaceTypeVars, everywhereOnTypes)
 import Language.PureScript.AST.Binders qualified as A
 import Language.PureScript.AST.Declarations qualified as A
 import Control.Monad.Supply.Class (MonadSupply)
@@ -57,12 +58,35 @@ import Language.PureScript.TypeChecker.Monad
 import Language.PureScript.Pretty.Values (renderValue)
 import Language.PureScript.PSString (PSString)
 import Language.PureScript.Label (Label(..))
+import Data.Bifunctor (Bifunctor(..))
 
 
 {- UTILITIES -}
 
 -- | Type synonym for a monad that has all of the required typechecker functionality
 type M m = (MonadSupply m, MonadState CheckState m, MonadError MultipleErrors m, MonadWriter MultipleErrors m)
+
+ctorArgs :: SourceType -> [SourceType]
+ctorArgs (TypeApp _ t1 t2) = ctorArgs t1 <> [t2]
+ctorArgs _  = []
+
+ctorFun :: SourceType -> Maybe SourceType
+ctorFun (TypeApp _ t1 _) = go t1
+  where
+    go (TypeApp _ tx _) = case ctorFun tx of
+      Nothing -> Just tx
+      Just tx' -> Just tx'
+    go other = Just other
+ctorFun _ = Nothing
+
+analyzeCtor :: SourceType -> Maybe (SourceType,[SourceType])
+analyzeCtor t = (,ctorArgs t) <$> ctorFun t
+
+
+instantiate :: SourceType -> [SourceType] -> SourceType
+instantiate ty [] = ty
+instantiate (ForAll _ _ var _ inner _) (t:ts) = replaceTypeVars var t $ instantiate inner ts
+instantiate other _ = other
 
 -- | Traverse a literal. Note that literals are usually have a type like `Literal (Expr a)`. That is: The `a` isn't typically an annotation, it's an expression type
 traverseLit :: forall m a b. Monad m => (a -> m b) -> Literal a -> m (Literal b)
@@ -87,8 +111,8 @@ inferType Nothing e = traceM ("**********HAD TO INFER TYPE FOR: (" <> renderValu
 withInstantiatedFunType :: M m => ModuleName -> SourceType -> (SourceType -> SourceType -> m (Expr Ann)) -> m (Expr Ann)
 withInstantiatedFunType mn ty act = case instantiatePolyType mn ty of
   (a :-> b, replaceForalls, bindAct) -> bindAct $ replaceForalls <$> act a b
-  (other,_,_) -> error
-                 $ "Internal error. Expected a function type, but got: " <> ppType 1000 other
+  (other,_,_) -> let !showty = LT.unpack (pShow other)
+                 in error $ "Internal error. Expected a function type, but got: " <> showty
 {- This function more-or-less contains our strategy for handling polytypes (quantified or constrained types). It returns a tuple T such that:
      - T[0] is the inner type, where all of the quantifiers and constraints have been removed. We just instantiate the quantified type variables to themselves (I guess?) - the previous
        typchecker passes should ensure that quantifiers are all well scoped and that all essential renaming has been performed. Typically, the inner type should be a function.
@@ -105,22 +129,33 @@ withInstantiatedFunType mn ty act = case instantiatePolyType mn ty of
 -- TODO: Explicitly return two sourcetypes for arg/return types
 instantiatePolyType :: M m => ModuleName -> SourceType-> (SourceType, Expr b -> Expr b, m a -> m a)
 instantiatePolyType mn = \case
-  ForAll _ vis var mbk t mSkol -> case instantiatePolyType mn t of
+  ForAll ann vis var mbk t mSkol -> case instantiatePolyType mn t of
     (inner,g,act) ->
       let f = \case
                 Abs ann' ty' ident' expr' ->
-                  Abs ann' (ForAll () vis var (purusTy <$> mbk) (purusTy ty') mSkol) ident' expr'
+                  Abs ann' (ForAll ann vis var (purusTy <$> mbk) (purusTy ty') mSkol) ident' expr'
                 other -> other
           -- FIXME: kindType?
           act' ma = withScopedTypeVars mn [(var,kindType)] $ act ma -- NOTE: Might need to pattern match on mbk and use the real kind (though in practice this should always be of kind Type, I think?)
       in (inner, f . g, act')
-  ConstrainedType _  Constraint{..} t -> case instantiatePolyType mn t of
+  -- this branch should be deprecated
+  {-
+   ConstrainedType _  Constraint{..} t -> case instantiatePolyType mn t of
     (inner,g,act) ->
       let dictTyName :: Qualified (ProperName 'TypeName) = dictTypeName . coerceProperName <$> constraintClass
           dictTyCon = srcTypeConstructor dictTyName
           dictTy = foldl srcTypeApp dictTyCon constraintArgs
           act' ma = bindLocalVariables [(NullSourceSpan,Ident "dict",dictTy,Defined)] $ act ma
       in (function dictTy inner,g,act')
+   -}
+  fun@(a :-> r) ->  case analyzeCtor a of
+      Just (TypeConstructor ann ctor@(Qualified qb nm), args) ->
+        if isDictTypeName nm
+          then
+            let act' ma = bindLocalVariables [(NullSourceSpan,Ident "dict",a,Defined)] $ ma
+            in (fun,id,act')
+          else (fun,id,id)
+      other -> (fun,id,id)
   other -> (other,id,id)
 
 -- In a context where we expect a Record type (object literals, etc), unwrap the record and get at the underlying rowlist
@@ -131,6 +166,7 @@ unwrapRecord = \case
  where
   go :: RowListItem a -> (PSString, Type a)
   go RowListItem{..} = (runLabel rowListLabel, rowListType)
+
 
 traceNameTypes :: M m => m ()
 traceNameTypes  = do
@@ -155,17 +191,41 @@ desugarConstraintType' = \case
     in function dictTy inner
   other -> other
 
-desugarConstraintType :: M m => Qualified Ident -> m ()
-desugarConstraintType i = do
+desugarConstraintTypes :: M m =>  m ()
+desugarConstraintTypes  = do
   env <- getEnv
-  let oldNameTypes = names env
-  case M.lookup i oldNameTypes of
-    Just (t,k,v) -> do
-      let newVal = (desugarConstraintType' t, k, v)
-          newNameTypes = M.insert i newVal oldNameTypes
-          newEnv = env {names = newNameTypes}
-      modify' $ \checkstate -> checkstate {checkEnv = newEnv}
+  let f = everywhereOnTypes desugarConstraintType'
 
+      oldNameTypes = names env
+      desugaredNameTypes = (\(st,nk,nv) -> (f st,nk,nv)) <$> oldNameTypes
+
+      oldTypes = types env
+      desugaredTypes = first f <$> oldTypes
+
+      oldCtors = dataConstructors env
+      desugaredCtors = (\(a,b,c,d) -> (a,b,f c,d)) <$> oldCtors
+
+      oldSynonyms = typeSynonyms env
+      desugaredSynonyms = second f <$> oldSynonyms
+
+      newEnv = env { names = desugaredNameTypes
+                   , types = desugaredTypes
+                   , dataConstructors = desugaredCtors
+                   , typeSynonyms = desugaredSynonyms }
+
+  modify' $ \checkstate -> checkstate {checkEnv = newEnv}
+
+desugarConstraintsInDecl :: A.Declaration -> A.Declaration
+desugarConstraintsInDecl = \case
+  A.BindingGroupDeclaration decls ->
+    A.BindingGroupDeclaration
+      $ (\(annIdent,nk,expr) -> (annIdent,nk,overTypes desugarConstraintType' expr)) <$> decls
+  A.ValueDecl ann name nk bs [A.MkUnguarded e] ->
+     A.ValueDecl ann name nk bs [A.MkUnguarded $ overTypes desugarConstraintType' e]
+  A.DataDeclaration ann declTy tName args ctorDecs ->
+    let fixCtor (A.DataConstructorDeclaration a nm fields) = A.DataConstructorDeclaration a nm (second (everywhereOnTypes desugarConstraintType') <$> fields)
+    in A.DataDeclaration ann declTy tName args (fixCtor <$> ctorDecs)
+  other -> other
 
 
 -- Gives much more readable output (with colors for brackets/parens!) than plain old `show`
@@ -200,8 +260,9 @@ showIdent' :: Ident -> String
 showIdent' = T.unpack . runIdent
 
 -- | Turns a `Type a` into a `Type ()`. We shouldn't need source position information for types.
-purusTy :: Type a -> PurusType
-purusTy = fmap (const ())
+-- NOTE: Deprecated (probably)
+purusTy :: SourceType -> PurusType
+purusTy = id -- fmap (const ())
 
 -- | Given a class name, return the TypeClassData associated with the name.
 getTypeClassData :: M m => Qualified (ProperName 'ClassName) -> m TypeClassData

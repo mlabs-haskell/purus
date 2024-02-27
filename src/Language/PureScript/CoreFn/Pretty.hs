@@ -74,7 +74,7 @@ prettyPrintValue :: Int -> Expr a -> Box
 -- prettyPrintValue d _ | d < 0 = text "..."
 prettyPrintValue d (Accessor _ ty prop val) = prettyPrintValueAtom (d - 1) val `before` textT ("." Monoid.<> prettyPrintObjectKey prop)
 prettyPrintValue d (ObjectUpdate ann _ty o _copyFields ps) = prettyPrintValueAtom (d - 1) o `beforeWithSpace` list '{' '}' (uncurry (prettyPrintUpdateEntry d)) ps
-prettyPrintValue d (App ann _ val arg) = prettyPrintValueAtom (d - 1) val `beforeWithSpace` prettyPrintValueAtom (d - 1) arg
+prettyPrintValue d (App ann ty val arg) = prettyPrintValueAtom (d - 1) val `beforeWithSpace` prettyPrintValueAtom (d - 1) arg
 prettyPrintValue d (Abs ann ty arg val) = text (oneLine $ '\\' : "(" ++ T.unpack (showIdent arg) ++ ": " ++ ppType (d) (getFunArgTy ty) ++ ") -> ") //  (prettyPrintValue (d-1)  val)
 prettyPrintValue d (Case ann ty values binders) =
   (text "case " <> foldr beforeWithSpace (text "of") (map (prettyPrintValueAtom (d - 1)) values)) //
@@ -110,14 +110,14 @@ prettyPrintDeclaration d b = case b of
   NonRec _ ident expr ->
     vcat left [
       text (oneLine $ T.unpack (showIdent ident) ++ " :: " ++ ppType 0 (exprType expr)  ),
-      text (T.unpack (showIdent ident) ++ " = ") <> prettyPrintValue d expr, -- not sure about the d here
-      text "\n"
+      text (T.unpack (showIdent ident) ++ " = ") <> prettyPrintValue d expr -- not sure about the d here
+
     ]
   Rec bindings -> vsep 1 left $ map (\((_,ident),expr) ->
         vcat left [
           text (oneLine $ T.unpack (showIdent ident) ++ " :: " ++ ppType 0 (exprType expr)  ),
-          text (T.unpack (showIdent ident) ++ " = ") <> prettyPrintValue (d-1) expr,
-          text "\n"
+          text (T.unpack (showIdent ident) ++ " = ") <> prettyPrintValue (d-1) expr
+
       ]) bindings
 
 prettyPrintCaseAlternative :: Int -> CaseAlternative a -> Box

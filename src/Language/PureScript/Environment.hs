@@ -379,6 +379,10 @@ pattern ArrayT :: Type a -> Type a
 pattern ArrayT a <-
   TypeApp _ (TypeConstructor _ C.Array) a
 
+pattern (:$) :: Type a -> Type a -> Type a
+pattern f :$ a <-
+  TypeApp _ f a
+
 arrayT :: Type a -> Type ()
 arrayT = TypeApp () (TypeConstructor () C.Array) . fmap (const ())
 
@@ -388,7 +392,7 @@ pattern RecordT a <-
 
 
 
-getFunArgTy :: Type () -> Type ()
+getFunArgTy :: Type a -> Type a
 getFunArgTy = \case
   a :-> _ -> a
   ForAll _ _ _ _ t  _ -> getFunArgTy t
