@@ -608,12 +608,15 @@ inferLetBinding seen (ValueDecl sa@(ss, _) ident nameKind [] [MkUnguarded (Typed
     $ inferLetBinding (seen ++ [ValueDecl sa ident nameKind [] [MkUnguarded (TypedValue checkType val' ty'')]]) rest ret j
 inferLetBinding seen (ValueDecl sa@(ss, _) ident nameKind [] [MkUnguarded val] : rest) ret j = do
   valTy <- freshTypeWithKind kindType
-  TypedValue' _ val' valTy' <- warnAndRethrowWithPositionTC ss $ do
+  TypedValue' chk val' valTy' <- warnAndRethrowWithPositionTC ss $ do
     let dict = M.singleton (Qualified (BySourcePos $ spanStart ss) ident) (valTy, nameKind, Undefined)
     bindNames dict $ infer val
   warnAndRethrowWithPositionTC ss $ unifyTypes valTy valTy'
+  -- NOTE (from Sean): Returning a TypedValue gives us access to monomorphized types for un-annotated let bindings.
+  --                   I'm not sure why they don't do this, perhaps there is a reason to avoid doing so?
+  let val'' = TypedValue chk val' valTy'
   bindNames (M.singleton (Qualified (BySourcePos $ spanStart ss) ident) (valTy', nameKind, Defined))
-    $ inferLetBinding (seen ++ [ValueDecl sa ident nameKind [] [MkUnguarded val']]) rest ret j
+    $ inferLetBinding (seen ++ [ValueDecl sa ident nameKind [] [MkUnguarded val'']]) rest ret j
 inferLetBinding seen (BindingGroupDeclaration ds : rest) ret j = do
   moduleName <- unsafeCheckCurrentModule
   SplitBindingGroup untyped typed dict <- typeDictionaryForBindingGroup Nothing . NEL.toList $ fmap (\(i, _, v) -> (i, v)) ds

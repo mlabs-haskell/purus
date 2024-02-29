@@ -383,8 +383,8 @@ pattern (:$) :: Type a -> Type a -> Type a
 pattern f :$ a <-
   TypeApp _ f a
 
-arrayT :: Type a -> Type ()
-arrayT = TypeApp () (TypeConstructor () C.Array) . fmap (const ())
+arrayT :: SourceType -> SourceType
+arrayT = TypeApp NullSourceAnn (TypeConstructor NullSourceAnn C.Array)
 
 pattern RecordT :: Type a -> Type a
 pattern RecordT a <-

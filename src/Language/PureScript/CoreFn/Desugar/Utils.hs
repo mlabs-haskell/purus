@@ -59,6 +59,9 @@ import Language.PureScript.Pretty.Values (renderValue)
 import Language.PureScript.PSString (PSString)
 import Language.PureScript.Label (Label(..))
 import Data.Bifunctor (Bifunctor(..))
+import Data.List.NonEmpty qualified as NEL
+import Language.PureScript.TypeClassDictionaries (NamedDict, TypeClassDictionaryInScope (..))
+import Data.List (foldl')
 
 
 {- UTILITIES -}
@@ -66,10 +69,12 @@ import Data.Bifunctor (Bifunctor(..))
 -- | Type synonym for a monad that has all of the required typechecker functionality
 type M m = (MonadSupply m, MonadState CheckState m, MonadError MultipleErrors m, MonadWriter MultipleErrors m)
 
+-- Extract all of the arguments to a type constructor
 ctorArgs :: SourceType -> [SourceType]
 ctorArgs (TypeApp _ t1 t2) = ctorArgs t1 <> [t2]
 ctorArgs _  = []
 
+-- Extract the TyCon ("function") part of an applied Type Constructor
 ctorFun :: SourceType -> Maybe SourceType
 ctorFun (TypeApp _ t1 _) = go t1
   where
@@ -81,7 +86,6 @@ ctorFun _ = Nothing
 
 analyzeCtor :: SourceType -> Maybe (SourceType,[SourceType])
 analyzeCtor t = (,ctorArgs t) <$> ctorFun t
-
 
 instantiate :: SourceType -> [SourceType] -> SourceType
 instantiate ty [] = ty
@@ -101,7 +105,7 @@ traverseLit f = \case
 -- | When we call `exprToCoreFn` we sometimes know the type, and sometimes have to infer it. This just simplifies the process of getting the type we want (cuts down on duplicated code)
 inferType :: M m => Maybe SourceType -> A.Expr -> m SourceType
 inferType (Just t) _ = pure t
-inferType Nothing e = traceM ("**********HAD TO INFER TYPE FOR: (" <> renderValue 100 e <> ")") >>
+inferType Nothing e = pTrace ("**********HAD TO INFER TYPE FOR: (" <> renderValue 100 e <> ")") >>
   infer e >>= \case
     TypedValue' _ _ t -> do
       traceM ("TYPE: " <> ppType 100 t)
@@ -138,24 +142,14 @@ instantiatePolyType mn = \case
           -- FIXME: kindType?
           act' ma = withScopedTypeVars mn [(var,kindType)] $ act ma -- NOTE: Might need to pattern match on mbk and use the real kind (though in practice this should always be of kind Type, I think?)
       in (inner, f . g, act')
-  -- this branch should be deprecated
-  {-
-   ConstrainedType _  Constraint{..} t -> case instantiatePolyType mn t of
-    (inner,g,act) ->
-      let dictTyName :: Qualified (ProperName 'TypeName) = dictTypeName . coerceProperName <$> constraintClass
-          dictTyCon = srcTypeConstructor dictTyName
-          dictTy = foldl srcTypeApp dictTyCon constraintArgs
-          act' ma = bindLocalVariables [(NullSourceSpan,Ident "dict",dictTy,Defined)] $ act ma
-      in (function dictTy inner,g,act')
-   -}
-  fun@(a :-> r) ->  case analyzeCtor a of
-      Just (TypeConstructor ann ctor@(Qualified qb nm), args) ->
+  fun@(a :-> r) -> case analyzeCtor a of
+      Just (TypeConstructor _ (Qualified _ nm), _) ->
         if isDictTypeName nm
           then
             let act' ma = bindLocalVariables [(NullSourceSpan,Ident "dict",a,Defined)] $ ma
             in (fun,id,act')
           else (fun,id,id)
-      other -> (fun,id,id)
+      _ -> (fun,id,id)
   other -> (other,id,id)
 
 -- In a context where we expect a Record type (object literals, etc), unwrap the record and get at the underlying rowlist
@@ -244,6 +238,28 @@ wrapTrace msg act = do
    pad str = padding <> str <> padding
    startMsg = pad $ "BEGIN " <> msg
    endMsg = pad $ "END " <> msg
+
+
+
+-- NOTE: Grotesqely inefficient, but since the scope can change I'm not sure what else we can do.
+--       If this ends up matters, we have to rework the environment somehow
+lookupDictType :: M m => Qualified Ident -> m (Maybe SourceType)
+lookupDictType nm = do
+  tyClassDicts <- typeClassDictionaries <$> getEnv
+  let dictMap = dictionaryIdentMap tyClassDicts
+  pure $ M.lookup nm dictMap
+ where
+  dictionaryIdentMap :: M.Map QualifiedBy (M.Map (Qualified (ProperName 'ClassName)) (M.Map (Qualified Ident) (NEL.NonEmpty NamedDict)))
+                     -> M.Map (Qualified Ident) SourceType
+  dictionaryIdentMap m =  foldl' go M.empty inner
+    where
+      -- duplicates?
+      inner =  concatMap NEL.toList . M.elems $ M.unions $ concatMap M.elems $ M.elems m
+      go :: M.Map (Qualified Ident) SourceType -> NamedDict -> M.Map (Qualified Ident) SourceType
+      go acc TypeClassDictionaryInScope{..} = M.insert tcdValue dictTy acc
+        where
+          dictTy = foldl' srcTypeApp dictTyCon tcdInstanceTypes
+          dictTyCon = srcTypeConstructor $ coerceProperName . dictTypeName <$> tcdClassName
 
 -- | Generates a pretty (ish) representation of the type environment/context. For debugging.
 printEnv :: M m => m String

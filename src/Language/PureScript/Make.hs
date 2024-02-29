@@ -56,6 +56,7 @@ import System.FilePath (replaceExtension)
 -- Temporary
 import Debug.Trace (traceM)
 import Language.PureScript.CoreFn.Pretty (ppType)
+import Language.PureScript.CoreFn.Desugar.Utils (pTrace)
 
 -- | Rebuild a single module.
 --
@@ -96,17 +97,17 @@ rebuildModuleWithIndex MakeActions{..} exEnv externs m@(Module _ _ moduleName _ 
       withPrim = importPrim m
   lint withPrim
 
-  ((Module ss coms _ elaborated exps, env'), nextVar) <- runSupplyT 0 $ do
+  ((Module ss coms _ elaborated exps, env', chkSt), nextVar) <- runSupplyT 0 $ do
     (desugared, (exEnv', usedImports)) <- runStateT (desugar externs withPrim) (exEnv, mempty)
     let modulesExports = (\(_, _, exports) -> exports) <$> exEnv'
-    (checked, CheckState{..}) <- runStateT (typeCheckModule modulesExports desugared) $ emptyCheckState env
+    (checked, chkSt@CheckState{..}) <- runStateT (typeCheckModule modulesExports desugared) $ emptyCheckState env
     let usedImports' = foldl' (flip $ \(fromModuleName, newtypeCtorName) ->
           M.alter (Just . (fmap DctorName newtypeCtorName :) . fold) fromModuleName) usedImports checkConstructorImportsForCoercible
     -- Imports cannot be linted before type checking because we need to
     -- known which newtype constructors are used to solve Coercible
     -- constraints in order to not report them as unused.
     censor (addHint (ErrorInModule moduleName)) $ lintImports checked exEnv' usedImports'
-    return (checked, checkEnv)
+    return (checked, checkEnv, chkSt)
 
   -- desugar case declarations *after* type- and exhaustiveness checking
   -- since pattern guards introduces cases which the exhaustiveness checker
@@ -117,14 +118,17 @@ rebuildModuleWithIndex MakeActions{..} exEnv externs m@(Module _ _ moduleName _ 
   regrouped <- createBindingGroups moduleName . collapseBindingGroups $ deguarded
 
   let mod' = Module ss coms moduleName regrouped exps
-  traceM "PURUS START HERE"
-  ((coreFn,chkSt),nextVar'') <- runSupplyT nextVar' $ runStateT (CFT.moduleToCoreFn mod') (emptyCheckState env')
-  traceM $ prettyEnv (checkEnv chkSt)
+  traceM $ "PURUS START HERE: " <> T.unpack (runModuleName moduleName)
+  -- pTrace regrouped
+  -- pTrace exps
+  ((coreFn,chkSt'),nextVar'') <- runSupplyT nextVar' $ runStateT (CFT.moduleToCoreFn mod') chkSt -- (emptyCheckState env')
+
   traceM $ CFT.prettyPrintModule'  coreFn
   let corefn = coreFn
       (optimized, nextVar''') = runSupply nextVar'' $ CF.optimizeCoreFn corefn
       (renamedIdents, renamed) = renameInModule optimized
       exts = moduleToExternsFile mod' env' renamedIdents
+  --pTrace exts
   ffiCodegen renamed
 
   -- It may seem more obvious to write `docs <- Docs.convertModule m env' here,

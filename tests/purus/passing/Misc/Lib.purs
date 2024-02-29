@@ -79,14 +79,14 @@ mutuallyRecursiveBindingGroup =
       g y = h (f y) 3
   in g 3
 
-{- TODO: Make this a shouldfail test
+
 mutuallyRecursiveBindingGroupNoTypes :: Int
 mutuallyRecursiveBindingGroupNoTypes =
   let f' x = g' 2
       h' x y = y
       g' y = h' (f' y) 3
   in g' 3
--}
+
 nestedBinds :: Int
 nestedBinds =
   let  f :: Int -> Int

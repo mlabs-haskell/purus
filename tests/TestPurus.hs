@@ -81,9 +81,18 @@ shouldPass = map (prefix </>) paths
         "ImportQualified",
         "InstanceUnnamedSimilarClassName",
         "ModuleDeps",
+        "Misc",
         "NonOrphanInstanceFunDepExtra",
-        "NonOrphanInstanceMulti"
-
+        "NonOrphanInstanceMulti",
+        "PendingConflictingImports",
+        "PendingConflictingImports2",
+        "RedefinedFixity",
+        "ReExportQualified",
+        "ResolvableScopeConflict",
+        "ResolvableScopeConflict2",
+        "ResolvableScopeConflict3",
+        "ShadowedModuleName",
+        "TransitiveImport"
       ]
 
 
