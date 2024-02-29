@@ -65,9 +65,110 @@ import Data.List (foldl')
 
 
 {- UTILITIES -}
+--TODO: Explain purpose of every function
+
 
 -- | Type synonym for a monad that has all of the required typechecker functionality
 type M m = (MonadSupply m, MonadState CheckState m, MonadError MultipleErrors m, MonadWriter MultipleErrors m)
+
+
+
+{- "Type Constructor analysis" machinery. (This requires some explaining)
+
+   In the course of converting to typed CoreFn, we always proceed "top-down"
+   from top-level declarations which must have a type annotation attached
+   (their typechecker enforces this - it will add an inferred annotation if
+   the user fails to annotate the type).
+
+   Because not all sub-expression (specifically, "synthetic applications" where a type class
+   dictionary constructor is applied to its argument in an instance declaration) are typed,
+   we may run into situations where the inferred or reconstructed type for a sub-expression
+   is universally quantified, even though we know (via our "top-down" approach) that the
+   quantified type variables should be instantiated (either to concrete types or to
+   type variables which are introduced in the outer lexical scope).
+
+   An example (from test 4310) makes the problem clearer. Suppose we have:
+
+   ```
+   data Tuple a b = Tuple a b
+
+   infixr 6 Tuple as /\
+   infixr 6 type Tuple as /\
+
+   mappend :: String -> String -> String
+   mappend _ _ = "mappend"
+
+   infixr 5 mappend as <>
+
+   class Test a where
+     runTest :: a -> String
+
+   instance Test Int where
+     runTest _ = "4"
+
+   instance (Test a, Test b) => Test (a /\ b) where
+     runTest (a /\ b) = runTest a <> runTest b
+
+   ```
+
+   The generated code for the typeclass declaration gives us (in part):
+
+  ```
+  Test$Dict :: forall a.  { runTest :: a -> String  }  -> { runTest :: a -> String }
+  Test$Dict = \(x: { runTest :: a -> String} ) ->
+            (x: { runTest :: a -> String} )
+
+  runTest :: forall (@a :: Type). Test$Dict a -> a -> String
+  runTest = \(dict: Test$Dict a) ->
+          case (dict: Test$Dict a) of
+            (Test$Dict v) -> (v: { runTest :: a -> String} ).runTest
+  ```
+
+  Because the Tuple instance for Test uses `runTest` (the function), and because
+  `runTest` is universally quantified, if we did not instantiate those quantifiers,
+  a new skolem scope will be introduced at each application of `runTest`, giving us
+  type variables that cannot be unified with the outermost type variables.
+
+  That is, without using this machiner (and `instantiate`), we end up with something like
+  this for the tuple instance:
+
+  ```
+  test/\ :: forall (a :: Type) (b :: Type). Test$Dict a -> Test$Dict b -> Test$Dict (Tuple a b)
+  test/\ = \(dictTest: Test$Dict a) ->
+         \(dictTest1: Test$Dict b) ->
+         (Test$Dict: { runTest :: a -> String} -> Test$Dict a ) { runTest: \(v: Tuple a0 b1) ->                                                                                                                                                                                                                                   }
+           case (v: Tuple a0 b1) of
+             (Tuple a b) ->
+               ((mappend: String -> String -> String)
+               (((runTest: forall (@a :: Type). Test$Dict a -> a -> String) (dictTest: Test$Dict a)) (a: t1)))
+               (((runTest: forall (@a :: Type). Test$Dict a -> a -> String) (dictTest1: Test$Dict b)) (b: t2))
+  ```
+
+  By using this machinery in `inferBinder'`, we can instantiate the quantifiers to the
+  lexically scoped type variables in the top-level signature, and get output that is properly typed:
+
+  ```
+  test/\ :: forall (a :: Type) (b :: Type). Test$Dict a -> Test$Dict b -> Test$Dict (Tuple a b)                                                                                                                                                                                                                                                      
+  test/\ = \(dictTest: Test$Dict a) ->                                                                                                                                                                                                                                                                                                               
+         \(dictTest1: Test$Dict b) ->
+         (Test$Dict: { runTest :: Tuple a b -> String} -> Test$Dict (Tuple a b) ) { runTest: \(v: Tuple a b) ->                                                                                                                                                                                                                                   }
+            case (v: Tuple a b) of
+               (Tuple a b) ->
+                ((mappend: String -> String -> String)
+                (((runTest: forall (@a :: Type). Test$Dict a -> a -> String) (dictTest: Test$Dict a)) (a: a)))
+                (((runTest: forall (@a :: Type). Test$Dict a -> a -> String) (dictTest1: Test$Dict b)) (b: b))
+
+  ```
+
+  We also use this in the branch of the `App` case of `exprToCoreFn` that handles dictionary applications
+  (in the same manner and for the same purpose).
+
+-}
+
+-- Given a type (which we expect to be a TyCon applied to type args),
+-- extract (TyCon,[Args]) (returning Nothing if the input type is not a TyCon)
+analyzeCtor :: SourceType -> Maybe (SourceType,[SourceType])
+analyzeCtor t = (,ctorArgs t) <$> ctorFun t
 
 -- Extract all of the arguments to a type constructor
 ctorArgs :: SourceType -> [SourceType]
@@ -84,9 +185,20 @@ ctorFun (TypeApp _ t1 _) = go t1
     go other = Just other
 ctorFun _ = Nothing
 
-analyzeCtor :: SourceType -> Maybe (SourceType,[SourceType])
-analyzeCtor t = (,ctorArgs t) <$> ctorFun t
 
+{- Instantiation machinery. This differs from `instantiatePolyType` and
+   `withInstantiatedFunType` in that those functions are used to "peek under"
+   the quantifier in a universally quantified type (i.e. those functions
+   *put the quantifier back* after temporarily instantiating the quantified variables
+   *to type variables* for the purposes of type reconstruction).
+
+   This instantiates a quantified type (the first arg) and *does not* replace the
+   quantifier. This is primarily used when we encounter an expression with a universally
+   quantified type (either as an annotation in a AST.TypedValue or as the result of looking up
+   the type in the typechecking environment) in a context where we know (from our top-down approach)
+   that the instantiated type must be instantiated to something "concrete" (where, again,
+   a "concrete" type can either be an explicit type or a tyvar from the outer scope).
+-}
 instantiate :: SourceType -> [SourceType] -> SourceType
 instantiate ty [] = ty
 instantiate (ForAll _ _ var _ inner _) (t:ts) = replaceTypeVars var t $ instantiate inner ts
@@ -102,7 +214,12 @@ traverseLit f = \case
   ArrayLiteral xs  -> ArrayLiteral <$> traverse f xs
   ObjectLiteral xs -> ObjectLiteral <$> traverse (\(str,x) -> f x >>= \b -> pure (str,b)) xs
 
--- | When we call `exprToCoreFn` we sometimes know the type, and sometimes have to infer it. This just simplifies the process of getting the type we want (cuts down on duplicated code)
+{- `exprtoCoreFn` takes a `Maybe SourceType` argument. While in principle we should never need to infer the type
+    using PS type inference machinery (we should always be able to reconstruct it w/ recursive applications of
+    `exprToCoreFn` on the components), I have to get around to rewriting the corefn desugaring code to avoid this.
+
+    Should be DEPRECATED eventually.
+-}
 inferType :: M m => Maybe SourceType -> A.Expr -> m SourceType
 inferType (Just t) _ = pure t
 inferType Nothing e = pTrace ("**********HAD TO INFER TYPE FOR: (" <> renderValue 100 e <> ")") >>
@@ -240,9 +357,76 @@ wrapTrace msg act = do
    endMsg = pad $ "END " <> msg
 
 
+{-
+  This is used to solve a problem that arises with re-exported instances.
 
--- NOTE: Grotesqely inefficient, but since the scope can change I'm not sure what else we can do.
---       If this ends up matters, we have to rework the environment somehow
+  We diverge from PureScript by "desugaring" constrained types to types that contain
+  explicit type class dictionaries. (We have to do this for PIR conversion - we have to type
+  all nodes of the AST.)
+
+  During PureScript's initial desugaring phase, type class declarations, instance declarations, and
+  expressions that contain type class constaints are transformed into generated value declarations. For example:
+
+  ```
+    class Eq a where
+      eq a :: a -> a -> Bool
+
+    f :: forall a. Eq a => a -> a -> Boolean
+    f x y = eq x y
+  ```
+
+  Is transformed into (something like, I'm ommitting the full generated code for brevity):
+
+  ```
+    Eq$Dict :: forall a. {eq :: a -> a -> Boolean } -> {eq :: a -> a -> Boolean}
+    Eq$Dict x = x
+
+    eq :: forall a. Eq$Dict a -> a -> a -> Boolean
+    eq  = \dict ->  case dict of
+      (v :: {eq :: a -> a -> Boolean}) -> v.eq
+
+    f :: forall a. Eq a => a -> a -> Boolean
+    f = \dict x y -> (eq dict) x y
+  ```
+
+  Three important things to note here:
+   - PureScript does *not* transform constrained types into types that contain explicit dictionaries,
+     even though the expressions are desugared to contain those dictionaries. (We do this ourselves
+     after the PS typechecking phase)
+   - Generated declarations for type classes and instances are not (and cannot be) exported,
+     because typeclass desugaring takes place *after* import/export resolution
+     in their desugaring pipeline. (This would be difficult to fix, each step of the desugaring pipeline
+     expects input that conforms to the output of the previous step).
+   - Generated code relating to typeclass dictionaries is ignored by the PureScript typechecker.
+     Ordinarily, we can rely on the typechecker to insert the type annotation for most
+     expressions, but we cannot do so here.
+
+  These factors give rise to a problem: Our desugared constraint types (where we transform
+  type annotations of the form `C a => (..)` into `C$Dict a -> (...)`) no longer contain constraints,
+  and therefore we cannot use the constraint solving machinery directly to infer the types of
+  identifiers that refer to type class dictionaries. Because generated type class code cannot be exported
+  by the user in the source (and would not ordinarily be implicitly re-exported even if it could be exported),
+  we cannot rely upon normal import resolution to provide the types corresponding to dictionary identifiers.
+
+  This solves the problem. Because we use the same state/module scope as the PS typechecker, we
+  have access to all of the type class dictionaries (including their identifiers) that are in scope.
+  When we encounter an identifier that cannot be assigned a type by the normal type lookup process,
+  we extract a map from identifiers to source types, and lookup the identifier in the map, allowing us to
+  resolve the types of dictionary expressions.
+
+  These identifiers are always qualified by module in the AST, so cannot clash with local definitions, which
+  are qualified by SourcePos.
+
+  NOTE: In theory (at least), this component of the type checker environment  can change if we
+        make any calls to `infer` or any of the type checking functions in the
+        TypeChecker.X namespace. So for now, we rebuild this map every time we fail to
+        lookup the type for an identifier in the normal way. (Which is grossly
+        inefficient)
+
+        In principle, we should be able to totally reconstruct the types w/o making
+        any calls to `infer` or the typechecker machinery. Once that is done, we can
+        construct this map only once for each module, which will greatly improve performance.
+-}
 lookupDictType :: M m => Qualified Ident -> m (Maybe SourceType)
 lookupDictType nm = do
   tyClassDicts <- typeClassDictionaries <$> getEnv
