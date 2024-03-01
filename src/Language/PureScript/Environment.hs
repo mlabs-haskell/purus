@@ -379,9 +379,7 @@ pattern ArrayT :: Type a -> Type a
 pattern ArrayT a <-
   TypeApp _ (TypeConstructor _ C.Array) a
 
-pattern (:$) :: Type a -> Type a -> Type a
-pattern f :$ a <-
-  TypeApp _ f a
+
 
 arrayT :: SourceType -> SourceType
 arrayT = TypeApp NullSourceAnn (TypeConstructor NullSourceAnn C.Array)

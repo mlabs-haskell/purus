@@ -4,7 +4,6 @@
 module Language.PureScript.CoreFn.Desugar.Utils where
 
 import Prelude
-import Prelude qualified as P
 import Protolude (MonadError (..), traverse_)
 
 import Data.Function (on)
@@ -31,18 +30,15 @@ import Language.PureScript.Environment (
   dictTypeName,
   TypeClassData (typeClassArguments),
   function,
-  pattern (:->), pattern (:$), isDictTypeName)
+  pattern (:->),
+  isDictTypeName)
 import Language.PureScript.Names (Ident(..), ModuleName, ProperName(..), ProperNameType(..), Qualified(..), QualifiedBy(..), disqualify, getQual, runIdent, coerceProperName)
 import Language.PureScript.Types (SourceType, Type(..), Constraint (..), srcTypeConstructor, srcTypeApp, rowToSortedList, RowListItem(..), replaceTypeVars, everywhereOnTypes)
-import Language.PureScript.AST.Binders qualified as A
-import Language.PureScript.AST.Declarations qualified as A
 import Control.Monad.Supply.Class (MonadSupply)
 import Control.Monad.State.Strict (MonadState, gets, modify')
 import Control.Monad.Writer.Class ( MonadWriter )
 import Language.PureScript.TypeChecker.Types
-    ( kindType,
-      TypedValue'(TypedValue'),
-      infer )
+    ( kindType )
 import Language.PureScript.Errors
     ( MultipleErrors )
 import Debug.Trace (traceM, trace)
@@ -55,7 +51,6 @@ import Language.PureScript.TypeChecker.Monad
       getEnv,
       withScopedTypeVars,
       CheckState(checkCurrentModule, checkEnv), debugNames )
-import Language.PureScript.Pretty.Values (renderValue)
 import Language.PureScript.PSString (PSString)
 import Language.PureScript.Label (Label(..))
 import Data.Bifunctor (Bifunctor(..))
@@ -214,19 +209,6 @@ traverseLit f = \case
   ArrayLiteral xs  -> ArrayLiteral <$> traverse f xs
   ObjectLiteral xs -> ObjectLiteral <$> traverse (\(str,x) -> f x >>= \b -> pure (str,b)) xs
 
-{- `exprtoCoreFn` takes a `Maybe SourceType` argument. While in principle we should never need to infer the type
-    using PS type inference machinery (we should always be able to reconstruct it w/ recursive applications of
-    `exprToCoreFn` on the components), I have to get around to rewriting the corefn desugaring code to avoid this.
-
-    Should be DEPRECATED eventually.
--}
-inferType :: M m => Maybe SourceType -> A.Expr -> m SourceType
-inferType (Just t) _ = pure t
-inferType Nothing e = pTrace ("**********HAD TO INFER TYPE FOR: (" <> renderValue 100 e <> ")") >>
-  infer e >>= \case
-    TypedValue' _ _ t -> do
-      traceM ("TYPE: " <> ppType 100 t)
-      pure t
 
 -- Wrapper around instantiatePolyType to provide a better interface
 withInstantiatedFunType :: M m => ModuleName -> SourceType -> (SourceType -> SourceType -> m (Expr Ann)) -> m (Expr Ann)
@@ -259,11 +241,11 @@ instantiatePolyType mn = \case
           -- FIXME: kindType?
           act' ma = withScopedTypeVars mn [(var,kindType)] $ act ma -- NOTE: Might need to pattern match on mbk and use the real kind (though in practice this should always be of kind Type, I think?)
       in (inner, f . g, act')
-  fun@(a :-> r) -> case analyzeCtor a of
+  fun@(a :-> _) -> case analyzeCtor a of
       Just (TypeConstructor _ (Qualified _ nm), _) ->
         if isDictTypeName nm
           then
-            let act' ma = bindLocalVariables [(NullSourceSpan,Ident "dict",a,Defined)] $ ma
+            let act' ma = bindLocalVariables [(NullSourceSpan,Ident "dict",a,Defined)] ma
             in (fun,id,act')
           else (fun,id,id)
       _ -> (fun,id,id)
@@ -289,13 +271,13 @@ traceNameTypes  = do
    will always give us a "wrong" type. Let's try fixing them in the context!
 
 -}
-desugarConstraintType' :: SourceType -> SourceType
-desugarConstraintType' = \case
+desugarConstraintType :: SourceType -> SourceType
+desugarConstraintType = \case
   ForAll a vis var mbk t mSkol ->
-    let t' = desugarConstraintType' t
+    let t' = desugarConstraintType t
     in ForAll a vis var mbk t' mSkol
   ConstrainedType _ Constraint{..} t ->
-    let inner = desugarConstraintType' t
+    let inner = desugarConstraintType t
         dictTyName :: Qualified (ProperName 'TypeName) = dictTypeName . coerceProperName <$> constraintClass
         dictTyCon = srcTypeConstructor dictTyName
         dictTy = foldl srcTypeApp dictTyCon constraintArgs
@@ -305,7 +287,7 @@ desugarConstraintType' = \case
 desugarConstraintTypes :: M m =>  m ()
 desugarConstraintTypes  = do
   env <- getEnv
-  let f = everywhereOnTypes desugarConstraintType'
+  let f = everywhereOnTypes desugarConstraintType
 
       oldNameTypes = names env
       desugaredNameTypes = (\(st,nk,nv) -> (f st,nk,nv)) <$> oldNameTypes
@@ -330,11 +312,12 @@ desugarConstraintsInDecl :: A.Declaration -> A.Declaration
 desugarConstraintsInDecl = \case
   A.BindingGroupDeclaration decls ->
     A.BindingGroupDeclaration
-      $ (\(annIdent,nk,expr) -> (annIdent,nk,overTypes desugarConstraintType' expr)) <$> decls
+      $ (\(annIdent,nk,expr) -> (annIdent,nk,overTypes desugarConstraintType expr)) <$> decls
   A.ValueDecl ann name nk bs [A.MkUnguarded e] ->
-     A.ValueDecl ann name nk bs [A.MkUnguarded $ overTypes desugarConstraintType' e]
+     A.ValueDecl ann name nk bs [A.MkUnguarded $ overTypes desugarConstraintType e]
   A.DataDeclaration ann declTy tName args ctorDecs ->
-    let fixCtor (A.DataConstructorDeclaration a nm fields) = A.DataConstructorDeclaration a nm (second (everywhereOnTypes desugarConstraintType') <$> fields)
+    let fixCtor (A.DataConstructorDeclaration a nm fields)
+          = A.DataConstructorDeclaration a nm (second (everywhereOnTypes desugarConstraintType) <$> fields)
     in A.DataDeclaration ann declTy tName args (fixCtor <$> ctorDecs)
   other -> other
 

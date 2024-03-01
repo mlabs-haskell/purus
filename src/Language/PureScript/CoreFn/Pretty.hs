@@ -84,7 +84,7 @@ prettyPrintValue d (Let _ _  ds val) =
     moveRight 2 (vcat left (map (prettyPrintDeclaration (d - 1)) ds)) //
     (text "in " <> prettyPrintValue (d - 1) val)
 -- TODO: constraint kind args
-prettyPrintValue d (Literal _ _ l) = prettyPrintLiteralValue d l
+prettyPrintValue d (Literal _ ty l) = text "(" <> prettyPrintLiteralValue d l <> ": " <> text (oneLine (ppType 100 ty)) <> text ")"
 prettyPrintValue d expr@Constructor{} = prettyPrintValueAtom d expr
 prettyPrintValue d expr@Var{} = prettyPrintValueAtom d expr
 
