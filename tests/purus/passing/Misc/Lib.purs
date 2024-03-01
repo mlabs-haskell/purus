@@ -168,6 +168,15 @@ polyInObjMatch = case polyInObj of
 aPred :: Int -> Boolean
 aPred _ = true
 
+cons :: forall a. a -> Array a -> Array a
+cons x xs = [x]
+
+emptyList = []
+
+consEmptyList1 = cons 1 emptyList
+
+consEmptyList2 = cons "hello" emptyList
+
 {- We should probably just remove guarded case branches, see slack msg
 guardedCase :: Int
 guardedCase = case polyInObj of
