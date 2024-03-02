@@ -1,5 +1,11 @@
 {-# LANGUAGE TypeApplications, ScopedTypeVariables, RecordWildCards #-}
-module Language.PureScript.CoreFn.Pretty where
+module Language.PureScript.CoreFn.Pretty (
+  writeModule,
+  ppType,
+  prettyTypeStr,
+  renderExprStr,
+  prettyModuleTxt
+) where
 
 import Prelude hiding ((<>))
 
@@ -125,17 +131,9 @@ parens' :: Doc ann -> Doc ann
 parens' d = group $ align $ enclose (lparen <> softline) (rparen <> softline) d
 
 
--- I can't figure out why their type pretty printer mangles record types, this is an incredibly stupid temporary hack
-ppType :: Int -> Type a -> String
-ppType i t = "<TYPE>" {- go [] $ prettyType i t
-  where
-    go :: String -> String -> String
-    go acc [] = acc
-    go acc (' ':xs) = case dropWhile (== ' ') xs of
-      [] -> acc
-      more -> go (acc `mappend` [' ']) more
-    go acc (x:xs) = go (acc `mappend` [x]) xs
--}
+-- TODO: Remove
+ppType :: Show a => Int -> Type a -> String
+ppType i t = prettyTypeStr t
 
 instance Pretty Ident where
   pretty = pretty . showIdent
@@ -177,8 +175,24 @@ lam = "\\"
 oneLineList :: [Doc ann] -> Doc ann
 oneLineList = brackets . hcat . punctuate (comma <> space)
 
-doubleColon :: Doc ann
-doubleColon = hcat [colon,colon]
+-- helpers to ensure even formatting of applications
+
+analyzeApp :: Expr a -> Maybe (Expr a,[Expr a])
+analyzeApp t = (,appArgs t) <$> appFun t
+  where
+    appArgs :: Expr a -> [Expr a]
+    appArgs (App _ _ t1 t2) = appArgs t1 <> [t2]
+    appArgs _  = []
+
+    appFun :: Expr a -> Maybe (Expr a)
+    appFun (App _ _ t1 _) = go t1
+      where
+        go (App _ _ tx _) = case appFun tx of
+          Nothing -> Just tx
+          Just tx' -> Just tx'
+        go other = Just other
+    appFun _ = Nothing
+
 
 prettyObjectKey :: PSString -> Doc ann
 prettyObjectKey = pretty . decodeStringWithReplacement
@@ -199,15 +213,17 @@ prettyValue (Accessor _ ty prop val) fmt =  fmtCat fmt [prettyValueAtom val fmt,
 prettyValue (ObjectUpdate ann _ty o _copyFields ps) fmt = asFmt fmt prettyValueAtom o   <+> recordLike ( goUpdateEntry  <$> ps) fmt
   where
     goUpdateEntry (str,e) =  prettyUpdateEntry str e fmt
-prettyValue (App ann ty val arg) fmt =  group . align $ fmtSep fmt  [prettyValueAtom val fmt, prettyValueAtom arg fmt]
+prettyValue app@(App ann ty val arg) fmt = case analyzeApp app of
+  Just (fun,args) -> case fmt of
+    OneLine -> group . align . hsep .  map (asOneLine prettyValueAtom) $ (fun:args)
+    MultiLine -> group . align . vcat . map (asDynamic prettyValueAtom) $ (fun:args)
+  Nothing -> error "App isn't an App (impossible)"
 
 prettyValue (Abs ann ty arg val) fmt  =
          lam
       <> parens (align $ pretty (showIdent arg) <:> prettyType (getFunArgTy ty) fmt)
       <+> arrow
       <+> fmtIndent fmt (asFmt fmt prettyValue val)
-     -- <> fmtSpacer fmt
-     -- <> hang 2 (asFmt fmt prettyValue val)
 
 -- TODO: Actually implement the one line bracketed format for case exps (I think PS is the same as Haskell?)
 prettyValue (Case ann ty values binders) _ =
@@ -224,10 +240,6 @@ prettyValue (Let _ _  ds val) fmt = align $ vcat [
   indent 2 . vcat $ asDynamic prettyDeclaration <$> ds,
   "in" <+> align (asDynamic  prettyValue val)
   ]
- where
-   prefix = case fmt of
-     OneLine -> align
-     MultiLine -> (line <>) . indent 2
 prettyValue (Literal _ ty l) fmt =  case fmt of {OneLine -> oneLine; MultiLine -> multiLine}
   where
     oneLine = parens $ hcat [
@@ -244,8 +256,8 @@ prettyValue expr@Var{} fmt = prettyValueAtom  expr fmt
 prettyValueAtom :: Expr a -> Printer ann
 prettyValueAtom (Literal _  _ l) fmt = prettyLiteralValue l fmt
 prettyValueAtom (Constructor _ _ _ name _) _ = pretty $ T.unpack $ runProperName name
-prettyValueAtom (Var ann ty ident) fmt  =   parens $  pretty  (showIdent (disqualify ident)) <:> prettyType ty fmt
-prettyValueAtom expr fmt =  prettyValue expr fmt
+prettyValueAtom (Var ann ty ident) fmt  =  parens $ pretty  (showIdent (disqualify ident)) <:> prettyType ty fmt
+prettyValueAtom expr fmt =  parens $ prettyValue expr fmt
 
 prettyLiteralValue :: Literal (Expr a) -> Printer ann
 prettyLiteralValue (NumericLiteral n) = ignoreFmt $ pretty $ either show show n
@@ -389,9 +401,9 @@ prettyType t fmt =  group $ case t of
   ForAll _ vis var mKind inner' _ -> case stripQuantifiers inner' of
     (quantified,inner) ->  goForall ([(vis,var,mKind)] <> quantified) inner
 
-  ConstrainedType _ constraint inner -> error "TODO: ConstrainedType"
+  ConstrainedType _ constraint inner -> error "TODO: ConstrainedType (shouldn't ever appear in Purus CoreFn)"
 
-  Skolem _ txt mKind inner mSkolScope -> error "TODO: Skolem"
+  Skolem _ txt mKind inner mSkolScope -> error "TODO: Skolem (shouldn't ever appear in Purus CoreFn)"
 
   REmpty _ -> "{}"
 
@@ -405,9 +417,8 @@ prettyType t fmt =  group $ case t of
 
   ParensInType _ ty -> parens (prettyType ty fmt)
  where
-
    goForall :: [(TypeVarVisibility,Text,Maybe (Type a))] -> Type a -> Doc ann
-   goForall xs inner = "forall" <+> fmtCat fmt (renderBoundVar <$> xs) <> "." <+> prettyType inner fmt
+   goForall xs inner = "forall" <+> fmtSep fmt (renderBoundVar <$> xs) <> "." <+> prettyType inner fmt
 
    prefixVis :: TypeVarVisibility -> Doc ann -> Doc ann
    prefixVis vis tv = case vis of

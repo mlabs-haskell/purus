@@ -147,6 +147,16 @@ aFunction6 = aFunction [] go
     go :: forall (z :: Type). z -> Int
     go _ = 10
 
+nestedApplications :: Int
+nestedApplications = i (f (g (h 2))) 4
+  where
+    i x _ = x
+    f x = x
+    g _ = 5
+    h = case _ of
+      2 -> 3
+      _ -> 5
+
 {- Objects -}
 
 anObj :: {foo :: Int}
