@@ -124,7 +124,7 @@ rebuildModuleWithIndex MakeActions{..} exEnv externs m@(Module _ _ moduleName _ 
   -- pTrace exps
   ((coreFn,chkSt'),nextVar'') <- runSupplyT nextVar' $ runStateT (CFT.moduleToCoreFn mod') chkSt -- (emptyCheckState env')
 
-  traceM . T.unpack $ CFT.prettyPrintModuleTxt  coreFn
+  traceM . T.unpack $ CFT.prettyModuleTxt  coreFn
   let corefn = coreFn
       (optimized, nextVar''') = runSupply nextVar'' $ CF.optimizeCoreFn corefn
       (renamedIdents, renamed) = renameInModule optimized

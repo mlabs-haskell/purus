@@ -60,7 +60,7 @@ import System.FilePath ((</>), makeRelative, splitPath, normalise, splitDirector
 import System.FilePath.Posix qualified as Posix
 import System.IO (stderr, withFile, IOMode(WriteMode))
 import Language.PureScript.CoreFn.ToJSON (moduleToJSON)
-import Language.PureScript.CoreFn.Pretty (writeModule, prettyPrintModule)
+import Language.PureScript.CoreFn.Pretty (writeModule)
 
 
 -- | Determines when to rebuild a module
