@@ -73,6 +73,10 @@ fmtSpacer = \case
   OneLine -> space
   MultiLine -> softline
 
+fmtIndent :: LineFormat -> Doc ann -> Doc ann
+fmtIndent = \case
+  OneLine -> id
+  MultiLine -> \doc -> line <> indent 2 doc
 
 printer :: Doc ann -> Doc ann -> Printer ann
 printer one multi = \case
@@ -96,7 +100,7 @@ openRecord = withOpenRow lbrace rbrace
 
 recordLike ::  [Doc ann] -> Printer ann
 recordLike  fields fmt   =
-  enclose (lbrace <> spacer) (rbrace <> spacer)
+  enclose (lbrace <> spacer) (space <> rbrace)
   . fmtSep fmt
   . punctuate comma
   $ fields
@@ -201,8 +205,9 @@ prettyValue (Abs ann ty arg val) fmt  =
          lam
       <> parens (align $ pretty (showIdent arg) <:> prettyType (getFunArgTy ty) fmt)
       <+> arrow
-      <> fmtSpacer fmt
-      <> hang 2 (asFmt fmt prettyValue val)
+      <+> fmtIndent fmt (asFmt fmt prettyValue val)
+     -- <> fmtSpacer fmt
+     -- <> hang 2 (asFmt fmt prettyValue val)
 
 -- TODO: Actually implement the one line bracketed format for case exps (I think PS is the same as Haskell?)
 prettyValue (Case ann ty values binders) _ =
@@ -257,7 +262,7 @@ prettyLiteralValue (ObjectLiteral ps) = prettyObject  $ second Just `map` ps
 
 prettyDeclaration :: forall a ann. Bind a -> Printer ann
 -- REVIEW: Maybe we don't want to ignore the format?
-prettyDeclaration b = ignoreFmt $ case b of
+prettyDeclaration b fmt = case b of
   NonRec _ ident expr -> goBind ident expr
   Rec bindings -> vcat $ map  (\((_,ident),expr) -> goBind ident expr) bindings
  where
@@ -265,17 +270,21 @@ prettyDeclaration b = ignoreFmt $ case b of
    goBind ident expr =
      pretty ident <::> asOneLine prettyType (exprType expr)
      <> hardline
-     <> pretty ident <=> asDynamic prettyValue  expr
+     <> goInner ident expr
+   goInner :: Ident -> Expr a -> Doc ann
+   goInner ident expr =
+     let f g = pretty ident <=> g (asDynamic prettyValue  expr)
+     in group $ flatAlt (f  (fmtIndent fmt))  (f id)
 
 prettyCaseAlternative ::  forall a ann. CaseAlternative a -> Printer ann
 -- prettyCaseAlternative d _ | d < 0 = ellipsis
 prettyCaseAlternative (CaseAlternative binders result) fmt =
-  hsep ( asFmt fmt prettyBinderAtom  <$> binders) <> prettyResult result
+  hsep (asFmt fmt prettyBinderAtom  <$> binders) <> prettyResult result
   where
   prettyResult :: Either [(Guard a, Expr a)] (Expr a) -> Doc ann
   prettyResult = \case
     Left ges -> vcat $  map prettyGuardedValueSep'   ges
-    Right exp' -> space <> arrow <+> prettyValue  exp' fmt
+    Right exp' -> space <> arrow <+> fmtIndent fmt (prettyValue  exp' fmt)
 
   prettyGuardedValueSep' :: (Guard a, Expr a) -> Doc ann
   prettyGuardedValueSep' (guardE, resultE) = " | " <> prettyValue  guardE fmt <+> arrow  <+> prettyValue  resultE fmt
