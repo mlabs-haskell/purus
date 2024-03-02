@@ -58,9 +58,10 @@ import SourceMap.Types (Mapping(..), Pos(..), SourceMapping(..))
 import System.Directory (getCurrentDirectory)
 import System.FilePath ((</>), makeRelative, splitPath, normalise, splitDirectories)
 import System.FilePath.Posix qualified as Posix
-import System.IO (stderr)
+import System.IO (stderr, withFile, IOMode(WriteMode))
 import Language.PureScript.CoreFn.ToJSON (moduleToJSON)
-import Language.PureScript.CoreFn.Pretty (prettyPrintModule')
+import Language.PureScript.CoreFn.Pretty (writeModule, prettyPrintModule)
+
 
 -- | Determines when to rebuild a module
 data RebuildPolicy
@@ -266,7 +267,8 @@ buildMakeActions outputDir filePathMap foreigns usePrefix =
     when (S.member CoreFn codegenTargets) $ do
       let targetFile = (targetFilename mn CoreFn)
       lift $ writeJSONFile targetFile (moduleToJSON (makeVersion [0,0,1]) m)
-      lift $ makeIO "write pretty core" $ writeFile (targetFile <> ".pretty") (prettyPrintModule' m)
+      lift $ makeIO "write pretty core" $ withFile (targetFile <> ".pretty") WriteMode $ \handle ->
+        writeModule  handle m
     when (S.member CheckCoreFn codegenTargets) $ do
       let mn' = T.unpack (runModuleName mn)
       mabOldModule <- lift $ readJSONFile  (targetFilename mn CoreFn)

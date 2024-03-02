@@ -52,6 +52,7 @@ import Language.PureScript.CoreFn qualified as CFT
 import Language.PureScript.CoreFn.Pretty qualified as CFT
 import System.Directory (doesFileExist)
 import System.FilePath (replaceExtension)
+import Prettyprinter.Util (putDocW)
 
 -- Temporary
 import Debug.Trace (traceM)
@@ -123,7 +124,7 @@ rebuildModuleWithIndex MakeActions{..} exEnv externs m@(Module _ _ moduleName _ 
   -- pTrace exps
   ((coreFn,chkSt'),nextVar'') <- runSupplyT nextVar' $ runStateT (CFT.moduleToCoreFn mod') chkSt -- (emptyCheckState env')
 
-  traceM $ CFT.prettyPrintModule'  coreFn
+  traceM . T.unpack $ CFT.prettyPrintModuleTxt  coreFn
   let corefn = coreFn
       (optimized, nextVar''') = runSupply nextVar'' $ CF.optimizeCoreFn corefn
       (renamedIdents, renamed) = renameInModule optimized

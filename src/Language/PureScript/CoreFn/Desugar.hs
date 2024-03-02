@@ -64,7 +64,7 @@ import Control.Monad (forM, (>=>), foldM)
 import Language.PureScript.Errors
     ( MultipleErrors, errorMessage', SimpleErrorMessage(..))
 import Debug.Trace (traceM)
-import Language.PureScript.CoreFn.Pretty ( ppType, renderExpr )
+import Language.PureScript.CoreFn.Pretty ( ppType, renderExprStr )
 import Data.Text qualified as T
 import Language.PureScript.Pretty.Values (renderValue)
 import Language.PureScript.TypeChecker.Monad
@@ -354,10 +354,10 @@ exprToCoreFn mn ss mTy app@(A.App fun arg)
       traceM $ renderValue 100 app
       fun' <- exprToCoreFn mn ss Nothing fun
       let funTy = exprType fun'
-      traceM $ "app fun:\n" <> ppType 100  funTy <> "\n" <> renderExpr 100 fun'
+      traceM $ "app fun:\n" <> ppType 100  funTy <> "\n" <> renderExprStr fun'
       withInstantiatedFunType mn  funTy $ \a b -> do
         arg' <- exprToCoreFn mn ss (Just a) arg
-        traceM $ "app arg:\n" <> ppType 100 (exprType arg') <> "\n" <> renderExpr 100 arg'
+        traceM $ "app arg:\n" <> ppType 100 (exprType arg') <> "\n" <> renderExprStr arg'
         pure $ App (ss, [], Nothing) (fromMaybe b mTy) fun' arg'
 
   where
