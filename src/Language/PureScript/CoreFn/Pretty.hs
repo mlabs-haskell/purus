@@ -1,4 +1,4 @@
-{-# LANGUAGE TypeApplications, ScopedTypeVariables, RecordWildCards #-}
+{-# LANGUAGE TypeApplications, ScopedTypeVariables #-}
 module Language.PureScript.CoreFn.Pretty (
   writeModule,
   ppType,
@@ -53,10 +53,8 @@ import Prettyprinter
       pipe,
       comma,
       punctuate,
-      enclose,
       indent,
       line,
-      softline,
       space,
       vcat,
       hcat,
@@ -75,7 +73,6 @@ import Prettyprinter.Render.Text ( renderIO, renderStrict )
    The existing printer is extremely difficult to modify for our needs (e.g. there isn't a clear way to force
    an expression or type to print on one line). Because reading the CoreFn output is necessary
    to ensure correctness, it's important that we get get something legible.
-
 -}
 
 
@@ -92,16 +89,16 @@ type Formatter = forall a ann. (a -> Printer ann) -> a -> Doc ann
 runPrinter :: LineFormat -> Printer ann -> Doc ann
 runPrinter fmt p = runReader p fmt
 
-asFmt :: LineFormat -> (a -> Printer ann) -> a -> Doc ann
-asFmt fmt f x = case fmt of
-  OneLine -> asOneLine f x
-  MultiLine -> asDynamic f x
-
 asOneLine :: Formatter
 asOneLine p x = runPrinter OneLine (p x)
 
 asDynamic :: Formatter
 asDynamic p x = group $ align $ flatAlt (runPrinter MultiLine (p x)) (runPrinter OneLine (p x))
+
+onMultiline :: (Doc ann -> Doc ann) -> Doc ann -> Printer ann
+onMultiline f doc = ask >>= \case
+  OneLine -> pure doc
+  MultiLine -> pure . f $ doc
 
 ignoreFmt :: Doc ann -> Printer ann
 ignoreFmt doc = printer doc doc
@@ -116,11 +113,6 @@ fmtCat docs = ask >>= \case
   OneLine -> pure $ hcat docs
   MultiLine -> pure $ vcat docs
 
-fmtSpacer :: Printer  ann
-fmtSpacer = ask >>= \case
-  OneLine -> pure space
-  MultiLine -> pure softline
-
 fmtIndent :: Doc ann -> Printer ann
 fmtIndent doc = ask >>= \case
   OneLine -> pure doc
@@ -133,9 +125,8 @@ printer one multi = ask >>= \case
 
 withOpenRow :: forall ann. Doc ann -> Doc ann -> ([Doc ann],Doc ann) -> Printer ann
 withOpenRow l r (fields,open) = do
-  spacer <- fmtSpacer
-  fmtFields <- fmtSep $ punctuate comma fields'
-  pure . group . align $ enclose (l <> spacer) (spacer <> r) fmtFields
+  fmtFields <- onMultiline (indent 2) =<< fmtSep (punctuate comma fields')
+  group . align <$> fmtSep [l,fmtFields, r] -- fmtFields
   where
     fields' =  foldr (\x acc -> case acc of
                       [] -> [hsep [x,pipe <++> open]]
@@ -150,30 +141,17 @@ openRecord = withOpenRow lbrace rbrace
 
 recordLike ::  [Doc ann] -> Printer ann
 recordLike  fields  = do
-  spacer <- fmtSpacer
-  fields' <- fmtSep $ punctuate comma fields
-  pure $ enclose (lbrace <> spacer) (space <> rbrace) fields'
-
-record :: [Doc ann] -> Printer ann
-record = recordLike
-
-object :: [Doc ann] -> Printer ann
-object = recordLike
+  fields' <- onMultiline (indent 2) =<< fmtSep (punctuate comma fields)
+  group . align <$> fmtSep  [lbrace,fields',rbrace]
 
 commaSep :: [Doc ann] -> Doc ann
 commaSep = vsep . punctuate comma
 
-indent' :: Int -> Doc ann -> Doc ann
-indent' i doc = group . align $ flatAlt (indent i doc) doc
-
-parens' :: Doc ann -> Doc ann
-parens' d = group $ align $ enclose (lparen <> softline) (rparen <> softline) d
-
-
 -- TODO: Remove
 ppType :: Show a => Int -> Type a -> String
-ppType i t = prettyTypeStr t
+ppType _ t = prettyTypeStr t
 
+-- TODO: Move to modules where types are defined
 instance Pretty Ident where
   pretty = pretty . showIdent
 
@@ -253,36 +231,31 @@ prettyUpdateEntry key val  = do
 -- | Pretty-print an expression
 prettyValue :: Expr a -> Printer ann
 -- prettyValue _ | d < 0 = text "..."
-prettyValue (Accessor _ ty prop val)  =  do
+prettyValue (Accessor _ _ prop val)  =  do
   prop' <- prettyObjectKey prop
   val' <- prettyValueAtom val
   fmtCat [val',hcat[dot,prop']]
-prettyValue (ObjectUpdate ann _ty o _copyFields ps)  = do
+prettyValue (ObjectUpdate _ _ty o _copyFields ps)  = do
   obj <- prettyValueAtom o
   updateEntries <- traverse goUpdateEntry ps >>= recordLike
   pure $ obj <+> updateEntries -- prettyValueAtom o   <+> recordLike ( goUpdateEntry  <$> ps) fmt
   where
     goUpdateEntry = uncurry prettyUpdateEntry
-prettyValue app@(App ann ty val arg)  = case analyzeApp app of
+prettyValue app@(App _ _ _ _)  = case analyzeApp app of
   Just (fun,args) -> ask >>= \case
     OneLine -> pure . group . align . hsep .  map (asOneLine prettyValueAtom) $ (fun:args)
     MultiLine -> pure . group . align . vcat . map (asDynamic prettyValueAtom) $ (fun:args)
   Nothing -> error "App isn't an App (impossible)"
 
-prettyValue (Abs ann ty arg val) = do
+prettyValue (Abs _ ty arg val) = do
   ty' <- prettyType (getFunArgTy ty)
   body' <- fmtIndent =<< prettyValue val
   pure $ lam
          <> parens (align $ pretty (showIdent arg) <:> ty')
          <+> arrow
          <+> body'
-      {-   lam
-      <> parens (align $ pretty (showIdent arg) <:> prettyType (getFunArgTy ty) fmt)
-      <+> arrow
-      <+> fmtIndent fmt (asFmt fmt prettyValue val)
-      -}
 -- TODO: Actually implement the one line bracketed format for case exps (I think PS is the same as Haskell?)
-prettyValue (Case ann ty values binders) = pure $
+prettyValue (Case _ _ values binders) = pure $
   "case"
   <+> group (hsep scrutinees)
   <+> "of"
@@ -296,15 +269,20 @@ prettyValue (Let _ _  ds val)  = pure . align $ vcat [
   indent 2 . vcat $ asDynamic prettyDeclaration <$> ds,
   "in" <+> align (asDynamic  prettyValue val)
   ]
-prettyValue (Literal _ ty l)  = ask >>= \case {OneLine -> pure oneLine; MultiLine -> pure multiLine}
+prettyValue (Literal _ ty l)  = ask >>= \case {OneLine ->  oneLine; MultiLine -> multiLine}
   where
-    oneLine = parens $ hcat [
-      asOneLine prettyLiteralValue l,
-      colon,
-      space,
-      asOneLine prettyType ty
-      ]
-    multiLine = parens $ asDynamic prettyLiteralValue l <:> asDynamic prettyType ty
+    -- No type anns for object literals (already annotated in the fields, makes too ugly)
+    oneLine = case l of
+      ObjectLiteral{} ->  prettyLiteralValue l
+      _ -> pure . parens $ hcat [
+        asOneLine prettyLiteralValue l,
+        colon,
+        space,
+        asOneLine prettyType ty
+        ]
+    multiLine = case l of
+      ObjectLiteral{} -> prettyLiteralValue l
+      _ -> pure . parens $ asDynamic prettyLiteralValue l <:> asDynamic prettyType ty
 prettyValue expr@Constructor{}  = prettyValueAtom  expr
 prettyValue expr@Var{}  = prettyValueAtom  expr
 
@@ -312,7 +290,7 @@ prettyValue expr@Var{}  = prettyValueAtom  expr
 prettyValueAtom :: Expr a -> Printer ann
 prettyValueAtom (Literal _  _ l)  = prettyLiteralValue l
 prettyValueAtom (Constructor _ _ _ name _) = pure . pretty $ T.unpack $ runProperName name
-prettyValueAtom (Var ann ty ident)  =  prettyType ty >>= \ty' ->
+prettyValueAtom (Var _ ty ident)  =  prettyType ty >>= \ty' ->
   pure . parens $ pretty  (showIdent (disqualify ident)) <:> ty'
 prettyValueAtom expr =  parens <$> prettyValue expr
 
@@ -330,7 +308,6 @@ prettyLiteralValue (ArrayLiteral xs) = printer oneLine multiLine
 prettyLiteralValue (ObjectLiteral ps) = prettyObject  $ second Just `map` ps
 
 prettyDeclaration :: forall a ann. Bind a -> Printer ann
--- REVIEW: Maybe we don't want to ignore the format?
 prettyDeclaration b  = case b of
   NonRec _ ident expr -> goBind ident expr
   Rec bindings -> vcat <$> traverse  (\((_,ident),expr) -> goBind ident expr) bindings
@@ -351,11 +328,10 @@ prettyDeclaration b  = case b of
      pure $ group $ flatAlt (f ind)  (f id)
 
 prettyCaseAlternative ::  forall a ann. CaseAlternative a -> Printer ann
--- prettyCaseAlternative d _ | d < 0 = ellipsis
 prettyCaseAlternative (CaseAlternative binders result)  = do
-  binders' <- traverse prettyBinderAtom binders
+  let binders' =  asOneLine prettyBinderAtom <$> binders
   result'  <- prettyResult result
-  pure $ hsep binders' <> result' -- hsep (asFmt fmt prettyBinderAtom  <$> binders) <> prettyResult result
+  pure $ hsep binders' <> result'
   where
   prettyResult :: Either [(Guard a, Expr a)] (Expr a) -> Printer ann
   prettyResult = \case
@@ -363,7 +339,6 @@ prettyCaseAlternative (CaseAlternative binders result)  = do
     Right exp' -> do
       body' <- prettyValue exp' >>= fmtIndent
       pure $ space <> arrow <+> body'
-      -- space <> arrow <+> fmtIndent fmt (prettyValue  exp' fmt)
 
   prettyGuardedValueSep' :: (Guard a, Expr a) -> Printer ann
   prettyGuardedValueSep' (guardE, resultE) = do
@@ -371,10 +346,9 @@ prettyCaseAlternative (CaseAlternative binders result)  = do
     resultE' <- prettyValue resultE
     pure $ " | " <> guardE'  <+> arrow  <+> resultE'
 
-
 prettyModule :: Module a -> Doc ann
-prettyModule (Module modSS modComments modName modPath modImports modExports modReExports modForeign modDecls) =
-  vsep  $
+prettyModule (Module _ _ modName modPath modImports modExports modReExports modForeign modDecls) =
+  vsep
     [ pretty modName <+>  parens (pretty modPath)
     , "Imported Modules: "
     , indent 2 . commaSep $ pretty . snd  <$>  modImports
@@ -427,7 +401,7 @@ prettyLiteralBinder (CharLiteral c) = pure $ viaShow c
 prettyLiteralBinder (NumericLiteral num) = pure $ either pretty pretty num
 prettyLiteralBinder (BooleanLiteral True) = pure "true"
 prettyLiteralBinder (BooleanLiteral False) = pure "false"
-prettyLiteralBinder (ObjectLiteral bs) =  object =<< traverse prettyObjectPropertyBinder bs
+prettyLiteralBinder (ObjectLiteral bs) =  recordLike =<< traverse prettyObjectPropertyBinder bs
   where
   prettyObjectPropertyBinder :: (PSString, Binder a) -> Printer ann
   prettyObjectPropertyBinder (key, binder) = do
@@ -436,9 +410,6 @@ prettyLiteralBinder (ObjectLiteral bs) =  object =<< traverse prettyObjectProper
     pure $ key' <:> binder'
 prettyLiteralBinder (ArrayLiteral bs) = list <$> traverse prettyBinder bs
 
--- |
--- Generate a pretty-printed string representing a Binder
---
 prettyBinder :: Binder a -> Printer ann
 prettyBinder (ConstructorBinder _ _ ctor [])  = pure . pretty $ runProperName (disqualify ctor)
 prettyBinder (ConstructorBinder _ _ ctor args) = do
@@ -446,9 +417,7 @@ prettyBinder (ConstructorBinder _ _ ctor args) = do
   pure $ pretty (runProperName (disqualify ctor)) <+> args' -- fmtSep fmt (asFmt fmt prettyBinderAtom <$> args)
 prettyBinder b = prettyBinderAtom b
 
-
 {- TYPES (move later) -}
-
 prettyType :: forall a ann. Show a => Type a -> Printer ann
 prettyType t  =  group <$> case t of
   TUnknown _ n -> pure $ "t" <> pretty n
@@ -465,11 +434,11 @@ prettyType t  =  group <$> case t of
 
   TypeConstructor _ qPropName -> pure . pretty . runProperName . disqualify $ qPropName
 
-  TypeOp a opName -> pure . pretty $ showQualified runOpName opName
+  TypeOp _ opName -> pure . pretty $ showQualified runOpName opName
 
   TypeApp _ t1 t2 -> goTypeApp t1 t2
 
-  KindApp a k1 k2 -> do
+  KindApp _ k1 k2 -> do
     k1' <- prettyType k1
     k2' <- prettyType k2
     pure $ k1' <> ("@" <> k2' )
@@ -477,22 +446,22 @@ prettyType t  =  group <$> case t of
   ForAll _ vis var mKind inner' _ -> case stripQuantifiers inner' of
     (quantified,inner) ->  goForall ([(vis,var,mKind)] <> quantified) inner
 
-  ConstrainedType _ constraint inner -> error "TODO: ConstrainedType (shouldn't ever appear in Purus CoreFn)"
+  ConstrainedType _ _ _ -> error "TODO: ConstrainedType (shouldn't ever appear in Purus CoreFn)"
 
-  Skolem _ txt mKind inner mSkolScope -> error "TODO: Skolem (shouldn't ever appear in Purus CoreFn)"
+  Skolem _ _ _ _ _ -> error "TODO: Skolem (shouldn't ever appear in Purus CoreFn)"
 
   REmpty _ -> pure "{}"
 
   rcons@RCons{} -> either openRow (pure . tupled) =<< rowFields rcons
 
   -- this might be backwards
-  KindedType a ty kind -> do
+  KindedType _ ty kind -> do
     ty' <- prettyType ty
     kind' <- prettyType kind
     pure .  parens $  ty' <::> kind' -- prettyType ty fmt <::> prettyType kind fmt
 
   -- not sure what this is?
-  BinaryNoParensType a op l r -> do
+  BinaryNoParensType _ op l r -> do
     l' <- prettyType l
     op' <- prettyType op
     r' <- prettyType r
@@ -530,17 +499,14 @@ prettyType t  =  group <$> case t of
          a' <- prettyType a
          b' <- prettyType b
          fmtSep [a' <+> arrow,b']
-         -- fmtSep fmt [prettyType a fmt <+> arrow, prettyType b fmt]
      | otherwise = do
          f' <- goTypeApp f a
          b' <- prettyType b
          pure $ parens $ f' <+> b'
    goTypeApp o ty@RCons{}
      | eqType o tyRecord =
-         -- TODO: Rows aren't records -_-
-         either openRecord record =<< rowFields ty
-
-   goTypeApp a b =  fmtSep =<< traverse prettyType [a,b] -- [prettyType a fmt,prettyType b fmt]
+         either openRecord recordLike =<< rowFields ty
+   goTypeApp a b =  fmtSep =<< traverse prettyType [a,b]
 
    rowFields :: Type a -> Reader LineFormat (Either ([Doc ann], Doc ann) [Doc ann])
    rowFields = \case
@@ -550,6 +516,6 @@ prettyType t  =  group <$> case t of
            rest' <- rowFields rest
            pure $ bimap (first f) f rest'
          REmpty _ -> pure $ Right []
-         KindApp _ REmpty{} _  -> pure $ Right [] -- REmpty is sometimes wrapped in a kind app?
+         KindApp _ REmpty{} _  -> pure $ Right [] -- REmpty is sometimes wrapped in a kind app
          TypeVar _ txt -> pure $ Left ([],pretty txt)
          other -> error $ "Malformed row fields: \n" <> show other
