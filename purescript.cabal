@@ -252,6 +252,9 @@ library
     Language.PureScript.CoreFn.Module
     Language.PureScript.CoreFn.Optimizer
     Language.PureScript.CoreFn.Pretty
+    Language.PureScript.CoreFn.Pretty.Common
+    Language.PureScript.CoreFn.Pretty.Expr
+    Language.PureScript.CoreFn.Pretty.Types
     Language.PureScript.CoreFn.ToJSON
     Language.PureScript.CoreFn.Traversals
     Language.PureScript.CoreImp
