@@ -224,7 +224,7 @@ exprToCoreFn mn ss (Just arrT@(ArrayT ty)) astlit@(A.Literal _ (ArrayLiteral ts)
   arr <- ArrayLiteral <$> traverse (exprToCoreFn mn ss (Just ty)) ts
   pure $ Literal (ss,[],Nothing) arrT  arr
 -- An empty list could either have a TyVar or a quantified type (or a concrete type, which is handled by the previous case)
-exprToCoreFn mn ss (Just tyVar) astlit@(A.Literal _ (ArrayLiteral [])) = wrapTrace ("exprToCoreFn ARRAYLIT EMPTY " <> renderValue 100 astlit) $ do
+exprToCoreFn _ ss (Just tyVar) astlit@(A.Literal _ (ArrayLiteral [])) = wrapTrace ("exprToCoreFn ARRAYLIT EMPTY " <> renderValue 100 astlit) $ do
   pure $ Literal (ss,[],Nothing) tyVar (ArrayLiteral [])
 exprToCoreFn _ _ Nothing astlit@(A.Literal _ (ArrayLiteral _)) =
   internalError $ "Error while desugaring Array Literal. No type provided for literal:\n" <> renderValue 100 astlit
@@ -376,8 +376,7 @@ exprToCoreFn _ _ _ (A.Var ss ident) = wrapTrace ("exprToCoreFn VAR " <> show ide
     Nothing -> lookupDictType ident >>= \case
       Just ty -> pure $  Var (ss, [], getValueMeta env ident) (purusTy ty) ident
       Nothing -> do
-      -- pEnv <- printEnv
-        traceM $ "No known type for identifier " <> show ident -- <> "\n    in:\n" <> LT.unpack (pShow $ names env)
+        traceM $ "No known type for identifier " <> show ident
         error "boom"
 -- If-Then-Else Turns into a case expression
 exprToCoreFn mn ss (Just resT) (A.IfThenElse cond th el) = wrapTrace "exprToCoreFn IFTE" $ do
@@ -539,11 +538,11 @@ inferBinder'
   -> A.Binder
   -> m (M.Map Ident (SourceSpan, SourceType))
 inferBinder' _ A.NullBinder = return M.empty
-inferBinder' val (A.LiteralBinder _ (StringLiteral _)) = wrapTrace "inferBinder' STRLIT" $ return M.empty
-inferBinder' val (A.LiteralBinder _ (CharLiteral _)) = wrapTrace "inferBinder' CHARLIT" $  return M.empty
-inferBinder' val (A.LiteralBinder _ (NumericLiteral (Left _))) = wrapTrace "inferBinder' LITINT" $ return M.empty
-inferBinder' val (A.LiteralBinder _ (NumericLiteral (Right _))) = wrapTrace "inferBinder' NUMBERLIT" $ return M.empty
-inferBinder' val (A.LiteralBinder _ (BooleanLiteral _)) = wrapTrace "inferBinder' BOOLLIT" $ return M.empty
+inferBinder' _ (A.LiteralBinder _ (StringLiteral _)) = wrapTrace "inferBinder' STRLIT" $ return M.empty
+inferBinder' _ (A.LiteralBinder _ (CharLiteral _)) = wrapTrace "inferBinder' CHARLIT" $  return M.empty
+inferBinder' _ (A.LiteralBinder _ (NumericLiteral (Left _))) = wrapTrace "inferBinder' LITINT" $ return M.empty
+inferBinder' _ (A.LiteralBinder _ (NumericLiteral (Right _))) = wrapTrace "inferBinder' NUMBERLIT" $ return M.empty
+inferBinder' _ (A.LiteralBinder _ (BooleanLiteral _)) = wrapTrace "inferBinder' BOOLLIT" $ return M.empty
 inferBinder' val (A.VarBinder ss name) = wrapTrace ("inferBinder' VAR " <> T.unpack (runIdent name))  $ return $ M.singleton name (ss, val)
 inferBinder' val (A.ConstructorBinder ss ctor binders) = wrapTrace ("inferBinder' CTOR: " <> show ctor) $ do
   traceM $ "InferBinder VAL:\n" <>  ppType 100 val
@@ -559,7 +558,7 @@ inferBinder' val (A.ConstructorBinder ss ctor binders) = wrapTrace ("inferBinder
       M.unions <$> zipWithM inferBinder' (reverse args) binders
     _ -> throwError . errorMessage' ss . UnknownName . fmap DctorName $ ctor
   where
-  peelArgs :: Type a -> ([Type a], Type a) -- NOTE: Not sure if we want to "peel constraints" too. Need to think of an example to test.
+  peelArgs :: Type a -> ([Type a], Type a)
   peelArgs = go []
     where
     go args (TypeApp _ (TypeApp _ fn arg) ret) | eqType fn tyFunction = go (arg : args) ret
@@ -578,7 +577,7 @@ inferBinder' val (A.LiteralBinder _ (ObjectLiteral props)) = wrapTrace "inferBin
           -- The type-level labels are authoritative
           diff = S.difference typeKeys exprKeys
       if S.null diff
-        then deduceRowProperties (M.fromList rowItems) props' -- M.unions <$> zipWithM inferBinder' (snd <$> rowItems) (snd <$> props')
+        then deduceRowProperties (M.fromList rowItems) props'
         else error $ "Error. Object literal in a pattern match is missing fields: " <> show diff
   where
   deduceRowProperties :: M.Map PSString SourceType -> [(PSString,A.Binder)] -> m (M.Map Ident (SourceSpan,SourceType))
@@ -598,10 +597,8 @@ inferBinder' val (A.NamedBinder ss name binder) = wrapTrace ("inferBinder' NAMED
     return $ M.insert name (ss, val) m
 inferBinder' val (A.PositionedBinder pos _ binder) = wrapTrace "inferBinder' POSITIONEDBINDER" $
   warnAndRethrowWithPositionTC pos $ inferBinder' val binder
-inferBinder' val (A.TypedBinder ty binder) = wrapTrace "inferBinder' TYPEDBINDER" $ do
-  (elabTy, kind) <- kindOf ty
-  -- checkTypeKind ty kind -- NOTE: Check whether we really need to do anything except inferBinder' the inner
-  -- unifyTypes val elabTy
+inferBinder' _ (A.TypedBinder ty binder) = wrapTrace "inferBinder' TYPEDBINDER" $ do
+  (elabTy, _) <- kindOf ty
   inferBinder' elabTy binder
 inferBinder' _ A.OpBinder{} =
   internalError "OpBinder should have been desugared before inferBinder'"

@@ -260,7 +260,6 @@ unwrapRecord = \case
   go :: RowListItem a -> (PSString, Type a)
   go RowListItem{..} = (runLabel rowListLabel, rowListType)
 
-
 traceNameTypes :: M m => m ()
 traceNameTypes  = do
   nametypes <- getEnv >>= pure . debugNames
@@ -321,7 +320,6 @@ desugarConstraintsInDecl = \case
     in A.DataDeclaration ann declTy tName args (fixCtor <$> ctorDecs)
   other -> other
 
-
 -- Gives much more readable output (with colors for brackets/parens!) than plain old `show`
 pTrace :: (Monad m, Show a) => a -> m ()
 pTrace = traceM . LT.unpack . pShow
@@ -338,7 +336,6 @@ wrapTrace msg act = do
    pad str = padding <> str <> padding
    startMsg = pad $ "BEGIN " <> msg
    endMsg = pad $ "END " <> msg
-
 
 {-
   This is used to solve a problem that arises with re-exported instances.
