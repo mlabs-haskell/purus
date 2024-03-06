@@ -379,13 +379,18 @@ pattern ArrayT :: Type a -> Type a
 pattern ArrayT a <-
   TypeApp _ (TypeConstructor _ C.Array) a
 
+
+
+arrayT :: SourceType -> SourceType
+arrayT = TypeApp NullSourceAnn (TypeConstructor NullSourceAnn C.Array)
+
 pattern RecordT :: Type a -> Type a
 pattern RecordT a <-
   TypeApp _ (TypeConstructor _ C.Record) a
 
 
 
-getFunArgTy :: Type () -> Type ()
+getFunArgTy :: Type a -> Type a
 getFunArgTy = \case
   a :-> _ -> a
   ForAll _ _ _ _ t  _ -> getFunArgTy t

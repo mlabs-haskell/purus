@@ -30,6 +30,10 @@ import Language.PureScript.Types ()
 
 import Text.ParserCombinators.ReadP (readP_to_S)
 
+-- dunno how to work around the orphan
+instance FromJSON (Module Ann) where
+  parseJSON = fmap snd .  moduleFromJSON
+
 parseVersion' :: String -> Maybe Version
 parseVersion' str =
   case filter (null . snd) $ readP_to_S parseVersion str of

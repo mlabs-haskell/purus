@@ -18,16 +18,21 @@ data Options = Options
 
 -- Default make options
 defaultOptions :: Options
-defaultOptions = Options False False (S.singleton JS)
+defaultOptions = Options False False (S.singleton CoreFn)
 
-data CodegenTarget = JS | JSSourceMap | Docs | UPLC
+data CodegenTarget
+    = Docs
+    | CoreFn
+    {- N.B. We need a compilation mode that tests for changes from existing serialized CoreFn.
+            This is the easiest way to implement that (though maybe we should do something else for the final version)
+    -}
+    | CheckCoreFn
   deriving (Eq, Ord, Show)
 
 codegenTargets :: Map String CodegenTarget
 codegenTargets = Map.fromList
-  [ ("js", JS)
-  , ("uplc", UPLC)
-  , ("sourcemaps", JSSourceMap)
+  [ ("coreFn", CoreFn)
+  , ("checkCoreFn", CheckCoreFn)
   -- , ("corefn", CoreFn)
   , ("docs", Docs)
   ]

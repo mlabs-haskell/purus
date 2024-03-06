@@ -11,10 +11,10 @@ import Language.PureScript.AST.Literals (Literal)
 import Language.PureScript.CoreFn.Binders (Binder)
 import Language.PureScript.Names (Ident, ProperName, ProperNameType(..), Qualified)
 import Language.PureScript.PSString (PSString)
-import Language.PureScript.Types (Type)
+import Language.PureScript.Types (Type, SourceType)
 
 
-type PurusType = Type ()
+type PurusType = SourceType -- Type ()
 
 -- |
 -- Data type for expressions and terms

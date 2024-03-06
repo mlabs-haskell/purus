@@ -110,6 +110,7 @@ data CheckState = CheckState
 emptyCheckState :: Environment -> CheckState
 emptyCheckState env = CheckState env 0 0 0 Nothing [] emptySubstitution [] mempty
 
+
 -- | Unification variables
 type Unknown = Int
 
