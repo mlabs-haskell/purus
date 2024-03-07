@@ -33,12 +33,12 @@ import Language.PureScript.AST (ErrorMessageHint(..), Module(..), SourceSpan(..)
 import Language.PureScript.Crash (internalError)
 import Language.PureScript.CST qualified as CST
 import Language.PureScript.Docs.Convert qualified as Docs
-import Language.PureScript.Environment (initEnvironment)
+import Language.PureScript.Environment (initEnvironment, Environment(..))
 import Language.PureScript.Errors (MultipleErrors, SimpleErrorMessage(..), addHint, defaultPPEOptions, errorMessage', errorMessage'', prettyPrintMultipleErrors)
 import Language.PureScript.Externs (ExternsFile, applyExternsFileToEnvironment, moduleToExternsFile)
 import Language.PureScript.Linter (Name(..), lint, lintImports)
 import Language.PureScript.ModuleDependencies (DependencyDepth(..), moduleSignature, sortModules)
-import Language.PureScript.Names (ModuleName, isBuiltinModuleName, runModuleName)
+import Language.PureScript.Names (ModuleName, isBuiltinModuleName, runModuleName, showIdent, showQualified)
 import Language.PureScript.Renamer (renameInModule)
 import Language.PureScript.Sugar (Env, collapseBindingGroups, createBindingGroups, desugar, desugarCaseGuards, externsEnv, primEnv)
 import Language.PureScript.TypeChecker (CheckState(..), emptyCheckState, typeCheckModule)
@@ -48,8 +48,16 @@ import Language.PureScript.Make.Cache qualified as Cache
 import Language.PureScript.Make.Actions as Actions
 import Language.PureScript.Make.Monad as Monad
 import Language.PureScript.CoreFn qualified as CF
+import Language.PureScript.CoreFn qualified as CFT
+import Language.PureScript.CoreFn.Pretty qualified as CFT
 import System.Directory (doesFileExist)
 import System.FilePath (replaceExtension)
+import Prettyprinter.Util (putDocW)
+
+-- Temporary
+import Debug.Trace (traceM)
+import Language.PureScript.CoreFn.Pretty (ppType)
+import Language.PureScript.CoreFn.Desugar.Utils (pTrace)
 
 -- | Rebuild a single module.
 --
@@ -90,17 +98,17 @@ rebuildModuleWithIndex MakeActions{..} exEnv externs m@(Module _ _ moduleName _ 
       withPrim = importPrim m
   lint withPrim
 
-  ((Module ss coms _ elaborated exps, env'), nextVar) <- runSupplyT 0 $ do
+  ((Module ss coms _ elaborated exps, env', chkSt), nextVar) <- runSupplyT 0 $ do
     (desugared, (exEnv', usedImports)) <- runStateT (desugar externs withPrim) (exEnv, mempty)
     let modulesExports = (\(_, _, exports) -> exports) <$> exEnv'
-    (checked, CheckState{..}) <- runStateT (typeCheckModule modulesExports desugared) $ emptyCheckState env
+    (checked, chkSt@CheckState{..}) <- runStateT (typeCheckModule modulesExports desugared) $ emptyCheckState env
     let usedImports' = foldl' (flip $ \(fromModuleName, newtypeCtorName) ->
           M.alter (Just . (fmap DctorName newtypeCtorName :) . fold) fromModuleName) usedImports checkConstructorImportsForCoercible
     -- Imports cannot be linted before type checking because we need to
     -- known which newtype constructors are used to solve Coercible
     -- constraints in order to not report them as unused.
     censor (addHint (ErrorInModule moduleName)) $ lintImports checked exEnv' usedImports'
-    return (checked, checkEnv)
+    return (checked, checkEnv, chkSt)
 
   -- desugar case declarations *after* type- and exhaustiveness checking
   -- since pattern guards introduces cases which the exhaustiveness checker
@@ -109,11 +117,19 @@ rebuildModuleWithIndex MakeActions{..} exEnv externs m@(Module _ _ moduleName _ 
     desugarCaseGuards elaborated
 
   regrouped <- createBindingGroups moduleName . collapseBindingGroups $ deguarded
+
   let mod' = Module ss coms moduleName regrouped exps
-      corefn = CF.moduleToCoreFn env' mod'
-      (optimized, nextVar'') = runSupply nextVar' $ CF.optimizeCoreFn corefn
+  traceM $ "PURUS START HERE: " <> T.unpack (runModuleName moduleName)
+  -- pTrace regrouped
+  -- pTrace exps
+  ((coreFn,chkSt'),nextVar'') <- runSupplyT nextVar' $ runStateT (CFT.moduleToCoreFn mod') chkSt -- (emptyCheckState env')
+
+  traceM . T.unpack $ CFT.prettyModuleTxt  coreFn
+  let corefn = coreFn
+      (optimized, nextVar''') = runSupply nextVar'' $ CF.optimizeCoreFn corefn
       (renamedIdents, renamed) = renameInModule optimized
       exts = moduleToExternsFile mod' env' renamedIdents
+  --pTrace exts
   ffiCodegen renamed
 
   -- It may seem more obvious to write `docs <- Docs.convertModule m env' here,
@@ -129,8 +145,20 @@ rebuildModuleWithIndex MakeActions{..} exEnv externs m@(Module _ _ moduleName _ 
                  ++ "; details:\n" ++ prettyPrintMultipleErrors defaultPPEOptions errs
                Right d -> d
 
-  evalSupplyT nextVar'' $ codegen renamed docs exts
+  evalSupplyT nextVar''' $ codegen renamed docs exts
   return exts
+ where
+   prettyEnv :: Environment -> String
+   prettyEnv Environment{..} = M.foldlWithKey' goPretty "" names
+     where
+       goPretty acc ident (ty,_,_) =
+         acc
+         <> "\n"
+         <> T.unpack (showQualified showIdent ident)
+         <> " :: "
+         <> ppType 10 ty
+
+
 
 -- | Compiles in "make" mode, compiling each module separately to a @.js@ file and an @externs.cbor@ file.
 --
@@ -148,7 +176,7 @@ make ma@MakeActions{..} ms = do
 
   (buildPlan, newCacheDb) <- BuildPlan.construct ma cacheDb (sorted, graph)
 
-  let toBeRebuilt = filter (BuildPlan.needsRebuild buildPlan . getModuleName . CST.resPartial) sorted
+  let toBeRebuilt = sorted  -- filter (BuildPlan.needsRebuild buildPlan . getModuleName . CST.resPartial) sorted
   let totalModuleCount = length toBeRebuilt
   for_ toBeRebuilt $ \m -> fork $ do
     let moduleName = getModuleName . CST.resPartial $ m

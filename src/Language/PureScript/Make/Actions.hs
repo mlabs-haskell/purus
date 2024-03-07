@@ -1,3 +1,4 @@
+{-# LANGUAGE TypeApplications #-}
 module Language.PureScript.Make.Actions
   ( MakeActions(..)
   , RebuildPolicy(..)
@@ -20,26 +21,26 @@ import Control.Monad.Reader (asks)
 import Control.Monad.Supply (SupplyT)
 import Control.Monad.Trans.Class (MonadTrans(..))
 import Control.Monad.Writer.Class (MonadWriter(..))
-import Data.Aeson (Value(String), (.=), object)
+import Data.Aeson (Value(String), (.=), object, decode, encode, Result (..), fromJSON)
 import Data.Bifunctor (bimap, first)
 import Data.Either (partitionEithers)
 import Data.Foldable (for_)
 import Data.List.NonEmpty qualified as NEL
 import Data.Map qualified as M
-import Data.Maybe (fromMaybe, maybeToList)
+import Data.Maybe (fromMaybe, maybeToList, fromJust)
 import Data.Set qualified as S
 import Data.Text qualified as T
 import Data.Text.IO qualified as TIO
 import Data.Text.Encoding qualified as TE
 import Data.Time.Clock (UTCTime)
-import Data.Version (showVersion)
+import Data.Version (showVersion, makeVersion)
 import Language.JavaScript.Parser qualified as JS
 import Language.PureScript.AST (SourcePos(..))
 import Language.PureScript.Bundle qualified as Bundle
-import Language.PureScript.CodeGen.JS qualified as J
-import Language.PureScript.CodeGen.JS.Printer (prettyPrintJS, prettyPrintJSWithSourceMaps)
+import Language.PureScript.CodeGen.UPLC qualified as PC
 import Language.PureScript.CoreFn qualified as CF
 import Language.PureScript.CoreFn.ToJSON qualified as CFJ
+import Language.PureScript.CoreFn.FromJSON ()
 import Language.PureScript.Crash (internalError)
 import Language.PureScript.CST qualified as CST
 import Language.PureScript.Docs.Prim qualified as Docs.Prim
@@ -57,7 +58,10 @@ import SourceMap.Types (Mapping(..), Pos(..), SourceMapping(..))
 import System.Directory (getCurrentDirectory)
 import System.FilePath ((</>), makeRelative, splitPath, normalise, splitDirectories)
 import System.FilePath.Posix qualified as Posix
-import System.IO (stderr)
+import System.IO (stderr, withFile, IOMode(WriteMode))
+import Language.PureScript.CoreFn.ToJSON (moduleToJSON)
+import Language.PureScript.CoreFn.Pretty (writeModule)
+
 
 -- | Determines when to rebuild a module
 data RebuildPolicy
@@ -181,18 +185,22 @@ buildMakeActions outputDir filePathMap foreigns usePrefix =
     :: ModuleName
     -> Make (Either RebuildPolicy (M.Map FilePath (UTCTime, Make ContentHash)))
   getInputTimestampsAndHashes mn = do
-    let path = fromMaybe (internalError "Module has no filename in 'make'") $ M.lookup mn filePathMap
-    case path of
-      Left policy ->
-        return (Left policy)
-      Right filePath -> do
-        cwd <- makeIO "Getting the current directory" getCurrentDirectory
-        let inputPaths = map (normaliseForCache cwd) (filePath : maybeToList (M.lookup mn foreigns))
-            getInfo fp = do
-              ts <- getTimestamp fp
-              return (ts, hashFile fp)
-        pathsWithInfo <- traverse (\fp -> (fp,) <$> getInfo fp) inputPaths
-        return $ Right $ M.fromList pathsWithInfo
+    codegenTargets <- asks optionsCodegenTargets
+    if  CheckCoreFn `S.member` codegenTargets
+      then pure (Left RebuildAlways)
+      else do
+        let path = fromMaybe (internalError "Module has no filename in 'make'") $ M.lookup mn filePathMap
+        case path of
+          Left policy ->
+            return (Left policy)
+          Right filePath -> do
+            cwd <- makeIO "Getting the current directory" getCurrentDirectory
+            let inputPaths = map (normaliseForCache cwd) (filePath : maybeToList (M.lookup mn foreigns))
+                getInfo fp = do
+                  ts <- getTimestamp fp
+                  return (ts, hashFile fp)
+            pathsWithInfo <- traverse (\fp -> (fp,) <$> getInfo fp) inputPaths
+            return $ Right $ M.fromList pathsWithInfo
 
   outputFilename :: ModuleName -> String -> FilePath
   outputFilename mn fn =
@@ -201,10 +209,9 @@ buildMakeActions outputDir filePathMap foreigns usePrefix =
 
   targetFilename :: ModuleName -> CodegenTarget -> FilePath
   targetFilename mn = \case
-    JS -> outputFilename mn "index.js"
-    JSSourceMap -> outputFilename mn "index.js.map"
-    CoreFn -> outputFilename mn "corefn.json"
     Docs -> outputFilename mn "docs.json"
+    CoreFn -> outputFilename mn "index.cfn"
+    CheckCoreFn -> outputFilename mn "index.cfn"
 
   getOutputTimestamp :: ModuleName -> Make (Maybe UTCTime)
   getOutputTimestamp mn = do
@@ -250,33 +257,34 @@ buildMakeActions outputDir filePathMap foreigns usePrefix =
     let mn = CF.moduleName m
     lift $ writeCborFile (outputFilename mn externsFileName) exts
     codegenTargets <- lift $ asks optionsCodegenTargets
-    when (S.member CoreFn codegenTargets) $ do
-      let coreFnFile = targetFilename mn CoreFn
+    {- -when (S.member UPLC codegenTargets) $ do
+      let coreFnFile = targetFilename mn UPLC
           json = CFJ.moduleToJSON Paths.version m
       lift $ writeJSONFile coreFnFile json
-    when (S.member JS codegenTargets) $ do
-      foreignInclude <- case mn `M.lookup` foreigns of
-        Just _
-          | not $ requiresForeign m -> do
-              return Nothing
-          | otherwise -> do
-              return $ Just "./foreign.js"
-        Nothing | requiresForeign m -> throwError . errorMessage' (CF.moduleSourceSpan m) $ MissingFFIModule mn
-                | otherwise -> return Nothing
-      rawJs <- J.moduleToJs m foreignInclude
-      dir <- lift $ makeIO "get the current directory" getCurrentDirectory
-      let sourceMaps = S.member JSSourceMap codegenTargets
-          (pjs, mappings) = if sourceMaps then prettyPrintJSWithSourceMaps rawJs else (prettyPrintJS rawJs, [])
-          jsFile = targetFilename mn JS
-          mapFile = targetFilename mn JSSourceMap
-          prefix = ["Generated by purs version " <> T.pack (showVersion Paths.version) | usePrefix]
-          js = T.unlines $ map ("// " <>) prefix ++ [pjs]
-          mapRef = if sourceMaps then "//# sourceMappingURL=index.js.map\n" else ""
-      lift $ do
-        writeTextFile jsFile (TE.encodeUtf8 $ js <> mapRef)
-        when sourceMaps $ genSourceMap dir mapFile (length prefix) mappings
+    -}
     when (S.member Docs codegenTargets) $ do
       lift $ writeJSONFile (outputFilename mn "docs.json") docs
+    when (S.member CoreFn codegenTargets) $ do
+      let targetFile = (targetFilename mn CoreFn)
+      lift $ writeJSONFile targetFile (moduleToJSON (makeVersion [0,0,1]) m)
+      lift $ makeIO "write pretty core" $ withFile (targetFile <> ".pretty") WriteMode $ \handle ->
+        writeModule  handle m
+    when (S.member CheckCoreFn codegenTargets) $ do
+      let mn' = T.unpack (runModuleName mn)
+      mabOldModule <- lift $ readJSONFile  (targetFilename mn CoreFn)
+      case mabOldModule of
+        Nothing -> error "Cannot check CoreFn output - could not parse JSON serialization of old module"
+        Just oldM -> do
+          let oldM' = CF.canonicalizeModule oldM
+              m'    = CF.canonicalizeModule (jsonRoundTrip m)
+              diff  = CF.diffModule oldM' m'
+          lift $ makeIO "print golden result" $ putStrLn $ "checkCoreFn mismatches: " <> show diff
+   where
+     jsonRoundTrip :: CF.Module CF.Ann -> CF.Module CF.Ann
+     jsonRoundTrip mdl =  case fromJSON $  moduleToJSON (makeVersion [0,0,1]) mdl of
+       Error str -> error str
+       Success a -> a
+
 
   ffiCodegen :: CF.Module CF.Ann -> Make ()
   ffiCodegen m = do
@@ -432,7 +440,8 @@ ffiCodegen'
   -> Maybe (ModuleName -> String -> FilePath)
   -> CF.Module CF.Ann
   -> Make ()
-ffiCodegen' foreigns codegenTargets makeOutputPath m = do
+ffiCodegen' foreigns codegenTargets makeOutputPath m = pure ()
+  {-
   when (S.member JS codegenTargets) $ do
     let mn = CF.moduleName m
     case mn `M.lookup` foreigns of
@@ -448,8 +457,10 @@ ffiCodegen' foreigns codegenTargets makeOutputPath m = do
                 throwError $ errorMessage' (CF.moduleSourceSpan m) $ DeprecatedFFICommonJSModule mn path
       Nothing | requiresForeign m -> throwError . errorMessage' (CF.moduleSourceSpan m) $ MissingFFIModule mn
               | otherwise -> return ()
+
   where
   requiresForeign = not . null . CF.moduleForeign
 
   copyForeign path mn =
     for_ makeOutputPath (\outputFilename -> copyFile path (outputFilename mn "foreign.js"))
+   -}

@@ -72,18 +72,18 @@ emptySubstitution = Substitution M.empty M.empty M.empty
 
 -- | State required for type checking
 data CheckState = CheckState
-  { checkEnv :: Environment
+  { checkEnv :: !Environment
   -- ^ The current @Environment@
-  , checkNextType :: Int
+  , checkNextType :: !Int
   -- ^ The next type unification variable
-  , checkNextSkolem :: Int
+  , checkNextSkolem :: !Int
   -- ^ The next skolem variable
-  , checkNextSkolemScope :: Int
+  , checkNextSkolemScope :: !Int
   -- ^ The next skolem scope constant
-  , checkCurrentModule :: Maybe ModuleName
+  , checkCurrentModule :: !(Maybe ModuleName)
   -- ^ The current module
   , checkCurrentModuleImports ::
-      [ ( SourceAnn
+      ![ ( SourceAnn
         , ModuleName
         , ImportDeclarationType
         , Maybe ModuleName
@@ -94,14 +94,14 @@ data CheckState = CheckState
   -- Newtype constructors have to be in scope for some Coercible constraints to
   -- be solvable, so we need to know which constructors are imported and whether
   -- they are actually defined in or re-exported from the imported modules.
-  , checkSubstitution :: Substitution
+  , checkSubstitution :: !Substitution
   -- ^ The current substitution
-  , checkHints :: [ErrorMessageHint]
+  , checkHints :: ![ErrorMessageHint]
   -- ^ The current error message hint stack.
   -- This goes into state, rather than using 'rethrow',
   -- since this way, we can provide good error messages
   -- during instance resolution.
-  , checkConstructorImportsForCoercible :: S.Set (ModuleName, Qualified (ProperName 'ConstructorName))
+  , checkConstructorImportsForCoercible :: !(S.Set (ModuleName, Qualified (ProperName 'ConstructorName)))
   -- ^ Newtype constructors imports required to solve Coercible constraints.
   -- We have to keep track of them so that we don't emit unused import warnings.
   }
@@ -109,6 +109,7 @@ data CheckState = CheckState
 -- | Create an empty @CheckState@
 emptyCheckState :: Environment -> CheckState
 emptyCheckState env = CheckState env 0 0 0 Nothing [] emptySubstitution [] mempty
+
 
 -- | Unification variables
 type Unknown = Int

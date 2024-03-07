@@ -38,3 +38,6 @@ TAGS
 *.ps
 *.svg
 tests/purs/make/
+.direnv/
+/.pre-commit-config.yaml
+/result*

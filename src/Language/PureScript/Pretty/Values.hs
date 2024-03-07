@@ -5,6 +5,7 @@ module Language.PureScript.Pretty.Values
   ( prettyPrintValue
   , prettyPrintBinder
   , prettyPrintBinderAtom
+  , renderValue
   ) where
 
 import Prelude hiding ((<>))
@@ -24,7 +25,7 @@ import Language.PureScript.Pretty.Types (typeAsBox, typeAtomAsBox, prettyPrintOb
 import Language.PureScript.Types (Constraint(..))
 import Language.PureScript.PSString (PSString, prettyPrintString)
 
-import Text.PrettyPrint.Boxes (Box, left, moveRight, text, vcat, vsep, (//), (<>))
+import Text.PrettyPrint.Boxes (Box, left, moveRight, text, vcat, vsep, (//), (<>), render)
 
 -- TODO(Christoph): remove T.unpack s
 
@@ -49,6 +50,10 @@ prettyPrintObject d = list '{' '}' prettyPrintObjectProperty
 
 prettyPrintUpdateEntry :: Int -> PSString -> Expr -> Box
 prettyPrintUpdateEntry d key val = textT (prettyPrintObjectKey key) <> text " = " <> prettyPrintValue (d - 1) val
+
+
+renderValue :: Int -> Expr -> String
+renderValue d e = render (prettyPrintValue d e)
 
 -- | Pretty-print an expression
 prettyPrintValue :: Int -> Expr -> Box

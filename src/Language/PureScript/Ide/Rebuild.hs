@@ -122,12 +122,14 @@ updateCacheDb codegenTargets outputDirectory file actualFile moduleName = do
   let moduleCacheInfo = (normaliseForCache cwd (fromMaybe file actualFile), (dayZero, contentHash))
 
   foreignCacheInfo <-
+    {-
     if S.member P.JS codegenTargets then do
       foreigns' <- P.inferForeignModules (M.singleton moduleName (Right (fromMaybe file actualFile)))
       for (M.lookup moduleName foreigns') \foreignPath -> do
         foreignHash <- P.hashFile foreignPath
         pure (normaliseForCache cwd foreignPath, (dayZero, foreignHash))
     else
+    -}
       pure Nothing
 
   let cacheInfo = M.fromList (moduleCacheInfo : maybeToList foreignCacheInfo)

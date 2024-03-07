@@ -67,7 +67,7 @@ assertCompilesToExpectedValidOutput support inputFiles = do
 
   where
     compilationOptions :: P.Options
-    compilationOptions = P.defaultOptions { P.optionsCodegenTargets = Set.fromList [P.JS, P.JSSourceMap] }
+    compilationOptions = P.defaultOptions { P.optionsCodegenTargets = Set.fromList [P.CoreFn] }
 
 -- | Fails the test if the produced source maps are not valid.
 sourceMapIsValid :: FilePath -> Expectation

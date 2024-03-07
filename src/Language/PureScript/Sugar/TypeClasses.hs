@@ -226,7 +226,7 @@ desugarDecl mn exps = go
           dictTy = foldl srcTypeApp (srcTypeConstructor (fmap (coerceProperName . dictTypeName) className)) tys
           constrainedTy = quantify (foldr srcConstrainedType dictTy deps)
         in
-          return $ ValueDecl sa name' Private [] [MkUnguarded (TypedValue True dict constrainedTy)]
+          return $ ValueDecl sa name' Public [] [MkUnguarded (TypedValue True dict constrainedTy)]
     return (expRef name' className tys, [d, dictDecl])
   go other = return (Nothing, [other])
 
@@ -300,9 +300,10 @@ typeClassMemberToDictionaryAccessor mn name args (TypeDeclaration (TypeDeclarati
       dictIdent = Ident "dict"
       dictObjIdent = Ident "v"
       ctor = ConstructorBinder ss (coerceProperName . dictTypeName <$> className) [VarBinder ss dictObjIdent]
-      acsr = Accessor (mkString $ runIdent ident) (Var ss (Qualified ByNullSourcePos dictObjIdent))
+      -- NOTE: changing this from ByNullSourcePos to the real source pos to hopefully make conversion to typed CoreFn AST work
+      acsr = Accessor (mkString $ runIdent ident) (Var ss (Qualified {- -ByNullSourcePos -} (BySourcePos $ spanStart ss) dictObjIdent))
       visibility = second (const TypeVarVisible) <$> args
-  in ValueDecl sa ident Private []
+  in ValueDecl sa ident Public []
     [MkUnguarded (
      TypedValue False (Abs (VarBinder ss dictIdent) (Case [Var ss $ Qualified ByNullSourcePos dictIdent] [CaseAlternative [ctor] [MkUnguarded acsr]])) $
        addVisibility visibility (moveQuantifiersToFront NullSourceAnn (quantify (srcConstrainedType (srcConstraint className [] (map (srcTypeVar . fst) args) Nothing) ty)))
@@ -362,7 +363,7 @@ typeInstanceDictionaryDeclaration sa@(ss, _) name mn deps className tys decls =
       constrainedTy = quantify (foldr srcConstrainedType dictTy deps)
       dict = App (Constructor ss (fmap (coerceProperName . dictTypeName) className)) props
       mkTV = if unreachable then TypedValue False (Var nullSourceSpan C.I_undefined) else TypedValue True dict
-      result = ValueDecl sa name Private [] [MkUnguarded (mkTV constrainedTy)]
+      result = ValueDecl sa name Public [] [MkUnguarded (mkTV constrainedTy)]
   return result
 
   where

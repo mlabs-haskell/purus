@@ -1,4 +1,4 @@
-module Command.Compile (command) where
+module Command.Compile  where
 
 import Prelude
 
@@ -31,7 +31,7 @@ data PSCMakeOptions = PSCMakeOptions
   , pscmOpts         :: P.Options
   , pscmUsePrefix    :: Bool
   , pscmJSONErrors   :: Bool
-  }
+  } deriving Show
 
 -- | Arguments: verbose, use JSON, warnings, errors
 printWarningsAndErrors :: Bool -> Bool -> [(FilePath, T.Text)] -> P.MultipleErrors -> Either P.MultipleErrors a -> IO ()
@@ -71,6 +71,25 @@ compile PSCMakeOptions{..} = do
     P.make makeActions (map snd ms)
   printWarningsAndErrors (P.optionsVerboseErrors pscmOpts) pscmJSONErrors moduleFiles makeWarnings makeErrors
   exitSuccess
+
+compileForTests :: PSCMakeOptions -> IO ()
+compileForTests PSCMakeOptions{..} = do
+  included <- globWarningOnMisses warnFileTypeNotFound pscmInput
+  excluded <- globWarningOnMisses warnFileTypeNotFound pscmExclude
+  let input = included \\ excluded
+  if (null input) then  do
+    hPutStr stderr $ unlines [ "purs compile: No input files."
+                             , "Usage: For basic information, try the `--help' option."
+                             ]
+  else do
+    moduleFiles <- readUTF8FilesT input
+    (makeErrors, makeWarnings) <- runMake pscmOpts $ do
+      ms <- CST.parseModulesFromFiles id moduleFiles
+      let filePathMap = M.fromList $ map (\(fp, pm) -> (P.getModuleName $ CST.resPartial pm, Right fp)) ms
+      foreigns <- inferForeignModules filePathMap
+      let makeActions = buildMakeActions pscmOutputDir filePathMap foreigns pscmUsePrefix
+      P.make makeActions (map snd ms)
+    printWarningsAndErrors (P.optionsVerboseErrors pscmOpts) pscmJSONErrors moduleFiles makeWarnings makeErrors
 
 warnFileTypeNotFound :: String -> IO ()
 warnFileTypeNotFound = hPutStrLn stderr . ("purs compile: No files found using pattern: " ++)
@@ -130,11 +149,11 @@ codegenTargets :: Opts.Parser [P.CodegenTarget]
 codegenTargets = Opts.option targetParser $
      Opts.short 'g'
   <> Opts.long "codegen"
-  <> Opts.value [P.JS]
+  <> Opts.value [P.CoreFn]
   <> Opts.help
       ( "Specifies comma-separated codegen targets to include. "
       <> targetsMessage
-      <> " The default target is 'js', but if this option is used only the targets specified will be used."
+      <> " The default target is 'coreFn', but if this option is used only the targets specified will be used."
       )
 
 targetsMessage :: String
@@ -158,7 +177,7 @@ options =
   where
     -- Ensure that the JS target is included if sourcemaps are
     handleTargets :: [P.CodegenTarget] -> S.Set P.CodegenTarget
-    handleTargets ts = S.fromList (if P.JSSourceMap `elem` ts then P.JS : ts else ts)
+    handleTargets ts = S.fromList ts
 
 pscMakeOptions :: Opts.Parser PSCMakeOptions
 pscMakeOptions = PSCMakeOptions <$> many inputFile

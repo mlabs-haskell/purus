@@ -4,7 +4,7 @@ import Prelude
 
 import GHC.Generics (Generic)
 import Control.DeepSeq (NFData)
-import Control.Monad (unless)
+import Control.Monad (unless, void)
 import Codec.Serialise (Serialise)
 import Data.Aeson ((.=), (.:))
 import Data.Aeson qualified as A
@@ -20,7 +20,7 @@ import Data.Text (Text)
 import Data.Text qualified as T
 import Data.List.NonEmpty qualified as NEL
 
-import Language.PureScript.AST.SourcePos (nullSourceAnn)
+import Language.PureScript.AST.SourcePos (nullSourceAnn, pattern NullSourceAnn)
 import Language.PureScript.Crash (internalError)
 import Language.PureScript.Names (Ident, ProperName(..), ProperNameType(..), Qualified, QualifiedBy, coerceProperName)
 import Language.PureScript.Roles (Role(..))
@@ -360,6 +360,41 @@ tyForall var k ty = ForAll nullSourceAnn TypeVarInvisible var (Just k) ty Nothin
 -- | Smart constructor for function types
 function :: SourceType -> SourceType -> SourceType
 function = TypeApp nullSourceAnn . TypeApp nullSourceAnn tyFunction
+
+purusFun :: Type a -> Type a -> Type ()
+purusFun = f . g
+   where
+    f x = TypeApp () x . void
+    g = TypeApp () tyFunctionNoAnn . void
+    tyFunctionNoAnn = TypeConstructor () C.Function
+
+-- This is borderline necessary
+pattern (:->) :: Type a -> Type a -> Type a
+pattern a :-> b <-
+  TypeApp _
+    (TypeApp _ (TypeConstructor _ C.Function) a)
+    b
+
+pattern ArrayT :: Type a -> Type a
+pattern ArrayT a <-
+  TypeApp _ (TypeConstructor _ C.Array) a
+
+
+
+arrayT :: SourceType -> SourceType
+arrayT = TypeApp NullSourceAnn (TypeConstructor NullSourceAnn C.Array)
+
+pattern RecordT :: Type a -> Type a
+pattern RecordT a <-
+  TypeApp _ (TypeConstructor _ C.Record) a
+
+
+
+getFunArgTy :: Type a -> Type a
+getFunArgTy = \case
+  a :-> _ -> a
+  ForAll _ _ _ _ t  _ -> getFunArgTy t
+  other -> other
 
 -- To make reading the kind signatures below easier
 (-:>) :: SourceType -> SourceType -> SourceType

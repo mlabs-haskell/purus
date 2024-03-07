@@ -8,6 +8,9 @@ import Prelude
 import Language.PureScript.AST.Literals (Literal)
 import Language.PureScript.Names (Ident, ProperName, ProperNameType(..), Qualified)
 
+import GHC.Generics
+import Data.Aeson (FromJSON, ToJSON)
+
 -- |
 -- Data type for binders
 --
@@ -31,8 +34,10 @@ data Binder a
   -- |
   -- A binder which binds its input to an identifier
   --
-  | NamedBinder a Ident (Binder a) deriving (Eq, Ord, Show, Functor)
+  | NamedBinder a Ident (Binder a) deriving (Eq, Ord, Show, Functor, Generic)
 
+instance FromJSON a => FromJSON (Binder a)
+instance ToJSON a => ToJSON (Binder a)
 
 extractBinderAnn :: Binder a -> a
 extractBinderAnn (NullBinder a) = a
