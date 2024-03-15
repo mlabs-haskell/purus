@@ -1,4 +1,4 @@
-module Language.PureScript.CoreFn.Pretty.Types where
+module Language.PureScript.CoreFn.Pretty.Types (prettyType) where
 
 import Prelude hiding ((<>))
 
@@ -30,7 +30,17 @@ import Language.PureScript.CoreFn.Pretty.Common
       openRecord,
       recordLike,
       (<::>),
-      arrow )
+      arrow, asOneLine )
+-- need for debugging
+import Prettyprinter
+    ( layoutSmart,
+      defaultLayoutOptions,
+      layoutPretty,
+      Doc )
+import Prettyprinter.Render.Text ( renderIO, renderStrict )
+import Data.Text (Text)
+import Data.Text qualified as T
+
 
 prettyType :: forall a ann. Show a => Type a -> Printer ann
 prettyType t  =  group <$> case t of
@@ -132,4 +142,12 @@ prettyType t  =  group <$> case t of
          REmpty _ -> pure $ Right []
          KindApp _ REmpty{} _  -> pure $ Right [] -- REmpty is sometimes wrapped in a kind app
          TypeVar _ txt -> pure $ Left ([],pretty txt)
-         other -> error $ "Malformed row fields: \n" <> show other
+         other -> error $ "Malformed row fields: \n" <> prettyTypeStr other
+
+
+-- TODO For debugging, remove later
+smartRender ::  Doc ann -> Text
+smartRender = renderStrict . layoutPretty defaultLayoutOptions
+
+prettyTypeStr :: forall a. Show a => Type a -> String
+prettyTypeStr = T.unpack . smartRender . asOneLine prettyType

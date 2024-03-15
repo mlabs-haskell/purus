@@ -4,6 +4,7 @@ module Language.PureScript.CoreFn.Pretty (
   smartRender,
   writeModule,
   prettyModuleTxt,
+  prettyModuleStr,
   renderExpr,
   renderExprStr,
   prettyTypeStr
@@ -59,6 +60,9 @@ writeModule h m = renderIO h
 
 prettyModuleTxt :: Module a -> Text
 prettyModuleTxt = renderStrict  . layoutPretty defaultLayoutOptions .  prettyModule
+
+prettyModuleStr :: Module a -> String
+prettyModuleStr = T.unpack . prettyModuleTxt
 
 renderExpr :: Expr a -> Text
 renderExpr = smartRender . asDynamic prettyValue

@@ -147,6 +147,8 @@ aFunction6 = aFunction [] go
     go :: forall (z :: Type). z -> Int
     go _ = 10
 
+main = aFunction4 {a: 2, b: 3}
+
 nestedApplications :: Int
 nestedApplications = i (f (g (h 2))) 4
   where

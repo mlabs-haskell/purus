@@ -6,7 +6,7 @@ module Language.PureScript.CoreFn.Desugar(moduleToCoreFn) where
 import Prelude
 import Protolude (ordNub, orEmpty, zipWithM, MonadError (..), sortOn, Bifunctor (bimap))
 
-import Data.Maybe (mapMaybe, fromMaybe)
+import Data.Maybe (mapMaybe, fromMaybe, fromJust)
 import Data.List.NonEmpty qualified as NEL
 import Data.Map qualified as M
 
@@ -242,7 +242,9 @@ exprToCoreFn mn ss (Just recTy@(RecordT row)) astlit@(A.Literal _ (ObjectLiteral
        let fieldTy = rowListType rowListItem
        expr' <- exprToCoreFn mn ss (Just fieldTy) expr
        pure $ (lbl,expr'):acc
-     Nothing -> error $ "row type missing field " <> T.unpack (prettyPrintString lbl)
+     Nothing -> do -- error $ "row type missing field " <> T.unpack (prettyPrintString lbl)
+       expr' <- exprToCoreFn mn ss Nothing expr
+       pure $ (lbl,expr') : acc
 exprToCoreFn _ _ Nothing astlit@(A.Literal _ (ObjectLiteral _)) =
   internalError $ "Error while desugaring Object Literal. No type provided for literal:\n" <> renderValue 100 astlit
 
@@ -340,7 +342,7 @@ exprToCoreFn mn ss mTy app@(A.App fun arg)
             -- This should actually be impossible here, so long as we desugared all the constrained types properly
             Just (other,_) -> error $  "APP Dict not a constructor type (impossible here?): \n" <> ppType 100 other
             -- Case for handling empty dictionaries (with no methods)
-            Nothing ->  do
+            Nothing ->  wrapTrace "APP DICT 3" $ do
               -- REVIEW: This might be the one place where `kindType` in instantiatePolyType is wrong, check the kinds in the output
               -- REVIEW: We might want to match more specifically on both/either the expression and type level to
               --         ensure that we are working only with empty dictionaries here. (Though anything else should be caught be the previous case)
@@ -356,11 +358,21 @@ exprToCoreFn mn ss mTy app@(A.App fun arg)
       let funTy = exprType fun'
       traceM $ "app fun:\n" <> ppType 100  funTy <> "\n" <> renderExprStr fun'
       withInstantiatedFunType mn  funTy $ \a b -> do
-        arg' <- exprToCoreFn mn ss (Just a) arg
+        arg' <- exprToCoreFn mn ss Nothing arg -- We want to keep the original "concrete" arg type
         traceM $ "app arg:\n" <> ppType 100 (exprType arg') <> "\n" <> renderExprStr arg'
-        pure $ App (ss, [], Nothing) (fromMaybe b mTy) fun' arg'
+        {- But we want to keep polymorphism in the return type (I think?)
+
+           Basically, if we have something like:
+             (f :: forall x. x -> Either x Int) (y :: Int)
+
+           We need to make sure that y retains its original annotated type, otherwise it'll get
+           instantiated to (y :: x) which is wrong. TODO Explain this better
+        -}
+        pure $ App (ss, [], Nothing) b fun' arg'
 
   where
+
+
   isDictCtor = \case
     A.Constructor _ (Qualified _ name) -> isDictTypeName name
     A.TypedValue _ e _ -> isDictCtor e
