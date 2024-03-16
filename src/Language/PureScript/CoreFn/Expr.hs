@@ -1,3 +1,4 @@
+{-# LANGUAGE TemplateHaskell #-}
 module Language.PureScript.CoreFn.Expr where
 import Prelude
 
@@ -13,6 +14,8 @@ import Language.PureScript.Names (Ident, ProperName, ProperNameType(..), Qualifi
 import Language.PureScript.PSString (PSString)
 import Language.PureScript.Types (Type, SourceType)
 
+import Control.Lens.TH (makePrisms)
+import Control.Lens (Traversal', Lens')
 
 type PurusType = SourceType -- Type ()
 
@@ -57,6 +60,18 @@ data Expr a
   --
   | Let a PurusType [Bind a] (Expr a)
   deriving (Eq, Ord, Show, Functor, Generic)
+
+eType :: Lens' (Expr a) PurusType
+eType f = \case
+  Literal ann ty lit -> (\t -> Literal ann t lit) <$> f ty
+  Constructor a ty tNm cNm fs -> (\t -> Constructor a t tNm cNm fs) <$> f ty
+  Accessor ann ty str e -> (\t -> Accessor ann t str e) <$> f ty
+  ObjectUpdate ann ty e keep upd -> (\t -> ObjectUpdate ann t e keep upd) <$> f ty
+  Abs a ty nm e -> (\t -> Abs a t nm e) <$> f ty
+  App a ty e1 e2 -> (\t -> App a t e1 e2) <$> f ty
+  Var a ty nm -> (\t -> Var a t nm) <$> f ty
+  Case a ty es alts -> (\t -> Case a t es alts) <$> f ty
+  Let a ty bs e -> (\t -> Let a t bs e) <$> f ty
 
 instance FromJSON a => FromJSON (Expr a)
 instance ToJSON a => ToJSON (Expr a)
@@ -145,3 +160,6 @@ modifyAnn f (App a b c d)            = App (f a) b c d
 modifyAnn f (Var a b c)              = Var (f a) b c
 modifyAnn f (Case a b c d)           = Case (f a) b c d
 modifyAnn f (Let a b c d)            = Let (f a) b c d
+
+makePrisms ''Expr
+makePrisms ''Bind

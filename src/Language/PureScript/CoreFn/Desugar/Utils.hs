@@ -200,14 +200,14 @@ instantiate (ForAll _ _ var _ inner _) (t:ts) = replaceTypeVars var t $ instanti
 instantiate other _ = other
 
 -- | Traverse a literal. Note that literals are usually have a type like `Literal (Expr a)`. That is: The `a` isn't typically an annotation, it's an expression type
-traverseLit :: forall m a b. Monad m => (a -> m b) -> Literal a -> m (Literal b)
+traverseLit :: forall m a b. Applicative m => (a -> m b) -> Literal a -> m (Literal b)
 traverseLit f = \case
   NumericLiteral x -> pure $ NumericLiteral x
   StringLiteral x -> pure $ StringLiteral x
   CharLiteral x -> pure $ CharLiteral x
   BooleanLiteral x -> pure $ BooleanLiteral x
   ArrayLiteral xs  -> ArrayLiteral <$> traverse f xs
-  ObjectLiteral xs -> ObjectLiteral <$> traverse (\(str,x) -> f x >>= \b -> pure (str,b)) xs
+  ObjectLiteral xs -> ObjectLiteral <$> traverse (\(str,x) -> (str,) <$> f x) xs
 
 
 -- Wrapper around instantiatePolyType to provide a better interface
