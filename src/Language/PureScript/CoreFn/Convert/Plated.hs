@@ -13,6 +13,7 @@ import GHC.Natural ( Natural )
 import Data.Bitraversable (Bitraversable(bitraverse))
 import Control.Lens.IndexedPlated ( IndexedPlated(..) )
 import Control.Lens ( Indexable(indexed) )
+import Language.PureScript.Types
 
 type Depth = Natural
 
@@ -48,3 +49,25 @@ instance IndexedPlated Natural (Expr a) where
            <$> helper result -- hellishly complex
          helper :: Either [(Guard a, Expr a)] (Expr a) -> f (Either [(Guard a, Expr a)] (Expr a))
          helper = bitraverse (traverse $  bitraverse g g) g
+
+-- Might be able to do something useful with a non-natural index (think about later)
+instance IndexedPlated Natural (Type a) where
+  iplate d f = \case
+    TypeApp ann t1 t2 -> TypeApp ann <$> indexed f d t1 <*> indexed f d t2
+    KindApp ann k1 t1 -> KindApp ann <$> indexed f d k1 <*> indexed f d t1
+    ForAll a vis var mbK inner skol ->
+      (\mbK' inner' -> ForAll a vis var mbK' inner' skol)
+      <$> traverse (indexed f d) mbK
+      <*> indexed f d inner
+    -- \/ Just for completeness, they shouldn't exist
+    ConstrainedType ann c t1 -> ConstrainedType ann c <$> indexed f d t1
+    RCons ann lbl t1 t2 -> RCons ann lbl <$> indexed f d t1 <*> indexed f d t2
+    KindedType a t1 t2 -> KindedType a <$> indexed f d t1 <*> indexed f d t2
+    BinaryNoParensType ann t1 t2 t3 ->
+      BinaryNoParensType ann
+      <$> indexed f d t1
+      <*> indexed f d t2
+      <*> indexed f d t3
+    ParensInType ann t -> ParensInType ann <$> indexed f d t
+    -- nothing else has child types
+    other -> pure other

@@ -56,6 +56,7 @@ import Control.Monad.RWS
     ( RWST(..) )
 import Control.Monad.Except (throwError)
 import Language.PureScript.CoreFn.Convert.Plated ( Depth )
+import Control.Exception
 
 -- hopefully a better API than the existing traversal machinery (which is kinda weak!)
 -- Adapted from https://twanvl.nl/blog/haskell/traversing-syntax-trees
@@ -121,6 +122,11 @@ monomorphizeMain' Module{..} =  g
                      Left err -> Left err
                      Right (a,_,_) -> Right a
 
+decodeModuleIO :: FilePath -> IO (Module Ann)
+decodeModuleIO path = Aeson.eitherDecodeFileStrict' path >>= \case
+  Left err -> throwIO $ userError err
+  Right mod -> pure mod
+
 runMonoTest :: FilePath -> IO ()
 runMonoTest path = do
   emod <- Aeson.eitherDecodeFileStrict' path
@@ -157,7 +163,7 @@ freshen ident = do
     Ident t -> pure $ Ident $ t <> "_$$" <> uTxt
     GenIdent (Just t) i -> pure $ GenIdent (Just $ t <> "_$$" <> uTxt) i -- we only care about a unique ord property for the maps
     GenIdent Nothing i  -> pure $ GenIdent (Just $ "var_$$" <> uTxt) i
-    -- other two shouldn't exist at this state
+    -- other two shouldn't exist at this stage
     other -> pure other
 
 
@@ -221,7 +227,6 @@ monomorphizeA d = \case
 
 gLet :: [Bind Ann] -> Expr Ann -> Expr Ann
 gLet binds e = Let nullAnn (e ^. eType) binds e
-
 
 handleFunction :: Depth
                -> Expr Ann
@@ -380,7 +385,7 @@ inlineAs  d ty (Qualified (ByModuleName mn') ident) = trace ("inlineAs: " <> sho
           innerBinds <- collectRecFieldBinds visited fieldMap updateFields
           pure $ visited <> innerBinds
         _ -> throwError $ MonoError d ("Failed to collect recursive binds: " <> prettyTypeStr t <> " is not a Record type")
-     Accessor{} -> trace "crbACCSR" $ pure visited -- idk
+     Accessor{} -> trace "crbACCSR" $ pure visited -- idk. given (x.a :: t) we can't say what x is
      abs@(Abs{}) -> trace ("crbABS TOARGS: " <> prettyTypeStr t) $ collectFun visited d abs (toArgs t)
      app@(App _ _ _ e2) -> trace "crbAPP" $ do
        (f,args) <-  note d ("Not an App: " <> renderExprStr app) $ analyzeApp app
@@ -437,9 +442,13 @@ monomorphizeWithType  t d expr
           updateFields' <- monomorphizeFieldsWithTypes fieldMap updateFields
           pure $ ObjectUpdate a t orig copyFields updateFields'
         _ -> throwError $ MonoError d ("Failed to collect recursive binds: " <> prettyTypeStr t <> " is not a Record type")
-      Accessor a _ str e -> pure $ Accessor a t str e -- idk?
+      Accessor ann _ str e ->  pure $ Accessor ann t str e-- idk?
       fun@(Abs _ _ ident body) -> trace ("MTABs:\n  " <> renderExprStr fun <> " :: " <> prettyTypeStr t) $ do
-        pure $ Abs nullAnn t ident body
+        case t of
+          (a :-> b) -> do
+            body' <- monomorphizeWithType b (d+1) $ updateVarTy (d+1) ident a body
+            pure $ Abs nullAnn t ident $ body'
+          other -> throwError $ MonoError d $ "Abs isn't a function"
         -- othher -> P.error $ "mtabs fail: " <> renderExprStr fun
       app@(App a _ _ e2) -> trace ("MTAPP:\n  " <> renderExprStr app) $  do
         (f,args) <- note d ("Not an app: " <> renderExprStr app) $ analyzeApp app

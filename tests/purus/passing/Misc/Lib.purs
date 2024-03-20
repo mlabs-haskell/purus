@@ -158,7 +158,7 @@ recG1 x = recF1 x
 testBuiltin :: Int
 testBuiltin = Builtin.addInteger 1 2
 
-main = recF1 "hello"
+main = aFunction4 {a: 101, b: "hello"} -- recF1 "hello"
 
 nestedApplications :: Int
 nestedApplications = i (f (g (h 2))) 4
