@@ -116,8 +116,6 @@ hoist1 st act = RWST $ \r s -> f (runRWST act r s)
         pure (Nothing,st,())
       Right (x,st',_) -> pure (Just x, st', ())
 
-
-
 monomorphizeMain :: Module Ann -> Maybe (Expr Ann)
 monomorphizeMain Module{..} =  runMono g
   where
@@ -266,6 +264,7 @@ handleFunction  d abs@(Abs ann (ForAll{}) ident body'') (t:ts) = trace ("handleF
     Right body -> do
       let bodyT = body ^. eType
       pure $ Right (Abs ann (function t bodyT) ident body)
+
 handleFunction  d (Var a ty qn) [t] = inlineAs d t qn
 handleFunction d (Var a ty qn) ts = inlineAs d (foldr1 function ts) qn
 handleFunction  d e _ = throwError $ MonoError d

@@ -155,6 +155,9 @@ recF1 x = recG1 x
 recG1 :: forall x. x -> Int
 recG1 x = recF1 x
 
+testBuiltin :: Int
+testBuiltin = Builtin.addInteger 1 2
+
 main = recF1 "hello"
 
 nestedApplications :: Int

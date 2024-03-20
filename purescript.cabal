@@ -209,6 +209,7 @@ common defaults
     stringsearch >=0.3.6.6 && <0.4,
     template-haskell >=2.18.0.0 && <2.19,
     text >=1.2.5.0 && <2.3,
+    th-abstraction,
     these >=1.1.1.1 && <1.2,
     time >=1.11.1.1 && <1.12,
     transformers >=0.5.6.2 && <0.6,
@@ -241,6 +242,9 @@ library
     Language.PureScript.CodeGen
     Language.PureScript.CodeGen.UPLC
     Language.PureScript.Constants.Libs
+    Language.PureScript.Constants.Purus
+    Language.PureScript.Constants.PLC
+    Language.PureScript.Constants.PLC.TH
     Language.PureScript.CoreFn
     Language.PureScript.CoreFn.Ann
     Language.PureScript.CoreFn.Binders

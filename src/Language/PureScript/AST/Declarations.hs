@@ -33,6 +33,7 @@ import Language.PureScript.TypeClassDictionaries (NamedDict)
 import Language.PureScript.Comments (Comment)
 import Language.PureScript.Environment (DataDeclType, Environment, FunctionalDependency, NameKind)
 import Language.PureScript.Constants.Prim qualified as C
+import Language.PureScript.Constants.Purus as PLC
 
 -- | A map of locally-bound names in scope.
 type Context = [(Ident, SourceType)]
@@ -155,14 +156,17 @@ addDefaultImport (Qualified toImportAs toImport) m@(Module ss coms mn decls exps
   isExistingImport _ = False
 
 -- | Adds import declarations to a module for an implicit Prim import and Prim
--- | qualified as Prim, as necessary.
+-- | qualified as Prim, as necessary. NOTE: We also add PLC builtins at this stage
 importPrim :: Module -> Module
 importPrim =
   let
     primModName = C.M_Prim
+    builtinModName = PLC.M_Builtin
   in
     addDefaultImport (Qualified (ByModuleName primModName) primModName)
       . addDefaultImport (Qualified ByNullSourcePos primModName)
+      . addDefaultImport (Qualified (ByModuleName builtinModName) builtinModName)
+      -- . addDefaultImport (Qualified ByNullSourcePos  builtinModName)
 
 data NameSource = UserNamed | CompilerNamed
   deriving (Show, Generic, NFData, Serialise)

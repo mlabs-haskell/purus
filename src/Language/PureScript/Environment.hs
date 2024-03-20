@@ -1,3 +1,5 @@
+{-# OPTIONS_GHC -Wno-unrecognised-pragmas #-}
+{-# HLINT ignore "Redundant bracket" #-}
 module Language.PureScript.Environment where
 
 import Prelude
@@ -27,6 +29,8 @@ import Language.PureScript.Roles (Role(..))
 import Language.PureScript.TypeClassDictionaries (NamedDict)
 import Language.PureScript.Types (SourceConstraint, SourceType, Type(..), TypeVarVisibility(..), eqType, srcTypeConstructor, freeTypeVariables)
 import Language.PureScript.Constants.Prim qualified as C
+import Language.PureScript.Constants.Purus qualified as PLC
+import Codec.CBOR.Write (toLazyByteString)
 
 -- | The @Environment@ defines all values and types which are currently in scope:
 data Environment = Environment
@@ -99,9 +103,9 @@ instance A.ToJSON FunctionalDependency where
              , "determined" .= fdDetermined
              ]
 
--- | The initial environment with no values and only the default javascript types defined
+-- | The initial environment with only builtin PLC functions and Prim PureScript types defined
 initEnvironment :: Environment
-initEnvironment = Environment M.empty allPrimTypes M.empty M.empty M.empty allPrimClasses
+initEnvironment = Environment builtinFunctions allPrimTypes M.empty M.empty M.empty allPrimClasses
 
 -- | A constructor for TypeClassData that computes which type class arguments are fully determined
 -- and argument covering sets.
@@ -379,16 +383,12 @@ pattern ArrayT :: Type a -> Type a
 pattern ArrayT a <-
   TypeApp _ (TypeConstructor _ C.Array) a
 
-
-
 arrayT :: SourceType -> SourceType
 arrayT = TypeApp NullSourceAnn (TypeConstructor NullSourceAnn C.Array)
 
 pattern RecordT :: Type a -> Type a
 pattern RecordT a <-
   TypeApp _ (TypeConstructor _ C.Record) a
-
-
 
 getFunArgTy :: Type a -> Type a
 getFunArgTy = \case
@@ -442,6 +442,8 @@ allPrimTypes = M.unions
   , primSymbolTypes
   , primIntTypes
   , primTypeErrorTypes
+  -- For the sake of simplicity I'm putting the builtins here as well
+  , builtinTypes
   ]
 
 primBooleanTypes :: M.Map (Qualified (ProperName 'TypeName)) (SourceType, TypeKind)
@@ -720,3 +722,137 @@ unapplyKinds = go [] where
     | eqType fn tyFunction = go (k1 : kinds) k2
   go kinds (ForAll _ _ _ _ k _) = go kinds k
   go kinds k = (reverse kinds, k)
+
+-- |
+-- Plutus Data / Builtins:
+-- We need to provide primitives for Data-encoded objects,
+-- builtin functions, etc
+
+tyBuiltinData :: SourceType
+tyBuiltinData = srcTypeConstructor PLC.BuiltinData
+
+tyAsData :: SourceType -> SourceType
+tyAsData = TypeApp nullSourceAnn (srcTypeConstructor PLC.AsData)
+
+tyBuiltinPair :: SourceType -> SourceType -> SourceType
+tyBuiltinPair a b =
+   TypeApp nullSourceAnn
+     (TypeApp nullSourceAnn (srcTypeConstructor PLC.BuiltinPair)
+      a)
+     b
+
+tyBuiltinList :: SourceType -> SourceType
+tyBuiltinList = TypeApp nullSourceAnn (srcTypeConstructor PLC.BuiltinList)
+
+tyByteString :: SourceType
+tyByteString = srcTypeConstructor PLC.BuiltinByteString
+
+tyUnit :: SourceType
+tyUnit = srcTypeConstructor PLC.BuiltinUnit
+
+-- just for readability
+(#@) :: Qualified Ident -> SourceType -> (Qualified Ident, SourceType)
+f #@ t = (f,t)
+
+-- the kind is Type here. This is just to avoid potentially making a typo (and to make the manual function sigs more readable)
+forallT :: Text ->  (SourceType -> SourceType) -> SourceType
+forallT txt  f = tyForall txt kindType (f $ tyVar txt)
+infixr 0 #@
+
+builtinTypes :: M.Map (Qualified (ProperName 'TypeName)) (SourceType, TypeKind)
+builtinTypes = M.fromList [
+    (PLC.BuiltinData,         (kindType, ExternData [])),
+    (PLC.BuiltinPair,         (kindType -:> kindType -:> kindType, ExternData [Representational, Representational])),
+    (PLC.BuiltinList,         (kindType -:> kindType, ExternData [Representational])),
+    (PLC.BuiltinByteString,   (kindType, ExternData []))
+  ]
+
+builtinFunctions :: M.Map (Qualified Ident) (SourceType, NameKind, NameVisibility)
+builtinFunctions = builtinCxt <&> \x -> (x,Public,Defined)
+
+-- NOTE/REVIEW: I'm rendering all "Word8" types as tyInt for now.
+--              I'm not sure whether that's correct
+builtinCxt :: M.Map (Qualified Ident) SourceType
+builtinCxt = M.fromList [
+    -- Integers
+    PLC.I_addInteger #@ tyInt -:> tyInt -:> tyInt,
+    PLC.I_subtractInteger #@ tyInt -:> tyInt -:> tyInt,
+    PLC.I_multiplyInteger #@ tyInt -:> tyInt -:> tyInt,
+    PLC.I_divideInteger #@ tyInt -:> tyInt -:> tyInt,
+    PLC.I_quotientInteger #@ tyInt -:> tyInt -:> tyInt,
+    PLC.I_remainderInteger #@ tyInt -:> tyInt -:> tyInt,
+    PLC.I_modInteger #@ tyInt -:> tyInt -:> tyInt,
+    PLC.I_equalsInteger #@ tyInt -:> tyInt -:> tyBoolean,
+    PLC.I_lessThanInteger #@ tyInt -:> tyInt -:> tyBoolean,
+
+    -- ByteStrings
+    PLC.I_appendByteString #@ tyByteString -:> tyByteString -:> tyByteString,
+    -- \/ Check the implications of the variant semantics for this (https://github.com/IntersectMBO/plutus/blob/973e03bbccbe3b860e2c8bf70c2f49418811a6ce/plutus-core/plutus-core/src/PlutusCore/Default/Builtins.hs#L1179-L1207)
+    PLC.I_consByteString #@ tyInt -:> tyByteString -:> tyByteString,
+    PLC.I_sliceByteString #@ tyInt -:> tyInt -:> tyByteString -:> tyByteString,
+    PLC.I_lengthOfByteString #@ tyByteString -:> tyInt,
+    PLC.I_indexByteString #@ tyByteString -:> tyInt -:> tyInt,
+    PLC.I_equalsByteString #@ tyByteString -:> tyByteString -:> tyBoolean,
+    PLC.I_lessThanByteString #@ tyByteString -:> tyByteString -:> tyBoolean,
+    PLC.I_lessThanEqualsByteString #@ tyByteString -:> tyByteString -:> tyBoolean,
+
+    -- Cryptography
+    PLC.I_sha2_256 #@ tyByteString -:> tyByteString,
+    PLC.I_sha3_256 #@ tyByteString -:> tyByteString,
+    PLC.I_blake2b_256 #@ tyByteString -:> tyByteString,
+    PLC.I_verifyEd25519Signature #@ tyByteString -:> tyByteString -:> tyByteString -:> tyBoolean,
+    PLC.I_verifyEcdsaSecp256k1Signature #@ tyByteString -:> tyByteString -:> tyByteString -:> tyBoolean,
+
+    -- Strings
+    PLC.I_appendString #@ tyString -:> tyString -:> tyString,
+    PLC.I_equalsString #@ tyString -:> tyString -:> tyBoolean,
+    PLC.I_encodeUtf8 #@ tyString -:> tyByteString,
+    PLC.I_decodeUtf8 #@ tyByteString -:> tyString,
+
+    -- Bool
+    -- NOTE: Specializing this to "Type", which miiiight not be what we want depending on how we do the data encoding
+    PLC.I_ifThenElse #@ forallT "x" $ \x -> tyBoolean -:> x -:> x,
+
+    -- Unit
+    PLC.I_chooseUnit #@ forallT "x" $ \x -> tyUnit -:> x -:> x,
+
+    -- Tracing
+    PLC.I_trace #@ forallT "x" $ \x -> tyString -:> x,
+
+    -- Pairs
+    PLC.I_fstPair #@ forallT "a" $ \a -> forallT "b" $ \b -> tyBuiltinPair a b -:> a,
+    PLC.I_sndPair #@ forallT "a" $ \a -> forallT "b" $ \b -> tyBuiltinPair a b -:> b,
+
+    -- Lists
+    PLC.I_chooseList #@ forallT "a" $ \a -> forallT "b" $ \b -> tyBuiltinList a -:> b -:> b,
+    PLC.I_mkCons #@ forallT "a" $ \a -> a -:> tyBuiltinList a -:> tyBuiltinList a,
+    PLC.I_headList #@ forallT "a" $ \a -> tyBuiltinList a -:> a,
+    PLC.I_tailList #@ forallT "a" $ \a -> tyBuiltinList a -:> tyBuiltinList a,
+    PLC.I_nullList #@ forallT "a" $ \a -> tyBuiltinList a -:> tyBoolean,
+
+    -- Data
+      -- Construction
+    PLC.I_chooseData #@ forallT "a" $ \a -> tyBuiltinData -:> a -:> a -:> a -:> a -:> a,
+    PLC.I_constrData #@ tyInt -:> tyBuiltinList tyBuiltinData -:> tyBuiltinData,
+    PLC.I_mapData #@ tyBuiltinList (tyBuiltinPair tyBuiltinData tyBuiltinData) -:> tyBuiltinData,
+    PLC.I_listData #@ tyBuiltinList tyBuiltinData -:> tyBuiltinData,
+    PLC.I_iData #@ tyInt -:> tyBuiltinData,
+    PLC.I_bData #@ tyByteString -:> tyBuiltinData,
+      -- Destruction
+    PLC.I_unConstrData #@ tyBuiltinData -:> tyBuiltinPair tyInt tyBuiltinData,
+    PLC.I_unMapData #@ tyBuiltinData -:> tyBuiltinList (tyBuiltinPair tyBuiltinData tyBuiltinData),
+    PLC.I_unListData #@ tyBuiltinData -:> tyBuiltinList tyBuiltinData,
+    PLC.I_unIData #@ tyBuiltinData -:> tyInt,
+    PLC.I_unBData #@ tyBuiltinData -:> tyByteString,
+      -- Data Misc
+    PLC.I_equalsData #@ tyBuiltinData -:> tyBuiltinData -:> tyBoolean,
+    PLC.I_serialiseData #@ tyBuiltinData -:> tyByteString,
+
+    -- Misc constructors
+    PLC.I_mkPairData #@ tyBuiltinData -:> tyBuiltinData  -:> tyBuiltinPair tyBuiltinData tyBuiltinData,
+    PLC.I_mkNilData #@ tyUnit -:> tyBuiltinList tyBuiltinData,
+    PLC.I_mkNilPairData #@ tyUnit -:> tyBuiltinList (tyBuiltinPair tyBuiltinData tyBuiltinData)
+
+    -- TODO: the Bls12 crypto primfuns
+    -- NOTE: IntegerToByteString & ByteStringToInteger don't appear to be in the version of PlutusCore we have?
+  ]
