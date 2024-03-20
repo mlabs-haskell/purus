@@ -249,6 +249,9 @@ library
     Language.PureScript.CoreFn.Ann
     Language.PureScript.CoreFn.Binders
     Language.PureScript.CoreFn.Convert
+    Language.PureScript.CoreFn.Convert.Monomorphize
+    Language.PureScript.CoreFn.Convert.DesugarObjects
+    Language.PureScript.CoreFn.Convert.Plated
     Language.PureScript.CoreFn.CSE
     Language.PureScript.CoreFn.Desugar
     Language.PureScript.CoreFn.Desugar.Utils
