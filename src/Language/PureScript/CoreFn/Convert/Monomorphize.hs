@@ -32,7 +32,7 @@ import Language.PureScript.CoreFn.FromJSON ()
 import Data.Aeson qualified as Aeson
 import Data.Text qualified as T
 import Data.List (find)
-import Debug.Trace ( trace, traceM )
+-- import Debug.Trace ( trace, traceM )
 import Language.PureScript.AST.Literals (Literal(..))
 import Data.Map (Map)
 import Data.Map qualified as M
@@ -57,13 +57,19 @@ import Control.Monad.RWS
 import Control.Monad.Except (throwError)
 import Language.PureScript.CoreFn.Convert.Plated ( Depth )
 import Control.Exception
+import Data.Text (Text)
+
+trace = flip const
+
+traceM :: forall m. Monad m => String -> m ()
+traceM _ = pure ()
 
 -- hopefully a better API than the existing traversal machinery (which is kinda weak!)
 -- Adapted from https://twanvl.nl/blog/haskell/traversing-syntax-trees
 
 -- TODO: better error messages
 data MonoError
- = MonoError Depth String
+ = MonoError Depth String deriving (Show)
 
 note :: Depth -> String -> Maybe b -> Monomorphizer b
 note d err = \case
@@ -91,6 +97,13 @@ hoist1 st act = RWST $ \r s -> f (runRWST act r s)
         pure (Nothing,st,())
       Right (x,st',_) -> pure (Just x, st', ())
 
+monomorphizeExpr :: Module Ann -> Text  -> Either MonoError (Expr Ann)
+monomorphizeExpr m@Module{..} t = case findDeclBody t m of
+  Nothing -> Left $ MonoError 0 $ "Couldn't find decl: " <> T.unpack t
+  Just e -> runRWST (itransformM monomorphizeA 0 e) (moduleName,moduleDecls) (MonoState M.empty 0) & \case
+    Left err -> Left err
+    Right (a,_,_) -> Right a
+
 monomorphizeMain :: Module Ann -> Maybe (Expr Ann)
 monomorphizeMain Module{..} =  runMono g
   where
@@ -107,12 +120,9 @@ monomorphizeMain Module{..} =  runMono g
     runMono act  = case runIdentity (runRWST act (moduleName,otherDecls) (MonoState M.empty 0)) of
                      (a,_,_) -> a
 
-
 monomorphizeMain' :: Module Ann -> Either MonoError (Expr Ann)
 monomorphizeMain' Module{..} =  g
   where
-    emptySt = MonoState M.empty 0
-
     g = runMono $ itransformM monomorphizeA 0 mainE
 
     (mainE,otherDecls) = partitionDecls moduleDecls
@@ -202,6 +212,13 @@ getResult other = other
 nullAnn :: Ann
 nullAnn = (NullSourceSpan,[],Nothing)
 
+findDeclBody :: Text -> Module Ann -> Maybe (Expr Ann)
+findDeclBody nm Module{..} = case findInlineDeclGroup (Ident nm) moduleDecls of
+  Nothing -> Nothing
+  Just decl -> case decl of
+    NonRec _ _ e -> Just e
+    Rec xs -> snd <$> find (\x -> snd (fst x) == Ident nm) xs
+
 findInlineDeclGroup :: Ident -> [Bind a] -> Maybe (Bind a)
 findInlineDeclGroup _ [] = Nothing
 findInlineDeclGroup ident (NonRec ann ident' expr:rest)
@@ -216,7 +233,7 @@ monomorphizeA :: Depth -> Expr Ann -> Monomorphizer (Expr Ann)
 monomorphizeA d = \case
   app@(App ann ty _ arg) -> trace ("monomorphizeA " <> prettyTypeStr ty) $ do
     (f,args) <-  note d ("Not an App: " <> renderExprStr app) $ analyzeApp app
-    let  types = (^. eType) <$> args
+    let types = (^. eType) <$> args
      -- maybe trace or check that the types match?
      -- need to re-quantify? not sure. CHECK!
     handleFunction d f (types <> [ty]) >>= \case
@@ -245,7 +262,7 @@ handleFunction  d abs@(Abs ann (ForAll{}) ident body'') (t:ts) = trace ("handleF
       pure $ Right (Abs ann (function t bodyT) ident body)
 
 handleFunction  d (Var a ty qn) [t] = inlineAs d t qn
-handleFunction d (Var a ty qn) ts = inlineAs d (foldr1 function ts) qn
+handleFunction d (Var a ty qn) ts = inlineAs d (foldr1 function ts) qn -- idk about this one?
 handleFunction  d e _ = throwError $ MonoError d
                         $ "Error in handleFunction:\n  "
                         <> renderExprStr e

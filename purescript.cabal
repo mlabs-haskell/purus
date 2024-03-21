@@ -165,9 +165,11 @@ common defaults
     blaze-html >=0.9.1.2 && <0.10,
     bower-json >=1.1.0.0 && <1.2,
     boxes >=0.1.5 && <0.2,
+    bound,
     bytestring >=0.11.3.1 && <0.12,
     Cabal >=3.6.3.0 && <3.7,
     cborg >=0.2.7.0 && <0.3,
+    deriving-compat,
     serialise >=0.2.5.0 && <0.3,
     cheapskate >=0.1.1.2 && <0.2,
     clock >=0.8.3 && <0.9,
@@ -252,6 +254,7 @@ library
     Language.PureScript.CoreFn.Convert.Monomorphize
     Language.PureScript.CoreFn.Convert.DesugarObjects
     Language.PureScript.CoreFn.Convert.Plated
+    Language.PureScript.CoreFn.Convert.IR
     Language.PureScript.CoreFn.CSE
     Language.PureScript.CoreFn.Desugar
     Language.PureScript.CoreFn.Desugar.Utils
