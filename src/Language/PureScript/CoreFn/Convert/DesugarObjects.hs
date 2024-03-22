@@ -42,8 +42,10 @@ import Language.PureScript.CoreFn.Convert.IR hiding (stripQuantifiers)
 import Language.PureScript.CoreFn.Convert.Plated
 import Control.Exception (throwIO)
 import Debug.Trace
+import Data.List (findIndex)
+import Control.Monad (join)
 
-test :: FilePath -> Text -> IO (Exp VarBox)
+test :: FilePath -> Text -> IO (Exp FVar)
 test path decl = do
   myMod <- decodeModuleIO path
   case monomorphizeExpr myMod decl of
@@ -126,13 +128,13 @@ prettyError = \case
 tryConvertExprIO :: Expr Ann -> IO ()
 tryConvertExprIO = putStrLn . either id ppExp . tryConvertExpr
 
-tryConvertExpr :: Expr Ann -> Either String (Exp VarBox)
+tryConvertExpr :: Expr Ann -> Either String (Exp FVar)
 tryConvertExpr = first prettyError . tryConvertExpr'
 
-tryConvertExpr' :: Expr Ann -> Either ExprConvertError (Exp VarBox)
+tryConvertExpr' :: Expr Ann -> Either ExprConvertError (Exp FVar)
 tryConvertExpr' = go id
   where
-    go :: (Expr Ann -> Expr Ann) -> Expr Ann -> Either ExprConvertError (Exp VarBox)
+    go :: (Expr Ann -> Expr Ann) -> Expr Ann -> Either ExprConvertError (Exp FVar)
     go f expression = case expression of
       Literal ann ty lit -> do
         let lhole = f . Literal ann ty . ArrayLiteral . pure
@@ -146,8 +148,8 @@ tryConvertExpr' = go id
       Abs ann ty ident e -> do
         ty' <- goType ty
         ex <- go (f . Abs ann ty ident) e
-        let expr = abstract (matchVar ty' ident) ex
-        pure $ LamE ty' 1 ident expr
+        let expr = abstract (matchVar (headArg ty') ident) ex
+        pure $ LamE ty' (BVar 0 (headArg ty') ident) expr
       App ann ty e1 e2 -> do
         ty' <- goType ty
         e2' <- go (f . App ann ty e1) e2
@@ -162,10 +164,11 @@ tryConvertExpr' = go id
         ty' <- goType ty
         rawBinds <- goBinds (f . (\x -> Let ann ty [x] e)) binds
         e' <- go (f . Let ann ty binds) e
-        let indices = fst <$> rawBinds
-            exprs = snd <$> rawBinds
-            abstr = abstract (`elemIndex` indices)
-        pure $ LetE ty' (length indices) (map abstr exprs) (abstr e')
+        let allBoundIdents = fst <$> join rawBinds
+            abstr = abstract (abstractMany allBoundIdents)
+            bindEs = assembleBindEs [] rawBinds
+            bindings = mkBindings allBoundIdents
+        pure $ LetE ty' bindings  bindEs (abstr e')
       xp@(Accessor _ ty lbl e) -> case desugarObjectAccessor ty lbl e of
         Nothing -> Left $ ExprConvertError f xp Nothing "Failed to desugar Accessor"
         Just desugE -> go f desugE
@@ -174,19 +177,51 @@ tryConvertExpr' = go id
         Just desugE -> go f desugE
       Var _ ty (Qualified _ nm) -> do
         ty' <- goType ty
-        pure . V $ VarBox ty' nm
+        pure . V $ FVar ty' nm
      where
-       goAlt :: (CaseAlternative Ann -> Expr Ann) -> CaseAlternative Ann -> Either ExprConvertError (Alt Exp VarBox)
+       -- REVIEW: This *MIGHT* not be right. I'm not 100% sure what the PS criteria for a mutually rec group are
+       --         First arg threads the FVars that correspond to the already-processed binds
+       --         through the rest of the conversion. I think that's right - earlier bindings
+       --         should be available to later bindings
+       assembleBindEs :: [FVar] -> [[(FVar,Exp FVar)]] -> [BindE Exp FVar]
+       assembleBindEs _ [] = []
+       assembleBindEs dict ([]:rest) = assembleBindEs dict rest -- shouldn't happen but w/e
+       assembleBindEs dict ([(fv@(FVar tx ix),e)]:rest) =
+         let dict' = fv:dict
+             abstr = abstract (abstractMany dict')
+         in NonRecursive ix (abstr e) : assembleBindEs dict' rest
+       assembleBindEs dict (xsRec:rest) = case assembleRec dict xsRec of
+         (dict',recb) -> recb : assembleBindEs dict' rest
+
+       assembleRec :: [FVar] -> [(FVar, Exp FVar)] -> ([FVar], BindE Exp FVar)
+       assembleRec dict xs =
+         let dict' = dict <> (fst <$> xs)
+             abstr = abstract (abstractMany dict')
+             recBind = Recursive
+                       . map (uncurry $ \(FVar _ ixx) xp -> (ixx,abstr xp))
+                       $ xs
+         in (dict',recBind)
+
+
+       mkBindings :: [FVar] -> Bindings
+       mkBindings = M.fromList . zip [0..]
+
+       abstractMany :: [FVar] -> FVar -> Maybe BVar
+       abstractMany xs (FVar t i) =
+         (\indX -> BVar indX t i)
+         <$> findIndex (\(FVar t' i') -> t == t' && i == i') xs
+
+       goAlt :: (CaseAlternative Ann -> Expr Ann) -> CaseAlternative Ann -> Either ExprConvertError (Alt Exp FVar)
        goAlt g (CaseAlternative binders result) = do
          boundVars <- concat <$> traverse (getBoundVar result) binders
          pats <- traverse toPat  binders
          let resultF = g . CaseAlternative binders
-             abstrE = abstract (`elemIndex` boundVars)
+             abstrE = abstract (abstractMany boundVars)
          goResult resultF result >>= \case
-           Left ges -> pure $ GuardedAlt (length boundVars) pats (bimap abstrE abstrE <$> ges)
-           Right re -> pure $ UnguardedAlt (length boundVars) pats (abstrE re)
+           Left ges -> pure $ GuardedAlt (mkBindings boundVars) pats (bimap abstrE abstrE <$> ges)
+           Right re -> pure $ UnguardedAlt (mkBindings boundVars) pats (abstrE re)
         where
-          getBoundVar :: Either [(Expr Ann, Expr Ann)] (Expr Ann) -> Binder Ann -> ConvertM [VarBox]
+          getBoundVar :: Either [(Expr Ann, Expr Ann)] (Expr Ann) -> Binder Ann -> ConvertM [FVar]
           getBoundVar body b = case b of
             ConstructorBinder _ _ _ bs -> concat <$> traverse (getBoundVar body) bs
             LiteralBinder _ (ArrayLiteral xs) -> concat <$> traverse (getBoundVar body) xs
@@ -196,18 +231,18 @@ tryConvertExpr' = go id
                 Nothing -> pure [] -- probably should trace or warn at least
                 Just (t,_) -> do
                   ty' <- goType t
-                  pure  [VarBox ty' nm]
+                  pure  [FVar ty' nm]
               Left fml -> do
                 let allResults = concatMap (\(x,y) -> [x,y]) fml
                     matchingVar = mapMaybe (findBoundVar nm) allResults
                 case matchingVar of
                   ((t,_):_) -> do
                     ty' <- goType t
-                    pure [VarBox ty' nm]
+                    pure [FVar ty' nm]
                   _ -> pure []
             _ -> pure []
 
-          toPat :: Binder Ann -> ConvertM (Pat Exp VarBox)
+          toPat :: Binder Ann -> ConvertM (Pat Exp FVar)
           toPat = \case
             NullBinder _ -> pure WildP
             VarBinder _ i  ->  pure $ VarP i
@@ -232,7 +267,7 @@ tryConvertExpr' = go id
 
           goResult :: (Either [(Expr Ann, Expr Ann)] (Expr Ann) -> Expr Ann)
                    -> Either [(Expr Ann, Expr Ann)] (Expr Ann)
-                   -> Either ExprConvertError (Either [(Exp VarBox, Exp VarBox)] (Exp VarBox))
+                   -> Either ExprConvertError (Either [(Exp FVar, Exp FVar)] (Exp FVar))
           goResult h = \case
             Left exs -> do
               exs' <- traverse (goGuarded (h . Left)) exs
@@ -246,14 +281,14 @@ tryConvertExpr' = go id
                e2' <- go (\x -> cb [(e1,x)]) e2
                pure (e1',e2')
 
-       goBinds :: (Bind Ann -> Expr Ann) -> [Bind Ann] -> Either ExprConvertError [(VarBox, Exp VarBox)]
+       goBinds :: (Bind Ann -> Expr Ann) -> [Bind Ann] -> Either ExprConvertError [[(FVar, Exp FVar)]]
        goBinds _ [] = pure []
        goBinds g (b:bs) = case b of
          NonRec ann ident expr -> do
            ty' <- goType (exprType expr)
            e' <- go (g . NonRec ann ident ) expr
            rest <- goBinds g bs
-           pure $ (VarBox ty' ident,e') : rest
+           pure $ [(FVar ty' ident,e')] : rest
          -- TODO: Fix this to preserve recursivity (requires modifying the *LET* ctor of Exp)
          Rec _xs -> do
            let xs = map (\((ann,nm),e) -> NonRec ann nm e) _xs
@@ -272,19 +307,20 @@ tryConvertExpr' = go id
              Qualified ByNullSourcePos _ -> False -- idk about this actually, guess we'll find out
              Qualified (BySourcePos _) nm' -> nm == nm'
 
-       goList :: (Expr Ann -> Expr Ann) -> [Expr Ann] -> Either ExprConvertError [Exp VarBox]
+       goList :: (Expr Ann -> Expr Ann) -> [Expr Ann] -> Either ExprConvertError [Exp FVar]
        goList _ [] = pure []
        goList g (ex:exs) = do
          e' <- go g ex
          es' <- goList g exs
          pure $ e' : es'
 
-       matchVar :: Ty -> Ident -> VarBox -> Maybe Int
-       matchVar t nm (VarBox ty n')
-         | ty == t && nm == n' =  Just 0
+       -- ONLY USE THIS IN LAMBDA ABSTRACTIONS!
+       matchVar :: Ty -> Ident -> FVar -> Maybe BVar
+       matchVar t nm (FVar ty n')
+         | ty == t && nm == n' =  Just (BVar 0 t nm)
          | otherwise = Nothing
 
-       tryConvertLit :: (Expr Ann -> Expr Ann) -> Literal (Expr Ann) -> Either ExprConvertError (Either (Exp VarBox) (Lit (Exp VarBox)))
+       tryConvertLit :: (Expr Ann -> Expr Ann) -> Literal (Expr Ann) -> Either ExprConvertError (Either (Exp FVar) (Lit (Exp FVar)))
        tryConvertLit cb = \case
          NumericLiteral (Left i) -> pure . Right $ IntL i
          NumericLiteral (Right d) -> pure . Right $ NumL d

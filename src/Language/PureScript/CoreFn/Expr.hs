@@ -88,6 +88,21 @@ exprType = \case
   Case _ ty _ _ -> ty
   Let _ ty _ _ -> ty
 
+-- | Only goes one level deep, primarily used to re-quantify
+--   imperfectly monomorphized polymorphic types
+--   during Purus monomorphization
+mapType :: (SourceType -> SourceType) -> Expr a -> Expr a
+mapType f = \case
+  Literal a ty b -> Literal a (f ty) b
+  Constructor a ty b c d -> Constructor a (f ty) b c d
+  Accessor a ty b c -> Accessor a (f ty) b c
+  ObjectUpdate a ty b c d -> ObjectUpdate a (f ty) b c d
+  Abs a ty b c -> Abs a (f ty) b c
+  App a ty b c -> App a (f ty) b c
+  Var a ty b -> Var a (f ty) b
+  Case a ty b c -> Case a (f ty) b c
+  Let a ty b c -> Let a (f ty) b c
+
 -- |
 -- A let or module binding.
 --

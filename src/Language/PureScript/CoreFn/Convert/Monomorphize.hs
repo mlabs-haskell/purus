@@ -1,6 +1,7 @@
 {-# OPTIONS_GHC -Wno-orphans #-} -- has to be here (more or less)
 {-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE MultiWayIf #-}
 {-# OPTIONS_GHC -Wno-unrecognised-pragmas #-}
 {-# HLINT ignore "Use if" #-}
 module Language.PureScript.CoreFn.Convert.Monomorphize where
@@ -18,11 +19,11 @@ import Language.PureScript.CoreFn.Expr
       Bind(..),
       CaseAlternative(CaseAlternative),
       Expr(..),
-      PurusType )
+      PurusType, mapType )
 import Language.PureScript.CoreFn.Module ( Module(..) )
-import Language.PureScript.Names (Ident(..), Qualified (..), QualifiedBy (..), pattern ByNullSourcePos, ModuleName)
+import Language.PureScript.Names (Ident(..), Qualified (..), QualifiedBy (..), pattern ByNullSourcePos, ModuleName (..), runModuleName)
 import Language.PureScript.Types
-    ( rowToList, RowListItem(..), SourceType, Type(ForAll) )
+    ( rowToList, RowListItem(..), SourceType, Type(ForAll), quantify )
 import Language.PureScript.CoreFn.Pretty.Common ( analyzeApp )
 import Language.PureScript.CoreFn.Desugar.Utils ( showIdent' )
 import Language.PureScript.Environment (pattern (:->), pattern ArrayT, pattern RecordT, function)
@@ -59,6 +60,7 @@ import Control.Monad.Except (throwError)
 import Language.PureScript.CoreFn.Convert.Plated ( Context, prettyContext )
 import Control.Exception
 import Data.Text (Text)
+import Debug.Trace (trace, traceM)
 
 monoTest :: FilePath -> Text -> IO (Expr Ann)
 monoTest path decl = do
@@ -69,12 +71,14 @@ monoTest path decl = do
       putStrLn (renderExprStr e)
       pure e
 
+
+{-
 trace :: String  -> p2 -> p2
 trace _ x = x
 
 traceM :: forall m. Monad m => String -> m ()
 traceM _ = pure ()
-
+-}
 -- hopefully a better API than the existing traversal machinery (which is kinda weak!)
 -- Adapted from https://twanvl.nl/blog/haskell/traversing-syntax-trees
 
@@ -242,16 +246,27 @@ findInlineDeclGroup ident (Rec xs:rest) = case  find (\x -> snd (fst x) == ident
 
 monomorphizeA :: Context -> Expr Ann -> Monomorphizer (Expr Ann)
 monomorphizeA d = \case
-  app@(App ann ty _ arg) -> trace ("monomorphizeA " <> prettyTypeStr ty) $ do
+  app@(App ann ty _ arg) -> trace ("monomorphizeA " <> prettyTypeStr ty <> "\n  " <> renderExprStr app) $ do
     (f,args) <-  note d ("Not an App: " <> renderExprStr app) $ analyzeApp app
     let types = (^. eType) <$> args
+    traceM $ "mma types: " <> show (prettyTypeStr <$> types)
      -- maybe trace or check that the types match?
      -- need to re-quantify? not sure. CHECK!
-    handleFunction d f (types <> [ty]) >>= \case
-      Left (binds,fun) -> do
-        pure $ gLet  binds (App ann (getResult $ exprType fun) fun arg)
-      Right fun -> pure $ App ann (getResult $ exprType fun) fun arg
+    if isMonomorphized (exprType f)  || isBuiltin f
+      then pure app
+      else do
+        handleFunction d f (types <> [ty]) >>= \case
+          Left (binds,fun) -> do
+            pure $ gLet  binds (App ann (getResult $ exprType fun) (mapType quantify fun) arg)
+          Right fun -> pure $ App ann (getResult $ exprType fun) (mapType quantify fun) arg
   other -> pure other
+ where
+   isMonomorphized :: SourceType -> Bool
+   isMonomorphized sty = stripQuantifiers sty == sty
+
+   -- This isn't quite right b/c we have polymorphic builtins... but there's no point to inlining different variants afaict?
+   isBuiltin (Var _ _ (Qualified (ByModuleName (ModuleName "Builtin")) _)) = True
+   isBuiltin _ = False
 
 gLet :: [Bind Ann] -> Expr Ann -> Expr Ann
 gLet binds e = Let nullAnn (e ^. eType) binds e
@@ -259,12 +274,14 @@ gLet binds e = Let nullAnn (e ^. eType) binds e
 nameShadows :: Context -> Ident -> Bool
 nameShadows cxt iden = isJust $ M.lookup iden cxt
 
+
+
 handleFunction :: Context
                -> Expr Ann
                -> [PurusType]
                -> Monomorphizer (Either ([Bind Ann], Expr Ann) (Expr Ann))
 handleFunction  _ e [] = pure (pure e)
-handleFunction  d expr@(Abs ann (ForAll{}) ident body'') (t:ts) = trace ("handleFunction abs:\n  " <> renderExprStr expr <> "\n  " <> prettyTypeStr t) $  do
+handleFunction  d expr@(Abs ann ForAll{} ident body'') (t:ts) = trace ("handleFunction abs:\n  " <> renderExprStr expr <> "\n  " <> prettyTypeStr t) $  do
   case nameShadows d ident of
     False -> do
         let body' = updateVarTy d ident t body''
@@ -326,10 +343,10 @@ renameBoundVars :: Ident -> Ident -> Context -> Expr Ann -> Expr Ann
 renameBoundVars old new  = itransform (renameBoundVar old new)
 
 inlineAs :: Context -> PurusType -> Qualified Ident -> Monomorphizer (Either ([Bind Ann], Expr Ann) (Expr Ann))
+inlineAs _ ty nm@(Qualified (ByModuleName (ModuleName "Builtin")) _) = pure . Right $ Var nullAnn ty nm
 inlineAs d _ (Qualified (BySourcePos _) ident) = throwError $ MonoError d  $ "can't inline bound variable " <> showIdent' ident
-inlineAs  d ty (Qualified (ByModuleName mn') ident) = trace ("inlineAs: " <> showIdent' ident <> " :: " <>  prettyTypeStr ty) $ ask >>= \(mn,modDict) ->
-  if mn == mn'
-    then do
+inlineAs  d ty qmn@(Qualified (ByModuleName mn') ident) = trace ("inlineAs: " <> showIdent' ident <> " :: " <>  prettyTypeStr ty) $ ask >>= \(mn,modDict) ->
+  if | mn == mn' -> do
       let msg = "Couldn't find a declaration with identifier " <> showIdent' ident <> " to inline as " <> prettyTypeStr ty
       note d msg  (findInlineDeclGroup ident modDict) >>= \case
         NonRec _ _ e -> do
@@ -351,9 +368,8 @@ inlineAs  d ty (Qualified (ByModuleName mn') ident) = trace ("inlineAs: " <> sho
             Nothing -> throwError
                        $ MonoError d
                        $ "Couldn't inline " <> showIdent' ident <> " - identifier didn't appear in collected bindings:\n  "  <> show renameMap
-
-          -- pure $ Left (monoBinds,exp)
-    else throwError $ MonoError d "Imports aren't supported!"
+     -- TODO: This is a temporary hack to get builtins working w/o a real linker.
+     | otherwise -> throwError $ MonoError d "Imports aren't supported!"
  where
    makeBind :: Map Ident (Ident,SourceType) -> Context -> Ident -> SourceType -> Expr Ann -> Monomorphizer (Bind Ann)
    makeBind renameDict depth newIdent t e = trace ("makeBind: " <> showIdent' newIdent) $ do

@@ -255,6 +255,7 @@ library
     Language.PureScript.CoreFn.Convert.DesugarObjects
     Language.PureScript.CoreFn.Convert.Plated
     Language.PureScript.CoreFn.Convert.IR
+     Language.PureScript.CoreFn.Convert.ToPIR
     Language.PureScript.CoreFn.CSE
     Language.PureScript.CoreFn.Desugar
     Language.PureScript.CoreFn.Desugar.Utils
