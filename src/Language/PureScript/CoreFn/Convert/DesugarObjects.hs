@@ -1,9 +1,7 @@
 {-# OPTIONS_GHC -Wno-orphans #-} -- has to be here (more or less)
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TypeApplications #-}
-{-# LANGUAGE DeriveTraversable, DeriveAnyClass  #-}
-{-# LANGUAGE InstanceSigs #-}
-{-# LANGUAGE StandaloneDeriving #-}
+
 module Language.PureScript.CoreFn.Convert.DesugarObjects where
 
 import Prelude
@@ -16,8 +14,8 @@ import Language.PureScript.CoreFn.Expr
       Expr(..) )
 import Language.PureScript.Names (Ident(..), Qualified (..), QualifiedBy (..), pattern ByNullSourcePos, ProperNameType (..), ProperName(..), moduleNameFromString, coerceProperName, disqualify)
 import Language.PureScript.Types
-    ( SourceType, Type(..), SkolemScope, TypeVarVisibility, srcTypeConstructor, srcTypeApp, RowListItem (rowListType) )
-import Language.PureScript.Environment (pattern (:->), pattern RecordT, function)
+    ( SourceType, Type(..), srcTypeConstructor, srcTypeApp, RowListItem (rowListType), rowToList, eqType )
+import Language.PureScript.Environment (pattern (:->), pattern RecordT, function, kindType)
 import Language.PureScript.CoreFn.Pretty
     ( prettyTypeStr, renderExprStr )
 import Language.PureScript.CoreFn.Ann (Ann)
@@ -32,20 +30,29 @@ import Language.PureScript.AST.SourcePos
 import Control.Lens.IndexedPlated
 import Control.Lens ( ix )
 import Language.PureScript.CoreFn.Convert.Monomorphize
-    ( stripQuantifiers, nullAnn, mkFieldMap )
-import GHC.Natural (Natural)
+    ( nullAnn, mkFieldMap, decodeModuleIO, MonoError (..), monomorphizeExpr )
 import Data.Text (Text)
 import Bound
-import Data.Kind qualified as GHC
-import Control.Monad
-import Data.Functor.Classes
 import Data.Bifunctor (Bifunctor(bimap, first, second))
 import Control.Lens.Combinators (to)
 import Language.PureScript.CoreFn (Binder(..))
 import Data.Maybe (mapMaybe)
 import Control.Lens.Operators
-import Language.PureScript.CoreFn.Convert.IR
+import Language.PureScript.CoreFn.Convert.IR hiding (stripQuantifiers)
+import Language.PureScript.CoreFn.Convert.Plated
+import Control.Exception (throwIO)
+import Debug.Trace
 
+test :: FilePath -> Text -> IO (Exp VarBox)
+test path decl = do
+  myMod <- decodeModuleIO path
+  case monomorphizeExpr myMod decl of
+    Left (MonoError _ msg ) -> throwIO $ userError $ "Couldn't monomorphize " <> T.unpack decl <> "\nReason:\n" <> msg
+    Right body -> case tryConvertExpr body of
+      Left convertErr -> throwIO $ userError convertErr
+      Right e -> do
+        putStrLn (ppExp e)
+        pure e
 
 -- This gives us a way to report the exact location of the error (which may no longer correspond *at all* to
 -- the location given in the SourcePos annotations due to inlining and monomorphization)
@@ -57,14 +64,17 @@ tryConvertType = go id
   where
     go :: (SourceType -> SourceType) -> SourceType -> Either TypeConvertError Ty
     go f t = case t of
-      RecordT fs -> do
-        let fields = rowListType <$> mkFieldMap fs
-            arity  = M.size fields
-            fakeTName = mkFakeTName arity
-            types' = M.elems fields
-            types = types' <> [foldl' srcTypeApp (srcTypeConstructor fakeTName) types'] -- the types applied to the ctor
-            ctorType = foldr1 function types
-        go f ctorType
+      RecordT fs ->
+        if isClosedRow fs
+          then do
+            let fields = rowListType <$> mkFieldMap fs
+                arity  = M.size fields
+                fakeTName = mkFakeTName arity
+                types = M.elems fields
+                -- types = types' <> [foldl' srcTypeApp (srcTypeConstructor fakeTName) types'] -- the types applied to the ctor
+                ctorType = foldl' srcTypeApp (srcTypeConstructor fakeTName) types
+            go f ctorType
+          else Left $ TypeConvertError f t $ prettyTypeStr fs <> " is not a closed row. Last: " <> prettyTypeStr (rowLast fs)
       TypeVar _ txt -> Right $ TyVar txt
       TypeConstructor _ tn -> Right $ TyCon tn
       TypeApp ann t1 t2 -> do
@@ -114,7 +124,7 @@ prettyError = \case
    fakeVar t = Var nullAnn (srcTypeConstructor $ Qualified ByNullSourcePos (ProperName "ERROR!")) (Qualified ByNullSourcePos (Ident t))
 
 tryConvertExprIO :: Expr Ann -> IO ()
-tryConvertExprIO = putStrLn . either id show . tryConvertExpr
+tryConvertExprIO = putStrLn . either id ppExp . tryConvertExpr
 
 tryConvertExpr :: Expr Ann -> Either String (Exp VarBox)
 tryConvertExpr = first prettyError . tryConvertExpr'
@@ -137,7 +147,7 @@ tryConvertExpr' = go id
         ty' <- goType ty
         ex <- go (f . Abs ann ty ident) e
         let expr = abstract (matchVar ty' ident) ex
-        pure $ LamE ty' 1 VarP expr
+        pure $ LamE ty' 1 ident expr
       App ann ty e1 e2 -> do
         ty' <- goType ty
         e2' <- go (f . App ann ty e1) e2
@@ -200,9 +210,9 @@ tryConvertExpr' = go id
           toPat :: Binder Ann -> ConvertM (Pat Exp VarBox)
           toPat = \case
             NullBinder _ -> pure WildP
-            VarBinder _ _  ->  pure VarP
+            VarBinder _ i  ->  pure $ VarP i
             ConstructorBinder _ tn cn bs -> ConP tn cn <$> traverse toPat bs
-            NamedBinder _ _ b ->  AsP <$> toPat b
+            NamedBinder _ nm b ->  AsP nm <$> toPat b
             LiteralBinder _ lp -> case lp of
               NumericLiteral (Left i) -> pure . LitP .  IntL $ i
               NumericLiteral (Right d) -> pure . LitP .  NumL $ d
@@ -252,7 +262,7 @@ tryConvertExpr' = go id
            pure $ xs' <> rest
 
        allVars :: Expr Ann -> [(SourceType,Qualified Ident)]
-       allVars ex = ex ^.. (icosmos @Natural @(Expr Ann) 0 . _Var . to (\(_,b,c) -> (b,c)))
+       allVars ex = ex ^.. icosmos @Context @(Expr Ann) M.empty . _Var . to (\(_,b,c) -> (b,c))
 
        findBoundVar :: Ident -> Expr Ann -> Maybe (SourceType, Qualified Ident)
        findBoundVar nm ex = find (goFind . snd) (allVars ex)
@@ -261,7 +271,7 @@ tryConvertExpr' = go id
              Qualified (ByModuleName _) _ -> False
              Qualified ByNullSourcePos _ -> False -- idk about this actually, guess we'll find out
              Qualified (BySourcePos _) nm' -> nm == nm'
-       
+
        goList :: (Expr Ann -> Expr Ann) -> [Expr Ann] -> Either ExprConvertError [Exp VarBox]
        goList _ [] = pure []
        goList g (ex:exs) = do
@@ -308,6 +318,7 @@ assembleDesugaredObjectLit _ _ _ = error "something went wrong in assembleDesuga
 
 desugarObjectAccessor :: SourceType -> PSString -> Expr Ann -> Maybe (Expr Ann)
 desugarObjectAccessor _ lbl e = do
+  traceM "desugarObjectAccesor"
   RecordT _fs <- pure $ exprType e -- TODO check that it's actually a closed record?
   let fs = M.toList (rowListType <$> mkFieldMap _fs)
       len = length fs
@@ -316,6 +327,7 @@ desugarObjectAccessor _ lbl e = do
       types' = snd <$> fs
       dummyNm =  Ident "<ACCESSOR>"
   lblIx <-  elemIndex lbl (fst <$> fs)
+  traceM $ "TYPES: " <> show (prettyTypeStr <$> types')
   let fieldTy = types' !! lblIx -- if it's not there *something* should have caught it by now
   let argBndrTemplate = replicate len (NullBinder nullAnn) & ix lblIx .~ VarBinder nullAnn dummyNm
       ctorBndr = ConstructorBinder nullAnn fakeTName fakeCName argBndrTemplate
@@ -366,32 +378,22 @@ desugarObjectUpdate _ e _ updateFields = do
       let altBranch = CaseAlternative [ctorBndr] $ Right res
       pure $ Case nullAnn ctorType [e] [altBranch]
 
+isClosedRow :: SourceType -> Bool
+isClosedRow t = case rowToList t of
+  (_,REmpty{}) -> True
+  (_,KindApp _ REmpty{} k) | eqType k kindType -> True
+  _ -> False
+
+rowLast :: SourceType -> SourceType
+rowLast t = case rowToList t of
+  (_,r) -> r
 
 mkFakeCName :: Int -> Qualified (ProperName 'ConstructorName)
-mkFakeCName x = Qualified (ByModuleName $ moduleNameFromString "<GENERATED>") (ProperName $ "$TUPLE_" <> T.pack (show x))
+mkFakeCName x = Qualified (ByModuleName $ moduleNameFromString "$GEN") (ProperName $ "TUPLE_" <> T.pack (show x))
 
 mkFakeTName :: Int -> Qualified (ProperName 'TypeName)
 mkFakeTName x = case mkFakeCName x of
   Qualified qb n -> Qualified qb $ coerceProperName @_ @'TypeName n
 
 allTypes :: Expr Ann -> [SourceType]
-allTypes e = e ^.. icosmos @Natural @(Expr Ann) 0 . eType
-
--- TODO: Rework these, everything fails if you have 'forall (...). RecordT'
-isRecordType :: SourceType -> Bool
-isRecordType (RecordT _) = True
-isRecordType _ = False
-
-isClosedRecord :: SourceType -> Bool
-isClosedRecord (RecordT fields) = isClosedRow fields
-isClosedRecord _ = False
-
-isClosedRow :: SourceType -> Bool
-isClosedRow = \case
-  RCons _ _ _ rest -> isClosedRow rest
-  REmpty _ -> True
-  KindApp _ REmpty{} _  -> True -- Am not 100% sure if this is actually used in closed rows
-  _ -> False
-
-noOpenRows :: Expr Ann -> Bool
-noOpenRows = all ((\x -> not (isRecordType x) || isClosedRecord x) . stripQuantifiers) . allTypes
+allTypes e = e ^.. icosmos @Context @(Expr Ann) M.empty . eType

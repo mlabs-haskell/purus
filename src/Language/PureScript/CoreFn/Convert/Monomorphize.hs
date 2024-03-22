@@ -1,7 +1,8 @@
 {-# OPTIONS_GHC -Wno-orphans #-} -- has to be here (more or less)
 {-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE ScopedTypeVariables #-}
-{-# LANGUAGE TypeApplications #-}
+{-# OPTIONS_GHC -Wno-unrecognised-pragmas #-}
+{-# HLINT ignore "Use if" #-}
 module Language.PureScript.CoreFn.Convert.Monomorphize where
 
 
@@ -31,7 +32,7 @@ import Language.PureScript.CoreFn.Ann (Ann)
 import Language.PureScript.CoreFn.FromJSON ()
 import Data.Aeson qualified as Aeson
 import Data.Text qualified as T
-import Data.List (find)
+import Data.List (find, foldl')
 -- import Debug.Trace ( trace, traceM )
 import Language.PureScript.AST.Literals (Literal(..))
 import Data.Map (Map)
@@ -55,11 +56,21 @@ import Control.Monad.RWS.Class ( MonadReader(ask), gets, modify' )
 import Control.Monad.RWS
     ( RWST(..) )
 import Control.Monad.Except (throwError)
-import Language.PureScript.CoreFn.Convert.Plated ( Depth )
+import Language.PureScript.CoreFn.Convert.Plated ( Context, prettyContext )
 import Control.Exception
 import Data.Text (Text)
 
-trace = flip const
+monoTest :: FilePath -> Text -> IO (Expr Ann)
+monoTest path decl = do
+  myMod <- decodeModuleIO path
+  case monomorphizeExpr myMod decl of
+    Left (MonoError _ msg) -> throwIO $ userError msg
+    Right e -> do
+      putStrLn (renderExprStr e)
+      pure e
+
+trace :: String  -> p2 -> p2
+trace _ x = x
 
 traceM :: forall m. Monad m => String -> m ()
 traceM _ = pure ()
@@ -69,9 +80,9 @@ traceM _ = pure ()
 
 -- TODO: better error messages
 data MonoError
- = MonoError Depth String deriving (Show)
+ = MonoError Context String deriving (Show)
 
-note :: Depth -> String -> Maybe b -> Monomorphizer b
+note :: Context  -> String -> Maybe b -> Monomorphizer b
 note d err = \case
   Nothing -> throwError $ MonoError d err
   Just x -> pure x
@@ -93,14 +104,14 @@ hoist1 st act = RWST $ \r s -> f (runRWST act r s)
     f :: Either MonoError (a, MonoState, ()) -> Identity (Maybe a, MonoState, ())
     f = \case
       Left (MonoError d msg) -> do
-        traceM $ "MonoError at depth " <> show d <> ":\n  " <> msg
+        traceM $ "MonoError:  " <> msg <> ":\n" <> "Context: " <> prettyContext d
         pure (Nothing,st,())
       Right (x,st',_) -> pure (Just x, st', ())
 
 monomorphizeExpr :: Module Ann -> Text  -> Either MonoError (Expr Ann)
 monomorphizeExpr m@Module{..} t = case findDeclBody t m of
-  Nothing -> Left $ MonoError 0 $ "Couldn't find decl: " <> T.unpack t
-  Just e -> runRWST (itransformM monomorphizeA 0 e) (moduleName,moduleDecls) (MonoState M.empty 0) & \case
+  Nothing -> Left $ MonoError M.empty $ "Couldn't find decl: " <> T.unpack t
+  Just e -> runRWST (itransformM monomorphizeA M.empty e) (moduleName,moduleDecls) (MonoState M.empty 0) & \case
     Left err -> Left err
     Right (a,_,_) -> Right a
 
@@ -109,9 +120,9 @@ monomorphizeMain Module{..} =  runMono g
   where
     emptySt = MonoState M.empty 0
 
-    g =  monomorphizeB 0 mainE
+    g =  monomorphizeB M.empty mainE
 
-    monomorphizeB :: Depth -> Expr Ann -> Monomorphizer' (Expr Ann)
+    monomorphizeB :: Context -> Expr Ann -> Monomorphizer' (Expr Ann)
     monomorphizeB d e = hoist1 emptySt (monomorphizeA d e)
 
     (mainE,otherDecls) = partitionDecls moduleDecls
@@ -123,7 +134,7 @@ monomorphizeMain Module{..} =  runMono g
 monomorphizeMain' :: Module Ann -> Either MonoError (Expr Ann)
 monomorphizeMain' Module{..} =  g
   where
-    g = runMono $ itransformM monomorphizeA 0 mainE
+    g = runMono $ itransformM monomorphizeA M.empty mainE
 
     (mainE,otherDecls) = partitionDecls moduleDecls
 
@@ -135,14 +146,14 @@ monomorphizeMain' Module{..} =  g
 decodeModuleIO :: FilePath -> IO (Module Ann)
 decodeModuleIO path = Aeson.eitherDecodeFileStrict' path >>= \case
   Left err -> throwIO $ userError err
-  Right mod -> pure mod
+  Right modx -> pure modx
 
 runMonoTest :: FilePath -> IO ()
 runMonoTest path = do
   emod <- Aeson.eitherDecodeFileStrict' path
   case emod of
     Left err -> putStrLn $ "Couldn't deserialize module:\n  " <>  err
-    Right mod -> case  monomorphizeMain mod of
+    Right modx -> case  monomorphizeMain modx of
       Nothing -> putStrLn "fail :-("
       Just res -> putStrLn $ renderExprStr res <> "\n"
 
@@ -151,8 +162,8 @@ runMonoTest' path = do
   emod <- Aeson.eitherDecodeFileStrict' path
   case emod of
     Left err -> putStrLn $ "Couldn't deserialize module:\n  " <>  err
-    Right mod -> do
-       case monomorphizeMain' mod of
+    Right modx -> do
+       case monomorphizeMain' modx of
          Left (MonoError d err) -> putStrLn $ "Failure at depth " <> show d <>  ":\n  " <> err
          Right e -> do
            putStrLn "Success! Result:\n  "
@@ -167,7 +178,7 @@ getModBinds = ask <&> snd
 freshen :: Ident -> Monomorphizer Ident
 freshen ident = do
   u <- gets unique
-  modify' $ \(MonoState v _) -> MonoState v (u+1)
+  modify' $ \(MonoState v _) -> MonoState v (u + 1)
   let uTxt = T.pack (show u)
   case ident of
     Ident t -> pure $ Ident $ t <> "_$$" <> uTxt
@@ -229,7 +240,7 @@ findInlineDeclGroup ident (Rec xs:rest) = case  find (\x -> snd (fst x) == ident
          -- idk if we need to specialize the whole group?
   Just _ -> Just (Rec xs)
 
-monomorphizeA :: Depth -> Expr Ann -> Monomorphizer (Expr Ann)
+monomorphizeA :: Context -> Expr Ann -> Monomorphizer (Expr Ann)
 monomorphizeA d = \case
   app@(App ann ty _ arg) -> trace ("monomorphizeA " <> prettyTypeStr ty) $ do
     (f,args) <-  note d ("Not an App: " <> renderExprStr app) $ analyzeApp app
@@ -245,24 +256,41 @@ monomorphizeA d = \case
 gLet :: [Bind Ann] -> Expr Ann -> Expr Ann
 gLet binds e = Let nullAnn (e ^. eType) binds e
 
-handleFunction :: Depth
+nameShadows :: Context -> Ident -> Bool
+nameShadows cxt iden = isJust $ M.lookup iden cxt
+
+handleFunction :: Context
                -> Expr Ann
                -> [PurusType]
                -> Monomorphizer (Either ([Bind Ann], Expr Ann) (Expr Ann))
 handleFunction  _ e [] = pure (pure e)
-handleFunction  d abs@(Abs ann (ForAll{}) ident body'') (t:ts) = trace ("handleFunction abs:\n  " <> renderExprStr abs <> "\n  " <> prettyTypeStr t) $  do
-  let body' = updateVarTy d ident t body''
-  handleFunction (d + 1) body' ts >>= \case
-    Left (binds,body) -> do
-      let bodyT = body ^. eType
-          e' = Abs ann (function t bodyT) ident body
-      pure $ Left (binds,e')
-    Right body -> do
-      let bodyT = body ^. eType
-      pure $ Right (Abs ann (function t bodyT) ident body)
-
-handleFunction  d (Var a ty qn) [t] = inlineAs d t qn
-handleFunction d (Var a ty qn) ts = inlineAs d (foldr1 function ts) qn -- idk about this one?
+handleFunction  d expr@(Abs ann (ForAll{}) ident body'') (t:ts) = trace ("handleFunction abs:\n  " <> renderExprStr expr <> "\n  " <> prettyTypeStr t) $  do
+  case nameShadows d ident of
+    False -> do
+        let body' = updateVarTy d ident t body''
+            cxt   = M.insert ident t d
+        handleFunction cxt body' ts >>= \case
+          Left (binds,body) -> do
+            let bodyT = body ^. eType
+                e' = Abs ann (function t bodyT) ident body
+            pure $ Left (binds,e')
+          Right body -> do
+            let bodyT = body ^. eType
+            pure $ Right (Abs ann (function t bodyT) ident body)
+    True -> do
+      freshIdent <- freshen ident
+      let body' = renameBoundVar ident freshIdent d $ updateVarTy d ident t body''
+          cxt   = M.insert freshIdent t d
+      handleFunction cxt body' ts >>= \case
+          Left (binds,body) -> do
+            let bodyT = body ^. eType
+                e' = Abs ann (function t bodyT) freshIdent body
+            pure $ Left (binds,e')
+          Right body -> do
+            let bodyT = body ^. eType
+            pure $ Right (Abs ann (function t bodyT) freshIdent body)
+handleFunction  d (Var _ _ qn) [t] = inlineAs d t qn
+handleFunction d (Var _ _ qn) ts = inlineAs d (foldr1 function ts) qn -- idk about this one?
 handleFunction  d e _ = throwError $ MonoError d
                         $ "Error in handleFunction:\n  "
                         <> renderExprStr e
@@ -270,16 +298,35 @@ handleFunction  d e _ = throwError $ MonoError d
 
 -- I *think* all CTors should be translated to functions at this point?
 -- TODO: We can make sure the variables are well-scoped too
-updateVarTy :: Depth -> Ident -> PurusType -> Expr Ann -> Expr Ann
+updateVarTy :: Context -> Ident -> PurusType -> Expr Ann -> Expr Ann
 updateVarTy d ident ty = itransform goVar d
   where
-    goVar :: Depth -> Expr Ann -> Expr Ann
+    goVar :: Context -> Expr Ann -> Expr Ann
     goVar _d expr = case expr ^? _Var of
       Just (ann,_,Qualified q@(BySourcePos _) varId) | varId == ident -> Var ann ty (Qualified q ident)
       _ -> expr
 
-inlineAs :: Depth -> PurusType -> Qualified Ident -> Monomorphizer (Either ([Bind Ann], Expr Ann) (Expr Ann))
-inlineAs d _ (Qualified (BySourcePos _) ident) = throwError $ MonoError d  $ "can't inline locally scoped identifier " <> showIdent' ident
+updateFreeVar :: M.Map Ident (Ident,SourceType) -> Context -> Expr Ann -> Expr Ann
+updateFreeVar dict _ expr = case expr ^? _Var of
+     Just (_,_,Qualified (ByModuleName _) varId) -> case M.lookup varId dict of
+       Nothing -> expr
+       Just (newId,newType) -> Var nullAnn newType (Qualified ByNullSourcePos newId)
+     _ -> expr
+
+updateFreeVars :: Map Ident (Ident, SourceType) -> Context -> Expr Ann -> Expr Ann
+updateFreeVars dict = itransform (updateFreeVar dict)
+
+-- doesn't change types!
+renameBoundVar :: Ident -> Ident -> Context -> Expr Ann -> Expr Ann
+renameBoundVar old new _ e = case e ^? _Var of
+  Just (ann,ty,Qualified (BySourcePos sp) varId) | varId == old -> Var ann ty (Qualified (BySourcePos sp) new)
+  _ -> e
+
+renameBoundVars :: Ident -> Ident -> Context -> Expr Ann -> Expr Ann
+renameBoundVars old new  = itransform (renameBoundVar old new)
+
+inlineAs :: Context -> PurusType -> Qualified Ident -> Monomorphizer (Either ([Bind Ann], Expr Ann) (Expr Ann))
+inlineAs d _ (Qualified (BySourcePos _) ident) = throwError $ MonoError d  $ "can't inline bound variable " <> showIdent' ident
 inlineAs  d ty (Qualified (ByModuleName mn') ident) = trace ("inlineAs: " <> showIdent' ident <> " :: " <>  prettyTypeStr ty) $ ask >>= \(mn,modDict) ->
   if mn == mn'
     then do
@@ -289,15 +336,16 @@ inlineAs  d ty (Qualified (ByModuleName mn') ident) = trace ("inlineAs: " <> sho
           e' <- monomorphizeWithType ty d e
           pure . Right $ e'
         Rec xs -> do
-          traceM $ "RECURSIVE GROUP:\n" <> (concatMap (\((_,xId),t) -> showIdent' xId <> " :: " <> renderExprStr t <> "\n") xs)
+          traceM $ "RECURSIVE GROUP:\n" <> concatMap (\((_,xId),t) -> showIdent' xId <> " :: " <> renderExprStr t <> "\n") xs
           let msg' = "Target expression with identifier " <> showIdent' ident <> " not found in mutually recursive group"
-          (targIdent,targExpr) <- note d msg'  $ find (\x -> fst x == ident) (first snd <$> xs) -- has to be there
+          (targIdent,targExpr) <- note d msg' $ find (\x -> fst x == ident) (first snd <$> xs) -- has to be there
           fresh <- freshen targIdent
           let initialRecDict = M.singleton targIdent (fresh,ty,targExpr)
           dict <- collectRecBinds initialRecDict ty d targExpr
           let renameMap = (\(i,t,_) -> (i,t)) <$> dict
               bindingMap = M.elems dict
-          binds <- traverse (\(newId,newTy,oldE) -> makeBind renameMap d newId newTy oldE) bindingMap
+              cxt = foldl' (\acc (idx,tyx)-> M.insert idx tyx acc) d $ (\(a,b,_) -> (a,b)) <$> M.elems dict
+          binds <- traverse (\(newId,newTy,oldE) -> makeBind renameMap cxt newId newTy oldE) bindingMap
           case M.lookup targIdent renameMap of
             Just (newId,newTy) -> pure $ Left (binds,Var nullAnn newTy (Qualified ByNullSourcePos newId))
             Nothing -> throwError
@@ -307,17 +355,10 @@ inlineAs  d ty (Qualified (ByModuleName mn') ident) = trace ("inlineAs: " <> sho
           -- pure $ Left (monoBinds,exp)
     else throwError $ MonoError d "Imports aren't supported!"
  where
-   makeBind :: Map Ident (Ident,SourceType) -> Depth -> Ident -> SourceType -> Expr Ann -> Monomorphizer (Bind Ann)
+   makeBind :: Map Ident (Ident,SourceType) -> Context -> Ident -> SourceType -> Expr Ann -> Monomorphizer (Bind Ann)
    makeBind renameDict depth newIdent t e = trace ("makeBind: " <> showIdent' newIdent) $ do
      e' <- updateFreeVars renameDict depth  <$> monomorphizeWithType t depth e
      pure $ NonRec nullAnn  newIdent e'
-
-   updateFreeVar :: M.Map Ident (Ident,SourceType) -> Depth -> Expr Ann -> Expr Ann
-   updateFreeVar dict depth expr = case expr ^? _Var of
-     Just (ann,_,Qualified (ByModuleName _) varId) -> case M.lookup varId dict of
-       Nothing -> expr
-       Just (newId,newType) -> Var nullAnn newType (Qualified ByNullSourcePos newId)
-     _ -> expr
 
    -- Find a declaration body in the *module* scope
    findDeclarationBody :: Ident -> Monomorphizer (Maybe (Expr Ann))
@@ -337,10 +378,10 @@ inlineAs  d ty (Qualified (ByModuleName mn') ident) = trace ("inlineAs: " <> sho
       bindings and the type that they must be when monomorphized, and the new identifier for their
       monomorphized/instantiated version. (We *don't* change anything here)
    -}
-   collectMany :: Map Ident (Ident, SourceType, Expr Ann) -> PurusType -> Depth -> [Expr Ann] -> Monomorphizer (Map Ident (Ident, SourceType, Expr Ann))
-   collectMany acc t d [] = trace "collectMany" $ pure acc
-   collectMany acc t d (x:xs) = do
-     xBinds <- collectRecBinds acc t d x
+   collectMany :: Map Ident (Ident, SourceType, Expr Ann) -> PurusType -> Context -> [Expr Ann] -> Monomorphizer (Map Ident (Ident, SourceType, Expr Ann))
+   collectMany acc _ _ [] = trace "collectMany" $ pure acc
+   collectMany acc t dx (x:xs) = do
+     xBinds <- collectRecBinds acc t dx x
      let acc' = acc <> xBinds
      collectMany acc' t d xs
 
@@ -356,79 +397,81 @@ inlineAs  d ty (Qualified (ByModuleName mn') ident) = trace ("inlineAs: " <> sho
      collectRecFieldBinds (visited <> this) cxt rest
 
    collectFun :: Map Ident (Ident, SourceType, Expr Ann)
-              -> Depth
+              -> Context
               -> Expr Ann
               -> [SourceType]
               -> Monomorphizer (Map Ident (Ident, SourceType, Expr Ann))
-   collectFun visited d e [t] = trace ("collectFun FIN:\n  " <> renderExprStr e <> " :: " <> prettyTypeStr t)  $ do
+   collectFun visited _ e [t] = trace ("collectFun FIN:\n  " <> renderExprStr e <> " :: " <> prettyTypeStr t)  $ do
      rest <- collectRecBinds visited t d e
      pure $ visited <> rest
-   collectFun visited d e@(Abs ann (ForAll{}) ident body'') (t:ts) = trace ("collectFun:\n  " <> renderExprStr e <> "\n  " <> prettyTypeStr t <>"\n" <> show ts)  $ do
-     let body' = updateVarTy d ident t body''
-     collectFun visited (d+1) body' ts
-   collectFun visited d (Var _ _ (Qualified (ByModuleName _) nm)) (t:ts)= trace ("collectFun VAR: " <> showIdent' nm) $ do
+   collectFun visited dx e@(Abs _ (ForAll{}) idx body'') (t:ts) = trace ("collectFun:\n  " <> renderExprStr e <> "\n  " <> prettyTypeStr t <> "\n" <> show ts)  $ do
+      let body' = updateVarTy d idx t body''
+          cxt   = M.insert idx t dx
+      collectFun visited cxt body' ts
+
+   collectFun visited dx (Var _ _ (Qualified (ByModuleName _) nm)) (t:ts)= trace ("collectFun VAR: " <> showIdent' nm) $ do
      case M.lookup nm visited of
        Nothing -> do
          let t' = foldr1 function (t:ts)
              msg =  "Couldn't find a declaration with identifier " <> showIdent' nm <> " to inline as " <> prettyTypeStr t
-         declBody <- note d msg =<< findDeclarationBody nm
+         declBody <- note dx msg =<< findDeclarationBody nm
          freshNm <- freshen nm
          let visited' = M.insert nm (freshNm,t',declBody) visited
          collectRecBinds visited' t' d declBody
        Just _ -> pure visited
 
-   collectFun _ d e _ = throwError $ MonoError d $ "Unexpected expression in collectFun:\n  " <> renderExprStr e
+   collectFun _ dx e _ = throwError $ MonoError dx $ "Unexpected expression in collectFun:\n  " <> renderExprStr e
 
 
-   collectRecBinds :: Map Ident (Ident,SourceType,Expr Ann) -> PurusType -> Depth -> Expr Ann -> Monomorphizer (Map Ident (Ident,SourceType,Expr Ann))
-   collectRecBinds visited t d e = trace ("collectRecBinds:\n  " <> renderExprStr e <> "\n  " <> prettyTypeStr t) $ case e of
-     Literal ann _ (ArrayLiteral arr) -> trace "crbARRAYLIT" $ case t of
+   collectRecBinds :: Map Ident (Ident,SourceType,Expr Ann) -> PurusType -> Context -> Expr Ann -> Monomorphizer (Map Ident (Ident,SourceType,Expr Ann))
+   collectRecBinds visited t dx e = trace ("collectRecBinds:\n  " <> renderExprStr e <> "\n  " <> prettyTypeStr t) $ case e of
+     Literal _ _ (ArrayLiteral arr) -> trace "crbARRAYLIT" $ case t of
        ArrayT inner -> do
-         innerBinds <- collectMany visited inner d  arr
+         innerBinds <- collectMany visited inner dx  arr
          pure $ visited <> innerBinds
-       other -> throwError $ MonoError d ("Failed to collect recursive binds: " <> prettyTypeStr t <> " is not an Array type")
-     Literal ann _ (ObjectLiteral fs) -> trace "crbOBJLIT" $ case t of
+       _ -> throwError $ MonoError dx ("Failed to collect recursive binds: " <> prettyTypeStr t <> " is not an Array type")
+     Literal _ _ (ObjectLiteral fs) -> trace "crbOBJLIT" $ case t of
          RecordT fields -> do
            let fieldMap = mkFieldMap fields
            innerBinds <- collectRecFieldBinds visited fieldMap fs
            pure $ visited <> innerBinds
-         other -> throwError $ MonoError d ("Failed to collect recursive binds: " <> prettyTypeStr t <> " is not a Record type")
-     Literal ann _ lit -> trace "crbLIT" $ pure visited
-     Constructor ann _ tName cName fs -> trace "crbCTOR" $ pure visited
-     ObjectUpdate a _ orig copyFields updateFields -> trace "crbOBJUPDATE" $ case t of
+         _ -> throwError $ MonoError dx ("Failed to collect recursive binds: " <> prettyTypeStr t <> " is not a Record type")
+     Literal{}  -> trace "crbLIT" $ pure visited
+     Constructor{} -> trace "crbCTOR" $ pure visited
+     ObjectUpdate _ _ _ _ updateFields -> trace "crbOBJUPDATE" $ case t of
         RecordT fields -> do
           let fieldMap = mkFieldMap fields
           -- idk. do we need to do something to the original expression or is this always sufficient?
           innerBinds <- collectRecFieldBinds visited fieldMap updateFields
           pure $ visited <> innerBinds
-        _ -> throwError $ MonoError d ("Failed to collect recursive binds: " <> prettyTypeStr t <> " is not a Record type")
+        _ -> throwError $ MonoError dx ("Failed to collect recursive binds: " <> prettyTypeStr t <> " is not a Record type")
      Accessor{} -> trace "crbACCSR" $ pure visited -- idk. given (x.a :: t) we can't say what x is
-     abs@(Abs{}) -> trace ("crbABS TOARGS: " <> prettyTypeStr t) $ collectFun visited d abs (toArgs t)
+     absE@(Abs{}) -> trace ("crbABS TOARGS: " <> prettyTypeStr t) $ collectFun visited dx absE (toArgs t)
      app@(App _ _ _ e2) -> trace "crbAPP" $ do
-       (f,args) <-  note d ("Not an App: " <> renderExprStr app) $ analyzeApp app
+       (f,args) <-  note dx ("Not an App: " <> renderExprStr app) $ analyzeApp app
        let types = (exprType <$> args) <> [t]
-       funBinds' <- collectFun visited d f types  -- collectRecBinds visited funTy d e1
+       funBinds' <- collectFun visited dx f types  -- collectRecBinds visited funTy d e1
        let funBinds = visited <> funBinds'
-       argBinds <- collectRecBinds funBinds (head types) d e2
+       argBinds <- collectRecBinds funBinds (head types) dx  e2
        pure $ funBinds <> argBinds
-     Var a _ (Qualified (ByModuleName _) nm) -> trace ("crbVAR: " <> showIdent' nm)  $ case M.lookup nm visited of
+     Var _ _ (Qualified (ByModuleName _) nm) -> trace ("crbVAR: " <> showIdent' nm)  $ case M.lookup nm visited of
        Nothing -> findDeclarationBody nm >>= \case
-         Nothing -> throwError $ MonoError d  $ "No declaration correponding to name " <> showIdent' nm <> " found in the module"
-         Just e -> do
+         Nothing -> throwError $ MonoError dx  $ "No declaration correponding to name " <> showIdent' nm <> " found in the module"
+         Just ex -> do
            freshNm <- freshen nm
-           let this = (freshNm,t,e)
+           let this = (freshNm,t,ex)
            pure $ M.insert nm this visited
        Just _ -> pure visited  -- might not be right, might need to check that the types are equal? ugh keeping track of scope is a nightmare
-     Var a _ (Qualified _ nm) -> trace ("crbVAR_: " <> showIdent' nm)$ pure visited
-     Case a _ scruts alts -> trace "crbCASE" $ do
+     Var _ _ (Qualified _ nm) -> trace ("crbVAR_: " <> showIdent' nm) $ pure visited
+     Case _ _ _  alts -> trace "crbCASE" $ do
        let flatAlts = concatMap extractAndFlattenAlts alts
-       aInner <- collectMany visited t d flatAlts
+       aInner <- collectMany visited t dx flatAlts
        pure $ visited <> aInner
-     Let _ _ _ e ->
+     Let _ _ _ ex ->
        -- not sure abt this
-       collectRecBinds visited t d e
+       collectRecBinds visited t dx ex
 
-   updateFreeVars dict = itransform (updateFreeVar dict)
+
 
 extractAndFlattenAlts :: CaseAlternative Ann -> [Expr Ann]
 extractAndFlattenAlts (CaseAlternative _ res) = case res of
@@ -438,7 +481,7 @@ extractAndFlattenAlts (CaseAlternative _ res) = case res of
 
 -- I think this one actually requires case analysis? dunno how to do it w/ the lenses in less space (w/o having prisms for types which seems dumb?)
 -- This *forces* the expression to have the provided type (and returns nothing if it cannot safely do that)
-monomorphizeWithType :: PurusType -> Depth -> Expr Ann -> Monomorphizer (Expr Ann)
+monomorphizeWithType :: PurusType -> Context -> Expr Ann -> Monomorphizer (Expr Ann)
 monomorphizeWithType  t d expr
   | expr ^. eType == t = pure expr
   | otherwise = trace ("monomorphizeWithType:\n  " <> renderExprStr expr <> "\n  " <> prettyTypeStr t) $ case expr of
@@ -462,11 +505,20 @@ monomorphizeWithType  t d expr
       Accessor ann _ str e ->  pure $ Accessor ann t str e-- idk?
       fun@(Abs _ _ ident body) -> trace ("MTABs:\n  " <> renderExprStr fun <> " :: " <> prettyTypeStr t) $ do
         case t of
-          (a :-> b) -> do
-            body' <- monomorphizeWithType b (d+1) $ updateVarTy (d+1) ident a body
-            pure $ Abs nullAnn t ident $ body'
-          other -> throwError $ MonoError d $ "Abs isn't a function"
-        -- othher -> P.error $ "mtabs fail: " <> renderExprStr fun
+          (a :-> b) -> case nameShadows d ident of
+            False -> do
+              let cxt = M.insert ident a d
+              body' <- monomorphizeWithType b cxt $ updateVarTy cxt ident a body
+              pure $ Abs nullAnn t ident  body'
+            True -> do
+              freshIdent <- freshen ident
+              let body' = renameBoundVar ident freshIdent d $ updateVarTy d ident a body
+                  cxt   = M.insert freshIdent a d
+              body'' <- monomorphizeWithType b cxt body'
+              pure $ Abs nullAnn t freshIdent body''
+
+          _ -> throwError $ MonoError d "Abs isn't a function"
+
       app@(App a _ _ e2) -> trace ("MTAPP:\n  " <> renderExprStr app) $  do
         (f,args) <- note d ("Not an app: " <> renderExprStr app) $ analyzeApp app
         let types = (exprType <$> args) <> [t]
