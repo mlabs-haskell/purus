@@ -22,7 +22,7 @@ shouldPassTests = do
   uplc1 <- runPIR misc "main"
   writeFile "./tests/purus/passing/Misc/output/Lib/main.plc" (show uplc1)
   uplc2 <- runPIR misc "minus"
-  writeFile "./tests/purus/passing/Misc/output/Lib/main.plc" (show uplc2)
+  writeFile "./tests/purus/passing/Misc/output/Lib/fakeminus.plc" (show uplc2)
 
 runPurus :: P.CodegenTarget -> FilePath ->  IO ()
 runPurus target dir =  do
