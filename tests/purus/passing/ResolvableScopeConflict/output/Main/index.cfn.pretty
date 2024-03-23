@@ -1,0 +1,23 @@
+Main (tests/purus/passing/ResolvableScopeConflict/ResolvableScopeConflict.purs)
+Imported Modules: 
+  A,
+  B,
+  Builtin,
+  Prim
+Exports: 
+  what,
+  main
+Re-Exports: 
+  
+Foreign: 
+  
+Declarations: 
+what :: Boolean -> Int
+what = 
+  \(v: Boolean) -> 
+    case (v: Boolean) of 
+       true -> (thing: Int)
+       false -> (zing: Int)
+
+main :: String
+main = ("Done": String)

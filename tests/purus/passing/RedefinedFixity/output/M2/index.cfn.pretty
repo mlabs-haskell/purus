@@ -1,0 +1,12 @@
+M2 (tests/purus/passing/RedefinedFixity/M2.purs)
+Imported Modules: 
+  Builtin,
+  M1,
+  Prim
+Exports: 
+  
+Re-Exports: 
+  
+Foreign: 
+  
+Declarations: 

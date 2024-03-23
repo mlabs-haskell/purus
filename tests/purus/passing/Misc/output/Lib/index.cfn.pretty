@@ -1,0 +1,380 @@
+Lib (tests/purus/passing/Misc/Lib.purs)
+Imported Modules: 
+  Builtin,
+  Lib,
+  Prim
+Exports: 
+  eq,
+  eq2,
+  minus,
+  testEq,
+  workingEven,
+  brokenEven,
+  testEq2,
+  ConInt,
+  ConInts,
+  ConBoolean,
+  ConString,
+  ConChar,
+  ConNested,
+  ConQuantified,
+  ConConstrained,
+  ConObject,
+  ConObjectQuantified,
+  testBinders,
+  mutuallyRecursiveBindingGroup,
+  mutuallyRecursiveBindingGroupNoTypes,
+  nestedBinds,
+  ADataRec,
+  ANewTypeRec,
+  Constr1,
+  Constr2,
+  anIntLit,
+  aStringLit,
+  aVal,
+  aBool,
+  aList,
+  aFunction,
+  aFunction2,
+  aFunction3,
+  aFunction4,
+  aFunction5,
+  aFunction6,
+  recF1,
+  recG1,
+  testBuiltin,
+  plus,
+  main,
+  nestedApplications,
+  anObj,
+  objUpdate,
+  polyInObj,
+  polyInObjMatch,
+  aPred,
+  cons,
+  emptyList,
+  consEmptyList1,
+  consEmptyList2,
+  eqInt,
+  eq2IntBoolean
+Re-Exports: 
+  
+Foreign: 
+  
+Declarations: 
+Eq2$Dict :: forall a b. { eq2 :: a -> b -> Boolean } -> { eq2 :: a -> b -> Boolean }
+Eq2$Dict = 
+  \(x: { eq2 :: a -> b -> Boolean }) -> (x: { eq2 :: a -> b -> Boolean })
+
+Eq$Dict :: forall a. { eq :: a -> a -> Boolean } -> { eq :: a -> a -> Boolean }
+Eq$Dict = \(x: { eq :: a -> a -> Boolean }) -> (x: { eq :: a -> a -> Boolean })
+
+ConInt :: Int -> TestBinderSum
+ConInt = ConInt
+
+ConInts :: Array Int -> TestBinderSum
+ConInts = ConInts
+
+ConBoolean :: Boolean -> TestBinderSum
+ConBoolean = ConBoolean
+
+ConString :: String -> TestBinderSum
+ConString = ConString
+
+ConChar :: Char -> TestBinderSum
+ConChar = ConChar
+
+ConNested :: TestBinderSum -> TestBinderSum
+ConNested = ConNested
+
+ConQuantified :: forall (x :: Type). x -> Int -> TestBinderSum
+ConQuantified = ConQuantified
+
+ConConstrained :: forall (x :: Type). Eq$Dict x -> x -> Int -> TestBinderSum
+ConConstrained = ConConstrained
+
+ConObject :: { objField :: Int } -> TestBinderSum
+ConObject = ConObject
+
+ConObjectQuantified :: { objFieldQ :: forall (x :: Type). x -> Int } -> TestBinderSum
+ConObjectQuantified = ConObjectQuantified
+
+Constr1 :: Int -> ASum
+Constr1 = Constr1
+
+Constr2 :: Boolean -> ASum
+Constr2 = Constr2
+
+ANewTypeRec :: { foo :: Int } -> { foo :: Int }
+ANewTypeRec = \(x: { foo :: Int }) -> (x: { foo :: Int })
+
+ADataRec :: { hello :: Int, world :: Boolean } -> ADataRec
+ADataRec = ADataRec
+
+eqInt :: Eq$Dict Int
+eqInt = 
+  ((Eq$Dict: {   eq :: Int -> Int -> Boolean } -> Eq$Dict Int)
+  ({ eq: \(v: Int) -> \(v1: Int) -> (true: Boolean) }: {
+                                                         eq :: Int ->
+                                                         Int -> Boolean
+                                                       }): Eq$Dict Int)
+
+eq2IntBoolean :: (Eq2$Dict Int Boolean)
+eq2IntBoolean = 
+  ((Eq2$Dict: {   eq2 :: Int -> Boolean -> Boolean } -> (Eq2$Dict Int Boolean))
+  ({ eq2: \(v: Int) -> \(v1: Boolean) -> (true: Boolean) }: {
+                                                              eq2 :: Int ->
+                                                              Boolean -> Boolean
+                                                            }): (Eq2$Dict
+  Int Boolean))
+
+testBuiltin :: Int
+testBuiltin = ((addInteger: Int -> Int -> Int) (1: Int) (2: Int): Int)
+
+testBinders :: TestBinderSum -> Int
+testBinders = 
+  \(x: TestBinderSum) -> 
+    case (x: TestBinderSum) of 
+       a@ConInt 3 -> (1: Int)
+       ConInt a -> (a: Int)
+       ConInts [3] -> (2: Int)
+       ConInts [a, b] -> (b: Int)
+       ConBoolean true -> (4: Int)
+       ConChar '\n' -> (5: Int)
+       ConNested ConInt 2 -> (6: Int)
+       ConQuantified f -> 
+         ((f: forall (x :: Type). x -> Int) ("hello": String): Int)
+       ConConstrained f -> 
+         ((f: forall (x :: Type). Eq$Dict x -> x -> Int)
+         (eqInt: Eq$Dict Int)
+         (2: Int): Int)
+       ConNested other -> (7: Int)
+       ConObject obj -> (obj: { objField :: Int }).objField
+       ConObjectQuantified objQ -> 
+         (((objQ: {   objFieldQ :: forall (x :: Type). x -> Int })
+         .objFieldQ: String -> Int)
+         ("world": String): Int)
+       ConObject { objField: f } -> (f: Int)
+       _ -> (0: Int)
+
+recG1 :: forall (x :: Type). x -> Int
+recG1 = \(x: x) -> ((recF1: forall (x :: Type). x -> Int) (x: x): Int)
+recF1 :: forall (x :: Type). x -> Int
+recF1 = \(x: x) -> ((recG1: forall (x :: Type). x -> Int) (x: x): Int)
+
+polyInObj :: { bar :: forall (x :: Type). x -> Int, baz :: Int }
+polyInObj = 
+  let
+    go :: forall (y :: Type). y -> Int
+    go = \(v: y) -> (5: Int)
+  in ({
+        baz: (100: Int),
+        bar: (go: forall (y :: Type). y -> Int)
+      }: { bar :: forall (x :: Type). x -> Int, baz :: Int })
+
+polyInObjMatch :: Int
+polyInObjMatch = 
+  case (polyInObj: { bar :: forall (x :: Type). x -> Int, baz :: Int }) of 
+     { bar: f, baz: _ } -> 
+       ((f: forall (x :: Type). x -> Int) ("hello": String): Int)
+
+plus :: Int -> Int -> Int
+plus = 
+  \(a: Int) -> 
+    \(b: Int) -> 
+      ((addInteger: Int -> Int -> Int) (a: Int) (b: Int): Int)
+
+nestedBinds :: Int
+nestedBinds = 
+  let
+    g :: forall (a :: Type). a -> Int
+    g = \(v: a) -> (5: Int)
+    f :: Int -> Int
+    f = \(v: Int) -> (4: Int)
+    h :: Int
+    h = 
+      let
+        i :: Int
+        i = ((g: forall (a :: Type). a -> Int) ("hello": String): Int)
+        j :: Int
+        j = ((f: Int -> Int) (i: Int): Int)
+      in ((f: Int -> Int) (j: Int): Int)
+  in (h: Int)
+
+nestedApplications :: Int
+nestedApplications = 
+  let
+    i :: Int -> Int -> Int
+    i = \(x: Int) -> \(v: Int) -> (x: Int)
+    h :: Int -> Int
+    h = 
+      \(v: Int) -> 
+        case (v: Int) of 
+           2 -> (3: Int)
+           _ -> (5: Int)
+    g :: Int -> Int
+    g = \(v: Int) -> (5: Int)
+    f :: Int -> Int
+    f = \(x: Int) -> (x: Int)
+  in ((i: Int -> Int -> Int)
+     (((f: Int -> Int)
+      (((g: Int -> Int)
+       (((h: Int -> Int) (2: Int): Int): Int): Int): Int): Int): Int)
+     (4: Int): Int)
+
+mutuallyRecursiveBindingGroupNoTypes :: Int
+mutuallyRecursiveBindingGroupNoTypes = 
+  let
+    h' :: Int -> Int -> Int
+    h' = \(x: Int) -> \(y: Int) -> (y: Int)
+    g' :: Int -> Int
+    g' = 
+      \(y: Int) -> 
+        ((h': Int -> Int -> Int)
+        (((f': Int -> Int) (y: Int): Int): Int)
+        (3: Int): Int)
+    f' :: Int -> Int
+    f' = \(x: Int) -> ((g': Int -> Int) (2: Int): Int)
+  in ((g': Int -> Int) (3: Int): Int)
+
+mutuallyRecursiveBindingGroup :: Int
+mutuallyRecursiveBindingGroup = 
+  let
+    h :: Int -> Int -> Int
+    h = \(x: Int) -> \(y: Int) -> (y: Int)
+    g :: Int -> Int
+    g = 
+      \(y: Int) -> 
+        ((h: Int -> Int -> Int)
+        (((f: Int -> Int) (y: Int): Int): Int)
+        (3: Int): Int)
+    f :: Int -> Int
+    f = \(x: Int) -> ((g: Int -> Int) (2: Int): Int)
+  in ((g: Int -> Int) (3: Int): Int)
+
+minus :: Int -> Int -> Int
+minus = \(v: Int) -> \(v1: Int) -> (42: Int)
+
+main :: Int
+main = ((plus: Int -> Int -> Int) (1: Int) (1: Int): Int)
+
+eq2 :: forall (@a :: Type) (@b :: Type). (Eq2$Dict a b) -> a -> b -> Boolean
+eq2 = 
+  \(dict: (Eq2$Dict a b)) -> 
+    case (dict: (Eq2$Dict a b)) of 
+       Eq2$Dict v -> (v: { eq2 :: a -> b -> Boolean }).eq2
+
+testEq2 :: Boolean
+testEq2 = 
+  ((eq2: forall (@a :: Type) (@b :: Type). (Eq2$Dict a b) -> a -> b -> Boolean)
+  (eq2IntBoolean: (Eq2$Dict Int Boolean))
+  (101: Int)
+  (false: Boolean): Boolean)
+
+eq :: forall (@a :: Type). Eq$Dict a -> a -> a -> Boolean
+eq = 
+  \(dict: Eq$Dict a) -> 
+    case (dict: Eq$Dict a) of 
+       Eq$Dict v -> (v: { eq :: a -> a -> Boolean }).eq
+
+testEq :: Boolean
+testEq = 
+  ((eq: forall (@a :: Type). Eq$Dict a -> a -> a -> Boolean)
+  (eqInt: Eq$Dict Int)
+  (1: Int)
+  (2: Int): Boolean)
+
+workingEven :: Int -> Int
+workingEven = 
+  \(n: Int) -> 
+    case (((eq: forall (@a :: Type). Eq$Dict a -> a -> a -> Boolean) (eqInt: Eq$Dict Int) (n: Int) (0: Int): Boolean): Boolean) of 
+       true -> (1: Int)
+       _ -> (42: Int)
+
+emptyList :: forall (t100 :: Type). Array t100
+emptyList = ([]: forall (t100 :: Type). Array t100)
+
+cons :: forall (a :: Type). a -> Array a -> Array a
+cons = \(x: a) -> \(xs: Array a) -> ([(x: a)]: Array a)
+
+consEmptyList1 :: Array a
+consEmptyList1 = 
+  ((cons: forall (a :: Type). a -> Array a -> Array a)
+  (1: Int)
+  (emptyList: forall (t100 :: Type). Array t100): Array a)
+
+consEmptyList2 :: Array a
+consEmptyList2 = 
+  ((cons: forall (a :: Type). a -> Array a -> Array a)
+  ("hello": String)
+  (emptyList: forall (t100 :: Type). Array t100): Array a)
+
+brokenEven :: Int -> Int
+brokenEven = 
+  \(n: Int) -> 
+    case (((eq: forall (@a :: Type). Eq$Dict a -> a -> a -> Boolean) (eqInt: Eq$Dict Int) (n: Int) (0: Int): Boolean): Boolean) of 
+       true -> (1: Int)
+       _ -> 
+         ((brokenEven: Int -> Int)
+         (((minus: Int -> Int -> Int) (n: Int) (2: Int): Int): Int): Int)
+
+anObj :: { foo :: Int }
+anObj = ({ foo: (3: Int) }: { foo :: Int })
+
+objUpdate :: { foo :: Int }
+objUpdate = 
+  let
+    v :: { foo :: Int }
+    v = (anObj: { foo :: Int })
+  in (v: { foo :: Int }) { foo = (4: Int) }
+
+anIntLit :: Int
+anIntLit = (1: Int)
+
+aVal :: Int
+aVal = (1: Int)
+
+aStringLit :: String
+aStringLit = ("woop": String)
+
+aPred :: Int -> Boolean
+aPred = \(v: Int) -> (true: Boolean)
+
+aList :: Array Int
+aList = ([(1: Int), (2: Int), (3: Int), (4: Int), (5: Int)]: Array Int)
+
+aFunction4 :: forall (r :: Row Type). { a :: Int | r } -> Int
+aFunction4 = \(r: { a :: Int | r }) -> (r: { a :: Int | r }).a
+
+aFunction5 :: Int
+aFunction5 = 
+  ((aFunction4: forall (r :: Row Type). {   a :: Int | r } -> Int)
+  ({ a: (2: Int) }: { a :: Int }): Int)
+
+aFunction3 :: Int -> Int
+aFunction3 = 
+  \(x: Int) -> 
+    case (((eq: forall (@a :: Type). Eq$Dict a -> a -> a -> Boolean) (eqInt: Eq$Dict Int) (x: Int) (2: Int): Boolean): Boolean) of 
+       true -> (4: Int)
+       _ -> (1: Int)
+
+aFunction2 :: Int -> Array Int
+aFunction2 = \(x: Int) -> ([(x: Int), (1: Int)]: Array Int)
+
+aFunction :: forall (x :: Type). x -> forall (y :: Type). y -> Int -> Int
+aFunction = 
+  \(any: x) -> 
+    \(f: forall (y :: Type). y -> Int) -> 
+      ((f: forall (y :: Type). y -> Int) (any: x): Int)
+
+aFunction6 :: Int
+aFunction6 = 
+  let
+    go :: forall (z :: Type). z -> Int
+    go = \(v: z) -> (10: Int)
+  in ((aFunction: forall (x :: Type). x -> forall (y :: Type). y -> Int -> Int)
+     ([]: Array t124)
+     (go: forall (z :: Type). z -> Int): Int)
+
+aBool :: Boolean
+aBool = (true: Boolean)

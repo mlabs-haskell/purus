@@ -1,0 +1,14 @@
+Main (tests/purus/passing/RedefinedFixity/RedefinedFixity.purs)
+Imported Modules: 
+  Builtin,
+  M3,
+  Prim
+Exports: 
+  main
+Re-Exports: 
+  
+Foreign: 
+  
+Declarations: 
+main :: String
+main = ("Done": String)

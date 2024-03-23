@@ -1,0 +1,1 @@
+{"comments":null,"declarations":[{"children":[],"comments":"üÜäÄ 😰\n","info":{"declType":"value","type":{"annotation":[],"contents":[["Prelude"],"Unit"],"tag":"TypeConstructor"}},"kind":null,"sourceSpan":{"end":[6,14],"name":"/home/gnumonik/code/work/purus/tests/purs/docs/src/UTF8.purs","start":[6,1]},"title":"thing"}],"name":"UTF8","reExports":[]}

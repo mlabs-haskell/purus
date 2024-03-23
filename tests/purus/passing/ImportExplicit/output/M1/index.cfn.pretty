@@ -1,0 +1,21 @@
+M1 (tests/purus/passing/ImportExplicit/M1.purs)
+Imported Modules: 
+  Builtin,
+  Prim
+Exports: 
+  X,
+  Y,
+  Z
+Re-Exports: 
+  
+Foreign: 
+  
+Declarations: 
+Z :: Z
+Z = Z
+
+X :: X
+X = X
+
+Y :: X
+Y = Y
