@@ -1,5 +1,5 @@
 {-# LANGUAGE TemplateHaskell #-}
-
+{-# LANGUAGE GeneralizedNewtypeDeriving, DerivingVia #-}
 -- |
 -- Data types for names
 --
@@ -157,6 +157,7 @@ coerceOpName = OpName . runOpName
 --
 newtype ProperName (a :: ProperNameType) = ProperName { runProperName :: Text }
   deriving (Show, Eq, Ord, Generic)
+  deriving newtype (ToJSONKey,FromJSONKey)
 
 instance NFData (ProperName a)
 instance Serialise (ProperName a)
@@ -209,6 +210,9 @@ data QualifiedBy
 
 pattern ByNullSourcePos :: QualifiedBy
 pattern ByNullSourcePos = BySourcePos (SourcePos 0 0)
+
+pattern ByThisModuleName :: Text -> QualifiedBy
+pattern ByThisModuleName t = ByModuleName (ModuleName t)
 
 instance NFData QualifiedBy
 instance Serialise QualifiedBy

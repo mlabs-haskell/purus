@@ -8,7 +8,7 @@ module Language.PureScript.CoreFn.Convert.Monomorphize where
 
 
 
-import Prelude hiding (error)
+import Prelude
 import Data.Bifunctor
 import Data.Maybe
 
@@ -23,10 +23,10 @@ import Language.PureScript.CoreFn.Expr
 import Language.PureScript.CoreFn.Module ( Module(..) )
 import Language.PureScript.Names (Ident(..), Qualified (..), QualifiedBy (..), pattern ByNullSourcePos, ModuleName (..), runModuleName)
 import Language.PureScript.Types
-    ( rowToList, RowListItem(..), SourceType, Type(ForAll), quantify )
+    ( rowToList, RowListItem(..), SourceType, Type(..), quantify, replaceTypeVars, replaceAllTypeVars, isMonoType )
 import Language.PureScript.CoreFn.Pretty.Common ( analyzeApp )
 import Language.PureScript.CoreFn.Desugar.Utils ( showIdent' )
-import Language.PureScript.Environment (pattern (:->), pattern ArrayT, pattern RecordT, function)
+import Language.PureScript.Environment (pattern (:->), pattern ArrayT, pattern RecordT, function, (-:>), getFunArgTy)
 import Language.PureScript.CoreFn.Pretty
     ( prettyTypeStr, renderExprStr )
 import Language.PureScript.CoreFn.Ann (Ann)
@@ -52,7 +52,7 @@ import Control.Lens
       preview,
       (^.),
       (.~),
-      Ixed(ix) )
+      Ixed(ix), view )
 import Control.Monad.RWS.Class ( MonadReader(ask), gets, modify' )
 import Control.Monad.RWS
     ( RWST(..) )
@@ -115,7 +115,7 @@ hoist1 st act = RWST $ \r s -> f (runRWST act r s)
 monomorphizeExpr :: Module Ann -> Text  -> Either MonoError (Expr Ann)
 monomorphizeExpr m@Module{..} t = case findDeclBody t m of
   Nothing -> Left $ MonoError M.empty $ "Couldn't find decl: " <> T.unpack t
-  Just e -> runRWST (itransformM monomorphizeA M.empty e) (moduleName,moduleDecls) (MonoState M.empty 0) & \case
+  Just e -> runRWST (monomorphizeA M.empty e) (moduleName,moduleDecls) (MonoState M.empty 0) & \case
     Left err -> Left err
     Right (a,_,_) -> Right a
 
@@ -191,7 +191,6 @@ freshen ident = do
     -- other two shouldn't exist at this stage
     other -> pure other
 
-
 checkVisited :: Ident -> SourceType -> Monomorphizer (Maybe (Ident,Expr Ann))
 checkVisited ident st = gets (preview (ix ident . ix st) . visited)
 
@@ -245,28 +244,36 @@ findInlineDeclGroup ident (Rec xs:rest) = case  find (\x -> snd (fst x) == ident
   Just _ -> Just (Rec xs)
 
 monomorphizeA :: Context -> Expr Ann -> Monomorphizer (Expr Ann)
-monomorphizeA d = \case
-  app@(App ann ty _ arg) -> trace ("monomorphizeA " <> prettyTypeStr ty <> "\n  " <> renderExprStr app) $ do
+monomorphizeA d xpr = trace ("monomorphizeA " <>  "\n  " <> renderExprStr xpr)  $ case xpr of
+  app@(App ann ty _ arg) ->  do
     (f,args) <-  note d ("Not an App: " <> renderExprStr app) $ analyzeApp app
-    let types = (^. eType) <$> args
-    traceM $ "mma types: " <> show (prettyTypeStr <$> types)
+    traceM $ "FUN: " <> renderExprStr f
+    traceM $ "ARGS: " <> show (renderExprStr <$> args)
+    let types = concatMap (toArgs .  view eType)  args
+    traceM $ "ARG TYPES:" <> show (prettyTypeStr <$> types)
      -- maybe trace or check that the types match?
      -- need to re-quantify? not sure. CHECK!
-    if isMonomorphized (exprType f)  || isBuiltin f
-      then pure app
-      else do
-        handleFunction d f (types <> [ty]) >>= \case
+    -- if isMonomorphized (exprType f)  || isBuiltin f
+    --   then pure app
+    --   else do
+    case f of
+      (Var _ vTy (Qualified (ByModuleName (ModuleName "Builtin")) _)) -> pure app
+      {- -v@(Var _ vTy nm) | isMonomorphizedVar v ->  inlineAs d (exprType v -:> ty) nm >>= \case
+                           Left (binds,fun) ->  pure $ gLet  binds (App ann (getResult $ exprType fun) (mapType quantify fun) arg)
+                           Right fun -> pure $ App ann (getResult $ exprType fun) (mapType quantify fun) arg -}
+      _ -> do
+       either (uncurry gLet) id <$> handleFunction d f args {->>= \case
           Left (binds,fun) -> do
             pure $ gLet  binds (App ann (getResult $ exprType fun) (mapType quantify fun) arg)
-          Right fun -> pure $ App ann (getResult $ exprType fun) (mapType quantify fun) arg
+          Right fun -> pure $ App ann (getResult $ exprType fun) (mapType quantify fun) arg -}
   other -> pure other
  where
-   isMonomorphized :: SourceType -> Bool
-   isMonomorphized sty = stripQuantifiers sty == sty
+   isMonomorphizedVar :: Expr Ann  -> Bool
+   isMonomorphizedVar (Var _ sty  _)  = stripQuantifiers sty == sty
 
-   -- This isn't quite right b/c we have polymorphic builtins... but there's no point to inlining different variants afaict?
-   isBuiltin (Var _ _ (Qualified (ByModuleName (ModuleName "Builtin")) _)) = True
-   isBuiltin _ = False
+isBuiltin :: Expr a -> Bool
+isBuiltin (Var _ _ (Qualified (ByModuleName (ModuleName "Builtin")) _)) = True
+isBuiltin _ = False
 
 gLet :: [Bind Ann] -> Expr Ann -> Expr Ann
 gLet binds e = Let nullAnn (e ^. eType) binds e
@@ -274,43 +281,64 @@ gLet binds e = Let nullAnn (e ^. eType) binds e
 nameShadows :: Context -> Ident -> Bool
 nameShadows cxt iden = isJust $ M.lookup iden cxt
 
+unsafeApply :: Expr Ann -> [Expr Ann] -> Expr Ann
+unsafeApply e (arg:args)= case exprType e of
+  (a :-> b) -> unsafeApply (App nullAnn b e arg) args
+  other -> Prelude.error $ "boom: " <> prettyTypeStr other
+unsafeApply e [] = e
 
+-- extreme hack
+instantiates :: Text -> SourceType -> SourceType  -> Maybe SourceType
+-- instantiates var mono poly
+instantiates var x (TypeVar _ y) | y == var = Just x
+instantiates var (TypeApp _ t1 t2) (TypeApp _ t1' t2') = case instantiates var t1 t2' of
+  Just x -> Just x
+  Nothing -> instantiates var t2 t2'
+instantiates _ _ _ = Nothing
+
+{- Pretend we have
+
+
+-}
 
 handleFunction :: Context
                -> Expr Ann
-               -> [PurusType]
+               -> [Expr Ann]
                -> Monomorphizer (Either ([Bind Ann], Expr Ann) (Expr Ann))
-handleFunction  _ e [] = pure (pure e)
-handleFunction  d expr@(Abs ann ForAll{} ident body'') (t:ts) = trace ("handleFunction abs:\n  " <> renderExprStr expr <> "\n  " <> prettyTypeStr t) $  do
-  case nameShadows d ident of
-    False -> do
-        let body' = updateVarTy d ident t body''
-            cxt   = M.insert ident t d
-        handleFunction cxt body' ts >>= \case
-          Left (binds,body) -> do
-            let bodyT = body ^. eType
-                e' = Abs ann (function t bodyT) ident body
-            pure $ Left (binds,e')
-          Right body -> do
-            let bodyT = body ^. eType
-            pure $ Right (Abs ann (function t bodyT) ident body)
-    True -> do
-      freshIdent <- freshen ident
-      let body' = renameBoundVar ident freshIdent d $ updateVarTy d ident t body''
-          cxt   = M.insert freshIdent t d
-      handleFunction cxt body' ts >>= \case
-          Left (binds,body) -> do
-            let bodyT = body ^. eType
-                e' = Abs ann (function t bodyT) freshIdent body
-            pure $ Left (binds,e')
-          Right body -> do
-            let bodyT = body ^. eType
-            pure $ Right (Abs ann (function t bodyT) freshIdent body)
-handleFunction  d (Var _ _ qn) [t] = inlineAs d t qn
-handleFunction d (Var _ _ qn) ts = inlineAs d (foldr1 function ts) qn -- idk about this one?
-handleFunction  d e _ = throwError $ MonoError d
+handleFunction d exp args | isBuiltin exp = trace ("handleFunction: Builtin") $ pure . Right $ unsafeApply exp args
+-- handleFunction  d v@(Var _ ty  qn) [] = trace ("handleFunction VAR1: " <> renderExprStr v) $ inlineAs d ty qn
+handleFunction  _ e [] = trace ("handleFunction FIN: " <> renderExprStr e) $ pure (pure e)
+handleFunction  d expr@(Abs ann (ForAll _ _ var _ inner  _) ident body'') (arg:args) = do
+  traceM  ("handleFunction abs:\n  " <> renderExprStr expr <> "\n  " <> show (renderExprStr <$> (arg:args)))
+  let t = exprType arg
+  traceM $ prettyTypeStr t
+  let polyArgT = getFunArgTy inner
+      doInstantiate = case instantiates var t polyArgT of
+                        Just tx -> replaceTypeVars var tx
+                        Nothing -> id
+      body' = updateVarTy d ident t body''
+      cxt   = M.insert ident t d
+  handleFunction cxt body' args  >>= \case
+    Left (binds,body) -> do
+      let bodyT = body ^. eType
+          funT  = doInstantiate $ function t bodyT
+          e' = Abs ann funT  ident body
+      pure $ Left $ (binds, App nullAnn bodyT e' arg)
+    Right body -> do
+      let bodyT = body ^. eType
+          funT  = doInstantiate $ function t bodyT
+          e' = Abs ann funT ident body
+      pure $ Right $ App nullAnn bodyT e' arg -- Abs ann (function t bodyT) ident body)
+handleFunction  d v@(Var _ ty  qn) es = trace ("handleFunction VarGo: " <> renderExprStr v) $ do
+  traceM (renderExprStr v)
+  traceM (show $ renderExprStr <$> es)
+  e' <- either (uncurry gLet) id <$> inlineAs d ty qn
+  handleFunction d e' es
+handleFunction  d e es | isMonoType (exprType e)  = pure . Right $ unsafeApply e es
+handleFunction d e es = throwError $ MonoError d
                         $ "Error in handleFunction:\n  "
                         <> renderExprStr e
+                        <> "\n  " <> show (renderExprStr <$> es)
                         <> "\n  is not an abstraction or variable"
 
 -- I *think* all CTors should be translated to functions at this point?
@@ -343,7 +371,8 @@ renameBoundVars :: Ident -> Ident -> Context -> Expr Ann -> Expr Ann
 renameBoundVars old new  = itransform (renameBoundVar old new)
 
 inlineAs :: Context -> PurusType -> Qualified Ident -> Monomorphizer (Either ([Bind Ann], Expr Ann) (Expr Ann))
-inlineAs _ ty nm@(Qualified (ByModuleName (ModuleName "Builtin")) _) = pure . Right $ Var nullAnn ty nm
+inlineAs _ ty nm@(Qualified (ByModuleName (ModuleName "Builtin")) idnt) = trace ("inlineAs BUILTIN:\n  " <> "IDENT: " <> showIdent' idnt <> "\n  TYPE: " <> prettyTypeStr ty)
+  $ pure . Right $ Var nullAnn ty nm
 inlineAs d _ (Qualified (BySourcePos _) ident) = throwError $ MonoError d  $ "can't inline bound variable " <> showIdent' ident
 inlineAs  d ty qmn@(Qualified (ByModuleName mn') ident) = trace ("inlineAs: " <> showIdent' ident <> " :: " <>  prettyTypeStr ty) $ ask >>= \(mn,modDict) ->
   if | mn == mn' -> do
@@ -539,7 +568,7 @@ monomorphizeWithType  t d expr
         (f,args) <- note d ("Not an app: " <> renderExprStr app) $ analyzeApp app
         let types = (exprType <$> args) <> [t]
         traceM $ renderExprStr f
-        e1' <- either (uncurry gLet) id <$> handleFunction d f types
+        e1' <- either (uncurry gLet) id <$> handleFunction d f args
         pure $ App a t e1' e2
       Var a _ nm -> pure $ Var a t nm -- idk
       Case a _ scrut alts ->

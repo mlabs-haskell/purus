@@ -46,7 +46,7 @@ import Language.PureScript.Names (
   mkQualified,
   runIdent,
   coerceProperName,
-  Name (DctorName))
+  Name (DctorName), ProperNameType (TypeName))
 import Language.PureScript.PSString (PSString, prettyPrintString)
 import Language.PureScript.Types (
   pattern REmptyKinded,
@@ -129,10 +129,30 @@ moduleToCoreFn (A.Module modSS coms mn _decls (Just exps)) = do
       reExps = M.map ordNub $ M.unionsWith (++) (mapMaybe (fmap reExportsToCoreFn . toReExportRef) exps)
       externs = ordNub $ mapMaybe externToCoreFn decls
   decls' <- concat <$> traverse (declToCoreFn mn) decls
-  pure $ Module modSS coms mn (spanName modSS) imports exps' reExps externs decls'
+  let dataDecls = mkDataDecls decls
+  pure $ Module modSS coms mn (spanName modSS) imports exps' reExps externs decls' dataDecls
  where
    setModuleName = modify $ \cs ->
      cs {checkCurrentModule = Just mn}
+
+{- Turns out we need the data type declarations in order to reconstruct the SOP in PIR
+
+   TODO/REVIEW/FIXME: This won't pull in data declarations from imports, we'll have to handle that in the linker.
+
+-}
+
+type DeclMapElem =  (DataDeclType,[(T.Text, Maybe SourceType)], [A.DataConstructorDeclaration])
+
+mkDataDecls :: [A.Declaration] -> M.Map (ProperName 'TypeName) DeclMapElem
+mkDataDecls [] = M.empty
+mkDataDecls (d:ds) = case go d of
+  Nothing -> mkDataDecls ds
+  Just kv -> uncurry M.insert kv $ mkDataDecls ds
+ where
+ go :: A.Declaration -> Maybe (ProperName 'TypeName,DeclMapElem)
+ go = \case
+   A.DataDeclaration _ ddTy nm args ctors -> Just (nm,(ddTy,args,ctors))
+   _ -> Nothing
 
 {- | Given a SourcePos and Identifier, look up the type of that identifier, also returning its NameVisiblity.
 

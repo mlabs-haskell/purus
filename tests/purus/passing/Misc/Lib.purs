@@ -165,7 +165,7 @@ plus a b = Builtin.addInteger a b
 
 infixr 5 plus as +
 
-main = Constr1 3
+main = plus 1 1
 
 nestedApplications :: Int
 nestedApplications = i (f (g (h 2))) 4

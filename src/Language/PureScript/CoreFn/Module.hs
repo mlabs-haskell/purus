@@ -1,4 +1,4 @@
-{-# LANGUAGE StandaloneDeriving, ScopedTypeVariables #-}
+{-# LANGUAGE StandaloneDeriving, ScopedTypeVariables, StrictData  #-}
 module Language.PureScript.CoreFn.Module where
 
 import Prelude
@@ -6,13 +6,18 @@ import Prelude
 import Data.Map.Strict (Map)
 import Data.List (sort)
 
+import Data.Text (Text)
 import Language.PureScript.AST.SourcePos (SourceSpan)
 import Language.PureScript.AST.Literals (Literal(..))
 import Language.PureScript.Comments (Comment)
 import Language.PureScript.CoreFn.Expr (Bind(..), Expr(..), CaseAlternative)
 import Language.PureScript.CoreFn.Ann
-import Language.PureScript.Names (Ident, ModuleName)
+import Language.PureScript.Names (Ident, ModuleName, ProperNameType (..), ProperName)
 import Data.Bifunctor (second)
+import Language.PureScript.AST.Declarations (DataConstructorDeclaration)
+import Language.PureScript.Environment (DataDeclType)
+import Language.PureScript.Types (SourceType)
+
 
 -- |
 -- The CoreFn module representation
@@ -27,6 +32,7 @@ data Module a = Module
   , moduleReExports :: Map ModuleName [Ident]
   , moduleForeign :: [Ident]
   , moduleDecls :: [Bind a]
+  , moduleDataTypes :: Map (ProperName 'TypeName) (DataDeclType,[(Text, Maybe SourceType)],[DataConstructorDeclaration])
   } deriving (Functor, Show)
 
 deriving instance Eq a => Eq (Module a)
@@ -71,8 +77,8 @@ diffModule m1 m2 = ezDiff DiffSourceSpan moduleSourceSpan
       | otherwise = DiffDecl (Just a) (Just b) : diffDecls as bs
 
 canonicalizeModule :: Ord a => Module a -> Module a
-canonicalizeModule (Module modSS modComments modName modPath modImports modExports modReExports modForeign modDecls)
-  = Module modSS modComments' modName modPath modImports' modExports' modReExports' modForeign' modDecls'
+canonicalizeModule (Module modSS modComments modName modPath modImports modExports modReExports modForeign modDecls modADTs)
+  = Module modSS modComments' modName modPath modImports' modExports' modReExports' modForeign' modDecls' modADTs
  where
    modComments' = sort modComments
    modImports' = sort modImports

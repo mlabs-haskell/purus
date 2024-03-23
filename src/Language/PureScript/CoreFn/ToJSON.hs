@@ -129,6 +129,7 @@ moduleToJSON v m = object
   , "decls"      .= map bindToJSON (moduleDecls m)
   , "builtWith"  .= toJSON (showVersion v)
   , "comments"   .= map toJSON (moduleComments m)
+  , "dataTypes"  .= toJSON (moduleDataTypes m)
   ]
 
   where
@@ -152,6 +153,7 @@ moduleToJSON' m = object
   , "foreign"    .= map identToJSON (moduleForeign m)
   , "decls"      .= map bindToJSON (moduleDecls m)
   , "comments"   .= map toJSON (moduleComments m)
+  , "dataTypes"  .= toJSON (moduleDataTypes m)
   ]
   where
   importToJSON (ann,mn) = object

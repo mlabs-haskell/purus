@@ -12,10 +12,10 @@ import Language.PureScript.CoreFn.Expr
       Bind(..),
       CaseAlternative(CaseAlternative),
       Expr(..) )
-import Language.PureScript.Names (Ident(..), Qualified (..), QualifiedBy (..), pattern ByNullSourcePos, ProperNameType (..), ProperName(..), moduleNameFromString, coerceProperName, disqualify)
+import Language.PureScript.Names (Ident(..), Qualified (..), QualifiedBy (..), pattern ByNullSourcePos, ProperNameType (..), ProperName(..), moduleNameFromString, coerceProperName, disqualify, ModuleName (..), runModuleName)
 import Language.PureScript.Types
     ( SourceType, Type(..), srcTypeConstructor, srcTypeApp, RowListItem (rowListType), rowToList, eqType )
-import Language.PureScript.Environment (pattern (:->), pattern RecordT, function, kindType)
+import Language.PureScript.Environment (pattern (:->), pattern RecordT, function, kindType, DataDeclType (Data))
 import Language.PureScript.CoreFn.Pretty
     ( prettyTypeStr, renderExprStr )
 import Language.PureScript.CoreFn.Ann (Ann)
@@ -35,15 +35,20 @@ import Data.Text (Text)
 import Bound
 import Data.Bifunctor (Bifunctor(bimap, first, second))
 import Control.Lens.Combinators (to)
-import Language.PureScript.CoreFn (Binder(..))
+import Language.PureScript.CoreFn (Binder(..), Module (..))
 import Data.Maybe (mapMaybe)
 import Control.Lens.Operators
+import Control.Lens (view)
+import Control.Lens.Tuple
 import Language.PureScript.CoreFn.Convert.IR hiding (stripQuantifiers)
 import Language.PureScript.CoreFn.Convert.Plated
 import Control.Exception (throwIO)
 import Debug.Trace
 import Data.List (findIndex)
-import Control.Monad (join)
+import Control.Monad (join, foldM)
+import Language.PureScript.AST.Declarations (DataConstructorDeclaration (..))
+import Data.Map (Map)
+import Language.PureScript.Constants.Prim qualified as C
 
 test :: FilePath -> Text -> IO (Exp FVar)
 test path decl = do
@@ -56,10 +61,29 @@ test path decl = do
         putStrLn (ppExp e)
         pure e
 
+prepPIR :: FilePath
+        -> Text
+        -> IO (Exp FVar, Map (ProperName 'TypeName) (DataDeclType, [(Text, Maybe SourceType)], [DataConstructorDeclaration]))
+prepPIR path  decl = do
+  myMod@Module{..} <- decodeModuleIO path
+  case monomorphizeExpr myMod decl of
+    Left (MonoError _ msg ) ->
+      throwIO
+      $ userError
+      $ "Couldn't monomorphize "
+        <> T.unpack (runModuleName moduleName <> ".main") <> "\nReason:\n" <> msg
+    Right body -> case tryConvertExpr body of
+      Left convertErr -> throwIO $ userError convertErr
+      Right e -> do
+        putStrLn (ppExp e)
+        pure (e,moduleDataTypes)
+
 -- This gives us a way to report the exact location of the error (which may no longer correspond *at all* to
 -- the location given in the SourcePos annotations due to inlining and monomorphization)
 data TypeConvertError
  = TypeConvertError (SourceType -> SourceType ) SourceType String
+
+type TyConvertM = Either TypeConvertError
 
 tryConvertType :: SourceType -> Either TypeConvertError Ty
 tryConvertType = go id
@@ -106,6 +130,12 @@ data ExprConvertError
   = ExprConvertError (Expr Ann -> Expr Ann) (Expr Ann) (Maybe TypeConvertError) String
 
 type ConvertM = Either ExprConvertError
+
+prettyErrorT :: TypeConvertError -> String
+prettyErrorT (TypeConvertError g t msg1)
+  = "Error when converting types to final IR: " <> msg1
+     <> "\nin type:\n  " <>  prettyTypeStr (g $ TypeVar NullSourceAnn "<ERROR HERE>")
+     <> "\nin type component:\n  " <> prettyTypeStr t
 
 prettyError :: ExprConvertError -> String
 prettyError = \case
@@ -179,7 +209,7 @@ tryConvertExpr' = go id
         ty' <- goType ty
         pure . V $ FVar ty' nm
      where
-       -- REVIEW: This *MIGHT* not be right. I'm not 100% sure what the PS criteria for a mutually rec group are
+       -- REVIEW: This *MIGHT* not be right. I'm not 1000% sure what the PS criteria for a mutually rec group are
        --         First arg threads the FVars that correspond to the already-processed binds
        --         through the rest of the conversion. I think that's right - earlier bindings
        --         should be available to later bindings
@@ -425,7 +455,7 @@ rowLast t = case rowToList t of
   (_,r) -> r
 
 mkFakeCName :: Int -> Qualified (ProperName 'ConstructorName)
-mkFakeCName x = Qualified (ByModuleName $ moduleNameFromString "$GEN") (ProperName $ "TUPLE_" <> T.pack (show x))
+mkFakeCName x = Qualified (ByModuleName $ moduleNameFromString "$GEN") (ProperName $ "~TUPLE_" <> T.pack (show x))
 
 mkFakeTName :: Int -> Qualified (ProperName 'TypeName)
 mkFakeTName x = case mkFakeCName x of
@@ -433,3 +463,71 @@ mkFakeTName x = case mkFakeCName x of
 
 allTypes :: Expr Ann -> [SourceType]
 allTypes e = e ^.. icosmos @Context @(Expr Ann) M.empty . eType
+
+-- TODO: Fuck these tuples, make real data types when more time
+
+mkTupleCtorData :: Int -> (ProperName 'ConstructorName,(ProperName 'TypeName,Int,[Ty]))
+mkTupleCtorData n | n <= 0 = error "Don't try to make a 0-tuple"
+mkTupleCtorData n = (cn,(tn,n,tys))
+  where
+    cn = disqualify . mkFakeCName $ n
+    tn = disqualify . mkFakeTName $ n
+    tys = TyVar . ("~TUPLE_ARG_" <>) . T.pack . show <$> [1..n]
+
+_100TupleCtors :: CtorDict
+_100TupleCtors = M.fromList $ mkTupleCtorData <$> [1..100]
+
+-- Don't normally like type syns in contexts like this but hlint will probably make this unreadable w/o them
+type CtorDict = Map (ProperName 'ConstructorName) (ProperName 'TypeName,Int,[Ty])
+mkConstructorMap :: Map (ProperName 'TypeName) (DataDeclType,[(Text, Maybe SourceType)],[DataConstructorDeclaration])
+                 -> TyConvertM CtorDict
+mkConstructorMap decls = M.union _100TupleCtors <$>  foldM go M.empty (M.toList decls)
+  where
+    go :: Map (ProperName 'ConstructorName) (ProperName 'TypeName, Int, [Ty])
+          -> (ProperName 'TypeName, (DataDeclType, [(Text, Maybe SourceType)],[DataConstructorDeclaration]))
+          -> TyConvertM (Map (ProperName 'ConstructorName) (ProperName 'TypeName, Int, [Ty]))
+    go acc (tyNm,(declTy,tyArgs,ctorDatas)) = do
+      ctors <- traverse extractCTorData ctorDatas
+      let indexedCTors = mkIndex <$> ctors
+      pure $ foldl' (\acc' (a,b,c,d) -> M.insert a (b,c,d) acc') acc indexedCTors
+     where
+       extractCTorData :: DataConstructorDeclaration -> TyConvertM (ProperName 'ConstructorName,ProperName 'TypeName,[Ty])
+       extractCTorData (DataConstructorDeclaration _ ctorNm ctorFields) = do
+         fields' <- traverse (tryConvertType . snd) ctorFields
+         pure $ (ctorNm,tyNm,fields')
+       mkIndex :: (ProperName 'ConstructorName, ProperName 'TypeName, [Ty])
+               -> (ProperName 'ConstructorName, ProperName 'TypeName, Int,[Ty])
+       mkIndex (cn,tn,fs) = case findIndex (\DataConstructorDeclaration{..} -> dataCtorName == cn) ctorDatas of
+         Nothing -> error "couldn't find ctor name (impossible)"
+         Just i  ->  (cn,tn,i,fs)
+
+lookupSOP :: ProperName 'TypeName -> TyConDict -> Maybe [(Int,[Ty])]
+lookupSOP nm dict = view _3 <$> M.lookup nm dict
+
+lookupArgs :: ProperName 'TypeName -> TyConDict -> Maybe [(Text,Maybe Ty)]
+lookupArgs nm dict = view _2 <$> M.lookup nm dict
+
+mkTupleTyConData :: Int -> (ProperName 'TypeName,(DataDeclType,[(Text,Maybe Ty)],[(Int,[Ty])]))
+mkTupleTyConData n = (tn,(Data,args,indices))
+  where
+    tn = disqualify $ mkFakeTName n
+    vars = [1..n] <&> \x -> "~TUPLE_ARG_" <> T.pack (show x)
+    args = zip vars (replicate n (Just (TyCon C.Type)))
+    qualifier = Qualified (ByModuleName $ ModuleName "$GEN") . ProperName
+    indices = [(0,TyCon . qualifier  <$> vars)]
+
+_100TupleTyCons :: TyConDict
+_100TupleTyCons = M.fromList $ mkTupleTyConData <$> [1..100]
+
+type TyConDict = (Map (ProperName 'TypeName) (DataDeclType,[(Text,Maybe Ty)],[(Int,[Ty])]))
+mkTyConMap :: Map (ProperName 'TypeName) (DataDeclType,[(Text, Maybe SourceType)],[DataConstructorDeclaration])
+           -> TyConvertM (Map (ProperName 'TypeName) (DataDeclType,[(Text,Maybe Ty)],[(Int,[Ty])]))
+mkTyConMap decls = M.union _100TupleTyCons <$> foldM go M.empty (M.toList decls)
+  where
+    go :: Map (ProperName 'TypeName) (DataDeclType,[(Text,Maybe Ty)],[(Int,[Ty])])
+       -> (ProperName 'TypeName, (DataDeclType, [(Text, Maybe SourceType)],[DataConstructorDeclaration]))
+       -> TyConvertM (Map (ProperName 'TypeName) (DataDeclType,[(Text,Maybe Ty)],[(Int,[Ty])]))
+    go acc (tn,(declTy,tyArgs,ctorDatas)) = do
+      tyArgs' <- (traverse . traverse . traverse) tryConvertType tyArgs
+      indexedProducts <- zip [0..] <$> traverse (traverse (tryConvertType . snd) . dataCtorFields) ctorDatas
+      pure $ M.insert tn (declTy,tyArgs',indexedProducts) acc

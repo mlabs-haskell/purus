@@ -28,6 +28,8 @@ import Language.PureScript.Constants.Prim qualified as C
 import Prettyprinter.Render.Text ( renderStrict )
 import Data.Map (Map)
 import Control.Lens.TH (makePrisms)
+import Bound.Scope (instantiateEither)
+
 -- The final representation of types and terms, where all constructions that
 -- *should* have been eliminated in previous steps are impossible
 -- TODO: Make sure we error on exotic kinds
@@ -84,11 +86,21 @@ data Alt f a
   | GuardedAlt Bindings [Pat f a] [(Scope BVar f a, Scope BVar f a)]
   deriving (Eq,Ord,Show,Functor,Foldable,Traversable)
 
+getPat :: Alt f a -> [Pat f a]
+getPat = \case
+  UnguardedAlt _ ps _ -> ps
+  GuardedAlt _ ps _ -> ps
 -- idk if we really need the identifiers?
 data BindE (f :: GHC.Type -> GHC.Type) a
   = NonRecursive Ident (Scope BVar f a)
   | Recursive [(Ident,Scope BVar f a)]
   deriving (Eq,Ord,Show,Functor,Foldable,Traversable)
+
+flattenBind :: BindE f a -> [(Ident,Scope BVar f a)]
+flattenBind = \case
+  NonRecursive i e -> [(i,e)]
+  Recursive xs -> xs
+
 
 data Exp a
  = V a -- let's see if this works
@@ -339,6 +351,18 @@ stripQuantifiers = \case
 eTy :: Exp FVar -> Ty
 eTy = \case
   V (FVar t _) -> t
+  LitE t _ -> t
+  CtorE t _ _ _  -> t
+  LamE t _ _ -> t
+  AppE t _  _ -> t
+  CaseE t _ _  -> t
+  LetE t _ _ _ -> t
+
+eTy' :: forall x. (x -> Var BVar FVar) -> Scope BVar Exp x -> Ty
+eTy' f scoped = case instantiateEither (either (V . B) (V . F)) scoped of
+  V x -> case x >>= f  of
+    B (BVar _ t _) -> t
+    F (FVar t _) -> t
   LitE t _ -> t
   CtorE t _ _ _  -> t
   LamE t _ _ -> t
