@@ -13,15 +13,26 @@ import System.FilePath.Glob qualified as Glob
 import Data.Function (on)
 import Data.List (sort, sortBy, stripPrefix, groupBy, find)
 import Control.Exception.Base
-import Language.PureScript.CoreFn.Convert.ToPIR (runPIR)
+import Language.PureScript.CoreFn.Convert.ToPIR
+import PlutusCore.Core
+import Test.Tasty
+import PlutusCore.Evaluation.Machine.Ck (EvaluationResult(..))
+import PlutusCore
+import PlutusCore.Default
 
 shouldPassTests :: IO ()
 shouldPassTests = do
   traverse_ runPurusDefault shouldPass
   let misc =  "./tests/purus/passing/Misc/output/Lib/index.cfn"
-  uplc1 <- runPIR misc "main"
+  uplc1 <- declToUPLC misc "main"
+  defaultMain $
+    runPLCProgramTest
+    "mainTest"
+    (EvaluationSuccess (Constant () (Some (ValueOf DefaultUniInteger 2))),[])
+    misc
+    "main"
   writeFile "./tests/purus/passing/Misc/output/Lib/main.plc" (show uplc1)
-  uplc2 <- runPIR misc "minus"
+  uplc2 <- declToUPLC misc "minus"
   writeFile "./tests/purus/passing/Misc/output/Lib/fakeminus.plc" (show uplc2)
 
 runPurus :: P.CodegenTarget -> FilePath ->  IO ()

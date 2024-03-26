@@ -19,6 +19,16 @@ import Control.Lens (Traversal', Lens')
 
 type PurusType = SourceType -- Type ()
 
+{- TODO: IMPORTANT!!!!
+
+   REMOVE THE TYPE ANNOTATION FROM APPLICATIONS.
+
+   I don't know why I did that but it's never necessary and it is the source of
+   endless stupid problems.
+
+
+-}
+
 -- |
 -- Data type for expressions and terms
 --

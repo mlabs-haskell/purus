@@ -48,6 +48,11 @@ import PlutusCore qualified as PLC
 import Control.Exception
 import Data.List (sortOn)
 import Control.Lens ((&),(.~),ix)
+import PlutusCore.Evaluation.Machine.Ck
+import PlutusCore.Evaluation.Machine.ExBudgetingDefaults qualified as PLC
+import Test.Tasty
+import Test.Tasty.HUnit
+
 type PLCProgram uni fun a = PLC.Program PLC.TyName PLC.Name uni fun (Provenance a)
 
 fuckThisMonadStack ::
@@ -66,11 +71,24 @@ fuckThisMonadStack x  =
             join $ flip runReader ctx $ runQuoteT $ runExceptT $ runExceptT x
       in  first  show res
 
+runPLCProgram :: PLCProgram DefaultUni DefaultFun () -> (EvaluationResult (PLC.Term TyName Name DefaultUni DefaultFun ()),[Text])
+runPLCProgram (PLC.Program a b c) = unsafeEvaluateCk PLC.defaultBuiltinsRuntime $ void c
 
-runPIR :: FilePath
+runPLCProgramTest :: String
+                  -> (EvaluationResult (PLC.Term TyName Name DefaultUni DefaultFun ()),[Text])
+                  -> FilePath
+                  -> Text
+                  -> TestTree
+runPLCProgramTest testName expected path decl  = testCase testName $ do
+  prog <- declToUPLC path decl
+  let out = runPLCProgram prog
+  assertEqual "program output matches expected "  expected out
+
+
+declToUPLC :: FilePath
        -> Text
        -> IO (PLCProgram  DefaultUni DefaultFun ())
-runPIR path decl = prepPIR path decl >>= \case
+declToUPLC path decl = prepPIR path decl >>= \case
   (mainExpr,dict) -> do
     tcMap <- rethrowIO $ mkTyConMap dict
     ctorMap <- rethrowIO $ mkConstructorMap dict
@@ -281,8 +299,6 @@ toPIR f = \case
    assembleScrutinee :: PIRTerm -> Ty ->  [Alt Exp x] -> State ConvertState (Term TyName Name DefaultUni DefaultFun ())
    assembleScrutinee scrut tx  alts = do
      let _binders = IR.getPat <$> alts
-        -- TODO: remove when implementing multi scrutinee
-         binders =  map head _binders
      alted <-  unzip <$> traverse (locally . goAlt tx) alts
      let sopSchema = head . fst $ alted
          ctorNumberedBranches = snd alted
@@ -329,17 +345,12 @@ toPIR f = \case
              goCtorArgs [(t,VarP nm)] = do
                nm' <- mkTermName (runIdent nm)
                t' <- toPIRType t
-               pure $ LamAbs () nm' t' undefined
+               pure $ LamAbs () nm' t' res
              goCtorArgs ((t,VarP nm):rest) = do
                nm' <- mkTermName (runIdent nm)
                t' <- toPIRType t
                rest' <- goCtorArgs rest
                pure $ LamAbs () nm' t' rest'
-
-
-
-
-
 
        -- NOTE: We don't have force/delay in PIR so I think we have to use type abstraction/instantiation
        -- force ((\cond -> IfThenElse cond (delay caseT) (delay caseF)) cond)

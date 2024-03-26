@@ -209,6 +209,8 @@ common defaults
     sourcemap >=0.1.7 && <0.2,
     stm >=2.5.0.2 && <2.6,
     stringsearch >=0.3.6.6 && <0.4,
+    tasty,
+    tasty-hunit,
     template-haskell >=2.18.0.0 && <2.19,
     text >=1.2.5.0 && <2.3,
     th-abstraction,
@@ -255,7 +257,7 @@ library
     Language.PureScript.CoreFn.Convert.DesugarObjects
     Language.PureScript.CoreFn.Convert.Plated
     Language.PureScript.CoreFn.Convert.IR
-     Language.PureScript.CoreFn.Convert.ToPIR
+    Language.PureScript.CoreFn.Convert.ToPIR
     Language.PureScript.CoreFn.CSE
     Language.PureScript.CoreFn.Desugar
     Language.PureScript.CoreFn.Desugar.Utils
@@ -483,11 +485,13 @@ test-suite tests
   build-depends:
     purescript,
     purs-lib,
+    flat,
     generic-random >=1.5.0.1 && <1.6,
     hspec >= 2.10.7 && < 3,
     HUnit >=1.6.2.0 && <1.7,
     newtype >=0.2.2.0 && <0.3,
     QuickCheck >=2.14.2 && <2.15,
+    plutus-core,
     regex-base >=0.94.0.2 && <0.95,
     split >=0.2.3.4 && <0.3,
     typed-process >=0.2.10.1 && <0.3

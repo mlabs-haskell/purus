@@ -117,6 +117,11 @@ aStringLit = "woop"
 aVal :: Int
 aVal = 1
 
+testasum :: ASum -> Int
+testasum x = case x of
+  Constr1 y -> 1
+  Constr2 z -> 2
+
 
 aBool :: Boolean
 aBool = true

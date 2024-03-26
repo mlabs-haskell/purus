@@ -32,6 +32,7 @@ Exports:
   anIntLit,
   aStringLit,
   aVal,
+  testasum,
   aBool,
   aList,
   aFunction,
@@ -127,6 +128,13 @@ eq2IntBoolean =
                                                               Boolean -> Boolean
                                                             }): (Eq2$Dict
   Int Boolean))
+
+testasum :: ASum -> Int
+testasum = 
+  \(x: ASum) -> 
+    case (x: ASum) of 
+       Constr1 y -> (1: Int)
+       Constr2 z -> (2: Int)
 
 testBuiltin :: Int
 testBuiltin = ((addInteger: Int -> Int -> Int) (1: Int) (2: Int): Int)
