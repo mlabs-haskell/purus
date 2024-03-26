@@ -25,15 +25,15 @@ shouldPassTests = do
   traverse_ runPurusDefault shouldPass
   let misc =  "./tests/purus/passing/Misc/output/Lib/index.cfn"
   uplc1 <- declToUPLC misc "main"
+  writeFile "./tests/purus/passing/Misc/output/Lib/main.plc" (show uplc1)
+  uplc2 <- declToUPLC misc "minus"
+  writeFile "./tests/purus/passing/Misc/output/Lib/fakeminus.plc" (show uplc2)
   defaultMain $
     runPLCProgramTest
     "mainTest"
     (EvaluationSuccess (Constant () (Some (ValueOf DefaultUniInteger 2))),[])
     misc
     "main"
-  writeFile "./tests/purus/passing/Misc/output/Lib/main.plc" (show uplc1)
-  uplc2 <- declToUPLC misc "minus"
-  writeFile "./tests/purus/passing/Misc/output/Lib/fakeminus.plc" (show uplc2)
 
 runPurus :: P.CodegenTarget -> FilePath ->  IO ()
 runPurus target dir =  do
