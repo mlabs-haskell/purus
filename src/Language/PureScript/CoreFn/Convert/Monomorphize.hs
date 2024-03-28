@@ -467,7 +467,6 @@ inlineAs  d ty qmn@(Qualified (ByModuleName mn') ident) = trace ("inlineAs: " <>
 
    collectFun _ dx e _ = throwError $ MonoError dx $ "Unexpected expression in collectFun:\n  " <> renderExprStr e
 
-
    collectRecBinds :: Map Ident (Ident,SourceType,Expr Ann) -> PurusType -> Context -> Expr Ann -> Monomorphizer (Map Ident (Ident,SourceType,Expr Ann))
    collectRecBinds visited t dx e = trace ("collectRecBinds:\n  " <> renderExprStr e <> "\n  " <> prettyTypeStr t) $ case e of
      Literal _ _ (ArrayLiteral arr) -> trace "crbARRAYLIT" $ case t of

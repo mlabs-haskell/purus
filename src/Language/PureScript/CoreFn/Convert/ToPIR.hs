@@ -72,7 +72,7 @@ fuckThisMonadStack x  =
       in  first  show res
 
 runPLCProgram :: PLCProgram DefaultUni DefaultFun () -> (EvaluationResult (PLC.Term TyName Name DefaultUni DefaultFun ()),[Text])
-runPLCProgram (PLC.Program a b c) = unsafeEvaluateCk PLC.defaultBuiltinsRuntime $ void c
+runPLCProgram (PLC.Program _ _ c) = unsafeEvaluateCk PLC.defaultBuiltinsRuntime $ void c
 
 runPLCProgramTest :: String
                   -> (EvaluationResult (PLC.Term TyName Name DefaultUni DefaultFun ()),[Text])
