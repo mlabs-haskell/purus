@@ -175,17 +175,20 @@ analyzeApp :: Expr a -> Maybe (Expr a,[Expr a])
 analyzeApp t = (,appArgs t) <$> appFun t
   where
     appArgs :: Expr a -> [Expr a]
-    appArgs (App _ _ t1 t2) = appArgs t1 <> [t2]
+    appArgs (App _  t1 t2) = appArgs t1 <> [t2]
     appArgs _  = []
 
     appFun :: Expr a -> Maybe (Expr a)
-    appFun (App _ _ t1 _) = go t1
+    appFun (App _  t1 _) = go t1
       where
-        go (App _ _ tx _) = case appFun tx of
+        go (App _  tx _) = case appFun tx of
           Nothing -> Just tx
           Just tx' -> Just tx'
         go other = Just other
     appFun _ = Nothing
+
+
+
 
 -- TODO: Move to modules where types are defined
 instance Pretty Ident where

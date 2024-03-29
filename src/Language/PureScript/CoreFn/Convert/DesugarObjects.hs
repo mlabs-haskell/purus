@@ -7,8 +7,6 @@ module Language.PureScript.CoreFn.Convert.DesugarObjects where
 import Prelude
 import Language.PureScript.CoreFn.Expr
     ( _Var,
-      eType,
-      exprType,
       Bind(..),
       CaseAlternative(CaseAlternative),
       Expr(..) )
@@ -41,7 +39,7 @@ import Control.Lens.Operators
 import Control.Lens (view)
 import Control.Lens.Tuple
 import Language.PureScript.CoreFn.Convert.IR hiding (stripQuantifiers)
-import Language.PureScript.CoreFn.Convert.Plated
+import Language.PureScript.CoreFn.Utils hiding (stripQuantifiers)
 import Control.Exception (throwIO)
 import Debug.Trace
 import Data.List (findIndex)
@@ -180,25 +178,23 @@ tryConvertExpr' = go id
         ex <- go (f . Abs ann ty ident) e
         let expr = abstract (matchVar (headArg ty') ident) ex
         pure $ LamE ty' (BVar 0 (headArg ty') ident) expr
-      App ann ty e1 e2 -> do
-        ty' <- goType ty
-        e2' <- go (f . App ann ty e1) e2
-        e1' <- go (f . (\x -> App ann ty x e2)) e1
-        pure $ AppE ty' e1' e2'
+      App ann e1 e2 -> do
+        e2' <- go (f . App ann e1) e2
+        e1' <- go (f . (\x -> App ann x e2)) e1
+        pure $ AppE  e1' e2'
       Case ann ty scrutinees alts -> do
         ty' <- goType ty
         scrutinees' <- goList (f . (\x -> Case ann ty [x] alts)) scrutinees
         alts' <- traverse (goAlt (f . Case ann ty scrutinees . pure)) alts
         pure $ CaseE ty' scrutinees' alts'
-      Let ann ty binds e -> do
-        ty' <- goType ty
-        rawBinds <- goBinds (f . (\x -> Let ann ty [x] e)) binds
-        e' <- go (f . Let ann ty binds) e
+      Let ann binds e -> do
+        rawBinds <- goBinds (f . (\x -> Let ann [x] e)) binds
+        e' <- go (f . Let ann binds) e
         let allBoundIdents = fst <$> join rawBinds
             abstr = abstract (abstractMany allBoundIdents)
             bindEs = assembleBindEs [] rawBinds
             bindings = mkBindings allBoundIdents
-        pure $ LetE ty' bindings  bindEs (abstr e')
+        pure $ LetE  bindings  bindEs (abstr e')
       xp@(Accessor _ ty lbl e) -> case desugarObjectAccessor ty lbl e of
         Nothing -> Left $ ExprConvertError f xp Nothing "Failed to desugar Accessor"
         Just desugE -> go f desugE
@@ -378,7 +374,7 @@ tryConvertExpr' = go id
        catchTE = first ((\x -> ExprConvertError f expression x "Failed to convert type") . Just)
 
 assembleDesugaredObjectLit :: Expr Ann -> SourceType -> [Expr Ann] -> Either ExprConvertError (Expr Ann)
-assembleDesugaredObjectLit expr (_ :-> b) (arg:args) = assembleDesugaredObjectLit (App nullAnn b expr arg) b args
+assembleDesugaredObjectLit expr (_ :-> b) (arg:args) = assembleDesugaredObjectLit (App nullAnn  expr arg) b args
 assembleDesugaredObjectLit expr _ [] = pure expr -- TODO better error
 assembleDesugaredObjectLit _ _ _ = error "something went wrong in assembleDesugaredObjectLit"
 
@@ -462,7 +458,7 @@ mkFakeTName x = case mkFakeCName x of
   Qualified qb n -> Qualified qb $ coerceProperName @_ @'TypeName n
 
 allTypes :: Expr Ann -> [SourceType]
-allTypes e = e ^.. icosmos @Context @(Expr Ann) M.empty . eType
+allTypes e = e ^.. icosmos @Context @(Expr Ann) M.empty . to exprType
 
 -- TODO: Fuck these tuples, make real data types when more time
 

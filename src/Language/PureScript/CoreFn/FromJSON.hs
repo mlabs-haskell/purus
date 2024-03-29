@@ -255,10 +255,9 @@ exprFromJSON modulePath = withObject "Expr" exprFromObj
 
   appFromObj o = do
     ann <- o .: "annotation" >>= annFromJSON modulePath
-    ty  <- tyFromObj o
     e   <- o .: "abstraction" >>= exprFromJSON modulePath
     e'  <- o .: "argument" >>= exprFromJSON modulePath
-    return $ App ann ty e e'
+    return $ App ann e e'
 
   caseFromObj o = do
     ann <- o .: "annotation" >>= annFromJSON modulePath
@@ -269,10 +268,9 @@ exprFromJSON modulePath = withObject "Expr" exprFromObj
 
   letFromObj o = do
     ann <- o .: "annotation" >>= annFromJSON modulePath
-    ty  <- tyFromObj o
     bs  <- o .: "binds" >>= listParser (bindFromJSON modulePath)
     e   <- o .: "expression" >>= exprFromJSON modulePath
-    return $ Let ann ty bs e
+    return $ Let ann bs e
 
 caseAlternativeFromJSON :: FilePath -> Value -> Parser (CaseAlternative Ann)
 caseAlternativeFromJSON modulePath = withObject "CaseAlternative" caseAlternativeFromObj

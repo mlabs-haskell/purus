@@ -12,10 +12,13 @@ import Language.PureScript.AST.Literals (Literal)
 import Language.PureScript.CoreFn.Binders (Binder)
 import Language.PureScript.Names (Ident, ProperName, ProperNameType(..), Qualified)
 import Language.PureScript.PSString (PSString)
-import Language.PureScript.Types (Type, SourceType)
+import Language.PureScript.Types (Type (..), SourceType)
 
 import Control.Lens.TH (makePrisms)
 import Control.Lens (Traversal', Lens')
+import Data.Text (Text)
+import Language.PureScript.Environment
+import Data.Bifunctor (Bifunctor(first))
 
 type PurusType = SourceType -- Type ()
 
@@ -56,7 +59,7 @@ data Expr a
   -- |
   -- Function application
   --
-  | App a PurusType (Expr a) (Expr a)
+  | App a (Expr a) (Expr a)
   -- |
   -- Variable
   --
@@ -68,38 +71,13 @@ data Expr a
   -- |
   -- A let binding
   --
-  | Let a PurusType [Bind a] (Expr a)
+  | Let a [Bind a] (Expr a)
   deriving (Eq, Ord, Show, Functor, Generic)
-
-eType :: Lens' (Expr a) PurusType
-eType f = \case
-  Literal ann ty lit -> (\t -> Literal ann t lit) <$> f ty
-  Constructor a ty tNm cNm fs -> (\t -> Constructor a t tNm cNm fs) <$> f ty
-  Accessor ann ty str e -> (\t -> Accessor ann t str e) <$> f ty
-  ObjectUpdate ann ty e keep upd -> (\t -> ObjectUpdate ann t e keep upd) <$> f ty
-  Abs a ty nm e -> (\t -> Abs a t nm e) <$> f ty
-  App a ty e1 e2 -> (\t -> App a t e1 e2) <$> f ty
-  Var a ty nm -> (\t -> Var a t nm) <$> f ty
-  Case a ty es alts -> (\t -> Case a t es alts) <$> f ty
-  Let a ty bs e -> (\t -> Let a t bs e) <$> f ty
 
 instance FromJSON a => FromJSON (Expr a)
 instance ToJSON a => ToJSON (Expr a)
 
-exprType :: Expr a -> PurusType
-exprType = \case
-  Literal _ ty _ -> ty
-  Constructor _ ty _ _ _ -> ty
-  Accessor _ ty _ _ -> ty
-  ObjectUpdate _ ty _ _ _ -> ty
-  Abs _ ty _ _ -> ty
-  App _ ty _ _ -> ty
-  Var _ ty __ -> ty
-  Case _ ty _ _ -> ty
-  Let _ ty _ _ -> ty
-
-
-
+{- TODO: The need for this should be eliminated by the new changes
 
 -- | Only goes one level deep, primarily used to re-quantify
 --   imperfectly monomorphized polymorphic types
@@ -111,11 +89,11 @@ mapType f = \case
   Accessor a ty b c -> Accessor a (f ty) b c
   ObjectUpdate a ty b c d -> ObjectUpdate a (f ty) b c d
   Abs a ty b c -> Abs a (f ty) b c
-  App a ty b c -> App a (f ty) b c
+  App a b c -> App a (f ty) b c
   Var a ty b -> Var a (f ty) b
   Case a ty b c -> Case a (f ty) b c
-  Let a ty b c -> Let a (f ty) b c
-
+  Let a b c -> Let a (f ty) b c
+-}
 -- |
 -- A let or module binding.
 --
@@ -169,10 +147,10 @@ extractAnn (Constructor a _ _   _ _) = a
 extractAnn (Accessor a _ _ _) = a
 extractAnn (ObjectUpdate a _ _ _ _) = a
 extractAnn (Abs a _ _ _) = a
-extractAnn (App a _ _ _) = a
+extractAnn (App a  _ _) = a
 extractAnn (Var a _ _) = a
 extractAnn (Case a _ _ _) = a
-extractAnn (Let a _ _ _) = a
+extractAnn (Let a _ _) = a
 
 
 -- |
@@ -184,10 +162,10 @@ modifyAnn f (Constructor a b c d e)  = Constructor (f a) b c d e
 modifyAnn f (Accessor a b c d)       = Accessor (f a) b c d
 modifyAnn f (ObjectUpdate a b c d e) = ObjectUpdate (f a) b c d e
 modifyAnn f (Abs a b c d)            = Abs (f a) b c d
-modifyAnn f (App a b c d)            = App (f a) b c d
+modifyAnn f (App a b c)              = App (f a) b c
 modifyAnn f (Var a b c)              = Var (f a) b c
 modifyAnn f (Case a b c d)           = Case (f a) b c d
-modifyAnn f (Let a b c d)            = Let (f a) b c d
+modifyAnn f (Let a b c)              = Let (f a) b c
 
 makePrisms ''Expr
 makePrisms ''Bind

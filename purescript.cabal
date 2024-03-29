@@ -255,7 +255,6 @@ library
     Language.PureScript.CoreFn.Convert
     Language.PureScript.CoreFn.Convert.Monomorphize
     Language.PureScript.CoreFn.Convert.DesugarObjects
-    Language.PureScript.CoreFn.Convert.Plated
     Language.PureScript.CoreFn.Convert.IR
     Language.PureScript.CoreFn.Convert.ToPIR
     Language.PureScript.CoreFn.CSE
@@ -272,6 +271,7 @@ library
     Language.PureScript.CoreFn.Pretty.Types
     Language.PureScript.CoreFn.ToJSON
     Language.PureScript.CoreFn.Traversals
+    Language.PureScript.CoreFn.Utils
     Language.PureScript.CoreImp
     Language.PureScript.CoreImp.AST
     Language.PureScript.CoreImp.Module

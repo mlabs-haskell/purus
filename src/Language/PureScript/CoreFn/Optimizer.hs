@@ -25,7 +25,7 @@ optimizeModuleDecls = map transformBinds
 
 optimizeDataFunctionApply :: Expr a -> Expr a
 optimizeDataFunctionApply e = case e of
-  (App a t1 (App _ t2 (Var _ t3 fn) x) y)
-    | C.I_functionApply <- fn -> App a t1 x y -- NOTE @klntsky not sure about the type here, needs reviewed. I *think* the type shouldn't change?
-    | C.I_functionApplyFlipped <- fn -> App a t1 y x
+  (App a (App _ (Var _ t3 fn) x) y)
+    | C.I_functionApply <- fn -> App a x y
+    | C.I_functionApplyFlipped <- fn -> App a y x
   _ -> e

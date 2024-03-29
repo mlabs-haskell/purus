@@ -305,17 +305,17 @@ emptyList = ([]: forall (t100 :: Type). Array t100)
 cons :: forall (a :: Type). a -> Array a -> Array a
 cons = \(x: a) -> \(xs: Array a) -> ([(x: a)]: Array a)
 
-consEmptyList1 :: Array a
+consEmptyList1 :: Array Int
 consEmptyList1 = 
   ((cons: forall (a :: Type). a -> Array a -> Array a)
   (1: Int)
-  (emptyList: forall (t100 :: Type). Array t100): Array a)
+  (emptyList: forall (t100 :: Type). Array t100): Array Int)
 
-consEmptyList2 :: Array a
+consEmptyList2 :: Array String
 consEmptyList2 = 
   ((cons: forall (a :: Type). a -> Array a -> Array a)
   ("hello": String)
-  (emptyList: forall (t100 :: Type). Array t100): Array a)
+  (emptyList: forall (t100 :: Type). Array t100): Array String)
 
 brokenEven :: Int -> Int
 brokenEven = 

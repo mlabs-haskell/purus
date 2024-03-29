@@ -1,34 +1,31 @@
-{-# OPTIONS_GHC -Wno-orphans #-} -- has to be here (more or less)
-module Language.PureScript.CoreFn.Convert.Plated where
+module Language.PureScript.CoreFn.Utils where
 
 import Prelude hiding (error)
-import Data.Bifunctor ( Bifunctor(second) )
+import Data.Bifunctor ( Bifunctor(second, first) )
 import Language.PureScript.CoreFn.Expr
-    ( Bind(..),
-      CaseAlternative(CaseAlternative),
-      Expr(..),
-      Guard, exprType )
 import Language.PureScript.CoreFn.Desugar.Utils ( traverseLit, showIdent' )
 import GHC.Natural ( Natural )
 import Data.Bitraversable (Bitraversable(bitraverse))
-import Control.Lens.IndexedPlated ( IndexedPlated(..) )
-import Control.Lens ( Indexable(indexed) )
+import Control.Lens.IndexedPlated ( IndexedPlated(..), itransform )
+import Control.Lens ( Indexable(indexed), (^?) )
 import Language.PureScript.Types
 import Data.Map (Map)
-import qualified Data.Map as M
-import Language.PureScript.Names (Ident)
+import Data.Map qualified as M
+import Language.PureScript.Names (Ident, Qualified (..), QualifiedBy (..))
 import Data.Text (Text)
-import Language.PureScript.CoreFn.Pretty (prettyTypeStr)
-import Language.PureScript.Environment (pattern (:->))
+
+import Language.PureScript.Environment (pattern (:->), function)
+import Language.PureScript.CoreFn.Ann (Ann)
+import Control.Lens.Type (Lens')
 
 type Context = Map Ident SourceType
-
+{-
 prettyContext :: Context -> String
 prettyContext cxt = concatMap go (M.toList cxt)
   where
     go :: (Ident,SourceType) -> String
     go (ident,ty) = showIdent' ident <> " := " <> prettyTypeStr ty <> "\n"
-
+-}
 instance IndexedPlated Context (Expr a) where
   iplate d f = \case
     Literal ann ty lit -> Literal ann ty <$> traverseLit (indexed f d) lit
@@ -38,11 +35,11 @@ instance IndexedPlated Context (Expr a) where
       <$> indexed f d orig
       <*> traverse (sequenceA . second (indexed f d)) updateFields
     Abs ann ty ident body -> Abs ann ty ident <$> indexed f (M.insert ident (arg ty) d) body
-    App ann ty fE argE -> App ann ty <$> indexed f d fE <*> indexed f d argE
+    App ann fE argE -> App ann <$> indexed f d fE <*> indexed f d argE
     Case a ty scrutinees alternatives ->
       Case a ty <$> traverse (indexed f d) scrutinees <*> traverseAltE d f alternatives
-    Let a ty binds e ->
-      Let a ty <$> traverseBinds d f  binds <*> indexed f d e
+    Let a binds e ->
+      Let a <$> traverseBinds d f  binds <*> indexed f d e
     other -> pure other -- ctors and vars don't contain any sub-expressions
    where
      arg = \case
@@ -78,7 +75,7 @@ instance IndexedPlated Context (Expr a) where
              let g' = indexed g gCxt
              in  Left <$> traverse (bitraverse g' g') es
 
--- Bound tyVars and kinds. Idk if we'll use it but it take like 10 seconds
+-- Bound tyVars and kinds. Idk if we'll use it but it takes like 10 seconds
 type TyContext = Map Text (Maybe SourceType )
 -- Might be able to do something useful with a non-natural index (think about later)
 instance IndexedPlated TyContext SourceType where
@@ -102,3 +99,92 @@ instance IndexedPlated TyContext SourceType where
     ParensInType ann t -> ParensInType ann <$> indexed f d t
     -- nothing else has child types
     other -> pure other
+
+-- TODO: Explain what this is / how it works
+instantiates :: Text -- Name of the TyVar we're checking
+             -> SourceType -- Monomorphic type (or "more monomorphic" type)
+             -> SourceType -- Polymorphic type (or "more polymoprhic" type)
+             -> Maybe SourceType
+instantiates var x (TypeVar _ y) | y == var = Just x
+instantiates var (TypeApp _ t1 t2) (TypeApp _ t1' t2') = case instantiates var t1 t1' of
+  Just x -> Just x
+  Nothing -> instantiates var t2 t2'
+instantiates _ _ _ = Nothing
+
+appFunArgs :: Expr a -> Expr a -> (Expr a,[Expr a])
+appFunArgs f args = (appFun f, appArgs f args)
+  where
+    appArgs :: Expr a -> Expr a -> [Expr a]
+    appArgs (App _ t1 t2) t3 = appArgs t1 t2 <> [t3]
+    appArgs _  t3 = [t3]
+
+    appFun :: Expr a -> Expr a
+    appFun (App _ t1 _) = appFun t1
+    appFun res            = res
+
+updateVarTy :: Ident -> PurusType -> Expr Ann -> Expr Ann
+updateVarTy  ident ty = itransform goVar (M.empty :: Context)
+  where
+    goVar :: forall x. x -> Expr Ann -> Expr Ann
+    goVar _ expr = case expr ^? _Var of
+      Just (ann,_,Qualified q@(BySourcePos _) varId) | varId == ident -> Var ann ty (Qualified q ident)
+      _ -> expr
+
+appType :: Expr a -> Expr a -> SourceType
+appType fe ae = case stripQuantifiers funTy of
+   ([],ft) ->
+     let numArgs = length argTypes
+     in foldl1 function . drop numArgs . splitFunTyParts $ ft
+   (xs,ft) ->
+     let funArgs = funArgTypes ft
+         dict    = mkInstanceMap M.empty xs argTypes funArgs
+         numArgs = length argTypes
+     in quantify
+        . foldl1 function
+        . drop numArgs
+        . splitFunTyParts
+        . replaceAllTypeVars (M.toList dict)
+        $ ft
+  where
+    (f,args) = appFunArgs fe ae
+    funTy    = exprType f
+    argTypes = exprType <$> args
+
+    mkInstanceMap :: Map Text SourceType -> [Text] -> [SourceType] -> [SourceType] -> Map Text SourceType
+    mkInstanceMap acc [] _ _ = acc
+    mkInstanceMap acc _ [] _ = acc
+    mkInstanceMap acc _ _ [] = acc
+    mkInstanceMap acc (var:vars) (mt:mts) (pt:pts) = case instantiates var mt pt of
+      Nothing -> mkInstanceMap acc [var] mts pts <> mkInstanceMap M.empty vars (mt:mts) (pt:pts)
+      Just t  -> mkInstanceMap (M.insert var t acc) vars (mt:mts) (pt:pts)
+
+stripQuantifiers :: SourceType -> ([Text],SourceType)
+stripQuantifiers = first reverse . go []
+  where
+    go :: [Text] -> SourceType -> ([Text],SourceType)
+    go acc (ForAll _ _ var _ inner _) = go (var:acc) inner
+    go acc other = (acc,other)
+
+-- | (a -> b -> c) -> [a,b,c]
+splitFunTyParts :: Type a -> [Type a]
+splitFunTyParts = \case
+  (a :-> b) -> a : splitFunTyParts b
+  t         -> [t]
+
+-- | (a -> b -> c) -> [a,b]
+--
+--   NOTE: Unsafe/partial
+funArgTypes :: Type a -> [Type a]
+funArgTypes = init . splitFunTyParts
+
+exprType :: Expr a -> PurusType
+exprType = \case
+  Literal _ ty _ -> ty
+  Constructor _ ty _ _ _ -> ty
+  Accessor _ ty _ _ -> ty
+  ObjectUpdate _ ty _ _ _ -> ty
+  Abs _ ty _ _ -> ty
+  App _ t1 t2 -> appType t1 t2
+  Var _ ty __ -> ty
+  Case _ ty _ _ -> ty
+  Let _ _ e -> exprType e

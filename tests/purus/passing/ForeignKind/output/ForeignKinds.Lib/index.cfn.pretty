@@ -36,10 +36,10 @@ proxy1 = (NatProxy: NatProxy Succ Zero)
 proxy0 :: NatProxy Zero
 proxy0 = (NatProxy: NatProxy Zero)
 
-addNatZero :: forall (r :: Nat). ((AddNat$Dict Zero r) r)
+addNatZero :: ((AddNat$Dict Zero r) r)
 addNatZero = 
   ((AddNat$Dict: Record {}@Type -> ((AddNat$Dict Zero r) r))
-  ({  }: Record {}@Type): forall (r :: Nat). ((AddNat$Dict Zero r) r))
+  ({  }: Record {}@Type): ((AddNat$Dict Zero r) r))
 
 addNatSucc :: forall (l :: Nat) (r :: Nat) (o :: Nat). ((AddNat$Dict l r) o) -> ((AddNat$Dict Succ l r) Succ o)
 addNatSucc = 

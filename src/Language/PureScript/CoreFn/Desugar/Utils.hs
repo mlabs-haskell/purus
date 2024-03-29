@@ -32,7 +32,7 @@ import Language.PureScript.Environment (
   function,
   pattern (:->),
   isDictTypeName)
-import Language.PureScript.Names (Ident(..), ModuleName, ProperName(..), ProperNameType(..), Qualified(..), QualifiedBy(..), disqualify, getQual, runIdent, coerceProperName)
+import Language.PureScript.Names (Ident(..), ModuleName, ProperName(..), ProperNameType(..), Qualified(..), QualifiedBy(..), getQual, runIdent, coerceProperName)
 import Language.PureScript.Types (SourceType, Type(..), Constraint (..), srcTypeConstructor, srcTypeApp, rowToSortedList, RowListItem(..), replaceTypeVars, everywhereOnTypes)
 import Control.Monad.Supply.Class (MonadSupply)
 import Control.Monad.State.Strict (MonadState, gets, modify')
@@ -42,7 +42,6 @@ import Language.PureScript.TypeChecker.Types
 import Language.PureScript.Errors
     ( MultipleErrors )
 import Debug.Trace (traceM, trace)
-import Language.PureScript.CoreFn.Pretty ( ppType )
 import Data.Text qualified as T
 import Text.Pretty.Simple (pShow)
 import Data.Text.Lazy qualified as LT
@@ -425,12 +424,6 @@ lookupDictType nm = do
           dictTy = foldl' srcTypeApp dictTyCon tcdInstanceTypes
           dictTyCon = srcTypeConstructor $ coerceProperName . dictTypeName <$> tcdClassName
 
--- | Generates a pretty (ish) representation of the type environment/context. For debugging.
-printEnv :: M m => m String
-printEnv = do
-   env <- gets checkEnv
-   let ns = map (\(i,(st,_,_)) -> (i,st)) . M.toList $ names env
-   pure $ concatMap (\(i,st) -> "ENV:= " <> T.unpack (runIdent . disqualify $  i) <> " :: " <> ppType 10 st <> "\n") ns
 
 (</>) :: String -> String -> String
 x </> y = x <> "\n" <> y

@@ -52,6 +52,8 @@ deriving instance Eq a => Eq (DiffResult a)
 deriving instance Ord a => Ord (DiffResult a)
 deriving instance Show a => Show (DiffResult a)
 
+-- TODO: Remove this? It's not that useful.
+
 diffModule :: Module Ann -> Module Ann -> [DiffResult Ann]
 diffModule m1 m2 = ezDiff DiffSourceSpan moduleSourceSpan
                    <> ezDiff DiffComments moduleComments
@@ -103,17 +105,17 @@ canonicalizeExpr = \case
         origVal' = canonicalizeExpr origVal
     in ObjectUpdate a ty origVal' copyFields' updateFields'
   Abs a ty ident body -> Abs a ty ident (canonicalizeExpr body)
-  App a ty e1 e2 ->
+  App a  e1 e2 ->
     let e1' = canonicalizeExpr e1
         e2' = canonicalizeExpr e2
-    in App a ty e1' e2'
+    in App a  e1' e2'
   Var a ty ident -> Var a ty ident
   -- This one is confusing. The order intrinsically matters. Can't sort at the top level. Not sure what to do about that.
   Case a ty es alts -> Case a ty (canonicalizeExpr <$> es) (canonicalizeAlt <$> alts)
-  Let a ty binds expr ->
+  Let a binds expr ->
     let binds' = sort $ canonicalizeDecl <$> binds
         expr'   = canonicalizeExpr expr
-    in Let a ty binds' expr'
+    in Let a binds' expr'
 
 canonicalizeAlt :: CaseAlternative a -> CaseAlternative a
 canonicalizeAlt = id -- TODO

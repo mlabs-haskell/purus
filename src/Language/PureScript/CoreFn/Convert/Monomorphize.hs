@@ -14,19 +14,17 @@ import Data.Maybe
 
 import Language.PureScript.CoreFn.Expr
     ( _Var,
-      eType,
-      exprType,
       Bind(..),
       CaseAlternative(CaseAlternative),
       Expr(..),
-      PurusType, mapType )
+      PurusType )
 import Language.PureScript.CoreFn.Module ( Module(..) )
-import Language.PureScript.Names (Ident(..), Qualified (..), QualifiedBy (..), pattern ByNullSourcePos, ModuleName (..), runModuleName)
+import Language.PureScript.Names (Ident(..), Qualified (..), QualifiedBy (..), pattern ByNullSourcePos, ModuleName (..))
 import Language.PureScript.Types
-    ( rowToList, RowListItem(..), SourceType, Type(..), quantify, replaceTypeVars, replaceAllTypeVars, isMonoType )
+    ( rowToList, RowListItem(..), SourceType, Type(..), replaceTypeVars, isMonoType )
 import Language.PureScript.CoreFn.Pretty.Common ( analyzeApp )
 import Language.PureScript.CoreFn.Desugar.Utils ( showIdent' )
-import Language.PureScript.Environment (pattern (:->), pattern ArrayT, pattern RecordT, function, (-:>), getFunArgTy)
+import Language.PureScript.Environment (pattern (:->), pattern ArrayT, pattern RecordT, function, getFunArgTy)
 import Language.PureScript.CoreFn.Pretty
     ( prettyTypeStr, renderExprStr )
 import Language.PureScript.CoreFn.Ann (Ann)
@@ -57,7 +55,7 @@ import Control.Monad.RWS.Class ( MonadReader(ask), gets, modify' )
 import Control.Monad.RWS
     ( RWST(..) )
 import Control.Monad.Except (throwError)
-import Language.PureScript.CoreFn.Convert.Plated ( Context, prettyContext )
+import Language.PureScript.CoreFn.Utils ( Context, exprType, instantiates )
 import Control.Exception
 import Data.Text (Text)
 import Debug.Trace (trace, traceM)
@@ -70,7 +68,6 @@ monoTest path decl = do
     Right e -> do
       putStrLn (renderExprStr e)
       pure e
-
 
 {-
 trace :: String  -> p2 -> p2
@@ -108,7 +105,7 @@ hoist1 st act = RWST $ \r s -> f (runRWST act r s)
     f :: Either MonoError (a, MonoState, ()) -> Identity (Maybe a, MonoState, ())
     f = \case
       Left (MonoError d msg) -> do
-        traceM $ "MonoError:  " <> msg <> ":\n" <> "Context: " <> prettyContext d
+        traceM $ "MonoError:  " <> msg <> ":\n" <> "Context: " <> show d
         pure (Nothing,st,())
       Right (x,st',_) -> pure (Just x, st', ())
 
@@ -245,11 +242,11 @@ findInlineDeclGroup ident (Rec xs:rest) = case  find (\x -> snd (fst x) == ident
 
 monomorphizeA :: Context -> Expr Ann -> Monomorphizer (Expr Ann)
 monomorphizeA d xpr = trace ("monomorphizeA " <>  "\n  " <> renderExprStr xpr)  $ case xpr of
-  app@(App ann ty _ arg) ->  do
+  app@(App ann _ arg) ->  do
     (f,args) <-  note d ("Not an App: " <> renderExprStr app) $ analyzeApp app
     traceM $ "FUN: " <> renderExprStr f
     traceM $ "ARGS: " <> show (renderExprStr <$> args)
-    let types = concatMap (toArgs .  view eType)  args
+    let types = concatMap (toArgs . exprType)  args
     traceM $ "ARG TYPES:" <> show (prettyTypeStr <$> types)
      -- maybe trace or check that the types match?
      -- need to re-quantify? not sure. CHECK!
@@ -276,30 +273,17 @@ isBuiltin (Var _ _ (Qualified (ByModuleName (ModuleName "Builtin")) _)) = True
 isBuiltin _ = False
 
 gLet :: [Bind Ann] -> Expr Ann -> Expr Ann
-gLet binds e = Let nullAnn (e ^. eType) binds e
+gLet binds e = Let nullAnn binds e
 
 nameShadows :: Context -> Ident -> Bool
 nameShadows cxt iden = isJust $ M.lookup iden cxt
 
 unsafeApply :: Expr Ann -> [Expr Ann] -> Expr Ann
 unsafeApply e (arg:args)= case exprType e of
-  (a :-> b) -> unsafeApply (App nullAnn b e arg) args
+  (a :-> b) -> unsafeApply (App nullAnn e arg) args
   other -> Prelude.error $ "boom: " <> prettyTypeStr other
 unsafeApply e [] = e
 
--- extreme hack
-instantiates :: Text -> SourceType -> SourceType  -> Maybe SourceType
--- instantiates var mono poly
-instantiates var x (TypeVar _ y) | y == var = Just x
-instantiates var (TypeApp _ t1 t2) (TypeApp _ t1' t2') = case instantiates var t1 t2' of
-  Just x -> Just x
-  Nothing -> instantiates var t2 t2'
-instantiates _ _ _ = Nothing
-
-{- Pretend we have
-
-
--}
 
 handleFunction :: Context
                -> Expr Ann
@@ -320,15 +304,15 @@ handleFunction  d expr@(Abs ann (ForAll _ _ var _ inner  _) ident body'') (arg:a
       cxt   = M.insert ident t d
   handleFunction cxt body' args  >>= \case
     Left (binds,body) -> do
-      let bodyT = body ^. eType
+      let bodyT = exprType body
           funT  = doInstantiate $ function t bodyT
           e' = Abs ann funT  ident body
-      pure $ Left $ (binds, App nullAnn bodyT e' arg)
+      pure $ Left (binds, App nullAnn e' arg)
     Right body -> do
-      let bodyT = body ^. eType
+      let bodyT = exprType body
           funT  = doInstantiate $ function t bodyT
           e' = Abs ann funT ident body
-      pure $ Right $ App nullAnn bodyT e' arg -- Abs ann (function t bodyT) ident body)
+      pure $ Right $ App nullAnn e' arg -- Abs ann (function t bodyT) ident body)
 handleFunction  d v@(Var _ ty  qn) es = trace ("handleFunction VarGo: " <> renderExprStr v) $ do
   traceM (renderExprStr v)
   traceM (show $ renderExprStr <$> es)
@@ -491,7 +475,7 @@ inlineAs  d ty qmn@(Qualified (ByModuleName mn') ident) = trace ("inlineAs: " <>
         _ -> throwError $ MonoError dx ("Failed to collect recursive binds: " <> prettyTypeStr t <> " is not a Record type")
      Accessor{} -> trace "crbACCSR" $ pure visited -- idk. given (x.a :: t) we can't say what x is
      absE@(Abs{}) -> trace ("crbABS TOARGS: " <> prettyTypeStr t) $ collectFun visited dx absE (toArgs t)
-     app@(App _ _ _ e2) -> trace "crbAPP" $ do
+     app@(App _ _ e2) -> trace "crbAPP" $ do
        (f,args) <-  note dx ("Not an App: " <> renderExprStr app) $ analyzeApp app
        let types = (exprType <$> args) <> [t]
        funBinds' <- collectFun visited dx f types  -- collectRecBinds visited funTy d e1
@@ -511,7 +495,7 @@ inlineAs  d ty qmn@(Qualified (ByModuleName mn') ident) = trace ("inlineAs: " <>
        let flatAlts = concatMap extractAndFlattenAlts alts
        aInner <- collectMany visited t dx flatAlts
        pure $ visited <> aInner
-     Let _ _ _ ex ->
+     Let _ _ ex ->
        -- not sure abt this
        collectRecBinds visited t dx ex
 
@@ -527,7 +511,7 @@ extractAndFlattenAlts (CaseAlternative _ res) = case res of
 -- This *forces* the expression to have the provided type (and returns nothing if it cannot safely do that)
 monomorphizeWithType :: PurusType -> Context -> Expr Ann -> Monomorphizer (Expr Ann)
 monomorphizeWithType  t d expr
-  | expr ^. eType == t = pure expr
+  | exprType expr == t = pure expr
   | otherwise = trace ("monomorphizeWithType:\n  " <> renderExprStr expr <> "\n  " <> prettyTypeStr t) $ case expr of
       Literal ann _ (ArrayLiteral arr) -> case t of
         ArrayT inner -> Literal ann t . ArrayLiteral <$> traverse (monomorphizeWithType inner d)  arr
@@ -563,12 +547,12 @@ monomorphizeWithType  t d expr
 
           _ -> throwError $ MonoError d "Abs isn't a function"
 
-      app@(App a _ _ e2) -> trace ("MTAPP:\n  " <> renderExprStr app) $  do
+      app@(App a _ e2) -> trace ("MTAPP:\n  " <> renderExprStr app) $  do
         (f,args) <- note d ("Not an app: " <> renderExprStr app) $ analyzeApp app
         let types = (exprType <$> args) <> [t]
         traceM $ renderExprStr f
         e1' <- either (uncurry gLet) id <$> handleFunction d f args
-        pure $ App a t e1' e2
+        pure $ App a e1' e2
       Var a _ nm -> pure $ Var a t nm -- idk
       Case a _ scrut alts ->
         let f = monomorphizeWithType  t d
@@ -576,7 +560,7 @@ monomorphizeWithType  t d expr
             goAlt (CaseAlternative binders results) =
               CaseAlternative binders <$> bitraverse (traverse (bitraverse f f)) f results
         in Case a t scrut <$> traverse goAlt alts
-      Let a _ binds e -> Let a t binds <$> monomorphizeWithType t d e
+      Let a binds e -> Let a binds <$> monomorphizeWithType t d e
   where
     monomorphizeFieldsWithTypes :: M.Map PSString (RowListItem SourceAnn) -> [(PSString, Expr Ann)] -> Monomorphizer [(PSString, Expr Ann)]
     monomorphizeFieldsWithTypes _ [] = pure []

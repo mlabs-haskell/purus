@@ -84,7 +84,6 @@ runPLCProgramTest testName expected path decl  = testCase testName $ do
   let out = runPLCProgram prog
   assertEqual "program output matches expected "  expected out
 
-
 declToUPLC :: FilePath
        -> Text
        -> IO (PLCProgram  DefaultUni DefaultFun ())
@@ -260,7 +259,7 @@ toPIR f = \case
     let iBody = instantiateEither (either (IR.V . B) (IR.V . F)) body
     body' <- toPIR (>>= f) iBody
     pure $ PIR.LamAbs () nm ty' body'
-  AppE ty e1 e2 -> do
+  AppE e1 e2 -> do
     e1' <- toPIR f e1
     e2' <- toPIR f e2
     pure $ PIR.Apply () e1' e2'
@@ -277,14 +276,13 @@ toPIR f = \case
     assembleScrutinee scrutinee' ty alts
   -- TODO: I'm just going to mark all binding groups as recursive for now and do
   --       the sophisticated thing later. so tired.
-  LetE ty cxtmap binds exp -> do
+  LetE cxtmap binds exp -> do
     let flatBinds = concatMap flattenBind binds
     named <- traverse (\(i,e) -> (,e) <$> mkTermName (runIdent i)) flatBinds
     -- REVIEW: should they all be strict?
     bindings <- traverse mkBinding named
     case NE.nonEmpty bindings of
       Just bindings' -> do
-        ty' <- toPIRType ty
         exp' <- toPIR (>>= f)  $ instantiateEither (either (IR.V . B) (IR.V . F)) exp
         pure $ PIR.Let () PIR.Rec  bindings' exp'
       Nothing -> error "non empty bindings"

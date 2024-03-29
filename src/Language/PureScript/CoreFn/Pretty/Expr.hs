@@ -13,12 +13,12 @@ import Control.Monad.Reader ( MonadReader(ask), runReader )
 import Language.PureScript.Environment
     ( getFunArgTy )
 import Language.PureScript.CoreFn.Expr
-    ( exprType,
-      Guard,
+    ( Guard,
       Bind(..),
       CaseAlternative(CaseAlternative),
       Expr(..) )
 import Language.PureScript.CoreFn.Module ( Module(Module) )
+import Language.PureScript.CoreFn.Utils
 import Language.PureScript.AST.Literals ( Literal(..) )
 import Language.PureScript.CoreFn.Binders ( Binder(..) )
 import Language.PureScript.Names (ProperName(..), disqualify, showIdent, Ident, ModuleName)
@@ -68,9 +68,9 @@ import Language.PureScript.CoreFn.Pretty.Common
       analyzeApp )
 import Language.PureScript.CoreFn.Pretty.Types ( prettyType )
 
-
+-- TODO: DataDecls
 prettyModule :: Module a -> Doc ann
-prettyModule (Module _ _ modName modPath modImports modExports modReExports modForeign modDecls) =
+prettyModule (Module _ _ modName modPath modImports modExports modReExports modForeign modDecls _) =
   vsep
     [ pretty modName <+>  parens (pretty modPath)
     , "Imported Modules: "
@@ -121,10 +121,15 @@ prettyValue (ObjectUpdate _ _ty o _copyFields ps)  = do
   pure $ obj <+> updateEntries
   where
     goUpdateEntry = uncurry prettyUpdateEntry
-prettyValue app@(App _ _ _ _)  = case analyzeApp app of
-  Just (fun,args) -> ask >>= \case
+prettyValue app@(App _  t1 t2)  = case analyzeApp app of
+  Just (fun,args) -> do
+    atom <- fmtSep =<< traverse prettyValueAtom (fun:args)
+    ty   <- prettyType $ appType t1 t2
+    pure . group . align $ parens (atom <:> ty)
+    {- TODO: change back
+    ask >>= \case
     OneLine -> pure . group . align . hsep .  map (asOneLine prettyValueAtom) $ (fun:args)
-    MultiLine -> pure . group . align . vsep . map (asDynamic prettyValueAtom) $ (fun:args)
+    MultiLine -> pure . group . align . vsep . map (asDynamic prettyValueAtom) $ (fun:args) -}
   Nothing -> error "App isn't an App (impossible)"
 prettyValue (Abs _ ty arg val) = do
   ty' <- prettyType (getFunArgTy ty)
@@ -143,7 +148,7 @@ prettyValue (Case _ _ values binders) = pure $
    scrutinees = asOneLine prettyValueAtom <$> values
    branches = group . asDynamic  prettyCaseAlternative <$> binders
 -- technically we could have a one line version of this but that's ugly af imo
-prettyValue (Let _ _  ds val)  = pure . align $ vcat [
+prettyValue (Let _  ds val)  = pure . align $ vcat [
   "let",
   indent 2 . vcat $ asDynamic prettyDeclaration <$> ds,
   "in" <+> align (asDynamic  prettyValue val)
@@ -151,27 +156,22 @@ prettyValue (Let _ _  ds val)  = pure . align $ vcat [
 prettyValue (Literal _ ty l)  = ask >>= \case {OneLine ->  oneLine; MultiLine -> multiLine}
   where
     -- No type anns for object literals (already annotated in the fields, makes too ugly)
-    oneLine = case l of
-      ObjectLiteral{} ->  prettyLiteralValue l
-      _ -> pure . parens $ hcat [
-        asOneLine prettyLiteralValue l,
-        colon,
-        space,
-        asOneLine prettyType ty
-        ]
-    multiLine = case l of
-      ObjectLiteral{} -> prettyLiteralValue l
-      _ -> pure . parens $ asDynamic prettyLiteralValue l <:> asDynamic prettyType ty
+    oneLine =  pure . parens $ asOneLine prettyLiteralValue l <:> asOneLine prettyType ty
+    multiLine =  pure . parens $ asDynamic prettyLiteralValue l <:> asDynamic prettyType ty
+
 prettyValue expr@Constructor{}  = prettyValueAtom  expr
 prettyValue expr@Var{}  = prettyValueAtom expr
 
 -- | Pretty-print an atomic expression, adding parentheses if necessary.
 prettyValueAtom :: Expr a -> Printer ann
-prettyValueAtom (Literal _  _ l)  = prettyLiteralValue l
+prettyValueAtom lit@(Literal _  _ l)  = prettyValue lit  -- prettyLiteralValue l
 prettyValueAtom (Constructor _ _ _ name _) = pure . pretty $ T.unpack $ runProperName name
 prettyValueAtom (Var _ ty ident)  =  prettyType ty >>= \ty' ->
   pure . parens $ pretty  (showIdent (disqualify ident)) <:> ty'
-prettyValueAtom expr =  parens <$> prettyValue expr
+prettyValueAtom expr = do -- TODO change this back (need more anns for testing)
+  v <- prettyValue expr
+  t <- prettyType (exprType expr)
+  pure $ parens (v <:> t)
 
 prettyLiteralValue :: Literal (Expr a) -> Printer ann
 prettyLiteralValue (NumericLiteral n) = ignoreFmt $ pretty $ either show show n

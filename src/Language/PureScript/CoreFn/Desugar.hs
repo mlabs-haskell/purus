@@ -6,7 +6,7 @@ module Language.PureScript.CoreFn.Desugar(moduleToCoreFn) where
 import Prelude
 import Protolude (ordNub, orEmpty, zipWithM, MonadError (..), sortOn, Bifunctor (bimap))
 
-import Data.Maybe (mapMaybe, fromMaybe, fromJust)
+import Data.Maybe (mapMaybe)
 import Data.List.NonEmpty qualified as NEL
 import Data.Map qualified as M
 
@@ -14,7 +14,8 @@ import Language.PureScript.AST.Literals (Literal(..))
 import Language.PureScript.AST.SourcePos (SourceSpan(..), SourceAnn)
 import Language.PureScript.CoreFn.Ann (Ann, ssAnn)
 import Language.PureScript.CoreFn.Binders (Binder(..))
-import Language.PureScript.CoreFn.Expr (Bind(..), CaseAlternative(..), Expr(..), Guard, exprType)
+import Language.PureScript.CoreFn.Expr (Bind(..), CaseAlternative(..), Expr(..), Guard)
+import Language.PureScript.CoreFn.Utils (exprType)
 import Language.PureScript.CoreFn.Meta (Meta(..))
 import Language.PureScript.CoreFn.Module (Module(..))
 import Language.PureScript.Crash (internalError)
@@ -47,7 +48,7 @@ import Language.PureScript.Names (
   runIdent,
   coerceProperName,
   Name (DctorName), ProperNameType (TypeName))
-import Language.PureScript.PSString (PSString, prettyPrintString)
+import Language.PureScript.PSString (PSString)
 import Language.PureScript.Types (
   pattern REmptyKinded,
   SourceType,
@@ -86,7 +87,6 @@ import Language.PureScript.CoreFn.Desugar.Utils
       getModuleName,
       getValueMeta,
       importToCoreFn,
-      printEnv,
       properToIdent,
       purusTy,
       reExportsToCoreFn,
@@ -168,9 +168,7 @@ lookupType sp tn = do
   env <- gets checkEnv
   case M.lookup (Qualified (BySourcePos sp) tn) (names env) of
     Nothing -> case M.lookup (mkQualified tn mn) (names env) of
-      Nothing -> do
-        pEnv <- printEnv
-        error $ "No type found for " <> show tn <> "\n  in env:\n" <> pEnv
+      Nothing -> error $ "No type found for " <> show tn
       Just (ty,_,nv) -> do
         traceM $ "lookupType: " <> showIdent' tn <> " :: " <> ppType 10 ty
         pure (ty,nv)
@@ -356,7 +354,7 @@ exprToCoreFn mn ss mTy app@(A.App fun arg)
                         traceM $ "APP Dict iRes:\n" <> ppType 100 iRes
                         fun' <- exprToCoreFn mn ss (Just iFun) fun
                         arg' <- exprToCoreFn mn ss (Just iArg) arg
-                        pure $ App (ss,[],Nothing) iTy fun' arg'
+                        pure $ App (ss,[],Nothing) fun' arg'
                       _ -> error "dict ctor has to have a function type"
                 _ -> throwError . errorMessage' ss . UnknownName . fmap DctorName $ Qualified qb (coerceProperName nm)
             -- This should actually be impossible here, so long as we desugared all the constrained types properly
@@ -368,7 +366,7 @@ exprToCoreFn mn ss mTy app@(A.App fun arg)
               --         ensure that we are working only with empty dictionaries here. (Though anything else should be caught be the previous case)
               let (inner,g,act) = instantiatePolyType mn iTy
               act (exprToCoreFn mn ss (Just inner) app) >>= \case
-                 App ann' _ e1 e2 -> pure . g $ App ann' iTy e1 e2
+                 App ann'  e1 e2 -> pure . g $ App ann' e1 e2
                  _ -> error "An application desguared to something else. This should not be possible."
         Nothing ->  error $ "APP Dict w/o type passed in (impossible to infer):\n" <> renderValue 100 app
 
@@ -377,9 +375,8 @@ exprToCoreFn mn ss mTy app@(A.App fun arg)
       fun' <- exprToCoreFn mn ss Nothing fun
       let funTy = exprType fun'
       traceM $ "app fun:\n" <> ppType 100  funTy <> "\n" <> renderExprStr fun'
-      withInstantiatedFunType mn  funTy $ \a b -> do
-        arg' <- exprToCoreFn mn ss Nothing arg -- We want to keep the original "concrete" arg type
-        traceM $ "app arg:\n" <> ppType 100 (exprType arg') <> "\n" <> renderExprStr arg'
+      arg' <- exprToCoreFn mn ss Nothing arg -- We want to keep the original "concrete" arg type
+      traceM $ "app arg:\n" <> ppType 100 (exprType arg') <> "\n" <> renderExprStr arg'
         {- But we want to keep polymorphism in the return type (I think?)
 
            Basically, if we have something like:
@@ -388,7 +385,7 @@ exprToCoreFn mn ss mTy app@(A.App fun arg)
            We need to make sure that y retains its original annotated type, otherwise it'll get
            instantiated to (y :: x) which is wrong. TODO Explain this better
         -}
-        pure $ App (ss, [], Nothing) b fun' arg'
+      pure $ App (ss, [], Nothing)  fun' arg'
 
   where
 
@@ -452,7 +449,7 @@ exprToCoreFn  mn ss _ (A.Let w ds v) = wrapTrace "exprToCoreFn LET" $ case NE.no
   Nothing -> error "declarations in a let binding can't be empty"
   Just _ -> do
     (decls,expr) <- transformLetBindings mn ss [] ds v
-    pure $ Let (ss, [], getLetMeta w) (exprType expr) decls expr
+    pure $ Let (ss, [], getLetMeta w)  decls expr
 
 -- Pretty sure we should prefer the positioned SourceSpan
 exprToCoreFn  mn _ ty (A.PositionedValue ss _ v) = wrapTrace "exprToCoreFn POSVAL" $

@@ -225,8 +225,7 @@ exprToJSON (Abs ann ty p b)         = object [ "kind"        .= "Abs"
                                              , "argument"    .= identToJSON p
                                              , "body"        .= exprToJSON b
                                              ]
-exprToJSON (App ann ty f x)         = object [ "kind"        .= "App"
-                                             , "type"        .= toJSON ty
+exprToJSON (App ann f x)            = object [ "kind"        .= "App"
                                              , "annotation"  .= annToJSON ann
                                              , "abstraction" .= exprToJSON f
                                              , "argument"    .= exprToJSON x
@@ -239,8 +238,7 @@ exprToJSON (Case ann ty ss cs)      = object [ "kind"        .= "Case"
                                              , "caseAlternatives"
                                                                     .= map caseAlternativeToJSON cs
                                              ]
-exprToJSON (Let ann ty bs e)        = object [ "kind"        .= "Let"
-                                             , "type"        .= toJSON ty
+exprToJSON (Let ann bs e)           = object [ "kind"        .= "Let"
                                              , "annotation"  .= annToJSON ann
                                              , "binds"       .= map bindToJSON bs
                                              , "expression"  .= exprToJSON e

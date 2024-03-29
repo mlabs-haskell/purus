@@ -22,7 +22,8 @@ import Language.PureScript.AST.SourcePos (nullSourceSpan)
 import Language.PureScript.Constants.Libs qualified as C
 import Language.PureScript.CoreFn.Ann (Ann)
 import Language.PureScript.CoreFn.Binders (Binder(..))
-import Language.PureScript.CoreFn.Expr (Bind(..), CaseAlternative(..), Expr(..), exprType)
+import Language.PureScript.CoreFn.Expr (Bind(..), CaseAlternative(..), Expr(..))
+import Language.PureScript.CoreFn.Utils (exprType)
 import Language.PureScript.CoreFn.Meta (Meta(IsSyntheticApp))
 import Language.PureScript.CoreFn.Traversals (everywhereOnValues, traverseCoreFn)
 import Language.PureScript.Environment (dictTypeName)
@@ -246,7 +247,7 @@ generateIdentFor d e = at d . non mempty . at e %%<~ \case
   -- enables doing monadic work in the RHS, namely `freshIdent` here.)
   where
   nameHint = \case
-    App _ _ v1 v2
+    App _  v1 v2
       | Var _ _ n <- v1
       , fmap (ProperName . runIdent) n == fmap dictTypeName C.IsSymbol
       , Literal _ _ (ObjectLiteral [(_, Abs _ _ _ (Literal _ _ (StringLiteral str)))]) <- v2
@@ -328,8 +329,8 @@ getNewBindsAsLet
   -> m (Expr Ann)
 getNewBindsAsLet = fmap (uncurry go) . getNewBinds where
   go bs = if null bs then identity else \case
-    Let a t bs' e' -> Let a t (bs ++ bs') e'
-    e'           -> Let nullAnn (exprType e') bs e'
+    Let a bs' e' -> Let a (bs ++ bs') e'
+    e'           -> Let nullAnn bs e'
 
 -- |
 -- Feed the Writer part of the monad with the requirements of this name.
@@ -386,7 +387,7 @@ optimizeCommonSubexpressions mn
   -- common subexpression elimination pass.
   shouldFloatExpr :: Expr Ann -> Bool
   shouldFloatExpr = \case
-    App (_, _, Just IsSyntheticApp) _ e _ -> isSimple e
+    App (_, _, Just IsSyntheticApp)  e _ -> isSimple e
     _                                   -> False
 
   isSimple :: Expr Ann -> Bool
@@ -406,7 +407,7 @@ optimizeCommonSubexpressions mn
   handleExpr = discuss (ifM (shouldFloatExpr . fst) (floatExpr topLevelQB) pure) . \case
     Abs a t ident e   -> enterAbs $ Abs a t ident <$> newScopeWithIdents False [ident] (handleAndWrapExpr e)
     v@(Var _ _ qname) -> summarizeName mn qname $> v
-    Let a t bs e      -> uncurry (Let a t) <$> handleBinds False (handleExpr e) bs
+    Let a bs e      -> uncurry (Let a) <$> handleBinds False (handleExpr e) bs
     x               -> handleExprDefault x
 
   handleCaseAlternative :: CaseAlternative Ann -> CSEMonad (CaseAlternative Ann)
