@@ -70,7 +70,7 @@ import Language.PureScript.CoreFn.Pretty.Types ( prettyType )
 
 
 prettyModule :: Module a -> Doc ann
-prettyModule (Module _ _ modName modPath modImports modExports modReExports modForeign modDecls) =
+prettyModule (Module _ _ modName modPath modImports modExports modReExports modForeign modDecls _modDataTypes) =
   vsep
     [ pretty modName <+>  parens (pretty modPath)
     , "Imported Modules: "
