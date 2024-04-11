@@ -16,71 +16,64 @@
       inputs.nixpkgs.follows = "nixpkgs";
       inputs.flake-parts.follows = "flake-parts";
     };
-    haskell-nix = {
-      url = "github:input-output-hk/haskell.nix";
+    simpleHaskellNix = {
+      url = "github:mlabs-haskell/simple-haskell-nix";
+      inputs.nixpkgs.follows = "nixpkgs";
+      inputs.pre-commit-hooks-nix.follows = "pre-commit-hooks-nix";
+      inputs.hci-effects.follows = "hci-effects";
+      inputs.flake-parts.follows = "flake-parts";
+    };
+    cardanoPackages = {
+      url = "github:IntersectMBO/cardano-haskell-packages?ref=repo";
+      flake = false;
     };
   };
-  outputs = inputs:
-    let
-      flakeModules = {
-        haskell = ./nix/haskell;
-        utils = ./nix/utils;
-      };
-    in
-    inputs.flake-parts.lib.mkFlake { inherit inputs; } ({ self, ... }: {
-      imports = [
-        inputs.pre-commit-hooks-nix.flakeModule
-        inputs.hci-effects.flakeModule
-        ./.
-      ] ++ (builtins.attrValues flakeModules);
+  outputs = inputs: inputs.flake-parts.lib.mkFlake { inherit inputs; } ({ self, ... }: {
+    imports = [
+      inputs.pre-commit-hooks-nix.flakeModule
+      inputs.hci-effects.flakeModule
+      inputs.simpleHaskellNix.flakeModules.simpleHaskellNix
+      ./.
+    ];
 
-      # `nix flake show --impure` hack
-      systems =
-        if builtins.hasAttr "currentSystem" builtins
-        then [ builtins.currentSystem ]
-        else inputs.nixpkgs.lib.systems.flakeExposed;
+    # `nix flake show --impure` hack
+    systems =
+      if builtins.hasAttr "currentSystem" builtins
+      then [ builtins.currentSystem ]
+      else inputs.nixpkgs.lib.systems.flakeExposed;
 
-      herculesCI.ciSystems = [ "x86_64-linux" ];
+    herculesCI.ciSystems = [ "x86_64-linux" ];
 
-      flake.flakeModules = flakeModules;
+    perSystem =
+      { config
+      , pkgs
+      , system
+      , self'
+      , ...
+      }: {
+        _module.args.pkgs = import self.inputs.nixpkgs {
+          inherit system;
+          config.allowBroken = true;
+        };
 
-      perSystem =
-        { config
-        , pkgs
-        , lib
-        , system
-        , self'
-        , ...
-        }: {
-          _module.args.pkgs = import self.inputs.nixpkgs {
-            inherit system;
-            config.allowBroken = true;
-          };
-
-          pre-commit.settings = {
-            hooks = {
-              deadnix.enable = true;
-              # TODO: Enable in separate PR, causes mass changes.
-              # fourmolu.enable = true;
-              nixpkgs-fmt.enable = true;
-            };
-
-            tools = {
-              fourmolu = lib.mkForce (pkgs.callPackage ./nix/fourmolu {
-                mkHaskellPackage = config.libHaskell.mkPackage;
-              });
-            };
-          };
-
-          devShells = {
-            default = pkgs.mkShell {
-              shellHook = config.pre-commit.installationScript;
-
-              inputsFrom = [
-                self'.devShells.purus
-              ];
-            };
+        pre-commit.settings = {
+          hooks = {
+            deadnix.enable = true;
+            nixpkgs-fmt.enable = true;
+            # TODO: Enable in separate PR, causes mass changes.
+            # fourmolu.enable = true;
           };
         };
-    });
+
+        devShells = {
+          default = pkgs.mkShell {
+            shellHook = config.pre-commit.installationScript;
+
+            inputsFrom = [
+              self'.devShells.purus
+            ];
+          };
+        };
+      };
+  });
 }
