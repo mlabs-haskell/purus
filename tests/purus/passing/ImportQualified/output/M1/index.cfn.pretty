@@ -1,0 +1,13 @@
+M1 (tests/purus/passing/ImportQualified/M1.purs)
+Imported Modules: 
+  Builtin,
+  Prim
+Exports: 
+  log
+Re-Exports: 
+  
+Foreign: 
+  
+Declarations: 
+log :: forall (t1 :: Type). t1 -> t1
+log = \(x: t1) -> (x: t1)

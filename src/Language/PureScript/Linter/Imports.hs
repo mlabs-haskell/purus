@@ -28,6 +28,7 @@ import Language.PureScript.Sugar.Names.Common (warnDuplicateRefs)
 import Language.PureScript.Sugar.Names.Env (Env, Exports(..), ImportRecord(..), Imports(..), envModuleExports, nullImports)
 import Language.PureScript.Sugar.Names.Imports (ImportDef, findImports)
 import Language.PureScript.Constants.Prim qualified as C
+import Language.PureScript.Constants.Purus qualified as PLC
 
 -- |
 -- Map of module name to list of imported names from that module which have
@@ -142,7 +143,7 @@ lintImports (Module _ _ mn mdecls (Just mexports)) env usedImps = do
   -- Checks whether a module is the Prim module - used to suppress any checks
   -- made, as Prim is always implicitly imported.
   isPrim :: ModuleName -> Bool
-  isPrim = (== C.M_Prim)
+  isPrim mx = (mx == C.M_Prim) || mx == PLC.M_Builtin
 
   -- Creates a map of virtual modules mapped to all the declarations that
   -- import to that module, with the corresponding source span, import type,

@@ -1,0 +1,20 @@
+Lib (tests/purus/passing/ClassRefSyntax/Lib.purs)
+Imported Modules: 
+  Builtin,
+  Lib,
+  Prim
+Exports: 
+  go
+Re-Exports: 
+  
+Foreign: 
+  
+Declarations: 
+X$Dict :: forall a. { go :: a -> a } -> { go :: a -> a }
+X$Dict = \(x: { go :: a -> a }) -> (x: { go :: a -> a })
+
+go :: forall (@a :: Type). X$Dict a -> a -> a
+go = 
+  \(dict: X$Dict a) -> 
+    case (dict: X$Dict a) of 
+       X$Dict v -> (v: { go :: a -> a }).go

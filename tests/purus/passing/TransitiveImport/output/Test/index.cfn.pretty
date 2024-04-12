@@ -1,0 +1,31 @@
+Test (tests/purus/passing/TransitiveImport/Test.purs)
+Imported Modules: 
+  Builtin,
+  Prim,
+  Test
+Exports: 
+  test,
+  Unit,
+  unitTestCls
+Re-Exports: 
+  
+Foreign: 
+  
+Declarations: 
+Unit :: Unit
+Unit = Unit
+
+TestCls$Dict :: forall a. { test :: a -> a } -> { test :: a -> a }
+TestCls$Dict = \(x: { test :: a -> a }) -> (x: { test :: a -> a })
+
+unitTestCls :: TestCls$Dict Unit
+unitTestCls = 
+  ((TestCls$Dict: {   test :: Unit -> Unit } -> TestCls$Dict Unit)
+  ({ test: \(v: Unit) -> (Unit: Unit) }: { test :: Unit -> Unit }): TestCls$Dict
+  Unit)
+
+test :: forall (@a :: Type). TestCls$Dict a -> a -> a
+test = 
+  \(dict: TestCls$Dict a) -> 
+    case (dict: TestCls$Dict a) of 
+       TestCls$Dict v -> (v: { test :: a -> a }).test

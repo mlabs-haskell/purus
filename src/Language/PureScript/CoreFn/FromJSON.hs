@@ -26,7 +26,13 @@ import Language.PureScript.CoreFn (Bind(..), Binder(..), CaseAlternative(..), Co
 import Language.PureScript.Names (Ident(..), ModuleName(..), ProperName(..), Qualified(..), QualifiedBy(..), unusedIdent)
 import Language.PureScript.PSString (PSString)
 
+import Language.PureScript.Types ()
+
 import Text.ParserCombinators.ReadP (readP_to_S)
+
+-- dunno how to work around the orphan
+instance FromJSON (Module Ann) where
+  parseJSON = fmap snd .  moduleFromJSON
 
 parseVersion' :: String -> Maybe Version
 parseVersion' str =
@@ -141,6 +147,7 @@ moduleFromJSON = withObject "Module" moduleFromObj
     moduleDecls <- o .: "decls" >>= listParser (bindFromJSON modulePath)
     moduleForeign <- o .: "foreign" >>= listParser identFromJSON
     moduleComments <- o .: "comments" >>= listParser parseJSON
+    moduleDataTypes <- o .: "dataTypes" >>= parseJSON
     return (version, Module {..})
 
   versionFromJSON :: String -> Parser Version
@@ -189,8 +196,8 @@ exprFromJSON :: FilePath -> Value -> Parser (Expr Ann)
 exprFromJSON modulePath = withObject "Expr" exprFromObj
   where
   exprFromObj o = do
-    type_ <- o .: "type"
-    case type_ of
+    kind_ <- o .: "kind"
+    case kind_ of
       "Var"           -> varFromObj o
       "Literal"       -> literalExprFromObj o
       "Constructor"   -> constructorFromObj o
@@ -200,61 +207,72 @@ exprFromJSON modulePath = withObject "Expr" exprFromObj
       "App"           -> appFromObj o
       "Case"          -> caseFromObj o
       "Let"           -> letFromObj o
-      _               -> fail ("not recognized expression type: \"" ++ T.unpack type_ ++ "\"")
+      _               -> fail ("not recognized expression kind: \"" ++ T.unpack kind_ ++ "\"")
+
+  tyFromObj o = o .: "type" >>= parseJSON
 
   varFromObj o = do
     ann <- o .: "annotation" >>= annFromJSON modulePath
+    ty <- tyFromObj o
     qi <- o .: "value" >>= qualifiedFromJSON Ident
-    return $ Var ann qi
+    return $ Var ann ty qi
 
   literalExprFromObj o = do
     ann <- o .: "annotation" >>= annFromJSON modulePath
+    ty <- tyFromObj o
     lit <- o .: "value" >>= literalFromJSON (exprFromJSON modulePath)
-    return $ Literal ann lit
+    return $ Literal ann ty lit
 
   constructorFromObj o = do
     ann <- o .: "annotation" >>= annFromJSON modulePath
     tyn <- o .: "typeName" >>= properNameFromJSON
+    ty  <- tyFromObj o
     con <- o .: "constructorName" >>= properNameFromJSON
     is  <- o .: "fieldNames" >>= listParser identFromJSON
-    return $ Constructor ann tyn con is
+    return $ Constructor ann ty tyn con is
 
   accessorFromObj o = do
     ann <- o .: "annotation" >>= annFromJSON modulePath
+    ty <- tyFromObj o
     f   <- o .: "fieldName"
     e <- o .: "expression" >>= exprFromJSON modulePath
-    return $ Accessor ann f e
+    return $ Accessor ann ty f e
 
   objectUpdateFromObj o = do
     ann <- o .: "annotation" >>= annFromJSON modulePath
+    ty <- tyFromObj o
     e   <- o .: "expression" >>= exprFromJSON modulePath
     copy <- o .: "copy" >>= parseJSON
     us  <- o .: "updates" >>= recordFromJSON (exprFromJSON modulePath)
-    return $ ObjectUpdate ann e copy us
+    return $ ObjectUpdate ann ty e copy us
 
   absFromObj o = do
     ann <- o .: "annotation" >>= annFromJSON modulePath
+    ty  <- tyFromObj o
     idn <- o .: "argument" >>= identFromJSON
     e   <- o .: "body" >>= exprFromJSON modulePath
-    return $ Abs ann idn e
+    return $ Abs ann ty idn e
 
   appFromObj o = do
     ann <- o .: "annotation" >>= annFromJSON modulePath
+    ty  <- tyFromObj o
     e   <- o .: "abstraction" >>= exprFromJSON modulePath
     e'  <- o .: "argument" >>= exprFromJSON modulePath
-    return $ App ann e e'
+    return $ App ann ty e e'
 
   caseFromObj o = do
     ann <- o .: "annotation" >>= annFromJSON modulePath
+    ty  <- tyFromObj o
     cs  <- o .: "caseExpressions" >>= listParser (exprFromJSON modulePath)
     cas <- o .: "caseAlternatives" >>= listParser (caseAlternativeFromJSON modulePath)
-    return $ Case ann cs cas
+    return $ Case ann ty cs cas
 
   letFromObj o = do
     ann <- o .: "annotation" >>= annFromJSON modulePath
+    ty  <- tyFromObj o
     bs  <- o .: "binds" >>= listParser (bindFromJSON modulePath)
     e   <- o .: "expression" >>= exprFromJSON modulePath
-    return $ Let ann bs e
+    return $ Let ann ty bs e
 
 caseAlternativeFromJSON :: FilePath -> Value -> Parser (CaseAlternative Ann)
 caseAlternativeFromJSON modulePath = withObject "CaseAlternative" caseAlternativeFromObj

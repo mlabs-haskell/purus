@@ -1,0 +1,14 @@
+Eg (tests/purus/passing/2609/Eg.purs)
+Imported Modules: 
+  Builtin,
+  Eg,
+  Prim
+Exports: 
+  Bar'
+Re-Exports: 
+  
+Foreign: 
+  
+Declarations: 
+Bar' :: Int -> Int -> Foo'
+Bar' = Bar'

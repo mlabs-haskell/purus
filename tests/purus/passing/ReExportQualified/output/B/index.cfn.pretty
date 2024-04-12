@@ -1,0 +1,13 @@
+B (tests/purus/passing/ReExportQualified/B.purs)
+Imported Modules: 
+  Builtin,
+  Prim
+Exports: 
+  y
+Re-Exports: 
+  
+Foreign: 
+  
+Declarations: 
+y :: String
+y = ("ne": String)

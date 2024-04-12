@@ -5,6 +5,7 @@ module Language.PureScript.TypeChecker
   ( module T
   , typeCheckModule
   , checkNewtype
+  , typeCheckAll
   ) where
 
 import Prelude

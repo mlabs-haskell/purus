@@ -1,0 +1,13 @@
+Lib (tests/purus/passing/NonOrphanInstanceMulti/Lib.purs)
+Imported Modules: 
+  Builtin,
+  Prim
+Exports: 
+  
+Re-Exports: 
+  
+Foreign: 
+  
+Declarations: 
+C$Dict :: Record {} -> Record {}
+C$Dict = \(x: Record {}) -> (x: Record {})
