@@ -95,7 +95,7 @@ import Language.PureScript.CoreFn.Desugar.Utils
       toReExportRef,
       wrapTrace,
       desugarConstraintTypes,
-      M, unwrapRecord, withInstantiatedFunType, desugarConstraintsInDecl, analyzeCtor, instantiate, ctorArgs, instantiatePolyType, lookupDictType
+      M, unwrapRecord, withInstantiatedFunType, desugarConstraintsInDecl, analyzeCtor, instantiate, ctorArgs, instantiatePolyType, lookupDictType, desugarCasesEverywhere
       )
 import Text.Pretty.Simple (pShow)
 import Data.Text.Lazy qualified as LT
@@ -122,8 +122,8 @@ moduleToCoreFn  (A.Module _ _ _ _ Nothing) =
 moduleToCoreFn (A.Module modSS coms mn _decls (Just exps)) = do
   setModuleName
   desugarConstraintTypes
-  let decls = desugarConstraintsInDecl <$> _decls
-      importHelper ds = fmap (ssAnn modSS,) (findQualModules ds)
+  decls <- traverse desugarCasesEverywhere $ desugarConstraintsInDecl <$> _decls
+  let importHelper ds = fmap (ssAnn modSS,) (findQualModules ds)
       imports = dedupeImports $ mapMaybe importToCoreFn decls ++ importHelper decls
       exps' = ordNub $ concatMap exportToCoreFn exps
       reExps = M.map ordNub $ M.unionsWith (++) (mapMaybe (fmap reExportsToCoreFn . toReExportRef) exps)
@@ -318,7 +318,12 @@ exprToCoreFn mn _ (Just t) (A.Abs (A.VarBinder ssb name) v) = wrapTrace ("exprTo
 -- By the time we receive the AST, only Lambdas w/ a VarBinder should remain
 -- TODO: Better failure message if we pass in 'Nothing' as the (Maybe Type) arg for an Abstraction
 exprToCoreFn _  _ t lam@(A.Abs _ _) =
-  internalError $ "Abs with Binder argument was not desugared before exprToCoreFn: \n" <> renderValue 100  lam <> "\n\n" <> show (ppType 100 <$>  t)
+  internalError $ "Abs with Binder argument was not desugared before exprToCoreFn: \n"
+                  <> renderValue 100  lam
+                  <> "\n\n"
+                  <> show (ppType 100 <$>  t)
+                  <> "\n"
+                  <> show lam
 
 {- The App case is substantially complicated by our need to correctly type
    expressions that contain type class dictionary constructors, specifically expressions like:
@@ -377,19 +382,8 @@ exprToCoreFn mn ss mTy app@(A.App fun arg)
       traceM $ "app fun:\n" <> ppType 100  funTy <> "\n" <> renderExprStr fun'
       arg' <- exprToCoreFn mn ss Nothing arg -- We want to keep the original "concrete" arg type
       traceM $ "app arg:\n" <> ppType 100 (exprType arg') <> "\n" <> renderExprStr arg'
-        {- But we want to keep polymorphism in the return type (I think?)
-
-           Basically, if we have something like:
-             (f :: forall x. x -> Either x Int) (y :: Int)
-
-           We need to make sure that y retains its original annotated type, otherwise it'll get
-           instantiated to (y :: x) which is wrong. TODO Explain this better
-        -}
       pure $ App (ss, [], Nothing)  fun' arg'
-
   where
-
-
   isDictCtor = \case
     A.Constructor _ (Qualified _ name) -> isDictTypeName name
     A.TypedValue _ e _ -> isDictCtor e

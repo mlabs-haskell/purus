@@ -56,6 +56,10 @@ import Data.Bifunctor (Bifunctor(..))
 import Data.List.NonEmpty qualified as NEL
 import Language.PureScript.TypeClassDictionaries (NamedDict, TypeClassDictionaryInScope (..))
 import Data.List (foldl')
+import Language.PureScript.AST.Traversals (litM)
+import Control.Lens.Plated
+import Language.PureScript.Sugar (desugarGuardedExprs)
+import Language.PureScript.AST.Declarations (declSourceSpan)
 
 
 {- UTILITIES -}
@@ -264,10 +268,67 @@ traceNameTypes  = do
   nametypes <- getEnv >>= pure . debugNames
   traverse_ traceM nametypes
 
+desugarCasesEverywhere :: M m => A.Declaration -> m (A.Declaration)
+desugarCasesEverywhere d = traverseDeclBodies (transformM $ desugarGuardedExprs (declSourceSpan d )) d
+
+
+traverseDeclBodies :: forall m. Applicative m =>  (A.Expr -> m A.Expr) -> A.Declaration -> m A.Declaration
+traverseDeclBodies f = \case
+  A.BindingGroupDeclaration decls ->
+    A.BindingGroupDeclaration
+      <$> traverse go {- (\(annIdent,nk,expr) -> f expr >>= \e -> pure (annIdent,nk,e)) -} decls
+  A.ValueDecl ann name nk bs [A.MkUnguarded e] ->
+      (\x -> A.ValueDecl ann name nk bs [A.MkUnguarded x]) <$> f e
+  other -> pure other
+ where
+  go :: ((A.SourceAnn, Ident), NameKind, A.Expr) -> m ((A.SourceAnn, Ident), NameKind, A.Expr)
+  go (annid, nk, e) = (\ex -> (annid, nk, ex)) <$> f e
+
+
+instance Plated A.Expr where
+  plate f = \case
+    A.Literal ss litE -> A.Literal ss <$> traverseLit f litE
+    A.UnaryMinus ss e -> A.UnaryMinus ss <$> f e
+    A.BinaryNoParens a b c -> A.BinaryNoParens <$> f a <*> f b <*> f c
+    A.Parens e -> A.Parens <$> f e
+    A.Accessor str e -> A.Accessor str <$> f e
+    A.ObjectUpdate e fs -> A.ObjectUpdate <$> f e <*> (traverse . traverse) f fs
+    A.ObjectUpdateNested e pt -> A.ObjectUpdateNested <$> f e <*> traverse f pt
+    A.Abs b e -> A.Abs b <$> f e
+    A.App e1 e2 -> A.App <$> f e1 <*> f e2
+    A.VisibleTypeApp e t -> (\ex -> A.VisibleTypeApp ex t) <$> f e
+    A.Unused e -> A.Unused <$> f e
+    A.Var ss i -> pure $ A.Var ss i
+    A.Op ss nm -> pure $ A.Op ss nm
+    A.IfThenElse c e1 e2 -> A.IfThenElse <$> f c <*> f e1 <*> f e2
+    A.Constructor ss nm -> pure $ A.Constructor ss nm
+    A.Case es alts -> A.Case <$> traverse f es <*> traverse goAlt alts
+    A.TypedValue b e t -> (\ex -> A.TypedValue b ex t) <$> f e
+    A.Let wp decls e -> A.Let wp <$> traverse (traverseDeclBodies f) decls <*> f e
+    A.Do mn doElems -> A.Do mn <$> traverse goDoElem doElems
+    A.Ado mn dElems e -> A.Ado mn <$> traverse goDoElem dElems <*> f e
+    A.PositionedValue ss cs e -> A.PositionedValue ss cs <$> f e
+    other -> pure other
+   where
+     goAlt = \case
+       A.CaseAlternative bs ges -> A.CaseAlternative bs <$> traverse goGE ges
+     goGE (A.GuardedExpr gs e) = A.GuardedExpr <$> traverse goGuard gs <*> f e
+     goGuard = \case
+       A.ConditionGuard e -> A.ConditionGuard <$> f e
+       A.PatternGuard b e -> A.PatternGuard b <$> f e
+     goDoElem = \case
+       A.DoNotationValue e -> A.DoNotationValue <$> f e
+       A.DoNotationBind b e -> A.DoNotationBind b <$> f e
+       A.DoNotationLet decls -> A.DoNotationLet <$> traverse (traverseDeclBodies f) decls
+       A.PositionedDoNotationElement ss cs de -> A.PositionedDoNotationElement ss cs <$> goDoElem de
+
+     
+
+ 
+
 {- Since we operate on an AST where constraints have been desugared to dictionaries at the *expr* level,
    using a typechecker context which contains ConstrainedTypes, looking up the type for a class method
    will always give us a "wrong" type. Let's try fixing them in the context!
-
 -}
 desugarConstraintType :: SourceType -> SourceType
 desugarConstraintType = \case

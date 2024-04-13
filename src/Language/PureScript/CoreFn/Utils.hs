@@ -101,6 +101,7 @@ instance IndexedPlated TyContext SourceType where
     other -> pure other
 
 -- TODO: Explain what this is / how it works
+-- TODO: Type Constructors
 instantiates :: Text -- Name of the TyVar we're checking
              -> SourceType -- Monomorphic type (or "more monomorphic" type)
              -> SourceType -- Polymorphic type (or "more polymoprhic" type)
@@ -155,7 +156,8 @@ appType fe ae = case stripQuantifiers funTy of
     mkInstanceMap acc _ [] _ = acc
     mkInstanceMap acc _ _ [] = acc
     mkInstanceMap acc (var:vars) (mt:mts) (pt:pts) = case instantiates var mt pt of
-      Nothing -> mkInstanceMap acc [var] mts pts <> mkInstanceMap M.empty vars (mt:mts) (pt:pts)
+      Nothing -> mkInstanceMap acc [var] mts pts
+                 <> mkInstanceMap M.empty vars (mt:mts) (pt:pts)
       Just t  -> mkInstanceMap (M.insert var t acc) vars (mt:mts) (pt:pts)
 
 stripQuantifiers :: SourceType -> ([Text],SourceType)

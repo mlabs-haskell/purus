@@ -6,6 +6,7 @@ module Language.PureScript.Sugar.CaseDeclarations
   ( desugarCases
   , desugarCasesModule
   , desugarCaseGuards
+  , desugarGuardedExprs
   ) where
 
 import Prelude
@@ -148,9 +149,11 @@ desugarGuardedExprs ss (Case scrut alternatives) =
     -- Special case: CoreFn understands single condition guards on
     -- binders right hand side.
     desugarAlternatives (CaseAlternative ab ge : as)
-      | not (null cond_guards) =
+      -- NOTE/REVIEW: Not sure about removing this
+      {-| not (null cond_guards) =
           (CaseAlternative ab cond_guards :)
             <$> desugarGuardedAlternative ab rest as
+      -}
       | otherwise = desugarGuardedAlternative ab ge as
       where
         (cond_guards, rest) = span isSingleCondGuard ge

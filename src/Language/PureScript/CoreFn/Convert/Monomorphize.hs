@@ -69,6 +69,10 @@ monoTest path decl = do
       putStrLn (renderExprStr e)
       pure e
 
+{- Instead of mutual recursion, return ADTs that describe the "next step" of the computation
+
+-}
+
 {-
 trace :: String  -> p2 -> p2
 trace _ x = x
@@ -255,14 +259,8 @@ monomorphizeA d xpr = trace ("monomorphizeA " <>  "\n  " <> renderExprStr xpr)  
     --   else do
     case f of
       (Var _ vTy (Qualified (ByModuleName (ModuleName "Builtin")) _)) -> pure app
-      {- -v@(Var _ vTy nm) | isMonomorphizedVar v ->  inlineAs d (exprType v -:> ty) nm >>= \case
-                           Left (binds,fun) ->  pure $ gLet  binds (App ann (getResult $ exprType fun) (mapType quantify fun) arg)
-                           Right fun -> pure $ App ann (getResult $ exprType fun) (mapType quantify fun) arg -}
       _ -> do
-       either (uncurry gLet) id <$> handleFunction d f args {->>= \case
-          Left (binds,fun) -> do
-            pure $ gLet  binds (App ann (getResult $ exprType fun) (mapType quantify fun) arg)
-          Right fun -> pure $ App ann (getResult $ exprType fun) (mapType quantify fun) arg -}
+       either (uncurry gLet) id <$> handleFunction d f args
   other -> pure other
  where
    isMonomorphizedVar :: Expr Ann  -> Bool
@@ -287,16 +285,16 @@ unsafeApply e [] = e
 
 handleFunction :: Context
                -> Expr Ann
-               -> [Expr Ann]
+               -> [Expr Ann] -- TODO: List could be empty?
                -> Monomorphizer (Either ([Bind Ann], Expr Ann) (Expr Ann))
-handleFunction d exp args | isBuiltin exp = trace ("handleFunction: Builtin") $ pure . Right $ unsafeApply exp args
--- handleFunction  d v@(Var _ ty  qn) [] = trace ("handleFunction VAR1: " <> renderExprStr v) $ inlineAs d ty qn
+-- handleFunction d exp args | isBuiltin exp = trace ("handleFunction: Builtin") $ pure . Right $ unsafeApply exp args
 handleFunction  _ e [] = trace ("handleFunction FIN: " <> renderExprStr e) $ pure (pure e)
 handleFunction  d expr@(Abs ann (ForAll _ _ var _ inner  _) ident body'') (arg:args) = do
   traceM  ("handleFunction abs:\n  " <> renderExprStr expr <> "\n  " <> show (renderExprStr <$> (arg:args)))
   let t = exprType arg
   traceM $ prettyTypeStr t
   let polyArgT = getFunArgTy inner
+      -- WRONG! Probably need to check all of the args at once
       doInstantiate = case instantiates var t polyArgT of
                         Just tx -> replaceTypeVars var tx
                         Nothing -> id
@@ -353,10 +351,12 @@ renameBoundVar old new _ e = case e ^? _Var of
 
 renameBoundVars :: Ident -> Ident -> Context -> Expr Ann -> Expr Ann
 renameBoundVars old new  = itransform (renameBoundVar old new)
-
+                                                                    -- \/ Replace with ([Bind Ann], Expr Ann)
 inlineAs :: Context -> PurusType -> Qualified Ident -> Monomorphizer (Either ([Bind Ann], Expr Ann) (Expr Ann))
+-- TODO: Review whether this has any purpose here \/
 inlineAs _ ty nm@(Qualified (ByModuleName (ModuleName "Builtin")) idnt) = trace ("inlineAs BUILTIN:\n  " <> "IDENT: " <> showIdent' idnt <> "\n  TYPE: " <> prettyTypeStr ty)
   $ pure . Right $ Var nullAnn ty nm
+-- TODO: Probably can inline locally bound variables? FIX: Keep track of local name bindings
 inlineAs d _ (Qualified (BySourcePos _) ident) = throwError $ MonoError d  $ "can't inline bound variable " <> showIdent' ident
 inlineAs  d ty qmn@(Qualified (ByModuleName mn') ident) = trace ("inlineAs: " <> showIdent' ident <> " :: " <>  prettyTypeStr ty) $ ask >>= \(mn,modDict) ->
   if | mn == mn' -> do
@@ -510,7 +510,7 @@ extractAndFlattenAlts (CaseAlternative _ res) = case res of
 -- I think this one actually requires case analysis? dunno how to do it w/ the lenses in less space (w/o having prisms for types which seems dumb?)
 -- This *forces* the expression to have the provided type (and returns nothing if it cannot safely do that)
 monomorphizeWithType :: PurusType -> Context -> Expr Ann -> Monomorphizer (Expr Ann)
-monomorphizeWithType  t d expr
+monomorphizeWithType t d expr
   | exprType expr == t = pure expr
   | otherwise = trace ("monomorphizeWithType:\n  " <> renderExprStr expr <> "\n  " <> prettyTypeStr t) $ case expr of
       Literal ann _ (ArrayLiteral arr) -> case t of
@@ -537,14 +537,13 @@ monomorphizeWithType  t d expr
             False -> do
               let cxt = M.insert ident a d
               body' <- monomorphizeWithType b cxt $ updateVarTy cxt ident a body
-              pure $ Abs nullAnn t ident  body'
+              pure $ Abs nullAnn t ident body'
             True -> do
               freshIdent <- freshen ident
               let body' = renameBoundVar ident freshIdent d $ updateVarTy d ident a body
                   cxt   = M.insert freshIdent a d
               body'' <- monomorphizeWithType b cxt body'
               pure $ Abs nullAnn t freshIdent body''
-
           _ -> throwError $ MonoError d "Abs isn't a function"
 
       app@(App a _ e2) -> trace ("MTAPP:\n  " <> renderExprStr app) $  do

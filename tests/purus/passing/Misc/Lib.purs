@@ -172,6 +172,11 @@ infixr 5 plus as +
 
 main = plus 1 1
 
+guardedCase :: Int -> Int
+guardedCase x = case x of
+  y | eq y 2 -> 2
+  _ -> 0
+
 nestedApplications :: Int
 nestedApplications = i (f (g (h 2))) 4
   where

@@ -22,16 +22,6 @@ import Data.Bifunctor (Bifunctor(first))
 
 type PurusType = SourceType -- Type ()
 
-{- TODO: IMPORTANT!!!!
-
-   REMOVE THE TYPE ANNOTATION FROM APPLICATIONS.
-
-   I don't know why I did that but it's never necessary and it is the source of
-   endless stupid problems.
-
-
--}
-
 -- |
 -- Data type for expressions and terms
 --
@@ -77,23 +67,6 @@ data Expr a
 instance FromJSON a => FromJSON (Expr a)
 instance ToJSON a => ToJSON (Expr a)
 
-{- TODO: The need for this should be eliminated by the new changes
-
--- | Only goes one level deep, primarily used to re-quantify
---   imperfectly monomorphized polymorphic types
---   during Purus monomorphization
-mapType :: (SourceType -> SourceType) -> Expr a -> Expr a
-mapType f = \case
-  Literal a ty b -> Literal a (f ty) b
-  Constructor a ty b c d -> Constructor a (f ty) b c d
-  Accessor a ty b c -> Accessor a (f ty) b c
-  ObjectUpdate a ty b c d -> ObjectUpdate a (f ty) b c d
-  Abs a ty b c -> Abs a (f ty) b c
-  App a b c -> App a (f ty) b c
-  Var a ty b -> Var a (f ty) b
-  Case a ty b c -> Case a (f ty) b c
-  Let a b c -> Let a (f ty) b c
--}
 -- |
 -- A let or module binding.
 --

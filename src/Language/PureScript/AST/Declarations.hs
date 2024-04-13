@@ -13,6 +13,7 @@ import Codec.Serialise (Serialise)
 import Control.DeepSeq (NFData)
 import Data.Functor.Identity (Identity(..))
 
+
 import Data.Aeson.TH (Options(..), SumEncoding(..), defaultOptions, deriveJSON)
 import Data.Map qualified as M
 import Data.Text (Text)
