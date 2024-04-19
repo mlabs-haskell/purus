@@ -72,7 +72,7 @@ prettyType t  =  group <$> case t of
 
   ConstrainedType _ _ _ -> error "TODO: ConstrainedType (shouldn't ever appear in Purus CoreFn)"
 
-  Skolem _ _ _ _ _ -> error "TODO: Skolem (shouldn't ever appear in Purus CoreFn)"
+  Skolem _ var _ i _ -> pure $ pretty var <> "#" <> pretty i
 
   REmpty _ -> pure "{}"
 
@@ -142,7 +142,7 @@ prettyType t  =  group <$> case t of
          REmpty _ -> pure $ Right []
          KindApp _ REmpty{} _  -> pure $ Right [] -- REmpty is sometimes wrapped in a kind app
          TypeVar _ txt -> pure $ Left ([],pretty txt)
-         other -> error $ "Malformed row fields: \n" <> prettyTypeStr other
+         other -> Right . pure <$> prettyType other  --  error $ "Malformed row fields: \n" <> prettyTypeStr other
 
 
 -- TODO For debugging, remove later

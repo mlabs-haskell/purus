@@ -13,6 +13,6 @@ Foreign:
 Declarations: 
 main :: Unit
 main = 
-  ((middle: forall (a :: Type). TestCls$Dict a -> a -> a)
+  (middle: forall (a :: Type). TestCls$Dict a -> a -> a)
   (unitTestCls: TestCls$Dict Unit)
-  (unit: Unit): Unit)
+  (unit: Unit)

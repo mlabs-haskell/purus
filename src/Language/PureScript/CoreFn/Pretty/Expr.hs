@@ -124,8 +124,9 @@ prettyValue (ObjectUpdate _ _ty o _copyFields ps)  = do
 prettyValue app@(App _  t1 t2)  = case analyzeApp app of
   Just (fun,args) -> do
     atom <- fmtSep =<< traverse prettyValueAtom (fun:args)
-    ty   <- prettyType $ appType t1 t2
-    pure . group . align $ parens (atom <:> ty)
+    pure . group . align $ atom
+    -- ty   <- prettyType $ appType t1 t2
+    -- pure . group . align $ parens (atom <:> ty)
     {- TODO: change back
     ask >>= \case
     OneLine -> pure . group . align . hsep .  map (asOneLine prettyValueAtom) $ (fun:args)
@@ -170,8 +171,8 @@ prettyValueAtom (Var _ ty ident)  =  prettyType ty >>= \ty' ->
   pure . parens $ pretty  (showIdent (disqualify ident)) <:> ty'
 prettyValueAtom expr = do -- TODO change this back (need more anns for testing)
   v <- prettyValue expr
-  t <- prettyType (exprType expr)
-  pure $ parens (v <:> t)
+  -- t <- prettyType (exprType expr)
+  pure $ parens v -- <:> t)
 
 prettyLiteralValue :: Literal (Expr a) -> Printer ann
 prettyLiteralValue (NumericLiteral n) = ignoreFmt $ pretty $ either show show n

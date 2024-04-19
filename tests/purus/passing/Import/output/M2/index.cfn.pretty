@@ -11,4 +11,4 @@ Foreign:
   
 Declarations: 
 main :: forall (t1 :: Type). t1 -> Int
-main = \(v: t1) -> ((foo: forall (a :: Type). a -> a) (42: Int): Int)
+main = \(v: t1) -> (foo: forall (a :: Type). a -> a) (42: Int)

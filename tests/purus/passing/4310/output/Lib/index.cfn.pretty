@@ -22,10 +22,8 @@ Test$Dict = \(x: { runTest :: a -> String }) -> (x: { runTest :: a -> String })
 
 testInt :: Test$Dict Int
 testInt = 
-  ((Test$Dict: {   runTest :: Int -> String } -> Test$Dict Int)
-  ({ runTest: \(v: Int) -> ("4": String) }: {
-                                              runTest :: Int -> String
-                                            }): Test$Dict Int)
+  (Test$Dict: {   runTest :: Int -> String } -> Test$Dict Int)
+  ({ runTest: \(v: Int) -> ("4": String) }: { runTest :: Int -> String })
 
 runTest :: forall (@a :: Type). Test$Dict a -> a -> String
 runTest = 
@@ -40,17 +38,17 @@ test/\ :: forall (a :: Type) (b :: Type). Test$Dict a -> Test$Dict b -> Test$Dic
 test/\ = 
   \(dictTest: Test$Dict a) -> 
     \(dictTest1: Test$Dict b) -> 
-      ((Test$Dict: {   runTest :: (Tuple a b) -> String } ->
+      (Test$Dict: {   runTest :: (Tuple a b) -> String } ->
       Test$Dict (Tuple a b))
       ({
          runTest: \(v: (Tuple a b)) -> 
            case (v: (Tuple a b)) of 
               Tuple a b -> 
-                ((mappend: String -> String -> String)
-                (((runTest: forall (@a :: Type). Test$Dict a -> a -> String)
+                (mappend: String -> String -> String)
+                ((runTest: forall (@a :: Type). Test$Dict a -> a -> String)
                  (dictTest: Test$Dict a)
-                 (a: a): String): String)
-                (((runTest: forall (@a :: Type). Test$Dict a -> a -> String)
+                 (a: a))
+                ((runTest: forall (@a :: Type). Test$Dict a -> a -> String)
                  (dictTest1: Test$Dict b)
-                 (b: b): String): String): String)
-       }: { runTest :: (Tuple a b) -> String }): Test$Dict (Tuple a b))
+                 (b: b))
+       }: { runTest :: (Tuple a b) -> String })

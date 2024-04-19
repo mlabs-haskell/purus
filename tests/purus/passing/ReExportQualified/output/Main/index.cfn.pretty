@@ -18,4 +18,4 @@ concat :: String -> String -> String
 concat = \(v: String) -> \(v1: String) -> ("concat": String)
 
 main :: String
-main = ((concat: String -> String -> String) (x: String) (y: String): String)
+main = (concat: String -> String -> String) (x: String) (y: String)

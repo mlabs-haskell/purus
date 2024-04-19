@@ -38,14 +38,14 @@ proxy0 = (NatProxy: NatProxy Zero)
 
 addNatZero :: ((AddNat$Dict Zero r) r)
 addNatZero = 
-  ((AddNat$Dict: Record {}@Type -> ((AddNat$Dict Zero r) r))
-  ({  }: Record {}@Type): ((AddNat$Dict Zero r) r))
+  (AddNat$Dict: Record {}@Type -> ((AddNat$Dict Zero r) r))
+  ({  }: Record {}@Type)
 
 addNatSucc :: forall (l :: Nat) (r :: Nat) (o :: Nat). ((AddNat$Dict l r) o) -> ((AddNat$Dict Succ l r) Succ o)
 addNatSucc = 
   \($__unused: ((AddNat$Dict l r) o)) -> 
-    ((AddNat$Dict: Record {}@Type -> ((AddNat$Dict Succ l r) Succ o))
-    ({  }: Record {}@Type): ((AddNat$Dict Succ l r) Succ o))
+    (AddNat$Dict: Record {}@Type -> ((AddNat$Dict Succ l r) Succ o))
+    ({  }: Record {}@Type)
 
 addNat :: forall (l :: Nat) (r :: Nat) (o :: Nat). ((AddNat$Dict l r) o) -> NatProxy l -> NatProxy r -> NatProxy o
 addNat = 

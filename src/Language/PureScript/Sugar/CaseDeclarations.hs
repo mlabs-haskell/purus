@@ -17,15 +17,17 @@ import Data.Maybe (catMaybes, mapMaybe)
 
 import Control.Monad ((<=<), forM, replicateM, join, unless)
 import Control.Monad.Error.Class (MonadError(..))
-import Control.Monad.Supply.Class (MonadSupply)
+import Control.Monad.Supply.Class (MonadSupply, freshName)
 
 import Language.PureScript.AST
 import Language.PureScript.Crash (internalError)
-import Language.PureScript.Environment (NameKind(..))
+import Language.PureScript.Environment (NameKind(..), function)
 import Language.PureScript.Errors (ErrorMessage(..), MultipleErrors(..), SimpleErrorMessage(..), addHint, errorMessage', parU, rethrow, withPosition)
-import Language.PureScript.Names (pattern ByNullSourcePos, Ident, Qualified(..), freshIdent')
+import Language.PureScript.Names (pattern ByNullSourcePos, Ident(..), Qualified(..), freshIdent')
 import Language.PureScript.TypeChecker.Monad (guardWith)
 
+import Debug.Trace
+import Language.PureScript.Types (SourceType, Type (TypeVar), quantify)
 -- |
 -- Replace all top-level binders in a module with case expressions.
 --
@@ -64,8 +66,9 @@ desugarGuardedExprs ss (Case scrut alternatives)
     -- we may evaluate the scrutinee more than once when a guard occurs.
     -- We bind the scrutinee to Vars here to mitigate this case.
     (scrut', scrut_decls) <- unzip <$> forM scrut (\e -> do
+      let mkTyped ex = TypedValue False ex (unsafeExprType e)
       scrut_id <- freshIdent'
-      pure ( Var ss (Qualified ByNullSourcePos scrut_id)
+      pure ( mkTyped $ Var ss (Qualified ByNullSourcePos scrut_id)
            , ValueDecl (ss, []) scrut_id Private [] [MkUnguarded e]
            )
       )
@@ -78,6 +81,8 @@ desugarGuardedExprs ss (Case scrut alternatives)
     isTrivialExpr (PositionedValue _ _ e) = isTrivialExpr e
     isTrivialExpr (TypedValue _ e _) = isTrivialExpr e
     isTrivialExpr _ = False
+
+
 
 desugarGuardedExprs ss (Case scrut alternatives) =
   let
@@ -177,6 +182,10 @@ desugarGuardedExprs ss (Case scrut alternatives) =
           alt_fail' n | all isIrrefutable vb = []
                       | otherwise = alt_fail n
 
+          eTy = unsafeExprType e
+
+          mkType ex = TypedValue False ex eTy
+
 
           -- we are here:
           --
@@ -187,7 +196,7 @@ desugarGuardedExprs ss (Case scrut alternatives) =
           --        in case scrut of -- we are here
           --            ...
           --
-        in Case scrut
+        in mkType $ Case scrut
             (CaseAlternative vb [MkUnguarded (desugarGuard gs e alt_fail)]
               : alt_fail' (length scrut))
 
@@ -227,16 +236,23 @@ desugarGuardedExprs ss (Case scrut alternatives) =
         rem_case_id   <- freshIdent'
         unused_binder <- freshIdent'
 
+        freshTyVar <- freshName
+
         let
+          remTy = quantify $ function (TypeVar (ss,[]) freshTyVar) (unsafeExprType desugared)
+          mkType e = TypedValue False e remTy
+
           goto_rem_case :: Expr
-          goto_rem_case = Var ss (Qualified ByNullSourcePos rem_case_id)
+          goto_rem_case = mkType (Var ss (Qualified ByNullSourcePos rem_case_id))
             `App` Literal ss (BooleanLiteral True)
           alt_fail :: Int -> [CaseAlternative]
           alt_fail n = [CaseAlternative (replicate n NullBinder) [MkUnguarded goto_rem_case]]
 
+
+
         pure $ Let FromLet [
           ValueDecl (ss, []) rem_case_id Private []
-            [MkUnguarded (Abs (VarBinder ss unused_binder) desugared)]
+            [MkUnguarded $ mkType (Abs (VarBinder ss unused_binder ) desugared)]
           ] (mk_body alt_fail)
 
       | otherwise
@@ -420,3 +436,7 @@ makeCaseDeclaration ss ident alternatives = do
     | a == b = Just a
     | otherwise = Nothing
   resolveName _ _ = Nothing
+
+unsafeExprType :: Expr -> SourceType
+unsafeExprType (TypedValue _ _ t) = t
+unsafeExprType other = error $ "INTERNAL ERROR: Expected a TypedValue during case desugaring but got: " <> show other

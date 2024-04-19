@@ -18,5 +18,5 @@ unit = (Unit: Unit)
 middle :: forall (a :: Type). TestCls$Dict a -> a -> a
 middle = 
   \(dictTestCls: TestCls$Dict a) -> 
-    ((test: forall (@a :: Type). TestCls$Dict a -> a -> a)
-    (dictTestCls: TestCls$Dict a): forall a. a -> a)
+    (test: forall (@a :: Type). TestCls$Dict a -> a -> a)
+    (dictTestCls: TestCls$Dict a)

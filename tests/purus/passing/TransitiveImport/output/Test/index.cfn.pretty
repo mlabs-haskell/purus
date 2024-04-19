@@ -20,9 +20,8 @@ TestCls$Dict = \(x: { test :: a -> a }) -> (x: { test :: a -> a })
 
 unitTestCls :: TestCls$Dict Unit
 unitTestCls = 
-  ((TestCls$Dict: {   test :: Unit -> Unit } -> TestCls$Dict Unit)
-  ({ test: \(v: Unit) -> (Unit: Unit) }: { test :: Unit -> Unit }): TestCls$Dict
-  Unit)
+  (TestCls$Dict: {   test :: Unit -> Unit } -> TestCls$Dict Unit)
+  ({ test: \(v: Unit) -> (Unit: Unit) }: { test :: Unit -> Unit })
 
 test :: forall (@a :: Type). TestCls$Dict a -> a -> a
 test = 
