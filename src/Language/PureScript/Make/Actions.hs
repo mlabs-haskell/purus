@@ -9,7 +9,6 @@ module Language.PureScript.Make.Actions
   , cacheDbFile
   , readCacheDb'
   , writeCacheDb'
-  , ffiCodegen'
   ) where
 
 import Prelude
@@ -118,8 +117,6 @@ data MakeActions m = MakeActions
   -- path for the file.
   , codegen :: CF.Module CF.Ann -> Docs.Module -> ExternsFile -> SupplyT m ()
   -- ^ Run the code generator for the module and write any required output files.
-  , ffiCodegen :: CF.Module CF.Ann -> m ()
-  -- ^ Check ffi and print it in the output directory.
   , progress :: ProgressMessage -> m ()
   -- ^ Respond to a progress update.
   , readCacheDb :: m CacheDb
@@ -178,7 +175,7 @@ buildMakeActions
   -- ^ Generate a prefix comment?
   -> MakeActions Make
 buildMakeActions outputDir filePathMap foreigns usePrefix =
-    MakeActions getInputTimestampsAndHashes getOutputTimestamp readExterns codegen ffiCodegen progress readCacheDb writeCacheDb writePackageJson outputPrimDocs
+    MakeActions getInputTimestampsAndHashes getOutputTimestamp readExterns codegen progress readCacheDb writeCacheDb writePackageJson outputPrimDocs
   where
 
   getInputTimestampsAndHashes
@@ -284,12 +281,6 @@ buildMakeActions outputDir filePathMap foreigns usePrefix =
      jsonRoundTrip mdl =  case fromJSON $  moduleToJSON (makeVersion [0,0,1]) mdl of
        Error str -> error str
        Success a -> a
-
-
-  ffiCodegen :: CF.Module CF.Ann -> Make ()
-  ffiCodegen m = do
-    codegenTargets <- asks optionsCodegenTargets
-    ffiCodegen' foreigns codegenTargets (Just outputFilename) m
 
   genSourceMap :: String -> String -> Int -> [SMap] -> Make ()
   genSourceMap dir mapFile extraLines mappings = do
@@ -431,36 +422,3 @@ checkForeignDecls m path = do
       . CST.runTokenParser CST.parseIdent
       . CST.lex
       $ T.pack str
-
--- | FFI check and codegen action.
--- If path maker is supplied copies foreign module to the output.
-ffiCodegen'
-  :: M.Map ModuleName FilePath
-  -> S.Set CodegenTarget
-  -> Maybe (ModuleName -> String -> FilePath)
-  -> CF.Module CF.Ann
-  -> Make ()
-ffiCodegen' foreigns codegenTargets makeOutputPath m = pure ()
-  {-
-  when (S.member JS codegenTargets) $ do
-    let mn = CF.moduleName m
-    case mn `M.lookup` foreigns of
-      Just path
-        | not $ requiresForeign m ->
-            tell $ errorMessage' (CF.moduleSourceSpan m) $ UnnecessaryFFIModule mn path
-        | otherwise -> do
-            checkResult <- checkForeignDecls m path
-            case checkResult of
-              Left _ -> copyForeign path mn
-              Right (ESModule, _) -> copyForeign path mn
-              Right (CJSModule, _) -> do
-                throwError $ errorMessage' (CF.moduleSourceSpan m) $ DeprecatedFFICommonJSModule mn path
-      Nothing | requiresForeign m -> throwError . errorMessage' (CF.moduleSourceSpan m) $ MissingFFIModule mn
-              | otherwise -> return ()
-
-  where
-  requiresForeign = not . null . CF.moduleForeign
-
-  copyForeign path mn =
-    for_ makeOutputPath (\outputFilename -> copyFile path (outputFilename mn "foreign.js"))
-   -}

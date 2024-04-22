@@ -130,7 +130,6 @@ rebuildModuleWithIndex MakeActions{..} exEnv externs m@(Module _ _ moduleName _ 
       (renamedIdents, renamed) = renameInModule optimized
       exts = moduleToExternsFile mod' env' renamedIdents
   --pTrace exts
-  ffiCodegen renamed
 
   -- It may seem more obvious to write `docs <- Docs.convertModule m env' here,
   -- but I have not done so for two reasons:

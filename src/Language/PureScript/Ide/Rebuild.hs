@@ -16,7 +16,6 @@ import Data.Set qualified as S
 import Data.Time qualified as Time
 import Data.Text qualified as Text
 import Language.PureScript qualified as P
-import Language.PureScript.Make (ffiCodegen')
 import Language.PureScript.Make.Cache (CacheInfo(..), normaliseForCache)
 import Language.PureScript.CST qualified as CST
 
@@ -75,7 +74,6 @@ rebuildFile file actualFile codegenTargets runOpenBuild = do
   let modulePath = if pureRebuild then fp' else file
   foreigns <- P.inferForeignModules (M.singleton moduleName (Right modulePath))
   let makeEnv = P.buildMakeActions outputDirectory filePathMap foreigns False
-        & (if pureRebuild then enableForeignCheck foreigns codegenTargets . shushCodegen else identity)
         & shushProgress
   -- Rebuild the single module using the cached externs
   (result, warnings) <- logPerf (labelTimespec "Rebuilding Module") $
@@ -186,17 +184,6 @@ shushProgress ma =
 shushCodegen :: Monad m => P.MakeActions m -> P.MakeActions m
 shushCodegen ma =
   ma { P.codegen = \_ _ _ -> pure ()
-     , P.ffiCodegen = \_ -> pure ()
-     }
-
--- | Enables foreign module check without actual codegen.
-enableForeignCheck
-  :: M.Map P.ModuleName FilePath
-  -> S.Set P.CodegenTarget
-  -> P.MakeActions P.Make
-  -> P.MakeActions P.Make
-enableForeignCheck foreigns codegenTargets ma =
-  ma { P.ffiCodegen = ffiCodegen' foreigns codegenTargets Nothing
      }
 
 -- | Returns a topologically sorted list of dependent ExternsFiles for the given
