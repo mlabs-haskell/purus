@@ -176,6 +176,31 @@ lookupType sp tn = do
       traceM $ "lookupType: " <> showIdent' tn <> " :: " <> ppType 10 ty
       pure (ty,nv)
 
+{-| Extracts inner type of an object if it is behind foralls
+-}
+getInnerObjectTy :: Type a -> Maybe (Type a)
+getInnerObjectTy (RecordT row) = Just row
+getInnerObjectTy (ForAll _ _ _ _ ty _) = getInnerObjectTy ty
+getInnerObjectTy _ = Nothing
+
+objectToCoreFn :: forall m. M m => ModuleName -> SourceSpan -> SourceType -> SourceType -> [(PSString, A.Expr)] -> m (Expr Ann)
+objectToCoreFn mn ss recTy row objFields = do
+  traceM $ "ObjLitTy: " <> show row
+  let (tyFields,_) = rowToList row
+      tyMap = M.fromList $ (\x -> (runLabel (rowListLabel x),x)) <$> tyFields
+  resolvedFields <- foldM (go tyMap) [] objFields
+  pure $ Literal (ss,[],Nothing) recTy (ObjectLiteral resolvedFields)
+ where
+   go :: M.Map PSString (RowListItem SourceAnn) -> [(PSString, Expr Ann)] -> (PSString, A.Expr) -> m [(PSString, Expr Ann)]
+   go tyMap acc (lbl,expr) = case M.lookup lbl tyMap of
+     Just rowListItem -> do
+       let fieldTy = rowListType rowListItem
+       expr' <- exprToCoreFn mn ss (Just fieldTy) expr
+       pure $ (lbl,expr'):acc
+     Nothing -> do -- error $ "row type missing field " <> T.unpack (prettyPrintString lbl)
+       expr' <- exprToCoreFn mn ss Nothing expr
+       pure $ (lbl,expr') : acc
+
 {- Converts declarations from their AST to CoreFn representation, deducing types when possible & inferring them when not possible.
 
    TODO: The module name can be retrieved from the monadic context and doesn't need to be passed around
@@ -247,22 +272,13 @@ exprToCoreFn _ ss (Just tyVar) astlit@(A.Literal _ (ArrayLiteral [])) = wrapTrac
 exprToCoreFn _ _ Nothing astlit@(A.Literal _ (ArrayLiteral _)) =
   internalError $ "Error while desugaring Array Literal. No type provided for literal:\n" <> renderValue 100 astlit
 
-exprToCoreFn mn ss (Just recTy@(RecordT row)) astlit@(A.Literal _ (ObjectLiteral objFields)) = wrapTrace ("exprToCoreFn OBJECTLIT " <> renderValue 100 astlit) $ do
-  traceM $ "ObjLitTy: " <> show row
-  let (tyFields,_) = rowToList row
-      tyMap = M.fromList $ (\x -> (runLabel (rowListLabel x),x)) <$> tyFields
-  resolvedFields <- foldM (go tyMap) [] objFields
-  pure $ Literal (ss,[],Nothing) recTy (ObjectLiteral resolvedFields)
- where
-   go :: M.Map PSString (RowListItem SourceAnn) -> [(PSString, Expr Ann)] -> (PSString, A.Expr) -> m [(PSString, Expr Ann)]
-   go tyMap acc (lbl,expr) = case M.lookup lbl tyMap of
-     Just rowListItem -> do
-       let fieldTy = rowListType rowListItem
-       expr' <- exprToCoreFn mn ss (Just fieldTy) expr
-       pure $ (lbl,expr'):acc
-     Nothing -> do -- error $ "row type missing field " <> T.unpack (prettyPrintString lbl)
-       expr' <- exprToCoreFn mn ss Nothing expr
-       pure $ (lbl,expr') : acc
+exprToCoreFn mn ss (Just recTy) (A.Literal _ (ObjectLiteral objFields))
+  | Just row <- getInnerObjectTy recTy
+  = objectToCoreFn mn ss recTy row objFields
+
+exprToCoreFn _ _ (Just ty) (A.Literal _ (ObjectLiteral _)) =
+  internalError $ "Error while desugaring Object Literal. Unexpected type:\n" <> show ty
+
 exprToCoreFn _ _ Nothing astlit@(A.Literal _ (ObjectLiteral _)) =
   internalError $ "Error while desugaring Object Literal. No type provided for literal:\n" <> renderValue 100 astlit
 
