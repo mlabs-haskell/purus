@@ -59,6 +59,7 @@ Exports:
   consEmptyList2,
   id,
   objForall,
+  arrForall,
   eqInt,
   eq2IntBoolean
 Re-Exports: 
@@ -324,6 +325,10 @@ brokenEven =
        _ -> 
          (brokenEven: Int -> Int) ((minus: Int -> Int -> Int) (n: Int) (2: Int))
 
+arrForall :: forall (a :: Type). Array a -> a
+arrForall = 
+  ([(id: forall (t :: Type). t -> t)]: forall (a :: Type). Array a -> a)
+
 anObj :: { foo :: Int }
 anObj = ({ foo: (3: Int) }: { foo :: Int })
 
@@ -431,7 +436,7 @@ aFunction6 =
     go :: forall (z :: Type). z -> Int
     go = \(v: z) -> (10: Int)
   in (aFunction: forall (x :: Type). x -> forall (y :: Type). y -> Int -> Int)
-     ([]: Array t134)
+     ([]: Array t136)
      (go: forall (z :: Type). z -> Int)
 
 aBool :: Boolean

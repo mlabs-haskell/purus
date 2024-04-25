@@ -176,6 +176,11 @@ lookupType sp tn = do
       traceM $ "lookupType: " <> showIdent' tn <> " :: " <> ppType 10 ty
       pure (ty,nv)
 
+getInnerArrayTy :: Type a -> Maybe (Type a)
+getInnerArrayTy (ArrayT arr) = Just arr
+getInnerArrayTy (ForAll _ _ _ _ ty _) = getInnerArrayTy ty
+getInnerArrayTy _ = Nothing
+
 {-| Extracts inner type of an object if it is behind foralls
 -}
 getInnerObjectTy :: Type a -> Maybe (Type a)
@@ -262,13 +267,13 @@ declToCoreFn _ _ = pure []
 exprToCoreFn :: forall m. M m => ModuleName -> SourceSpan -> Maybe SourceType -> A.Expr -> m (Expr Ann)
 -- Array & Object literals can contain non-literal expressions. Both of these types should always be tagged
 -- (i.e. returned as an AST.TypedValue) after the initial typechecking phase, so we expect the type to be passed in
-exprToCoreFn mn ss (Just arrT@(ArrayT ty)) astlit@(A.Literal _ (ArrayLiteral ts)) = wrapTrace ("exprToCoreFn ARRAYLIT " <> renderValue 100 astlit) $ do
-  traceM $ ppType 100 arrT
-  arr <- ArrayLiteral <$> traverse (exprToCoreFn mn ss (Just ty)) ts
-  pure $ Literal (ss,[],Nothing) arrT  arr
--- An empty list could either have a TyVar or a quantified type (or a concrete type, which is handled by the previous case)
-exprToCoreFn _ ss (Just tyVar) astlit@(A.Literal _ (ArrayLiteral [])) = wrapTrace ("exprToCoreFn ARRAYLIT EMPTY " <> renderValue 100 astlit) $ do
-  pure $ Literal (ss,[],Nothing) tyVar (ArrayLiteral [])
+exprToCoreFn mn ss (Just arrT) astlit@(A.Literal _ (ArrayLiteral ts))
+  | Just ty <- getInnerArrayTy arrT
+  = wrapTrace ("exprToCoreFn ARRAYLIT " <> renderValue 100 astlit) $ do
+      traceM $ ppType 100 arrT
+      arr <- ArrayLiteral <$> traverse (exprToCoreFn mn ss (Just ty)) ts
+      pure $ Literal (ss,[],Nothing) arrT  arr
+
 exprToCoreFn _ _ Nothing astlit@(A.Literal _ (ArrayLiteral _)) =
   internalError $ "Error while desugaring Array Literal. No type provided for literal:\n" <> renderValue 100 astlit
 
