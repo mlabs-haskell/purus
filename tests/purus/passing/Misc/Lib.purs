@@ -220,6 +220,12 @@ consEmptyList1 = cons 1 emptyList
 
 consEmptyList2 = cons "hello" emptyList
 
+id :: forall t. t -> t
+id x = x
+
+objForall :: forall a b. {getIdA :: a -> a, getIdB :: b -> b}
+objForall = {getIdA: id, getIdB: id}
+
 {- We should probably just remove guarded case branches, see slack msg
 guardedCase :: Int
 guardedCase = case polyInObj of
