@@ -227,3 +227,21 @@ guardedCase = case polyInObj of
               | eq @Int x 4 -> x
   _ -> 0
 -}
+
+{-
+id :: forall a. a -> a
+id a = a
+
+-- Works with signature, throws without
+-- inner :: { getId :: forall a. a -> a}
+inner = {getId: id}
+-}
+
+class Eq a <= Ord a where
+  compare :: a -> a -> Int
+
+instance Ord Int where
+  compare _ _ = 42
+
+testEqViaOrd :: forall a. Ord a => a -> a -> Boolean
+testEqViaOrd a b = eq a b

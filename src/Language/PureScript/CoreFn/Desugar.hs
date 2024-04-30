@@ -15,7 +15,7 @@ import Language.PureScript.AST.SourcePos (SourceSpan(..), SourceAnn)
 import Language.PureScript.CoreFn.Ann (Ann, ssAnn)
 import Language.PureScript.CoreFn.Binders (Binder(..))
 import Language.PureScript.CoreFn.Expr (Bind(..), CaseAlternative(..), Expr(..), Guard)
-import Language.PureScript.CoreFn.Utils (exprType)
+import Language.PureScript.CoreFn.Utils (exprType, stripQuantifiers)
 import Language.PureScript.CoreFn.Meta (Meta(..))
 import Language.PureScript.CoreFn.Module (Module(..))
 import Language.PureScript.Crash (internalError)
@@ -47,7 +47,7 @@ import Language.PureScript.Names (
   mkQualified,
   runIdent,
   coerceProperName,
-  Name (DctorName), ProperNameType (TypeName))
+  Name (DctorName), ProperNameType (..), disqualify)
 import Language.PureScript.PSString (PSString)
 import Language.PureScript.Types (
   pattern REmptyKinded,
@@ -246,7 +246,6 @@ exprToCoreFn _ ss (Just tyVar) astlit@(A.Literal _ (ArrayLiteral [])) = wrapTrac
   pure $ Literal (ss,[],Nothing) tyVar (ArrayLiteral [])
 exprToCoreFn _ _ Nothing astlit@(A.Literal _ (ArrayLiteral _)) =
   internalError $ "Error while desugaring Array Literal. No type provided for literal:\n" <> renderValue 100 astlit
-
 exprToCoreFn mn ss (Just recTy@(RecordT row)) astlit@(A.Literal _ (ObjectLiteral objFields)) = wrapTrace ("exprToCoreFn OBJECTLIT " <> renderValue 100 astlit) $ do
   traceM $ "ObjLitTy: " <> show row
   let (tyFields,_) = rowToList row
@@ -282,8 +281,29 @@ exprToCoreFn _ _ _ (A.Literal ss (StringLiteral string)) =
 exprToCoreFn mn ss (Just accT) accessor@(A.Accessor name v) = wrapTrace ("exprToCoreFn ACCESSOR " <> renderValue 100 accessor) $ do
   v'  <- exprToCoreFn mn ss Nothing v -- v should always have a type assigned during typechecking (i.e. it will be a TypedValue that will be unwrapped)
   pure $ Accessor (ssA ss) accT name v'
-exprToCoreFn _ _ Nothing accessor@(A.Accessor _ _) =
-  internalError $ "Error while desugaring record accessor. No type provided for expression: \n" <> renderValue 100 accessor
+exprToCoreFn mn ss Nothing accessor@(A.Accessor name v) = do
+  v' <- exprToCoreFn mn ss Nothing v
+  let vTy = exprType v'
+  env <- getEnv
+  case analyzeCtor vTy of
+    Nothing -> internalError $ "(1) Error while desugaring record accessor."
+                  <> " No type provided for expression: \n" <> renderValue 100 accessor
+                  <> "\nRecord type: " <> ppType 1000 vTy
+                  <> "\nsynonyms: " <> show (runProperName . disqualify <$> M.keys env.types)
+    Just (TypeConstructor _ tyNm,_) -> case M.lookup (tyNameToCtorName tyNm) env.dataConstructors of
+      Nothing -> internalError $ "(2) Error while desugaring record accessor."
+                  <> " No type provided for expression: \n" <> renderValue 100 accessor
+      Just (_,_,ty,_) -> case stripQuantifiers ty of
+        (_,RecordT inner :-> _) -> do
+          let tyMap = M.fromList $ (\x -> (runLabel (rowListLabel x),x)) <$> (fst $ rowToList inner)
+          case M.lookup name tyMap of
+            Just (rowListType -> resTy) -> pure $ Accessor (ssA ss) resTy name v'
+            Nothing -> internalError $ "(3) Error while desugaring record accessor."
+                  <> " No type provided for expression: \n" <> renderValue 100 accessor
+        (_,other) -> internalError $ "****DEBUG:\n" <> ppType 100 other
+ where
+   tyNameToCtorName :: Qualified (ProperName 'TypeName) -> Qualified (ProperName 'ConstructorName)
+   tyNameToCtorName (Qualified qb tNm) = Qualified qb (coerceProperName tNm)
 
 exprToCoreFn mn ss (Just recT) objUpd@(A.ObjectUpdate obj vs) = wrapTrace ("exprToCoreFn OBJ UPDATE " <> renderValue 100 objUpd) $ do
   obj' <- exprToCoreFn mn ss Nothing obj
@@ -442,7 +462,7 @@ exprToCoreFn _ _ Nothing ctor@(A.Constructor _ _) =
    those types can be synthesized), we cannot be sure that the whole case expression has an explicit
    type annotation, so we try to deduce the type from the types of the alternative branches.
 
-   NOTE: This is kind of a hack to let us reuse (rather than rewrite) the existing case
+   NOTE: This is kind of a hack to let us reuse (rather than rewrite) the existing case/guard
          desugaring machinery. In order to correctly type the generated `let` bindings
          (see Language.PureScript.Sugar.CaseDeclarations), we must manually construct a polymorphic
          type that the PS typechecker cannot infer or deduce. We cannot construct such a type without
@@ -450,7 +470,6 @@ exprToCoreFn _ _ Nothing ctor@(A.Constructor _ _) =
          case desugaring machinery and try to run the typechecker twice, but that adds a lot of
          complexity (machinery is complicated) and would not be good for performance (typechecking
          and inference have bad complexity).
-
 -}
 exprToCoreFn mn ss (Just caseTy) astCase@(A.Case vs alts) = wrapTrace "exprToCoreFn CASE" $ do
   traceM $ "CASE:\n" <> renderValue 100 astCase
@@ -531,18 +550,7 @@ altToCoreFn  mn ss ret boundTypes (A.CaseAlternative bs vs) = wrapTrace "altToCo
   guardToExpr [A.ConditionGuard cond] = cond
   guardToExpr _ = internalError "Guard not correctly desugared"
 
-{- Dirty hacks. If something breaks, odds are pretty good that it has something do with something here.
 
-   These two functions are adapted from utilities in Language.PureScript.TypeChecker.Types:
-     - transformLetBindings is a modification of inferLetBindings
-     - inferBinder' is a modification of inferBinder'
-
-   We need functions that perform the same tasks as those in TypeChecker.Types, but we cannot use the
-   existing functions because they call instantiatePolyTypeWithUnknowns. Instantiating a polytype to
-   an unknown type is correct *during the initial typechecking phase*, but it is disastrous for us
-   because we need to preserve the quantifiers explicitly in the typed AST.
-
--}
 transformLetBindings :: forall m. M m => ModuleName -> SourceSpan -> [Bind Ann] -> [A.Declaration] -> A.Expr -> m ([Bind Ann], Expr Ann)
 transformLetBindings mn ss seen [] ret = (seen,) <$> withBindingGroupVisible (exprToCoreFn mn ss Nothing ret)
 transformLetBindings mn _ss seen ((A.ValueDecl sa@(ss,_) ident nameKind [] [A.MkUnguarded (A.TypedValue checkType val ty)]) : rest) ret =
