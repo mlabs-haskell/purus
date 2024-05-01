@@ -48,7 +48,7 @@ import Language.PureScript.AST.Declarations (DataConstructorDeclaration (..))
 import Data.Map (Map)
 import Language.PureScript.Constants.Prim qualified as C
 
-test :: FilePath -> Text -> IO (Exp FVar)
+test :: FilePath -> Text -> IO (Exp Ty (FVar Ty))
 test path decl = do
   myMod <- decodeModuleIO path
   case monomorphizeExpr myMod decl of
@@ -61,7 +61,7 @@ test path decl = do
 
 prepPIR :: FilePath
         -> Text
-        -> IO (Exp FVar, Map (ProperName 'TypeName) (DataDeclType, [(Text, Maybe SourceType)], [DataConstructorDeclaration]))
+        -> IO (Exp Ty (FVar Ty), Map (ProperName 'TypeName) (DataDeclType, [(Text, Maybe SourceType)], [DataConstructorDeclaration]))
 prepPIR path  decl = do
   myMod@Module{..} <- decodeModuleIO path
   case monomorphizeExpr myMod decl of
@@ -156,13 +156,13 @@ prettyError = \case
 tryConvertExprIO :: Expr Ann -> IO ()
 tryConvertExprIO = putStrLn . either id ppExp . tryConvertExpr
 
-tryConvertExpr :: Expr Ann -> Either String (Exp FVar)
+tryConvertExpr :: Expr Ann -> Either String (Exp Ty (FVar Ty))
 tryConvertExpr = first prettyError . tryConvertExpr'
 
-tryConvertExpr' :: Expr Ann -> Either ExprConvertError (Exp FVar)
+tryConvertExpr' :: Expr Ann -> Either ExprConvertError (Exp Ty (FVar Ty))
 tryConvertExpr' = go id
   where
-    go :: (Expr Ann -> Expr Ann) -> Expr Ann -> Either ExprConvertError (Exp FVar)
+    go :: (Expr Ann -> Expr Ann) -> Expr Ann -> Either ExprConvertError (Exp Ty (FVar Ty))
     go f expression = case expression of
       Literal ann ty lit -> do
         let lhole = f . Literal ann ty . ArrayLiteral . pure
@@ -209,7 +209,7 @@ tryConvertExpr' = go id
        --         First arg threads the FVars that correspond to the already-processed binds
        --         through the rest of the conversion. I think that's right - earlier bindings
        --         should be available to later bindings
-       assembleBindEs :: [FVar] -> [[(FVar,Exp FVar)]] -> [BindE Exp FVar]
+       assembleBindEs :: [FVar Ty] -> [[(FVar Ty ,Exp Ty (FVar Ty))]] -> [BindE Ty (Exp Ty) (FVar Ty)]
        assembleBindEs _ [] = []
        assembleBindEs dict ([]:rest) = assembleBindEs dict rest -- shouldn't happen but w/e
        assembleBindEs dict ([(fv@(FVar tx ix),e)]:rest) =
@@ -219,7 +219,7 @@ tryConvertExpr' = go id
        assembleBindEs dict (xsRec:rest) = case assembleRec dict xsRec of
          (dict',recb) -> recb : assembleBindEs dict' rest
 
-       assembleRec :: [FVar] -> [(FVar, Exp FVar)] -> ([FVar], BindE Exp FVar)
+       assembleRec :: [FVar Ty] -> [(FVar Ty, Exp Ty (FVar Ty))] -> ([FVar Ty], BindE Ty (Exp Ty) (FVar Ty))
        assembleRec dict xs =
          let dict' = dict <> (fst <$> xs)
              abstr = abstract (abstractMany dict')
@@ -229,15 +229,15 @@ tryConvertExpr' = go id
          in (dict',recBind)
 
 
-       mkBindings :: [FVar] -> Bindings
+       mkBindings :: [FVar Ty] -> Bindings Ty
        mkBindings = M.fromList . zip [0..]
 
-       abstractMany :: [FVar] -> FVar -> Maybe BVar
+       abstractMany :: [FVar Ty] -> FVar Ty -> Maybe (BVar Ty)
        abstractMany xs (FVar t i) =
          (\indX -> BVar indX t i)
          <$> findIndex (\(FVar t' i') -> t == t' && i == i') xs
 
-       goAlt :: (CaseAlternative Ann -> Expr Ann) -> CaseAlternative Ann -> Either ExprConvertError (Alt Exp FVar)
+       goAlt :: (CaseAlternative Ann -> Expr Ann) -> CaseAlternative Ann -> Either ExprConvertError (Alt Ty (Exp Ty) (FVar Ty))
        goAlt g (CaseAlternative binders result) = do
          boundVars <- concat <$> traverse (getBoundVar result) binders
          pats <- traverse toPat  binders
@@ -247,7 +247,7 @@ tryConvertExpr' = go id
            Left ges -> pure $ GuardedAlt (mkBindings boundVars) pats (bimap abstrE abstrE <$> ges)
            Right re -> pure $ UnguardedAlt (mkBindings boundVars) pats (abstrE re)
         where
-          getBoundVar :: Either [(Expr Ann, Expr Ann)] (Expr Ann) -> Binder Ann -> ConvertM [FVar]
+          getBoundVar :: Either [(Expr Ann, Expr Ann)] (Expr Ann) -> Binder Ann -> ConvertM [FVar Ty]
           getBoundVar body b = case b of
             ConstructorBinder _ _ _ bs -> concat <$> traverse (getBoundVar body) bs
             LiteralBinder _ (ArrayLiteral xs) -> concat <$> traverse (getBoundVar body) xs
@@ -268,7 +268,7 @@ tryConvertExpr' = go id
                   _ -> pure []
             _ -> pure []
 
-          toPat :: Binder Ann -> ConvertM (Pat Exp FVar)
+          toPat :: Binder Ann -> ConvertM (Pat (Exp Ty) (FVar Ty))
           toPat = \case
             NullBinder _ -> pure WildP
             VarBinder _ i  ->  pure $ VarP i
@@ -293,7 +293,7 @@ tryConvertExpr' = go id
 
           goResult :: (Either [(Expr Ann, Expr Ann)] (Expr Ann) -> Expr Ann)
                    -> Either [(Expr Ann, Expr Ann)] (Expr Ann)
-                   -> Either ExprConvertError (Either [(Exp FVar, Exp FVar)] (Exp FVar))
+                   -> Either ExprConvertError (Either [(Exp Ty (FVar Ty), Exp Ty (FVar Ty))] (Exp Ty (FVar Ty)))
           goResult h = \case
             Left exs -> do
               exs' <- traverse (goGuarded (h . Left)) exs
@@ -307,7 +307,7 @@ tryConvertExpr' = go id
                e2' <- go (\x -> cb [(e1,x)]) e2
                pure (e1',e2')
 
-       goBinds :: (Bind Ann -> Expr Ann) -> [Bind Ann] -> Either ExprConvertError [[(FVar, Exp FVar)]]
+       goBinds :: (Bind Ann -> Expr Ann) -> [Bind Ann] -> Either ExprConvertError [[(FVar Ty, Exp Ty (FVar Ty))]]
        goBinds _ [] = pure []
        goBinds g (b:bs) = case b of
          NonRec ann ident expr -> do
@@ -333,7 +333,7 @@ tryConvertExpr' = go id
              Qualified ByNullSourcePos _ -> False -- idk about this actually, guess we'll find out
              Qualified (BySourcePos _) nm' -> nm == nm'
 
-       goList :: (Expr Ann -> Expr Ann) -> [Expr Ann] -> Either ExprConvertError [Exp FVar]
+       goList :: (Expr Ann -> Expr Ann) -> [Expr Ann] -> Either ExprConvertError [Exp Ty (FVar Ty)]
        goList _ [] = pure []
        goList g (ex:exs) = do
          e' <- go g ex
@@ -341,12 +341,12 @@ tryConvertExpr' = go id
          pure $ e' : es'
 
        -- ONLY USE THIS IN LAMBDA ABSTRACTIONS!
-       matchVar :: Ty -> Ident -> FVar -> Maybe BVar
+       matchVar :: Ty -> Ident -> FVar Ty -> Maybe (BVar Ty)
        matchVar t nm (FVar ty n')
          | ty == t && nm == n' =  Just (BVar 0 t nm)
          | otherwise = Nothing
 
-       tryConvertLit :: (Expr Ann -> Expr Ann) -> Literal (Expr Ann) -> Either ExprConvertError (Either (Exp FVar) (Lit (Exp FVar)))
+       tryConvertLit :: (Expr Ann -> Expr Ann) -> Literal (Expr Ann) -> Either ExprConvertError (Either (Exp Ty (FVar Ty)) (Lit (Exp Ty (FVar Ty))))
        tryConvertLit cb = \case
          NumericLiteral (Left i) -> pure . Right $ IntL i
          NumericLiteral (Right d) -> pure . Right $ NumL d

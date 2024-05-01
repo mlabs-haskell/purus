@@ -99,17 +99,21 @@ resultTy t = case snd $  stripQuantifiers t of
   (_ :~> b) -> resultTy b
   other -> other
 
-headArg :: Ty -> Ty
-headArg t = case snd $ stripQuantifiers t of
-  (a :~> _) -> a
-  other -> other
+-- HACK: Need this for pretty printer, refactor later
+class FuncType ty where
+  headArg :: ty -> ty
 
-type Bindings = Map Int FVar
+instance FuncType Ty where
+  headArg t = case snd $ stripQuantifiers t of
+    (a :~> _) -> a
+    other -> other
+
+type Bindings ty = Map Int (FVar ty)
 
 -- A Bound variable. Serves as a bridge between the textual representation and the named de bruijn we'll need for PIR
-data BVar = BVar Int Ty Ident deriving (Show, Eq, Ord)
+data BVar ty = BVar Int ty Ident deriving (Show, Eq, Ord)
 
-data FVar = FVar Ty Ident deriving (Show, Eq, Ord)
+data FVar ty = FVar ty Ident deriving (Show, Eq, Ord)
 
 data Lit a
   = IntL Integer
@@ -129,38 +133,38 @@ data Pat (f :: GHC.Type -> GHC.Type) a
   | ConP (Qualified (ProperName 'TypeName)) (Qualified (ProperName 'ConstructorName)) [Pat f a] -- CTor binder
   deriving (Eq,Ord,Show,Functor,Foldable,Traversable)
 
-data Alt f a
-  = UnguardedAlt Bindings [Pat f a] (Scope BVar f a)
-  | GuardedAlt Bindings [Pat f a] [(Scope BVar f a, Scope BVar f a)]
+data Alt ty f a
+  = UnguardedAlt (Bindings ty) [Pat f a] (Scope (BVar ty) f a)
+  | GuardedAlt (Bindings ty) [Pat f a] [(Scope (BVar ty) f a, Scope (BVar ty) f a)]
   deriving (Eq,Ord,Show,Functor,Foldable,Traversable)
 
-getPat :: Alt f a -> [Pat f a]
+getPat :: Alt ty f a -> [Pat f a]
 getPat = \case
   UnguardedAlt _ ps _ -> ps
   GuardedAlt _ ps _ -> ps
 -- idk if we really need the identifiers?
-data BindE (f :: GHC.Type -> GHC.Type) a
-  = NonRecursive Ident (Scope BVar f a)
-  | Recursive [(Ident,Scope BVar f a)]
+data BindE ty (f :: GHC.Type -> GHC.Type) a
+  = NonRecursive Ident (Scope (BVar ty) f a)
+  | Recursive [(Ident, Scope (BVar ty) f a)]
   deriving (Eq,Ord,Show,Functor,Foldable,Traversable)
 
-flattenBind :: BindE f a -> [(Ident,Scope BVar f a)]
+flattenBind :: BindE ty f a -> [(Ident, Scope (BVar ty) f a)]
 flattenBind = \case
   NonRecursive i e -> [(i,e)]
   Recursive xs -> xs
 
 
-data Exp a
+data Exp ty a
  = V a -- let's see if this works
- | LitE Ty (Lit (Exp a))
- | CtorE Ty (ProperName 'TypeName) (ProperName 'ConstructorName) [Ident]
- | LamE Ty BVar (Scope BVar Exp a)
- | AppE (Exp a) (Exp a)
- | CaseE Ty [Exp a] [Alt Exp a]
- | LetE Bindings [BindE Exp a] (Scope BVar Exp a)
+ | LitE ty (Lit (Exp ty a))
+ | CtorE ty (ProperName 'TypeName) (ProperName 'ConstructorName) [Ident]
+ | LamE ty (BVar ty) (Scope (BVar ty) (Exp ty) a)
+ | AppE (Exp ty a) (Exp ty a)
+ | CaseE ty [Exp ty a] [Alt ty (Exp ty) a]
+ | LetE (Bindings ty) [BindE ty (Exp ty) a] (Scope (BVar ty) (Exp ty) a)
  deriving (Eq,Functor,Foldable,Traversable)
 
-instance Eq1 Exp where
+instance Eq ty => Eq1 (Exp ty) where
   liftEq eq (V a) (V b) = eq a b
   liftEq eq (LitE t1 l1) (LitE t2 l2) = t1 == t2 && liftEq (liftEq eq) l1 l2
   liftEq _ (CtorE t1 tn1 cn1 fs1) (CtorE t2 tn2 cn2 fs2)  = t1 == t2 && tn1 == tn2 && cn1 == cn2 && fs1 == fs2
@@ -187,31 +191,31 @@ instance (Eq1 f, Monad f) => Eq1 (Pat f) where
   liftEq eq (LitP l1) (LitP l2) =  liftEq (liftEq eq) l1 l2
   liftEq _ _ _ = False
 
-instance (Eq1 f, Monad f) => Eq1 (BindE f) where
+instance (Eq1 f, Monad f, Eq ty) => Eq1 (BindE ty f) where
   liftEq eq (NonRecursive i1 b1) (NonRecursive i2 b2) = i1 == i2 && liftEq eq b1 b2
   liftEq eq (Recursive xs) (Recursive ys) = go eq xs ys
     where
-      go :: forall a b. (a -> b -> Bool) -> [(Ident, Scope BVar f a)] -> [(Ident, Scope BVar f b)] -> Bool
+      go :: forall a b. (a -> b -> Bool) -> [(Ident, Scope (BVar ty) f a)] -> [(Ident, Scope (BVar ty) f b)] -> Bool
       go f ((i1,x):xss) ((i2,y):yss) = i1 == i2 && liftEq f x y && go f xss yss
       go _ [] [] = True
       go _ _ _ = False
   liftEq _ _ _ = False
 
-instance (Eq1 f, Monad f) => Eq1 (Alt f) where
+instance (Eq1 f, Monad f, Eq ty) => Eq1 (Alt ty f) where
   liftEq eq (UnguardedAlt n1 ps1 e1) (UnguardedAlt n2 ps2 e2) = n1 == n2 && liftEq (liftEq eq) ps1 ps2 && liftEq eq e1 e2
   liftEq eq (GuardedAlt n1 ps1 e1) (GuardedAlt n2 ps2 e2) = n1 == n2 && liftEq (liftEq eq) ps1 ps2 && go eq e1 e2
     where
-      go :: forall a b. (a -> b -> Bool) -> [(Scope BVar f a, Scope BVar f a)] -> [(Scope BVar f b, Scope BVar f b)] -> Bool
+      go :: forall a b. (a -> b -> Bool) -> [(Scope (BVar ty) f a, Scope (BVar ty) f a)] -> [(Scope (BVar ty) f b, Scope (BVar ty) f b)] -> Bool
       go _ [] [] = True
       go f ((g1,ex1):xs) ((g2,ex2):ys) = liftEq f g1 g2 && liftEq f ex1 ex2  && go f xs ys
       go _ _ _ = False
   liftEq _ _ _ = False
 
-instance Applicative Exp where
+instance Applicative (Exp ty) where
   pure = V
   (<*>) = ap
 
-instance Monad Exp where
+instance Monad (Exp ty) where
   return = pure
   V a           >>= f     = f a
   CtorE t tn cn fs >>= _  = CtorE t tn cn fs
@@ -244,25 +248,25 @@ instance Bound Pat where
         BoolL b     -> BoolL b
         ArrayL xs   -> ArrayL $ map (\x -> x >>>= f) xs
 
-instance Bound Alt where
+instance Bound (Alt ty) where
   UnguardedAlt i ps e >>>= f = UnguardedAlt i (map (>>>= f) ps) (e >>>= f)
   GuardedAlt i ps es  >>>= f = GuardedAlt i (map (>>>= f) ps) (map (bimap (>>>= f) (>>>= f)) es)
 
-instance Bound BindE where
+instance Bound (BindE ty) where
   NonRecursive i e >>>= f = NonRecursive i $ e >>>= f
   Recursive xs     >>>= f = Recursive $ go f xs
     where
-      go :: forall a f c. Monad f => (a -> f c) -> [(Ident, Scope BVar f a)] -> [(Ident, Scope BVar f c)]
+      go :: forall a f c. Monad f => (a -> f c) -> [(Ident, Scope (BVar ty) f a)] -> [(Ident, Scope (BVar ty) f c)]
       go _ [] = []
       go g ((i,e):rest) =
         let e' = e >>>= g
             rest' = go g rest
         in (i,e') : rest'
 
-instance Pretty BVar where
+instance Pretty (BVar ty) where
   pretty (BVar n t i) =   pretty (showIdent i) <> pretty n -- <+> "::" <+> pretty t
 
-instance Pretty FVar where
+instance Pretty (FVar ty) where
   pretty (FVar t i) =  pretty (showIdent i) -- <+> "::" <+> pretty t)
 
 instance Pretty Ty where
@@ -303,7 +307,7 @@ instance Pretty Ty where
           Nothing -> pretty var
           Just k  -> parens (pretty var <+> "::" <+> pretty k)
 
-instance Pretty a => Pretty (Exp a) where
+instance (Pretty a, Pretty ty, FuncType ty) => Pretty (Exp ty a) where
   pretty = \case
     V x -> pretty x
     LitE ty lit -> parens $ pretty lit <+> "::" <+> pretty ty
@@ -330,7 +334,7 @@ instance Pretty a => Pretty (Exp a) where
           "in" <+> align (pretty unscopedE)
           ]
 
-instance Pretty a => Pretty (Alt Exp a) where
+instance (Pretty a, Pretty ty, FuncType ty) => Pretty (Alt ty (Exp ty) a) where
   pretty = \case
     UnguardedAlt _ ps body -> hcat (pretty <$> ps) <+> "->" <>
                               hardline <> indent 2 (pretty $ fromScope body)
@@ -350,7 +354,7 @@ instance Pretty a => Pretty (Lit a) where
     BoolL b -> if b then "true" else "false"
     ArrayL xs -> list $ pretty <$> xs
 
-instance Pretty a => Pretty (Pat Exp a) where
+instance Pretty a => Pretty (Pat (Exp ty) a) where
   pretty = \case
     VarP i -> pretty (runIdent i)
     WildP -> "_"
@@ -364,25 +368,25 @@ instance Pretty a => Pretty (Pat Exp a) where
       ArrayL xs -> list $ pretty <$> xs
     ConP cn _ ps -> pretty (runProperName . disqualify $ cn) <+> hsep (pretty <$> ps)
 
-instance Pretty a => Pretty (BindE Exp a) where
+instance (Pretty a, Pretty ty, FuncType ty) => Pretty (BindE ty (Exp ty) a) where
   pretty = \case
     NonRecursive i e -> pretty (runIdent i) <+> "=" <+> pretty (fromScope e)
     Recursive es -> align . vcat $ pretty . uncurry NonRecursive <$> es
 
-ppExp :: Pretty a => Exp a -> String
+ppExp :: (Pretty a, Pretty ty, FuncType ty) => Exp ty a -> String
 ppExp = T.unpack . renderStrict . layoutPretty defaultLayoutOptions . pretty
 
 ppTy :: Ty -> String
 ppTy = T.unpack . renderStrict . layoutPretty defaultLayoutOptions . pretty
 
-unsafeAnalyzeApp :: forall a. Exp a -> (Exp a,[Exp a])
+unsafeAnalyzeApp :: forall a ty. Exp ty a -> (Exp ty a, [Exp ty a])
 unsafeAnalyzeApp e = fromJust $ (,appArgs e) <$> appFun e
   where
-    appArgs :: Exp a -> [Exp a]
+    appArgs :: Exp ty a -> [Exp ty a]
     appArgs (AppE t1 t2) = appArgs t1 <> [t2]
     appArgs _ = []
 
-    appFun :: Exp a -> Maybe (Exp a)
+    appFun :: Exp ty a -> Maybe (Exp ty a)
     appFun (AppE  t1 _) = go t1
       where
         go (AppE tx _) = case appFun tx of
@@ -396,7 +400,7 @@ stripQuantifiers = \case
      Forall vis var mk inner _ -> first ((vis,var,mk):) $ stripQuantifiers inner
      other -> ([],other)
 
-eTy :: forall x. (x -> Var BVar FVar) -> Exp x -> Ty
+eTy :: forall x. (x -> Var (BVar Ty) (FVar Ty)) -> Exp Ty x -> Ty
 eTy f = \case
   V x -> case f x of
     B (BVar _ t _) -> t
@@ -408,7 +412,7 @@ eTy f = \case
   CaseE t _ _  -> t
   LetE _ _ e -> eTy' f e
 
-eTy' :: forall x. (x -> Var BVar FVar) -> Scope BVar Exp x -> Ty
+eTy' :: forall x. (x -> Var (BVar Ty) (FVar Ty)) -> Scope (BVar Ty) (Exp Ty) x -> Ty
 eTy' f scoped = case instantiateEither (either (V . B) (V . F)) scoped of
   V x -> case x >>= f  of
     B (BVar _ t _) -> t
@@ -431,7 +435,7 @@ iInstantiates var (TyApp t1 t2) (TyApp t1' t2') = case iInstantiates var t1 t1' 
   Nothing -> iInstantiates var t2 t2'
 iInstantiates _ _ _ = Nothing
 
-iAppType :: forall a. (a -> Var BVar FVar) -> Exp a -> Exp a -> Ty
+iAppType :: forall a. (a -> Var (BVar Ty) (FVar Ty)) -> Exp Ty a -> Exp Ty a -> Ty
 iAppType h fe ae = case stripQuantifiers funTy of
    ([],ft) ->
      let numArgs = length argTypes
@@ -460,14 +464,14 @@ iAppType h fe ae = case stripQuantifiers funTy of
                  <> mkInstanceMap M.empty vars (mt:mts) (pt:pts)
       Just t  -> mkInstanceMap (M.insert var t acc) vars (mt:mts) (pt:pts)
 
-iAppFunArgs :: Exp a -> Exp a -> (Exp a,[Exp a])
+iAppFunArgs :: Exp ty a -> Exp ty a -> (Exp ty a, [Exp ty a])
 iAppFunArgs f args = (appFun f, appArgs f args)
   where
-    appArgs :: Exp a -> Exp a -> [Exp a]
+    appArgs :: Exp ty a -> Exp ty a -> [Exp ty a]
     appArgs (AppE t1 t2) t3 = appArgs t1 t2 <> [t3]
     appArgs _  t3 = [t3]
 
-    appFun :: Exp a -> Exp a
+    appFun :: Exp ty a -> Exp ty a
     appFun (AppE t1 _) = appFun t1
     appFun res            = res
 
@@ -487,7 +491,7 @@ $(deriveShow1 ''BindE)
 $(deriveShow1 ''Lit)
 $(deriveShow1 ''Pat)
 $(deriveShow1 ''Exp)
-instance Show1 (Alt Exp) where -- idk why the TH can't derive?
+instance Show ty => Show1 (Alt ty (Exp ty)) where -- idk why the TH can't derive?
   liftShowsPrec sp sl d (UnguardedAlt i ps e)
     = showString "UnGuardedAlt "
       . showsPrec d i
@@ -507,6 +511,6 @@ instance Show1 (Alt Exp) where -- idk why the TH can't derive?
       e' =  showsPrec d $ fmap (\(x,y) ->
                     let f z = liftShowsPrec sp sl d z  ""
                     in   (f x, f y)) e
-deriving instance Show a => Show (Exp a)
+deriving instance (Show a, Show ty) => Show (Exp ty a)
 
 makePrisms ''Ty
