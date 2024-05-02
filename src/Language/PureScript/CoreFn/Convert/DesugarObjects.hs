@@ -10,7 +10,7 @@ import Language.PureScript.CoreFn.Expr
       Bind(..),
       CaseAlternative(CaseAlternative),
       Expr(..) )
-import Language.PureScript.Names (Ident(..), Qualified (..), QualifiedBy (..), pattern ByNullSourcePos, ProperNameType (..), ProperName(..), moduleNameFromString, coerceProperName, disqualify, ModuleName (..), runModuleName)
+import Language.PureScript.Names (Ident(..), Qualified (..), QualifiedBy (..), pattern ByNullSourcePos, ProperNameType (..), ProperName(..), disqualify, ModuleName (..), runModuleName)
 import Language.PureScript.Types
     ( SourceType, Type(..), srcTypeConstructor, srcTypeApp, RowListItem (rowListType), rowToList, eqType )
 import Language.PureScript.Environment (pattern (:->), pattern RecordT, function, kindType, DataDeclType (Data))
@@ -28,7 +28,7 @@ import Language.PureScript.AST.SourcePos
 import Control.Lens.IndexedPlated
 import Control.Lens ( ix )
 import Language.PureScript.CoreFn.Convert.Monomorphize
-    ( nullAnn, mkFieldMap, decodeModuleIO, MonoError (..), monomorphizeExpr )
+    ( nullAnn, mkFieldMap, decodeModuleIO, MonoError (..), monomorphizeExpr, findDeclBody )
 import Data.Text (Text)
 import Bound
 import Data.Bifunctor (Bifunctor(bimap, first, second))
@@ -39,6 +39,7 @@ import Control.Lens.Operators
 import Control.Lens (view)
 import Control.Lens.Tuple
 import Language.PureScript.CoreFn.Convert.IR hiding (stripQuantifiers)
+import Language.PureScript.CoreFn.Convert.IR qualified as IR
 import Language.PureScript.CoreFn.Utils hiding (stripQuantifiers)
 import Control.Exception (throwIO)
 import Debug.Trace
@@ -47,6 +48,7 @@ import Control.Monad (join, foldM)
 import Language.PureScript.AST.Declarations (DataConstructorDeclaration (..))
 import Data.Map (Map)
 import Language.PureScript.Constants.Prim qualified as C
+import Language.PureScript.CoreFn.Convert.DesugarCore (desugarCore)
 
 test :: FilePath -> Text -> IO (Exp Ty (FVar Ty))
 test path decl = do
@@ -64,6 +66,16 @@ prepPIR :: FilePath
         -> IO (Exp Ty (FVar Ty), Map (ProperName 'TypeName) (DataDeclType, [(Text, Maybe SourceType)], [DataConstructorDeclaration]))
 prepPIR path  decl = do
   myMod@Module{..} <- decodeModuleIO path
+
+  case findDeclBody decl myMod of
+    Nothing -> error "findDeclBody"
+    Just expr -> case desugarCore expr of
+      Right expr' -> putStrLn $ "desugarCore HERE: " <> IR.ppExp expr'
+      Left msg -> throwIO
+        $ userError
+        $ "Could not simplify "
+        <> T.unpack (runModuleName moduleName <> ".main") <> "\nReason:\n" <> msg
+
   case monomorphizeExpr myMod decl of
     Left (MonoError _ msg ) ->
       throwIO
@@ -205,42 +217,10 @@ tryConvertExpr' = go id
         ty' <- goType ty
         pure . V $ FVar ty' nm
      where
-       -- REVIEW: This *MIGHT* not be right. I'm not 1000% sure what the PS criteria for a mutually rec group are
-       --         First arg threads the FVars that correspond to the already-processed binds
-       --         through the rest of the conversion. I think that's right - earlier bindings
-       --         should be available to later bindings
-       assembleBindEs :: [FVar Ty] -> [[(FVar Ty ,Exp Ty (FVar Ty))]] -> [BindE Ty (Exp Ty) (FVar Ty)]
-       assembleBindEs _ [] = []
-       assembleBindEs dict ([]:rest) = assembleBindEs dict rest -- shouldn't happen but w/e
-       assembleBindEs dict ([(fv@(FVar tx ix),e)]:rest) =
-         let dict' = fv:dict
-             abstr = abstract (abstractMany dict')
-         in NonRecursive ix (abstr e) : assembleBindEs dict' rest
-       assembleBindEs dict (xsRec:rest) = case assembleRec dict xsRec of
-         (dict',recb) -> recb : assembleBindEs dict' rest
-
-       assembleRec :: [FVar Ty] -> [(FVar Ty, Exp Ty (FVar Ty))] -> ([FVar Ty], BindE Ty (Exp Ty) (FVar Ty))
-       assembleRec dict xs =
-         let dict' = dict <> (fst <$> xs)
-             abstr = abstract (abstractMany dict')
-             recBind = Recursive
-                       . map (uncurry $ \(FVar _ ixx) xp -> (ixx,abstr xp))
-                       $ xs
-         in (dict',recBind)
-
-
-       mkBindings :: [FVar Ty] -> Bindings Ty
-       mkBindings = M.fromList . zip [0..]
-
-       abstractMany :: [FVar Ty] -> FVar Ty -> Maybe (BVar Ty)
-       abstractMany xs (FVar t i) =
-         (\indX -> BVar indX t i)
-         <$> findIndex (\(FVar t' i') -> t == t' && i == i') xs
-
        goAlt :: (CaseAlternative Ann -> Expr Ann) -> CaseAlternative Ann -> Either ExprConvertError (Alt Ty (Exp Ty) (FVar Ty))
        goAlt g (CaseAlternative binders result) = do
          boundVars <- concat <$> traverse (getBoundVar result) binders
-         pats <- traverse toPat  binders
+         let pats = map toPat binders
          let resultF = g . CaseAlternative binders
              abstrE = abstract (abstractMany boundVars)
          goResult resultF result >>= \case
@@ -267,29 +247,6 @@ tryConvertExpr' = go id
                     pure [FVar ty' nm]
                   _ -> pure []
             _ -> pure []
-
-          toPat :: Binder Ann -> ConvertM (Pat (Exp Ty) (FVar Ty))
-          toPat = \case
-            NullBinder _ -> pure WildP
-            VarBinder _ i  ->  pure $ VarP i
-            ConstructorBinder _ tn cn bs -> ConP tn cn <$> traverse toPat bs
-            NamedBinder _ nm b ->  AsP nm <$> toPat b
-            LiteralBinder _ lp -> case lp of
-              NumericLiteral (Left i) -> pure . LitP .  IntL $ i
-              NumericLiteral (Right d) -> pure . LitP .  NumL $ d
-              StringLiteral pss -> pure . LitP . StringL $ pss
-              CharLiteral c -> pure . LitP . CharL $ c
-              BooleanLiteral b -> pure . LitP . BoolL $ b
-              ArrayLiteral as ->  LitP . ArrayL <$>  traverse  toPat as
-              ObjectLiteral fs' -> do
-                -- this isn't right, we need to make sure the positions of the binders are correct,
-                -- since (I think?) you can use an Obj binder w/o using all of the fields
-                let fs = sortOn fst fs'
-                    len = length fs
-                    fakeCName = mkFakeCName len
-                    fakeTName = mkFakeTName len
-                inner <- traverse (toPat . snd) fs
-                pure $ ConP fakeTName fakeCName inner
 
           goResult :: (Either [(Expr Ann, Expr Ann)] (Expr Ann) -> Expr Ann)
                    -> Either [(Expr Ann, Expr Ann)] (Expr Ann)
@@ -322,7 +279,7 @@ tryConvertExpr' = go id
            rest <- goBinds g bs
            pure $ xs' <> rest
 
-       allVars :: Expr Ann -> [(SourceType,Qualified Ident)]
+       allVars :: Expr Ann -> [(SourceType, Qualified Ident)]
        allVars ex = ex ^.. icosmos @Context @(Expr Ann) M.empty . _Var . to (\(_,b,c) -> (b,c))
 
        findBoundVar :: Ident -> Expr Ann -> Maybe (SourceType, Qualified Ident)
@@ -450,13 +407,6 @@ rowLast :: SourceType -> SourceType
 rowLast t = case rowToList t of
   (_,r) -> r
 
-mkFakeCName :: Int -> Qualified (ProperName 'ConstructorName)
-mkFakeCName x = Qualified (ByModuleName $ moduleNameFromString "$GEN") (ProperName $ "~TUPLE_" <> T.pack (show x))
-
-mkFakeTName :: Int -> Qualified (ProperName 'TypeName)
-mkFakeTName x = case mkFakeCName x of
-  Qualified qb n -> Qualified qb $ coerceProperName @_ @'TypeName n
-
 allTypes :: Expr Ann -> [SourceType]
 allTypes e = e ^.. icosmos @Context @(Expr Ann) M.empty . to exprType
 
@@ -482,7 +432,7 @@ mkConstructorMap decls = M.union _100TupleCtors <$>  foldM go M.empty (M.toList 
     go :: Map (ProperName 'ConstructorName) (ProperName 'TypeName, Int, [Ty])
           -> (ProperName 'TypeName, (DataDeclType, [(Text, Maybe SourceType)],[DataConstructorDeclaration]))
           -> TyConvertM (Map (ProperName 'ConstructorName) (ProperName 'TypeName, Int, [Ty]))
-    go acc (tyNm,(declTy,tyArgs,ctorDatas)) = do
+    go acc (tyNm,(_declTy, _tyArgs, ctorDatas)) = do
       ctors <- traverse extractCTorData ctorDatas
       let indexedCTors = mkIndex <$> ctors
       pure $ foldl' (\acc' (a,b,c,d) -> M.insert a (b,c,d) acc') acc indexedCTors

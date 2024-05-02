@@ -1,4 +1,5 @@
 {-# OPTIONS_GHC -Wno-orphans #-} -- has to be here (more or less)
+{-# OPTIONS_GHC -Werror #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TypeApplications #-}
 {-# LANGUAGE DeriveTraversable, DeriveAnyClass  #-}
@@ -9,13 +10,14 @@
 module Language.PureScript.CoreFn.Convert.IR where
 
 import Prelude
-import Language.PureScript.Names (Ident(..), Qualified (..), QualifiedBy (..), ProperNameType (..), ProperName(..), disqualify, runModuleName, showIdent, runIdent)
+import Language.PureScript.Names (Ident(..), Qualified (..), QualifiedBy (..), ProperNameType (..), ProperName(..), disqualify, runModuleName, showIdent, runIdent, moduleNameFromString, coerceProperName)
 import Language.PureScript.Types
     ( SkolemScope, TypeVarVisibility (..), genPureName )
+import Language.PureScript.CoreFn (Binder(..), Literal (..))
 import Language.PureScript.CoreFn.FromJSON ()
 import Data.Text qualified as T
 import Data.Map qualified as M
-import Language.PureScript.PSString (PSString, prettyPrintString)
+import Language.PureScript.PSString (PSString, prettyPrintString, decodeStringWithReplacement)
 import Data.Text (Text)
 import Bound
 import Data.Kind qualified as GHC
@@ -31,7 +33,7 @@ import Data.Map (Map)
 import Control.Lens.TH (makePrisms)
 import Bound.Scope (instantiateEither)
 import Protolude.List (ordNub)
-import Data.List (sortOn)
+import Data.List (elemIndex, sortOn)
 import Control.Lens (view,_2)
 -- The final representation of types and terms, where all constructions that
 -- *should* have been eliminated in previous steps are impossible
@@ -93,6 +95,7 @@ iUsedTypeVariables = ordNub . go
     go (KApp t1 t2)  = go t1 <> go t2
     go (KType t1 t2) = go t1 <> go t2
     go (Forall _ _ _ inner _) = go inner
+    go (TyCon _) = error "iUsedTypeVariables: TODO: TyCon" -- not sure what it should be
 
 resultTy :: Ty -> Ty
 resultTy t = case snd $  stripQuantifiers t of
@@ -101,6 +104,7 @@ resultTy t = case snd $  stripQuantifiers t of
 
 -- HACK: Need this for pretty printer, refactor later
 class FuncType ty where
+  -- | Get first argument of a function, if function or act as identity otherwise
   headArg :: ty -> ty
 
 instance FuncType Ty where
@@ -111,7 +115,7 @@ instance FuncType Ty where
 type Bindings ty = Map Int (FVar ty)
 
 -- A Bound variable. Serves as a bridge between the textual representation and the named de bruijn we'll need for PIR
-data BVar ty = BVar Int ty Ident deriving (Show, Eq, Ord)
+data BVar ty = BVar Int ty Ident deriving (Show, Eq, Ord) -- maybe BVar Int (FVar ty) ??
 
 data FVar ty = FVar ty Ident deriving (Show, Eq, Ord)
 
@@ -122,6 +126,7 @@ data Lit a
   | CharL Char
   | BoolL Bool
   | ArrayL [a]
+  | ObjectL [(PSString, a)]
   deriving (Eq,Ord,Show,Functor,Foldable,Traversable)
 
 -- We're switching to a more "Haskell-like" representation (largely to avoid overlapping names)
@@ -153,7 +158,6 @@ flattenBind = \case
   NonRecursive i e -> [(i,e)]
   Recursive xs -> xs
 
-
 data Exp ty a
  = V a -- let's see if this works
  | LitE ty (Lit (Exp ty a))
@@ -162,6 +166,8 @@ data Exp ty a
  | AppE (Exp ty a) (Exp ty a)
  | CaseE ty [Exp ty a] [Alt ty (Exp ty) a]
  | LetE (Bindings ty) [BindE ty (Exp ty) a] (Scope (BVar ty) (Exp ty) a)
+ | AccessorE ty PSString (Exp ty a)
+ | ObjectUpdateE ty (Exp ty a) (Maybe [PSString]) [(PSString, (Exp ty a))]
  deriving (Eq,Functor,Foldable,Traversable)
 
 instance Eq ty => Eq1 (Exp ty) where
@@ -232,6 +238,10 @@ instance Monad (Exp ty) where
         CharL c     -> CharL c
         BoolL b     -> BoolL b
         ArrayL xs   -> ArrayL $ map (\x -> x >>= f) xs
+        ObjectL obj -> ObjectL $ map (\(field, x) -> (field, x >>= f)) obj
+  AccessorE ty field expr >>= f = AccessorE ty field (expr >>= f)
+  ObjectUpdateE ty expr toCopy toUpdate >>= f =
+    ObjectUpdateE ty (expr >>= f) toCopy (map (\(field, x) -> (field, x >>= f)) toUpdate)
 
 instance Bound Pat where
   VarP i  >>>= _      = VarP i
@@ -247,6 +257,7 @@ instance Bound Pat where
         CharL c     -> CharL c
         BoolL b     -> BoolL b
         ArrayL xs   -> ArrayL $ map (\x -> x >>>= f) xs
+        ObjectL obj -> ObjectL $ map (\(field, x) -> (field, x >>>= f)) obj
 
 instance Bound (Alt ty) where
   UnguardedAlt i ps e >>>= f = UnguardedAlt i (map (>>>= f) ps) (e >>>= f)
@@ -264,10 +275,10 @@ instance Bound (BindE ty) where
         in (i,e') : rest'
 
 instance Pretty (BVar ty) where
-  pretty (BVar n t i) =   pretty (showIdent i) <> pretty n -- <+> "::" <+> pretty t
+  pretty (BVar n _t i) =   pretty (showIdent i) <> pretty n -- <+> "::" <+> pretty t
 
 instance Pretty (FVar ty) where
-  pretty (FVar t i) =  pretty (showIdent i) -- <+> "::" <+> pretty t)
+  pretty (FVar _t i) =  pretty (showIdent i) -- <+> "::" <+> pretty t)
 
 instance Pretty Ty where
   pretty = \case
@@ -333,6 +344,8 @@ instance (Pretty a, Pretty ty, FuncType ty) => Pretty (Exp ty a) where
           indent 2 . align . vcat $ pretty <$> bound,
           "in" <+> align (pretty unscopedE)
           ]
+    AccessorE _ field expr -> parens (pretty expr) <> dot <> pretty field
+    ObjectUpdateE _ _ _ _ -> "TODO: Implement ObjectUpdateE printer"
 
 instance (Pretty a, Pretty ty, FuncType ty) => Pretty (Alt ty (Exp ty) a) where
   pretty = \case
@@ -353,6 +366,8 @@ instance Pretty a => Pretty (Lit a) where
     CharL c -> viaShow . show $ c
     BoolL b -> if b then "true" else "false"
     ArrayL xs -> list $ pretty <$> xs
+    ObjectL obj -> encloseSep "{" "}" ", "
+      (map (\(field, expr) -> (pretty $ T.pack $ decodeStringWithReplacement field) <> ":" <+> pretty expr) obj)
 
 instance Pretty a => Pretty (Pat (Exp ty) a) where
   pretty = \case
@@ -366,6 +381,7 @@ instance Pretty a => Pretty (Pat (Exp ty) a) where
       CharL c -> viaShow . show $ c
       BoolL b -> if b then "true" else "false"
       ArrayL xs -> list $ pretty <$> xs
+      ObjectL _obj -> "TODO: Implement ObjectL pattern printer"
     ConP cn _ ps -> pretty (runProperName . disqualify $ cn) <+> hsep (pretty <$> ps)
 
 instance (Pretty a, Pretty ty, FuncType ty) => Pretty (BindE ty (Exp ty) a) where
@@ -411,6 +427,8 @@ eTy f = \case
   AppE e1 e2 -> iAppType f e1 e2
   CaseE t _ _  -> t
   LetE _ _ e -> eTy' f e
+  AccessorE t _ _ -> t
+  ObjectUpdateE t _ _ _ -> t
 
 eTy' :: forall x. (x -> Var (BVar Ty) (FVar Ty)) -> Scope (BVar Ty) (Exp Ty) x -> Ty
 eTy' f scoped = case instantiateEither (either (V . B) (V . F)) scoped of
@@ -423,6 +441,8 @@ eTy' f scoped = case instantiateEither (either (V . B) (V . F)) scoped of
   AppE  e1 e2 -> iAppType (>>= f) e1 e2
   CaseE t _ _  -> t
   LetE  _ _ e -> eTy' (>>= f) e
+  AccessorE t _ _ -> t
+  ObjectUpdateE t _ _ _ -> t
 
 -- TODO: Explain what this is / how it works
 iInstantiates :: Text -- Name of the TyVar we're checking
@@ -514,3 +534,65 @@ instance Show ty => Show1 (Alt ty (Exp ty)) where -- idk why the TH can't derive
 deriving instance (Show a, Show ty) => Show (Exp ty a)
 
 makePrisms ''Ty
+
+-- REVIEW: This *MIGHT* not be right. I'm not 1000% sure what the PS criteria for a mutually rec group are
+--         First arg threads the FVars that correspond to the already-processed binds
+--         through the rest of the conversion. I think that's right - earlier bindings
+--         should be available to later bindings
+assembleBindEs :: Eq ty =>  [FVar ty] -> [[(FVar ty ,Exp ty (FVar ty))]] -> [BindE ty (Exp ty) (FVar ty)]
+assembleBindEs _ [] = []
+assembleBindEs dict ([]:rest) = assembleBindEs dict rest -- shouldn't happen but w/e
+assembleBindEs dict ([(fv@(FVar _tx ix),e)]:rest) =
+  let dict' = fv:dict
+      abstr = abstract (abstractMany dict')
+  in NonRecursive ix (abstr e) : assembleBindEs dict' rest
+assembleBindEs dict (xsRec:rest) =
+  let (dict', recBind) = assembleRec dict xsRec
+  in recBind : assembleBindEs dict' rest
+
+assembleRec :: Eq ty => [FVar ty] -> [(FVar ty, Exp ty (FVar ty))] -> ([FVar ty], BindE ty (Exp ty) (FVar ty))
+assembleRec dict xs =
+  let dict' = dict <> (fst <$> xs)
+      abstr = abstract (abstractMany dict')
+      recBind = Recursive
+                . map (uncurry $ \(FVar _ ixx) xp -> (ixx, abstr xp))
+                $ xs
+  in (dict', recBind)
+
+mkBindings :: [FVar ty] -> Bindings ty
+mkBindings = M.fromList . zip [0..]
+
+abstractMany :: Eq ty => [FVar ty] -> FVar ty -> Maybe (BVar ty)
+abstractMany xs v@(FVar t i) = (\index -> BVar index t i) <$> elemIndex v xs
+
+toPat :: Binder ann -> Pat (Exp ty) (FVar ty)
+toPat = \case
+  NullBinder _ -> WildP
+  VarBinder _ i  ->  VarP i
+  ConstructorBinder _ tn cn bs -> ConP tn cn $ map toPat bs
+  NamedBinder _ nm b ->  AsP nm $ toPat b
+  LiteralBinder _ lp -> case lp of
+    NumericLiteral (Left i) -> LitP $ IntL i
+    NumericLiteral (Right d) -> LitP $ NumL d
+    StringLiteral pss -> LitP $ StringL pss
+    CharLiteral c -> LitP $ CharL c
+    BooleanLiteral b -> LitP $ BoolL b
+    ArrayLiteral as -> LitP $ ArrayL $ map toPat as
+    ObjectLiteral fs' -> do
+      -- this isn't right, we need to make sure the positions of the binders are correct,
+      -- since (I think?) you can use an Obj binder w/o using all of the fields
+      let fs = sortOn fst fs'
+          len = length fs
+          fakeCName = mkFakeCName len
+          fakeTName = mkFakeTName len
+          inner = map (toPat . snd) fs
+        in ConP fakeTName fakeCName inner
+
+mkFakeCName :: Int -> Qualified (ProperName 'ConstructorName)
+mkFakeCName x =
+  Qualified
+    (ByModuleName $ moduleNameFromString "$GEN")
+    (ProperName $ "~TUPLE_" <> T.pack (show x))
+
+mkFakeTName :: Int -> Qualified (ProperName 'TypeName)
+mkFakeTName x = coerceProperName @_ @'TypeName <$> mkFakeCName x

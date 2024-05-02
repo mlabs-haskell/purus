@@ -255,6 +255,7 @@ library
     Language.PureScript.CoreFn.Convert
     Language.PureScript.CoreFn.Convert.Monomorphize
     Language.PureScript.CoreFn.Convert.DesugarObjects
+    Language.PureScript.CoreFn.Convert.DesugarCore
     Language.PureScript.CoreFn.Convert.IR
     Language.PureScript.CoreFn.Convert.ToPIR
     Language.PureScript.CoreFn.CSE

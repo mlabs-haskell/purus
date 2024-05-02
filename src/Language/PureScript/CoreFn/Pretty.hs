@@ -27,7 +27,8 @@ import Language.PureScript.CoreFn.Pretty.Expr as PRETTY
 import Language.PureScript.CoreFn.Pretty.Types as PRETTY
 
 import Prettyprinter
-    ( layoutSmart,
+    ( Pretty (pretty),
+      layoutSmart,
       defaultLayoutOptions,
       layoutPretty,
       Doc )
@@ -75,3 +76,7 @@ prettyTypeStr = T.unpack . smartRender . asOneLine prettyType
 
 
 {- TYPES (move later) -}
+
+-- TODO: Move
+instance Show a => Pretty (Type a) where
+  pretty t = pretty $ prettyTypeStr t
