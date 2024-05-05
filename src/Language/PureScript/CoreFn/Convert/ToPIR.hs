@@ -237,7 +237,7 @@ mkKind (Just t) = foldr1 (PIR.KindArrow ()) (collect t)
       other -> error $ "Not a thing of kind type " <> ppTy other
 
 -- TODO: Real monad stack w/ errors and shit
-toPIR :: forall x. (x -> Var (BVar Ty) (FVar Ty)) -> Exp Ty x -> State  ConvertState PIRTerm
+toPIR :: forall a. (a -> Var (BVar Ty) (FVar Ty)) -> Exp WithoutObjects Ty a -> State  ConvertState PIRTerm
 toPIR f = \case
   V (f -> F (FVar _ ident)) -> do
     let nm = showIdent' ident
@@ -287,14 +287,14 @@ toPIR f = \case
         pure $ PIR.Let () PIR.Rec  bindings' exp'
       Nothing -> error "non empty bindings"
  where
-   mkBinding :: (Name, Scope (BVar Ty) (Exp Ty) x) -> State ConvertState (Binding TyName Name DefaultUni DefaultFun ())
+   mkBinding :: (Name, Scope (BVar Ty) (Exp WithoutObjects Ty) a) -> State ConvertState (Binding TyName Name DefaultUni DefaultFun ())
    mkBinding (nm,scopedExp) = do
      let ty = eTy' f scopedExp
      ty' <- toPIRType ty
      exp' <- toPIR (>>= f) $ instantiateEither (either (IR.V . B) (IR.V . F)) scopedExp
      pure $ TermBind () Strict (VarDecl () nm ty') exp'
 
-   assembleScrutinee :: PIRTerm -> Ty ->  [Alt Ty (Exp Ty) x] -> State ConvertState (Term TyName Name DefaultUni DefaultFun ())
+   assembleScrutinee :: PIRTerm -> Ty ->  [Alt WithoutObjects Ty (Exp WithoutObjects Ty) a] -> State ConvertState (Term TyName Name DefaultUni DefaultFun ())
    assembleScrutinee scrut tx  alts = do
      let _binders = IR.getPat <$> alts
      alted <-  unzip <$> traverse (locally . goAlt tx) alts
@@ -318,13 +318,13 @@ toPIR f = \case
             rest <- mkFailBranch ts
             pure $ PIR.LamAbs () lamName (PIR.TyFun () t' boolT) rest
 
-       goAlt :: Ty -> Alt Ty (Exp Ty) x -> State ConvertState ([[Ty]],(Int,PIRTerm))
+       goAlt :: Ty -> Alt WithoutObjects Ty (Exp WithoutObjects Ty) a -> State ConvertState ([[Ty]],(Int,PIRTerm))
        goAlt t  (UnguardedAlt _ [pat] body) = do
          body' <- toPIR (>>= f) $ instantiateEither (either (IR.V . B) (IR.V . F)) body
          patToBoolFunc body' t pat
          where
 
-          patToBoolFunc :: PIRTerm -> Ty -> Pat (Exp Ty) x -> State ConvertState ([[Ty]],(Int,PIRTerm))
+          patToBoolFunc :: PIRTerm -> Ty -> Pat WithoutObjects (Exp WithoutObjects Ty) a -> State ConvertState ([[Ty]],(Int,PIRTerm))
           patToBoolFunc res tx = \case
             ConP tn cn ips -> do
               ctordict <- gets ctorDict
@@ -338,7 +338,7 @@ toPIR f = \case
                   ibfs <- goCtorArgs (zip tys ips)
                   pure (ctorTypes,(ctorix,ibfs))
            where
-             goCtorArgs :: [(Ty,Pat (Exp Ty) x)] -> State ConvertState PIRTerm
+             goCtorArgs :: [(Ty,Pat WithoutObjects (Exp WithoutObjects Ty) a)] -> State ConvertState PIRTerm
              goCtorArgs [] = pure res
              goCtorArgs [(t,VarP nm)] = do
                nm' <- mkTermName (runIdent nm)
@@ -390,7 +390,7 @@ mkConstructorFun acc cix (t:ts) = do
   pure $ LamAbs () newName lamTy rest
 mkConstructorFun _ _ _ = error "mkConstructorFun failed - should be impossible"
 
-litToPIR :: forall x. (x -> Var (BVar Ty) (FVar Ty)) -> Lit (Exp Ty x) -> State ConvertState  PIRTerm
+litToPIR :: forall a. (a -> Var (BVar Ty) (FVar Ty)) -> Lit WithoutObjects (Exp WithoutObjects Ty a) -> State ConvertState  PIRTerm
 litToPIR f = \case
     IntL i -> pure $ mkConstant () i
     NumL _ -> error "TODO: Doubles"

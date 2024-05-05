@@ -49,8 +49,9 @@ import Language.PureScript.AST.Declarations (DataConstructorDeclaration (..))
 import Data.Map (Map)
 import Language.PureScript.Constants.Prim qualified as C
 import Language.PureScript.CoreFn.Convert.DesugarCore (desugarCore)
+import Data.Void (Void)
 
-test :: FilePath -> Text -> IO (Exp Ty (FVar Ty))
+test :: FilePath -> Text -> IO (Exp WithoutObjects Ty (FVar Ty))
 test path decl = do
   myMod <- decodeModuleIO path
   case monomorphizeExpr myMod decl of
@@ -61,9 +62,15 @@ test path decl = do
         putStrLn (ppExp e)
         pure e
 
+data WithoutObjects
+
+type instance XAccessor WithoutObjects = Void
+type instance XObjectUpdate WithoutObjects = Void
+type instance XObjectLiteral WithoutObjects = Void
+
 prepPIR :: FilePath
         -> Text
-        -> IO (Exp Ty (FVar Ty), Map (ProperName 'TypeName) (DataDeclType, [(Text, Maybe SourceType)], [DataConstructorDeclaration]))
+        -> IO (Exp WithoutObjects Ty (FVar Ty), Map (ProperName 'TypeName) (DataDeclType, [(Text, Maybe SourceType)], [DataConstructorDeclaration]))
 prepPIR path  decl = do
   myMod@Module{..} <- decodeModuleIO path
 
@@ -168,13 +175,13 @@ prettyError = \case
 tryConvertExprIO :: Expr Ann -> IO ()
 tryConvertExprIO = putStrLn . either id ppExp . tryConvertExpr
 
-tryConvertExpr :: Expr Ann -> Either String (Exp Ty (FVar Ty))
+tryConvertExpr :: Expr Ann -> Either String (Exp WithoutObjects Ty (FVar Ty))
 tryConvertExpr = first prettyError . tryConvertExpr'
 
-tryConvertExpr' :: Expr Ann -> Either ExprConvertError (Exp Ty (FVar Ty))
+tryConvertExpr' :: Expr Ann -> Either ExprConvertError (Exp WithoutObjects Ty (FVar Ty))
 tryConvertExpr' = go id
   where
-    go :: (Expr Ann -> Expr Ann) -> Expr Ann -> Either ExprConvertError (Exp Ty (FVar Ty))
+    go :: (Expr Ann -> Expr Ann) -> Expr Ann -> Either ExprConvertError (Exp WithoutObjects Ty (FVar Ty))
     go f expression = case expression of
       Literal ann ty lit -> do
         let lhole = f . Literal ann ty . ArrayLiteral . pure
@@ -217,7 +224,7 @@ tryConvertExpr' = go id
         ty' <- goType ty
         pure . V $ FVar ty' nm
      where
-       goAlt :: (CaseAlternative Ann -> Expr Ann) -> CaseAlternative Ann -> Either ExprConvertError (Alt Ty (Exp Ty) (FVar Ty))
+       goAlt :: (CaseAlternative Ann -> Expr Ann) -> CaseAlternative Ann -> Either ExprConvertError (Alt WithoutObjects Ty (Exp WithoutObjects Ty) (FVar Ty))
        goAlt g (CaseAlternative binders result) = do
          boundVars <- concat <$> traverse (getBoundVar result) binders
          let pats = map toPat binders
@@ -250,7 +257,7 @@ tryConvertExpr' = go id
 
           goResult :: (Either [(Expr Ann, Expr Ann)] (Expr Ann) -> Expr Ann)
                    -> Either [(Expr Ann, Expr Ann)] (Expr Ann)
-                   -> Either ExprConvertError (Either [(Exp Ty (FVar Ty), Exp Ty (FVar Ty))] (Exp Ty (FVar Ty)))
+                   -> Either ExprConvertError (Either [(Exp WithoutObjects Ty (FVar Ty), Exp WithoutObjects Ty (FVar Ty))] (Exp WithoutObjects Ty (FVar Ty)))
           goResult h = \case
             Left exs -> do
               exs' <- traverse (goGuarded (h . Left)) exs
@@ -264,7 +271,7 @@ tryConvertExpr' = go id
                e2' <- go (\x -> cb [(e1,x)]) e2
                pure (e1',e2')
 
-       goBinds :: (Bind Ann -> Expr Ann) -> [Bind Ann] -> Either ExprConvertError [[(FVar Ty, Exp Ty (FVar Ty))]]
+       goBinds :: (Bind Ann -> Expr Ann) -> [Bind Ann] -> Either ExprConvertError [[(FVar Ty, Exp WithoutObjects Ty (FVar Ty))]]
        goBinds _ [] = pure []
        goBinds g (b:bs) = case b of
          NonRec ann ident expr -> do
@@ -290,7 +297,7 @@ tryConvertExpr' = go id
              Qualified ByNullSourcePos _ -> False -- idk about this actually, guess we'll find out
              Qualified (BySourcePos _) nm' -> nm == nm'
 
-       goList :: (Expr Ann -> Expr Ann) -> [Expr Ann] -> Either ExprConvertError [Exp Ty (FVar Ty)]
+       goList :: (Expr Ann -> Expr Ann) -> [Expr Ann] -> Either ExprConvertError [Exp WithoutObjects Ty (FVar Ty)]
        goList _ [] = pure []
        goList g (ex:exs) = do
          e' <- go g ex
@@ -303,7 +310,7 @@ tryConvertExpr' = go id
          | ty == t && nm == n' =  Just (BVar 0 t nm)
          | otherwise = Nothing
 
-       tryConvertLit :: (Expr Ann -> Expr Ann) -> Literal (Expr Ann) -> Either ExprConvertError (Either (Exp Ty (FVar Ty)) (Lit (Exp Ty (FVar Ty))))
+       tryConvertLit :: (Expr Ann -> Expr Ann) -> Literal (Expr Ann) -> Either ExprConvertError (Either (Exp WithoutObjects Ty (FVar Ty)) (Lit WithoutObjects (Exp WithoutObjects Ty (FVar Ty))))
        tryConvertLit cb = \case
          NumericLiteral (Left i) -> pure . Right $ IntL i
          NumericLiteral (Right d) -> pure . Right $ NumL d
