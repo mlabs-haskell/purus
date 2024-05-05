@@ -1,6 +1,6 @@
 {-# OPTIONS_GHC -Werror -Wno-orphans #-}
 {-# LANGUAGE TypeApplications #-}
-module Language.PureScript.CoreFn.Convert.DesugarCore (desugarCore) where
+module Language.PureScript.CoreFn.Convert.DesugarCore (WithObjects, desugarCore) where
 
 import Prelude
 

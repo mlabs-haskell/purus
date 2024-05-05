@@ -74,26 +74,31 @@ prepPIR :: FilePath
 prepPIR path  decl = do
   myMod@Module{..} <- decodeModuleIO path
 
-  case findDeclBody decl myMod of
+  desugaredExpr <- case findDeclBody decl myMod of
     Nothing -> error "findDeclBody"
     Just expr -> case desugarCore expr of
-      Right expr' -> putStrLn $ "desugarCore HERE: " <> IR.ppExp expr'
+      Right expr' -> do
+        putStrLn $ "desugarCore HERE: " <> IR.ppExp expr'
+        pure expr'
       Left msg -> throwIO
         $ userError
         $ "Could not simplify "
         <> T.unpack (runModuleName moduleName <> ".main") <> "\nReason:\n" <> msg
 
-  case monomorphizeExpr myMod decl of
+  case monomorphizeExpr myMod desugaredExpr of
     Left (MonoError _ msg ) ->
       throwIO
       $ userError
       $ "Couldn't monomorphize "
         <> T.unpack (runModuleName moduleName <> ".main") <> "\nReason:\n" <> msg
-    Right body -> case tryConvertExpr body of
-      Left convertErr -> throwIO $ userError convertErr
-      Right e -> do
-        putStrLn (ppExp e)
-        pure (e,moduleDataTypes)
+    Right body -> do
+      putStrLn (ppExp body)
+      throwIO $ userError "TODO: simplify objects"
+      -- case tryConvertExpr body of
+    --   Left convertErr -> throwIO $ userError convertErr
+    --   Right e -> do
+    --     putStrLn (ppExp e)
+    --     pure (e,moduleDataTypes)
 
 -- This gives us a way to report the exact location of the error (which may no longer correspond *at all* to
 -- the location given in the SourcePos annotations due to inlining and monomorphization)

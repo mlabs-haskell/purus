@@ -183,7 +183,7 @@ data Exp x ty a
  | CaseE ty [Exp x ty a] [Alt x ty (Exp x ty) a]
  | LetE (Bindings ty) [BindE ty (Exp x ty) a] (Scope (BVar ty) (Exp x ty) a)
  | AccessorE !(XAccessor x) ty PSString (Exp x ty a)
- | ObjectUpdateE !(XObjectUpdate x) ty (Exp x ty a) (Maybe [PSString]) [(PSString, (Exp x ty a))]
+ | ObjectUpdateE !(XObjectUpdate x) ty (Exp x ty a) (Maybe [PSString]) [(PSString, Exp x ty a)]
  deriving (Functor,Foldable,Traversable)
 
 deriving instance (Eq ty, Eq a, Eq (XAccessor x), Eq (XObjectUpdate x), Eq (XObjectLiteral x)) => Eq (Exp x ty a)
