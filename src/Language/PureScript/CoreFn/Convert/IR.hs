@@ -24,7 +24,7 @@ import Bound
 import Data.Kind qualified as GHC
 import Control.Monad
 import Data.Functor.Classes
-import Data.Bifunctor (Bifunctor(bimap, first))
+import Data.Bifunctor (Bifunctor(first))
 import Data.Maybe (fromJust, fromMaybe)
 import Text.Show.Deriving
 import Prettyprinter
@@ -149,7 +149,6 @@ deriving instance (Ord a, Ord (XObjectLiteral x)) => Ord (Pat x f a)
 
 data Alt x ty f a
   = UnguardedAlt (Bindings ty) [Pat x f a] (Scope (BVar ty) f a)
-  | GuardedAlt (Bindings ty) [Pat x f a] [(Scope (BVar ty) f a, Scope (BVar ty) f a)]
   deriving (Functor, Foldable, Traversable)
 
 deriving instance (Monad f, Show1 f, Show a, Show ty, Show (XObjectLiteral x)) => Show (Alt x ty f a)
@@ -159,7 +158,7 @@ deriving instance (Monad f, Ord1 f, Ord a, Ord ty, Ord (XObjectLiteral x)) => Or
 getPat :: Alt x ty f a -> [Pat x f a]
 getPat = \case
   UnguardedAlt _ ps _ -> ps
-  GuardedAlt _ ps _ -> ps
+
 -- idk if we really need the identifiers?
 data BindE ty (f :: GHC.Type -> GHC.Type) a
   = NonRecursive Ident (Scope (BVar ty) f a)
@@ -228,13 +227,6 @@ instance (Eq1 f, Monad f, Eq ty) => Eq1 (BindE ty f) where
 
 instance (Eq1 f, Monad f, Eq ty) => Eq1 (Alt x ty f) where
   liftEq eq (UnguardedAlt n1 ps1 e1) (UnguardedAlt n2 ps2 e2) = n1 == n2 && liftEq (liftEq eq) ps1 ps2 && liftEq eq e1 e2
-  liftEq eq (GuardedAlt n1 ps1 e1) (GuardedAlt n2 ps2 e2) = n1 == n2 && liftEq (liftEq eq) ps1 ps2 && go eq e1 e2
-    where
-      go :: forall a b. (a -> b -> Bool) -> [(Scope (BVar ty) f a, Scope (BVar ty) f a)] -> [(Scope (BVar ty) f b, Scope (BVar ty) f b)] -> Bool
-      go _ [] [] = True
-      go f ((g1,ex1):xs) ((g2,ex2):ys) = liftEq f g1 g2 && liftEq f ex1 ex2  && go f xs ys
-      go _ _ _ = False
-  liftEq _ _ _ = False
 
 instance Applicative (Exp x ty) where
   pure = V
@@ -280,7 +272,6 @@ instance Bound (Pat x) where
 
 instance Bound (Alt x ty) where
   UnguardedAlt i ps e >>>= f = UnguardedAlt i (map (>>>= f) ps) (e >>>= f)
-  GuardedAlt i ps es  >>>= f = GuardedAlt i (map (>>>= f) ps) (map (bimap (>>>= f) (>>>= f)) es)
 
 instance Bound (BindE ty) where
   NonRecursive i e >>>= f = NonRecursive i $ e >>>= f
@@ -370,7 +361,6 @@ instance (Pretty a, Pretty ty, FuncType ty) => Pretty (Alt x ty (Exp x ty) a) wh
   pretty = \case
     UnguardedAlt _ ps body -> hcat (pretty <$> ps) <+> "->" <>
                               hardline <> indent 2 (pretty $ fromScope body)
-    GuardedAlt{} -> "TODO: Implement GuardedAlt printer"
 
 instance (Pretty b, Pretty a) => Pretty (Var b a) where
   pretty = \case
@@ -546,18 +536,6 @@ instance (Show ty, Show (XAccessor x), Show (XObjectUpdate x), Show (XObjectLite
       . showsPrec d (fmap (\x -> liftShowsPrec sp sl d x "") ps)
       . showString " "
       . liftShowsPrec sp sl d e
-  liftShowsPrec sp sl d (GuardedAlt i ps e)
-    =  showString "GuardedAlt "
-       . showsPrec d i
-       . showString " "
-       . ps'
-       . showString " "
-       . e'
-   where
-      ps' = showsPrec d (fmap (\x -> liftShowsPrec sp sl d x  "") ps)
-      e' =  showsPrec d $ fmap (\(x,y) ->
-                    let f z = liftShowsPrec sp sl d z  ""
-                    in   (f x, f y)) e
 
 deriving instance (Show a, Show ty, Show1 (Exp x ty), Show (XAccessor x), Show (XObjectUpdate x), Show (XObjectLiteral x)) => Show (Exp x ty a)
 

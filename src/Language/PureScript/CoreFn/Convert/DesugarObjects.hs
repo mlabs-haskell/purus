@@ -31,7 +31,7 @@ import Language.PureScript.CoreFn.Convert.Monomorphize
     ( nullAnn, mkFieldMap, decodeModuleIO, MonoError (..), monomorphizeExpr, findDeclBody )
 import Data.Text (Text)
 import Bound
-import Data.Bifunctor (Bifunctor(bimap, first, second))
+import Data.Bifunctor (Bifunctor(first, second))
 import Control.Lens.Combinators (to)
 import Language.PureScript.CoreFn (Binder(..), Module (..))
 import Data.Maybe (mapMaybe)
@@ -231,7 +231,7 @@ tryConvertExpr' = go id
          let resultF = g . CaseAlternative binders
              abstrE = abstract (abstractMany boundVars)
          goResult resultF result >>= \case
-           Left ges -> pure $ GuardedAlt (mkBindings boundVars) pats (bimap abstrE abstrE <$> ges)
+           Left _ges -> error "unrechable"
            Right re -> pure $ UnguardedAlt (mkBindings boundVars) pats (abstrE re)
         where
           getBoundVar :: Either [(Expr Ann, Expr Ann)] (Expr Ann) -> Binder Ann -> ConvertM [FVar Ty]

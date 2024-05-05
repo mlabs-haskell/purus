@@ -19,13 +19,12 @@ import Bound (abstract)
 import Control.Monad (join)
 import Data.List (find)
 import Language.PureScript.CoreFn.Utils (exprType, Context)
-import Data.Bifunctor (bimap)
-import Data.Bitraversable (bimapM)
 import Language.PureScript.CoreFn (Binder (..))
 import Data.Maybe (mapMaybe)
 import Control.Lens.Operators ((^..))
 import Control.Lens.IndexedPlated (icosmos)
 import Control.Lens.Combinators (to)
+import Control.Monad.Error.Class (MonadError(throwError))
 
 -- TODO: Something more reasonable
 type DS = Either String
@@ -76,8 +75,7 @@ desugarAlt (CaseAlternative binders result) = do
       abstrE = abstract (abstractMany boundVars)
   case result of
     Left exs -> do
-      ges <- traverse (bimapM desugarCore desugarCore) exs
-      pure $ GuardedAlt (mkBindings boundVars) pats (bimap abstrE abstrE <$> ges)
+      throwError $ "internal error: guarded alt not expected at this stage: " <> show exs
     Right ex -> do
       re <- desugarCore ex
       pure $ UnguardedAlt (mkBindings boundVars) pats (abstrE re)
