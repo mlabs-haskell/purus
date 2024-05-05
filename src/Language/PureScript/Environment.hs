@@ -390,6 +390,9 @@ pattern RecordT :: Type a -> Type a
 pattern RecordT a <-
   TypeApp _ (TypeConstructor _ C.Record) a
 
+mkRecordT :: SourceType -> SourceType
+mkRecordT = TypeApp nullSourceAnn (TypeConstructor nullSourceAnn C.Record)
+
 getFunArgTy :: Type a -> Type a
 getFunArgTy = \case
   a :-> _ -> a
