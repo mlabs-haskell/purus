@@ -41,3 +41,5 @@ tests/purs/make/
 .direnv/
 /.pre-commit-config.yaml
 /result*
+
+tests/purus/passing/**/cache-db.json

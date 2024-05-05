@@ -58,13 +58,10 @@ Exports:
   emptyList,
   consEmptyList1,
   consEmptyList2,
-<<<<<<< HEAD
   id,
   objForall,
   arrForall,
-=======
   testEqViaOrd,
->>>>>>> sean/monomorph-cleanup
   eqInt,
   eq2IntBoolean,
   ordInt
@@ -335,13 +332,8 @@ workingEven =
        true -> (1: Int)
        _ -> (42: Int)
 
-<<<<<<< HEAD
-emptyList :: forall (t107 :: Type). Array t107
-emptyList = ([]: forall (t107 :: Type). Array t107)
-=======
-emptyList :: forall (t114 :: Type). Array t114
-emptyList = ([]: forall (t114 :: Type). Array t114)
->>>>>>> sean/monomorph-cleanup
+emptyList :: forall (t121 :: Type). Array t121
+emptyList = ([]: forall (t121 :: Type). Array t121)
 
 cons :: forall (a :: Type). a -> Array a -> Array a
 cons = \(x: a) -> \(xs: Array a) -> ([(x: a)]: Array a)
@@ -350,20 +342,13 @@ consEmptyList1 :: Array Int
 consEmptyList1 = 
   (cons: forall (a :: Type). a -> Array a -> Array a)
   (1: Int)
-<<<<<<< HEAD
-  (emptyList: forall (t107 :: Type). Array t107)
-=======
-  (emptyList: forall (t114 :: Type). Array t114)
->>>>>>> sean/monomorph-cleanup
+  (emptyList: forall (t121 :: Type). Array t121)
 
 consEmptyList2 :: Array String
 consEmptyList2 = 
   (cons: forall (a :: Type). a -> Array a -> Array a)
   ("hello": String)
-<<<<<<< HEAD
-  (emptyList: forall (t107 :: Type). Array t107)
-=======
-  (emptyList: forall (t114 :: Type). Array t114)
+  (emptyList: forall (t121 :: Type). Array t121)
 
 compare :: forall (@a :: Type). Ord$Dict a -> a -> a -> Int
 compare = 
@@ -372,7 +357,6 @@ compare =
        Ord$Dict v -> 
          (v: {   compare :: a -> a -> Int, Eq0 :: Record {}@Type -> Eq$Dict a })
          .compare
->>>>>>> sean/monomorph-cleanup
 
 brokenEven :: Int -> Int
 brokenEven = 
@@ -493,11 +477,7 @@ aFunction6 =
     go :: forall (z :: Type). z -> Int
     go = \(v: z) -> (10: Int)
   in (aFunction: forall (x :: Type). x -> forall (y :: Type). y -> Int -> Int)
-<<<<<<< HEAD
-     ([]: Array t136)
-=======
-     ([]: Array t142)
->>>>>>> sean/monomorph-cleanup
+     ([]: Array t151)
      (go: forall (z :: Type). z -> Int)
 
 aBool :: Boolean
