@@ -56,6 +56,7 @@ import Control.Exception
 import Data.Text (Text)
 import Debug.Trace (trace, traceM)
 import Language.PureScript.CoreFn.Convert.DesugarCore (WithObjects, desugarCore)
+import Bound (fromScope)
 
 {- Instead of mutual recursion, return ADTs that describe the "next step" of the computation
 
@@ -237,9 +238,9 @@ monomorphizeA ::
   Monomorphizer (Exp WithObjects PurusType (FVar PurusType))
 monomorphizeA d xpr = trace ("monomorphizeA " <>  "\n  " <> ppExp xpr)  $ case xpr of
   app@(AppE _ arg) ->  do
-    (f,args) <-  note d ("Not an App: " <> renderExprStr app) $ analyzeApp app
-    traceM $ "FUN: " <> renderExprStr f
-    traceM $ "ARGS: " <> show (renderExprStr <$> args)
+    (f,args) <-  note d ("Not an App: " <> ppExp app) $ analyzeApp app
+    traceM $ "FUN: " <> ppExp f
+    traceM $ "ARGS: " <> show (ppExp <$> args)
     let types = concatMap (toArgs . exprType)  args
     traceM $ "ARG TYPES:" <> show (prettyTypeStr <$> types)
      -- maybe trace or check that the types match?
@@ -254,14 +255,14 @@ monomorphizeA d xpr = trace ("monomorphizeA " <>  "\n  " <> ppExp xpr)  $ case x
    isMonomorphizedVar (V (FVar sty  _)) = stripQuantifiers sty == sty
 
 isBuiltin :: forall x. Exp x PurusType (FVar PurusType) -> Bool
-isBuiltin (V (FVar vTy (Qualified (ByModuleName (ModuleName "Builtin"))))) = True
+isBuiltin (V (FVar vTy (Qualified (ByModuleName (ModuleName "Builtin")) _))) = True
 isBuiltin _ = False
 
 gLet ::
   [BindE PurusType (Exp WithObjects PurusType) (FVar PurusType)] ->
   Exp WithObjects PurusType (FVar PurusType) ->
   Exp WithObjects PurusType (FVar PurusType)
-gLet binds e = Let nullAnn binds e
+gLet binds e = LetE binds e
 
 nameShadows :: Context -> Ident -> Bool
 nameShadows cxt iden = isJust $ M.lookup iden cxt
@@ -271,7 +272,7 @@ unsafeApply ::
   [Exp WithObjects PurusType (FVar PurusType)] ->
   Exp WithObjects PurusType (FVar PurusType)
 unsafeApply e (arg:args)= case exprType e of
-  (a :-> b) -> unsafeApply (App nullAnn e arg) args
+  (a :-> b) -> unsafeApply (AppE e arg) args
   other -> Prelude.error $ "boom: " <> prettyTypeStr other
 unsafeApply e [] = e
 
@@ -281,9 +282,9 @@ handleFunction :: Context
                -> [Exp WithObjects PurusType (FVar PurusType)] -- TODO: List could be empty?
                -> Monomorphizer (Either ([BindE PurusType (Exp WithObjects PurusType) (FVar PurusType)], Exp WithObjects PurusType (FVar PurusType)) (Exp WithObjects PurusType (FVar PurusType)))
 -- handleFunction d exp args | isBuiltin exp = trace ("handleFunction: Builtin") $ pure . Right $ unsafeApply exp args
-handleFunction  _ e [] = trace ("handleFunction FIN: " <> renderExprStr e) $ pure (pure e)
+handleFunction  _ e [] = trace ("handleFunction FIN: " <> ppExp e) $ pure (pure e)
 handleFunction  d expr@(LamE (ForAll _ _ var _ inner  _) ident body'') (arg:args) = do
-  traceM  ("handleFunction abs:\n  " <> renderExprStr expr <> "\n  " <> show (renderExprStr <$> (arg:args)))
+  traceM  ("handleFunction abs:\n  " <> ppExp expr <> "\n  " <> show (ppExp <$> (arg:args)))
   let t = exprType arg
   traceM $ prettyTypeStr t
   let polyArgT = getFunArgTy inner
@@ -304,16 +305,16 @@ handleFunction  d expr@(LamE (ForAll _ _ var _ inner  _) ident body'') (arg:args
           funT  = doInstantiate $ function t bodyT
           e' = Abs ann funT ident body
       pure $ Right $ App nullAnn e' arg -- Abs ann (function t bodyT) ident body)
-handleFunction  d v@(V (FVar ty  qn)) es = trace ("handleFunction VarGo: " <> renderExprStr v) $ do
-  traceM (renderExprStr v)
-  traceM (show $ renderExprStr <$> es)
+handleFunction  d v@(V (FVar ty  qn)) es = trace ("handleFunction VarGo: " <> ppExp v) $ do
+  traceM (ppExp v)
+  traceM (show $ ppExp <$> es)
   e' <- either (uncurry gLet) id <$> inlineAs d ty qn
   handleFunction d e' es
 handleFunction  d e es | isMonoType (exprType e)  = pure . Right $ unsafeApply e es
 handleFunction d e es = throwError $ MonoError d
                         $ "Error in handleFunction:\n  "
-                        <> renderExprStr e
-                        <> "\n  " <> show (renderExprStr <$> es)
+                        <> ppExp e
+                        <> "\n  " <> show (ppExp <$> es)
                         <> "\n  is not an abstraction or variable"
 
 -- I *think* all CTors should be translated to functions at this point?
@@ -366,7 +367,7 @@ inlineAs  d ty qmn@(Qualified (ByModuleName mn') ident) = trace ("inlineAs: " <>
           e' <- monomorphizeWithType ty d e
           pure . Right $ e'
         Recursive xs -> do
-          traceM $ "RECURSIVE GROUP:\n" <> concatMap (\((_,xId),t) -> showIdent' xId <> " :: " <> renderExprStr t <> "\n") xs
+          traceM $ "RECURSIVE GROUP:\n" <> concatMap (\((_,xId),t) -> showIdent' xId <> " :: " <> ppExp t <> "\n") xs
           let msg' = "Target expression with identifier " <> showIdent' ident <> " not found in mutually recursive group"
           (targIdent,targExpr) <- note d msg' $ find (\x -> fst x == ident) (first snd <$> xs) -- has to be there
           fresh <- freshen targIdent
@@ -387,7 +388,7 @@ inlineAs  d ty qmn@(Qualified (ByModuleName mn') ident) = trace ("inlineAs: " <>
    makeBind :: Map Ident (Ident,SourceType) -> Context -> Ident -> SourceType -> Exp WithObjects PurusType (FVar PurusType) -> Monomorphizer (BindE PurusType (Exp WithObjects PurusType) (FVar PurusType))
    makeBind renameDict depth newIdent t e = trace ("makeBind: " <> showIdent' newIdent) $ do
      e' <- updateFreeVars renameDict depth  <$> monomorphizeWithType t depth e
-     pure $ NonRec nullAnn  newIdent e'
+     pure $ NonRecursive newIdent e'
 
    -- Find a declaration body in the *module* scope
    findDeclarationBody :: Ident -> Monomorphizer (Maybe (Exp WithObjects PurusType (FVar PurusType)))
@@ -430,10 +431,10 @@ inlineAs  d ty qmn@(Qualified (ByModuleName mn') ident) = trace ("inlineAs: " <>
               -> Exp WithObjects PurusType (FVar PurusType)
               -> [SourceType]
               -> Monomorphizer (Map Ident (Ident, SourceType, Exp WithObjects PurusType (FVar PurusType)))
-   collectFun visited _ e [t] = trace ("collectFun FIN:\n  " <> renderExprStr e <> " :: " <> prettyTypeStr t)  $ do
+   collectFun visited _ e [t] = trace ("collectFun FIN:\n  " <> ppExp e <> " :: " <> prettyTypeStr t)  $ do
      rest <- collectRecBinds visited t d e
      pure $ visited <> rest
-   collectFun visited dx e@(LamE (ForAll{}) idx body'') (t:ts) = trace ("collectFun:\n  " <> renderExprStr e <> "\n  " <> prettyTypeStr t <> "\n" <> show ts)  $ do
+   collectFun visited dx e@(LamE (ForAll{}) idx body'') (t:ts) = trace ("collectFun:\n  " <> ppExp e <> "\n  " <> prettyTypeStr t <> "\n" <> show ts)  $ do
       let body' = updateVarTy d idx t body''
           cxt   = M.insert idx t dx
       collectFun visited cxt body' ts
@@ -449,7 +450,7 @@ inlineAs  d ty qmn@(Qualified (ByModuleName mn') ident) = trace ("inlineAs: " <>
          collectRecBinds visited' t' d declBody
        Just _ -> pure visited
 
-   collectFun _ dx e _ = throwError $ MonoError dx $ "Unexpected expression in collectFun:\n  " <> renderExprStr e
+   collectFun _ dx e _ = throwError $ MonoError dx $ "Unexpected expression in collectFun:\n  " <> ppExp e
 
    collectRecBinds ::
      Map Ident (Ident, SourceType, Exp WithObjects PurusType (FVar PurusType)) ->
@@ -457,13 +458,13 @@ inlineAs  d ty qmn@(Qualified (ByModuleName mn') ident) = trace ("inlineAs: " <>
      Context ->
      Exp WithObjects PurusType (FVar PurusType) ->
      Monomorphizer (Map Ident (Ident, SourceType, Exp WithObjects PurusType (FVar PurusType)))
-   collectRecBinds visited t dx e = trace ("collectRecBinds:\n  " <> renderExprStr e <> "\n  " <> prettyTypeStr t) $ case e of
+   collectRecBinds visited t dx e = trace ("collectRecBinds:\n  " <> ppExp e <> "\n  " <> prettyTypeStr t) $ case e of
      LitE _ (ArrayL arr) -> trace "crbARRAYLIT" $ case t of
        ArrayT inner -> do
          innerBinds <- collectMany visited inner dx  arr
          pure $ visited <> innerBinds
        _ -> throwError $ MonoError dx ("Failed to collect recursive binds: " <> prettyTypeStr t <> " is not an Array type")
-     LitE _ (ObjectL fs) -> trace "crbOBJLIT" $ case t of
+     LitE _ (ObjectL _ fs) -> trace "crbOBJLIT" $ case t of
          RecordT fields -> do
            let fieldMap = mkFieldMap fields
            innerBinds <- collectRecFieldBinds visited fieldMap fs
@@ -481,7 +482,7 @@ inlineAs  d ty qmn@(Qualified (ByModuleName mn') ident) = trace ("inlineAs: " <>
      AccessorE _ _ _ _ -> trace "crbACCSR" $ pure visited -- idk. given (x.a :: t) we can't say what x is
      absE@(LamE _ _ _) -> trace ("crbABS TOARGS: " <> prettyTypeStr t) $ collectFun visited dx absE (toArgs t)
      app@(AppE _ e2) -> trace "crbAPP" $ do
-       (f,args) <-  note dx ("Not an App: " <> renderExprStr app) $ analyzeApp app
+       (f,args) <-  note dx ("Not an App: " <> ppExp app) $ analyzeApp app
        let types = (exprType <$> args) <> [t]
        funBinds' <- collectFun visited dx f types  -- collectRecBinds visited funTy d e1
        let funBinds = visited <> funBinds'
@@ -505,11 +506,9 @@ inlineAs  d ty qmn@(Qualified (ByModuleName mn') ident) = trace ("inlineAs: " <>
        collectRecBinds visited t dx ex
 
 
-
+-- TODO: Remove?
 extractAndFlattenAlts :: Alt x ty (Exp x ty) a -> [Exp WithObjects PurusType (FVar PurusType)]
-extractAndFlattenAlts (UnguardedAlt _ _ res) = case res of
-  Left xs -> concatMap (\(x,y) -> [x,y]) xs
-  Right x -> [x]
+extractAndFlattenAlts (UnguardedAlt _ _ res) = [res]
 
 
 -- I think this one actually requires case analysis? dunno how to do it w/ the lenses in less space (w/o having prisms for types which seems dumb?)
@@ -521,17 +520,21 @@ monomorphizeWithType ::
   Monomorphizer (Exp WithObjects PurusType (FVar PurusType))
 monomorphizeWithType ty d expr
   | exprType expr == ty = pure expr
-  | otherwise = trace ("monomorphizeWithType:\n  " <> renderExprStr expr <> "\n  " <> prettyTypeStr ty) $ case expr of
+  | otherwise = trace ("monomorphizeWithType:\n  " <> ppExp expr <> "\n  " <> prettyTypeStr ty) $ case expr of
       LitE ty (ArrayL arr) -> case ty of
         ArrayT inner -> LitE ty . ArrayL <$> traverse (monomorphizeWithType inner d)  arr
         _ -> throwError $ MonoError d ("Failed to collect recursive binds: " <> prettyTypeStr ty <> " is not a Record type")
+
       LitE _ (ObjectL ext fs) -> case ty of
         RecordT fields -> do
           let fieldMap = mkFieldMap fields
-          Literal ann ty . ObjectL ext <$> monomorphizeFieldsWithTypes fieldMap  fs
+          LitE ty . ObjectL ext <$> monomorphizeFieldsWithTypes fieldMap  fs
         _ -> throwError $ MonoError d ("Failed to collect recursive binds: " <> prettyTypeStr ty <> " is not a Record type")
+
       LitE ty lit -> pure $ LitE ty lit
+
       CtorE _ tName cName fs -> pure $ CtorE ty tName cName fs
+
       ObjectUpdateE ext _ orig copyFields updateFields -> case ty of
         RecordT fields -> do
           let fieldMap = mkFieldMap fields
@@ -539,36 +542,40 @@ monomorphizeWithType ty d expr
           updateFields' <- monomorphizeFieldsWithTypes fieldMap updateFields
           pure $ ObjectUpdateE ext ty orig copyFields updateFields'
         _ -> throwError $ MonoError d ("Failed to collect recursive binds: " <> prettyTypeStr ty <> " is not a Record type")
+
       AccessorE ext _ str e -> pure $ AccessorE ext ty str e -- idk?
-      fun@(LamE _ ident body) -> trace ("MTABs:\n  " <> renderExprStr fun <> " :: " <> prettyTypeStr ty) $ do
+      fun@(LamE _ ident body) -> trace ("MTABs:\n  " <> ppExp fun <> " :: " <> prettyTypeStr ty) $ do
         case ty of
           (a :-> b) -> case nameShadows d ident of
             False -> do
               let cxt = M.insert ident a d
               body' <- monomorphizeWithType b cxt $ updateVarTy cxt ident a body
-              pure $ Abs nullAnn ty ident body'
+              pure $ LamE ty ident body'
             True -> do
               freshIdent <- freshen ident
               let body' = renameBoundVar ident freshIdent d $ updateVarTy d ident a body
                   cxt   = M.insert freshIdent a d
               body'' <- monomorphizeWithType b cxt body'
-              pure $ Abs nullAnn ty freshIdent body''
+              error "TODO"
+              -- pure $ Abs nullAnn ty freshIdent body''
           _ -> throwError $ MonoError d "Abs isn't a function"
 
-      app@(AppE _ e2) -> trace ("MTAPP:\n  " <> renderExprStr app) $  do
-        (f,args) <- note d ("Not an app: " <> renderExprStr app) $ analyzeApp app
+      app@(AppE _ e2) -> trace ("MTAPP:\n  " <> ppExp app) $  do
+        (f,args) <- note d ("Not an app: " <> ppExp app) $ analyzeApp app
         let types = (exprType <$> args) <> [ty]
-        traceM $ renderExprStr f
         e1' <- either (uncurry gLet) id <$> handleFunction d f args
-        pure $ App a e1' e2
+        pure $ AppE e1' e2
+
       V a -> pure $ V a -- idk
+
       CaseE _ scrut alts -> error "TODO: wtf?"
         -- let f = monomorphizeWithType  ty d
         --     -- goAlt :: Alt WithObjects PurusType -> Monomorphizer (CaseAlternative Ann)
         --     goAlt (CaseAlternative binders results) =
         --       CaseAlternative binders <$> bitraverse (traverse (bitraverse f f)) f results
         -- in Case a ty scrut <$> traverse goAlt alts
-      LetE a binds e -> Let a binds <$> monomorphizeWithType ty d e
+
+      LetE a binds e -> LetE a binds <$> monomorphizeWithType ty d e
   where
     monomorphizeFieldsWithTypes :: M.Map PSString (RowListItem SourceAnn) -> [(PSString, Exp WithObjects PurusType (FVar PurusType))] -> Monomorphizer [(PSString, Exp WithObjects PurusType (FVar PurusType))]
     monomorphizeFieldsWithTypes _ [] = pure []
