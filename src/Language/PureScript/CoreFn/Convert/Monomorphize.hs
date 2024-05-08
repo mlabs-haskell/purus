@@ -115,7 +115,7 @@ monomorphizeExpr ::
   Exp WithObjects PurusType (FVar PurusType) ->
   Either MonoError (Exp WithObjects PurusType (FVar PurusType))
 monomorphizeExpr m@Module{..} expr =
-  runRWST (monomorphizeA M.empty expr) (moduleName,moduleDecls) (MonoState M.empty 0) & \case
+  runRWST (monomorphizeA M.empty expr) (moduleName, moduleDecls) (MonoState M.empty 0) & \case
     Left err -> Left err
     Right (a,_,_) -> Right a
 
@@ -298,13 +298,13 @@ handleFunction  d expr@(LamE (ForAll _ _ var _ inner  _) ident body'') (arg:args
     Left (binds,body) -> do
       let bodyT = exprType body
           funT  = doInstantiate $ function t bodyT
-          e' = Abs ann funT  ident body
-      pure $ Left (binds, App nullAnn e' arg)
+          e' = LamE funT ident body
+      pure $ Left (binds, AppE e' arg)
     Right body -> do
       let bodyT = exprType body
           funT  = doInstantiate $ function t bodyT
-          e' = Abs ann funT ident body
-      pure $ Right $ App nullAnn e' arg -- Abs ann (function t bodyT) ident body)
+          e' = LamE funT ident body
+      pure $ Right $ AppE e' arg -- Abs ann (function t bodyT) ident body)
 handleFunction  d v@(V (FVar ty  qn)) es = trace ("handleFunction VarGo: " <> ppExp v) $ do
   traceM (ppExp v)
   traceM (show $ ppExp <$> es)
@@ -324,14 +324,14 @@ updateVarTy d ident ty = itransform goVar d
   where
     goVar :: Context -> Exp WithObjects PurusType (FVar PurusType) -> Exp WithObjects PurusType (FVar PurusType)
     goVar _d expr = case expr ^? _Var of
-      Just (ann,_,Qualified q@(BySourcePos _) varId) | varId == ident -> Var ann ty (Qualified q ident)
+      Just (ann,_,Qualified q@(BySourcePos _) varId) | varId == ident -> V ty (Qualified q ident)
       _ -> expr
 
 updateFreeVar :: M.Map Ident (Ident,SourceType) -> Context -> Exp WithObjects PurusType (FVar PurusType) -> Exp WithObjects PurusType (FVar PurusType)
 updateFreeVar dict _ expr = case expr ^? _Var of
      Just (_,_,Qualified (ByModuleName _) varId) -> case M.lookup varId dict of
        Nothing -> expr
-       Just (newId,newType) -> Var nullAnn newType (Qualified ByNullSourcePos newId)
+       Just (newId,newType) -> V newType (Qualified ByNullSourcePos newId)
      _ -> expr
 
 updateFreeVars :: Map Ident (Ident, SourceType) -> Context -> Exp WithObjects PurusType (FVar PurusType) -> Exp WithObjects PurusType (FVar PurusType)
@@ -340,7 +340,7 @@ updateFreeVars dict = itransform (updateFreeVar dict)
 -- doesn't change types!
 renameBoundVar :: Ident -> Ident -> Context -> Exp WithObjects PurusType (FVar PurusType) -> Exp WithObjects PurusType (FVar PurusType)
 renameBoundVar old new _ e = case e ^? _Var of
-  Just (ann,ty,Qualified (BySourcePos sp) varId) | varId == old -> Var ann ty (Qualified (BySourcePos sp) new)
+  Just (ann, ty, Qualified (BySourcePos sp) varId) | varId == old -> V ty (Qualified (BySourcePos sp) new)
   _ -> e
 
 renameBoundVars :: Ident -> Ident -> Context -> Exp WithObjects PurusType (FVar PurusType) -> Exp WithObjects PurusType (FVar PurusType)
@@ -356,7 +356,7 @@ inlineAs ::
                   (Exp WithObjects PurusType (FVar PurusType)))
 -- TODO: Review whether this has any purpose here \/
 inlineAs _ ty nm@(Qualified (ByModuleName (ModuleName "Builtin")) idnt) = trace ("inlineAs BUILTIN:\n  " <> "IDENT: " <> showIdent' idnt <> "\n  TYPE: " <> prettyTypeStr ty)
-  $ pure . Right $ Var nullAnn ty nm
+  $ pure . Right $ V ty nm
 -- TODO: Probably can inline locally bound variables? FIX: Keep track of local name bindings
 inlineAs d _ (Qualified (BySourcePos _) ident) = throwError $ MonoError d  $ "can't inline bound variable " <> showIdent' ident
 inlineAs  d ty qmn@(Qualified (ByModuleName mn') ident) = trace ("inlineAs: " <> showIdent' ident <> " :: " <>  prettyTypeStr ty) $ ask >>= \(mn,modDict) ->
@@ -378,7 +378,7 @@ inlineAs  d ty qmn@(Qualified (ByModuleName mn') ident) = trace ("inlineAs: " <>
               cxt = foldl' (\acc (idx,tyx)-> M.insert idx tyx acc) d $ (\(a,b,_) -> (a,b)) <$> M.elems dict
           binds <- traverse (\(newId,newTy,oldE) -> makeBind renameMap cxt newId newTy oldE) bindingMap
           case M.lookup targIdent renameMap of
-            Just (newId,newTy) -> pure $ Left (binds,Var nullAnn newTy (Qualified ByNullSourcePos newId))
+            Just (newId,newTy) -> pure $ Left (binds, V newTy (Qualified ByNullSourcePos newId))
             Nothing -> throwError
                        $ MonoError d
                        $ "Couldn't inline " <> showIdent' ident <> " - identifier didn't appear in collected bindings:\n  "  <> show renameMap
