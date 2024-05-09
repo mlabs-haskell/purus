@@ -117,7 +117,7 @@ qualifiedToJSON f (Qualified qb a) =
 moduleNameToJSON :: ModuleName -> Value
 moduleNameToJSON (ModuleName name) = toJSON (T.splitOn (T.pack ".") name)
 
-moduleToJSON :: Version -> Module Ann -> Value
+moduleToJSON :: Version -> Module (Bind Ann) Ann -> Value
 moduleToJSON v m = object
   [ "sourceSpan" .= sourceSpanToJSON (moduleSourceSpan m)
   , "moduleName" .= moduleNameToJSON (moduleName m)
@@ -142,7 +142,7 @@ moduleToJSON v m = object
   reExportsToJSON = toJSON . M.map (map runIdent)
 
 
-moduleToJSON' ::  Module Ann -> Value
+moduleToJSON' ::  Module (Bind Ann) Ann -> Value
 moduleToJSON' m = object
   [ "sourceSpan" .= sourceSpanToJSON (moduleSourceSpan m)
   , "moduleName" .= moduleNameToJSON (moduleName m)

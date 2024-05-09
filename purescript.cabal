@@ -254,6 +254,8 @@ library
     Language.PureScript.CoreFn.Binders
     Language.PureScript.CoreFn.Convert
     Language.PureScript.CoreFn.Convert.Monomorphize
+    Language.PureScript.CoreFn.Convert.Monomorphize.Utils
+    Language.PureScript.CoreFn.Convert.MonomorphizeV2
     Language.PureScript.CoreFn.Convert.DesugarObjects
     Language.PureScript.CoreFn.Convert.DesugarCore
     Language.PureScript.CoreFn.Convert.IR
@@ -272,6 +274,7 @@ library
     Language.PureScript.CoreFn.Pretty.Types
     Language.PureScript.CoreFn.ToJSON
     Language.PureScript.CoreFn.Traversals
+    Language.PureScript.CoreFn.TypeLike
     Language.PureScript.CoreFn.Utils
     Language.PureScript.CoreImp
     Language.PureScript.CoreImp.AST

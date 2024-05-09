@@ -18,7 +18,7 @@ import Data.Text qualified as T
 import System.IO (Handle)
 
 import Language.PureScript.CoreFn.Expr
-    ( Expr(..) )
+    ( Expr(..), Bind )
 import Language.PureScript.Types (Type (..))
 import Language.PureScript.CoreFn.Module (Module)
 
@@ -54,15 +54,15 @@ ppType _ t = prettyTypeStr t
 smartRender ::  Doc ann -> Text
 smartRender = renderStrict . layoutPretty defaultLayoutOptions
 
-writeModule :: Handle -> Module a -> IO ()
+writeModule :: Handle -> Module (Bind a) a -> IO ()
 writeModule h m = renderIO h
                 . layoutSmart defaultLayoutOptions
                 $ prettyModule m
 
-prettyModuleTxt :: Module a -> Text
+prettyModuleTxt :: Module (Bind a) a -> Text
 prettyModuleTxt = renderStrict  . layoutPretty defaultLayoutOptions .  prettyModule
 
-prettyModuleStr :: Module a -> String
+prettyModuleStr :: Module (Bind a) a -> String
 prettyModuleStr = T.unpack . prettyModuleTxt
 
 renderExpr :: Expr a -> Text

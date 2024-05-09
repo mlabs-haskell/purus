@@ -69,7 +69,7 @@ import Language.PureScript.CoreFn.Pretty.Common
 import Language.PureScript.CoreFn.Pretty.Types ( prettyType )
 
 -- TODO: DataDecls
-prettyModule :: Module a -> Doc ann
+prettyModule :: Module (Bind a) a -> Doc ann
 prettyModule (Module _ _ modName modPath modImports modExports modReExports modForeign modDecls _) =
   vsep
     [ pretty modName <+>  parens (pretty modPath)

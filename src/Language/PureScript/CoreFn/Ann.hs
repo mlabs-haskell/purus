@@ -17,6 +17,9 @@ type Ann = (SourceSpan, [Comment], Maybe Meta)
 ssAnn :: SourceSpan -> Ann
 ssAnn ss = (ss, [], Nothing)
 
+annSS :: Ann -> SourceSpan
+annSS (ss,_,_) = ss
+
 -- |
 -- Remove the comments from an annotation
 --

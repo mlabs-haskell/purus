@@ -100,6 +100,10 @@ instance IndexedPlated TyContext SourceType where
     -- nothing else has child types
     other -> pure other
 
+{- TODO: REMOVE EVERYTHING BELOW (it should all be subsumed by the TypeLike class)
+
+-}
+
 -- TODO: Explain what this is / how it works
 -- TODO: Type Constructors
 instantiates :: Text -- Name of the TyVar we're checking

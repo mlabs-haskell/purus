@@ -11,7 +11,7 @@
 module Language.PureScript.CoreFn.Convert.IR where
 
 import Prelude
-import Language.PureScript.Names (Ident(..), Qualified (..), QualifiedBy (..), ProperNameType (..), ProperName(..), disqualify, runModuleName, showIdent, runIdent, moduleNameFromString, coerceProperName)
+import Language.PureScript.Names (Ident(..), Qualified (..), QualifiedBy (..), ProperNameType (..), ProperName(..), disqualify, runModuleName, showIdent, runIdent, moduleNameFromString, coerceProperName, showQualified)
 import Language.PureScript.Types
     ( SkolemScope, TypeVarVisibility (..), genPureName )
 import Language.PureScript.CoreFn (Binder(..), Literal (..))
@@ -36,6 +36,7 @@ import Bound.Scope (instantiateEither)
 import Protolude.List (ordNub)
 import Data.List (elemIndex, sortOn)
 import Control.Lens (view,_2)
+import Language.PureScript.CoreFn.TypeLike
 -- The final representation of types and terms, where all constructions that
 -- *should* have been eliminated in previous steps are impossible
 -- TODO: Make sure we error on exotic kinds
@@ -52,56 +53,71 @@ pattern (:~>) :: Ty -> Ty -> Ty
 pattern a :~> b = TyApp (TyApp (TyCon C.Function) a) b
 infixr 0 :~>
 
-iQuantify :: Ty -> Ty
-iQuantify ty = foldr (\arg t -> Forall TypeVarInvisible arg Nothing t Nothing) ty $ iFreeTypeVariables ty
+instance TypeLike Ty where
+  applyType = TyApp
 
-iFreeTypeVariables :: Ty -> [Text]
-iFreeTypeVariables = ordNub . fmap snd . sortOn fst . go 0 [] where
-    -- Tracks kind levels so that variables appearing in kind annotations are listed first.
-  go :: Int -> [Text] -> Ty -> [(Int, Text)]
-  go lvl bound (TyVar v) | v `notElem` bound = [(lvl, v)]
-  go lvl bound (TyApp t1 t2) = go lvl bound t1 ++ go lvl bound t2
-  go lvl bound (KApp t1 t2) = go lvl bound t1 ++ go (lvl - 1) bound t2
-  go lvl bound (Forall _ v mbK t _) = foldMap (go (lvl - 1) bound) mbK ++ go lvl (v : bound) t
-  go lvl bound (KType t k) = go lvl bound t ++ go (lvl - 1) bound k
-  go _ _ _ = []
+  stripQuantifiers = \case
+     Forall vis var mk inner _ -> first ((vis,var,mk):) $ stripQuantifiers inner
+     other -> ([],other)
 
--- | Replace named type variables with types
-replaceAllTypeVars :: [(Text, Ty)] -> Ty -> Ty
-replaceAllTypeVars = go [] where
-  go :: [Text] -> [(Text, Ty)] -> Ty -> Ty
-  go _  m (TyVar v) = fromMaybe (TyVar v) (v `lookup` m)
-  go bs m (TyApp t1 t2) = TyApp (go bs m t1) (go bs m t2)
-  go bs m (KApp t1 t2) = KApp  (go bs m t1) (go bs m t2)
-  go bs m (Forall vis v mbK t sco)
-    | v `elem` keys = go bs (filter ((/= v) . fst) m) $ Forall vis v mbK' t sco
-    | v `elem` usedVars =
-      let v' = genPureName v (keys ++ bs ++ usedVars)
-          t' = go bs [(v, TyVar v')] t
-      in Forall vis v' mbK' (go (v' : bs) m t') sco
-    | otherwise = Forall vis v mbK' (go (v : bs) m t) sco
-    where
+  funTy a b = a :~> b
+
+  funArgTypes = init . splitFunTyParts
+
+  replaceAllTypeVars = go [] where
+    go :: [Text] -> [(Text, Ty)] -> Ty -> Ty
+    go _  m (TyVar v) = fromMaybe (TyVar v) (v `lookup` m)
+    go bs m (TyApp t1 t2) = TyApp (go bs m t1) (go bs m t2)
+    go bs m (KApp t1 t2) = KApp  (go bs m t1) (go bs m t2)
+    go bs m (Forall vis v mbK t sco)
+      | v `elem` keys = go bs (filter ((/= v) . fst) m) $ Forall vis v mbK' t sco
+      | v `elem` usedVars =
+        let v' = genPureName v (keys ++ bs ++ usedVars)
+            t' = go bs [(v, TyVar v')] t
+        in Forall vis v' mbK' (go (v' : bs) m t') sco
+      | otherwise = Forall vis v mbK' (go (v : bs) m t) sco
+     where
       mbK' = go bs m <$> mbK
       keys = map fst m
-      usedVars = concatMap (iUsedTypeVariables . snd) m
-  go bs m (KType t k) = KType (go bs m t) (go bs m k)
-  go _  _ ty = ty
+      usedVars = concatMap (usedTypeVariables . snd) m
+    go bs m (KType t k) = KType (go bs m t) (go bs m k)
+    go _  _ ty = ty
 
-iUsedTypeVariables :: Ty -> [Text]
-iUsedTypeVariables = ordNub . go
-  where
-    go :: Ty -> [Text]
-    go (TyVar v) = [v]
-    go (TyApp t1 t2) = go t1 <> go t2
-    go (KApp t1 t2)  = go t1 <> go t2
-    go (KType t1 t2) = go t1 <> go t2
-    go (Forall _ _ _ inner _) = go inner
-    go (TyCon _) = error "iUsedTypeVariables: TODO: TyCon" -- not sure what it should be
+  splitFunTyParts = \case
+    (a :~> b) -> a : splitFunTyParts b
+    t         -> [t]
 
-resultTy :: Ty -> Ty
-resultTy t = case snd $  stripQuantifiers t of
-  (_ :~> b) -> resultTy b
-  other -> other
+  quantify ty = foldr (\arg t -> Forall TypeVarInvisible arg Nothing t Nothing) ty $ freeTypeVariables ty
+
+  instantiates var x (TyVar y) | y == var = Just x
+  instantiates var (TyApp t1 t2) (TyApp t1' t2') = case instantiates var t1 t1' of
+    Just x -> Just x
+    Nothing -> instantiates var t2 t2'
+  instantiates _ _ _ = Nothing
+
+  freeTypeVariables = ordNub . fmap snd . sortOn fst . go 0 [] where
+    -- Tracks kind levels so that variables appearing in kind annotations are listed first.
+        go :: Int -> [Text] -> Ty -> [(Int, Text)]
+        go lvl bound (TyVar v) | v `notElem` bound = [(lvl, v)]
+        go lvl bound (TyApp t1 t2) = go lvl bound t1 ++ go lvl bound t2
+        go lvl bound (KApp t1 t2) = go lvl bound t1 ++ go (lvl - 1) bound t2
+        go lvl bound (Forall _ v mbK t _) = foldMap (go (lvl - 1) bound) mbK ++ go lvl (v : bound) t
+        go lvl bound (KType t k) = go lvl bound t ++ go (lvl - 1) bound k
+        go _ _ _ = []
+
+  usedTypeVariables = ordNub . go
+    where
+      go :: Ty -> [Text]
+      go (TyVar v) = [v]
+      go (TyApp t1 t2) = go t1 <> go t2
+      go (KApp t1 t2)  = go t1 <> go t2
+      go (KType t1 t2) = go t1 <> go t2
+      go (Forall _ _ _ inner _) = go inner
+      go (TyCon _) = error "iUsedTypeVariables: TODO: TyCon" -- not sure what it should be
+
+  resultTy t = case snd $  stripQuantifiers t of
+    (_ :~> b) -> resultTy b
+    other -> other
 
 -- HACK: Need this for pretty printer, refactor later
 class FuncType ty where
@@ -116,9 +132,9 @@ instance FuncType Ty where
 type Bindings ty = Map Int (FVar ty)
 
 -- A Bound variable. Serves as a bridge between the textual representation and the named de bruijn we'll need for PIR
-data BVar ty = BVar Int ty Ident deriving (Show, Eq, Ord) -- maybe BVar Int (FVar ty) ??
+data BVar ty = BVar Int ty (Ident) deriving (Show, Eq, Ord) -- maybe BVar Int (FVar ty) ??
 
-data FVar ty = FVar ty Ident deriving (Show, Eq, Ord)
+data FVar ty = FVar ty (Qualified Ident) deriving (Show, Eq, Ord)
 
 data Lit x a
   = IntL Integer
@@ -288,7 +304,7 @@ instance Pretty (BVar ty) where
   pretty (BVar n _t i) =   pretty (showIdent i) <> pretty n -- <+> "::" <+> pretty t
 
 instance Pretty (FVar ty) where
-  pretty (FVar _t i) =  pretty (showIdent i) -- <+> "::" <+> pretty t)
+  pretty (FVar _t i) =  pretty (showQualified showIdent i) -- <+> "::" <+> pretty t)
 
 instance Pretty Ty where
   pretty = \case
@@ -420,81 +436,67 @@ unsafeAnalyzeApp e = fromJust $ (,appArgs e) <$> appFun e
         go other = Just other
     appFun _ = Nothing
 
-stripQuantifiers :: Ty -> ([(TypeVarVisibility,Text,Maybe Ty)],Ty)
-stripQuantifiers = \case
-     Forall vis var mk inner _ -> first ((vis,var,mk):) $ stripQuantifiers inner
-     other -> ([],other)
-
-eTy :: forall x a. (a -> Var (BVar Ty) (FVar Ty)) -> Exp x Ty a -> Ty
-eTy f = \case
+expTy :: forall x t a. TypeLike t => (a -> Var (BVar t) (FVar t)) -> Exp x t a -> t
+expTy f = \case
   V x -> case f x of
     B (BVar _ t _) -> t
     F (FVar t _) -> t
   LitE t _ -> t
   CtorE t _ _ _  -> t
   LamE t _ _ -> t
-  AppE e1 e2 -> iAppType f e1 e2
+  AppE e1 e2 -> appType f e1 e2
   CaseE t _ _  -> t
-  LetE _ _ e -> eTy' f e
+  LetE _ _ e -> expTy' f e
   AccessorE _ t _ _ -> t
   ObjectUpdateE _ t _ _ _ -> t
 
-eTy' :: forall x a. (a -> Var (BVar Ty) (FVar Ty)) -> Scope (BVar Ty) (Exp x Ty) a -> Ty
-eTy' f scoped = case instantiateEither (either (V . B) (V . F)) scoped of
+expTy' :: forall x t a. TypeLike t => (a -> Var (BVar t) (FVar t)) -> Scope (BVar t) (Exp x t) a -> t
+expTy' f scoped = case instantiateEither (either (V . B) (V . F)) scoped of
   V x -> case x >>= f  of
     B (BVar _ t _) -> t
     F (FVar t _) -> t
   LitE t _ -> t
   CtorE t _ _ _  -> t
   LamE t _ _ -> t
-  AppE  e1 e2 -> iAppType (>>= f) e1 e2
+  AppE  e1 e2 -> appType (>>= f) e1 e2
   CaseE t _ _  -> t
-  LetE  _ _ e -> eTy' (>>= f) e
+  LetE  _ _ e -> expTy' (>>= f) e
   AccessorE _ t _ _ -> t
   ObjectUpdateE _ t _ _ _ -> t
 
--- TODO: Explain what this is / how it works
-iInstantiates :: Text -- Name of the TyVar we're checking
-             -> Ty    -- Monomorphic type (or "more monomorphic" type)
-             -> Ty    -- Polymorphic type (or "more polymoprhic" type)
-             -> Maybe Ty
-iInstantiates var x (TyVar y) | y == var = Just x
-iInstantiates var (TyApp t1 t2) (TyApp t1' t2') = case iInstantiates var t1 t1' of
-  Just x -> Just x
-  Nothing -> iInstantiates var t2 t2'
-iInstantiates _ _ _ = Nothing
-
-iAppType :: forall x a. (a -> Var (BVar Ty) (FVar Ty)) -> Exp x Ty a -> Exp x Ty a -> Ty
-iAppType h fe ae = case stripQuantifiers funTy of
+-- | Gets the type of an application expression.
+--   (Name might be a bit confusing, does not apply types)
+appType :: forall x t a. TypeLike t => (a -> Var (BVar t) (FVar t)) -> Exp x t a -> Exp x t a -> t
+appType h fe ae = case stripQuantifiers funT of
    ([],ft) ->
      let numArgs = length argTypes
-     in foldl1 (:~>) . drop numArgs . iSplitFunTyParts $ ft
+     in foldl1 funTy . drop numArgs . splitFunTyParts $ ft
    (xs,ft) ->
-     let funArgs = iFunArgTypes ft
+     let funArgs = funArgTypes ft
          dict    = mkInstanceMap M.empty (view _2 <$> xs) argTypes funArgs
          numArgs = length argTypes
-     in iQuantify
-        . foldl1 (:~>)
+     in quantify
+        . foldl1 funTy
         . drop numArgs
-        . iSplitFunTyParts
+        . splitFunTyParts
         . replaceAllTypeVars (M.toList dict)
         $ ft
   where
-    (f,args) = iAppFunArgs fe ae
-    funTy    = eTy h f
-    argTypes = eTy h <$> args
+    (f,args) = appFunArgs fe ae
+    funT    = expTy h f
+    argTypes = expTy h <$> args
 
-    mkInstanceMap :: Map Text Ty -> [Text] -> [Ty] -> [Ty] -> Map Text Ty
+    mkInstanceMap :: Map Text t -> [Text] -> [t] -> [t] -> Map Text t
     mkInstanceMap acc [] _ _ = acc
     mkInstanceMap acc _ [] _ = acc
     mkInstanceMap acc _ _ [] = acc
-    mkInstanceMap acc (var:vars) (mt:mts) (pt:pts) = case iInstantiates var mt pt of
+    mkInstanceMap acc (var:vars) (mt:mts) (pt:pts) = case instantiates var mt pt of
       Nothing -> mkInstanceMap acc [var] mts pts
                  <> mkInstanceMap M.empty vars (mt:mts) (pt:pts)
       Just t  -> mkInstanceMap (M.insert var t acc) vars (mt:mts) (pt:pts)
 
-iAppFunArgs :: forall x ty a. Exp x ty a -> Exp x ty a -> (Exp x ty a, [Exp x ty a])
-iAppFunArgs f args = (appFun f, appArgs f args)
+appFunArgs :: forall x ty a.  Exp x ty a -> Exp x ty a -> (Exp x ty a, [Exp x ty a])
+appFunArgs f args = (appFun f, appArgs f args)
   where
     appArgs :: Exp x ty a -> Exp x ty a -> [Exp x ty a]
     appArgs (AppE t1 t2) t3 = appArgs t1 t2 <> [t3]
@@ -504,17 +506,6 @@ iAppFunArgs f args = (appFun f, appArgs f args)
     appFun (AppE t1 _) = appFun t1
     appFun res            = res
 
--- | (a -> b -> c) -> [a,b,c]
-iSplitFunTyParts :: Ty -> [Ty]
-iSplitFunTyParts = \case
-  (a :~> b) -> a : iSplitFunTyParts b
-  t         -> [t]
-
--- | (a -> b -> c) -> [a,b]
---
---   NOTE: Unsafe/partial
-iFunArgTypes :: Ty -> [Ty]
-iFunArgTypes = init . iSplitFunTyParts
 
 $(deriveShow1 ''BindE)
 
@@ -540,6 +531,7 @@ instance (Show ty, Show (XAccessor x), Show (XObjectUpdate x), Show (XObjectLite
 deriving instance (Show a, Show ty, Show1 (Exp x ty), Show (XAccessor x), Show (XObjectUpdate x), Show (XObjectLiteral x)) => Show (Exp x ty a)
 
 makePrisms ''Ty
+makePrisms ''Exp
 
 -- REVIEW: This *MIGHT* not be right. I'm not 1000% sure what the PS criteria for a mutually rec group are
 --         First arg threads the FVars that correspond to the already-processed binds
@@ -551,7 +543,7 @@ assembleBindEs dict ([]:rest) = assembleBindEs dict rest -- shouldn't happen but
 assembleBindEs dict ([(fv@(FVar _tx ix),e)]:rest) =
   let dict' = fv:dict
       abstr = abstract (abstractMany dict')
-  in NonRecursive ix (abstr e) : assembleBindEs dict' rest
+  in NonRecursive (disqualify ix) (abstr e) : assembleBindEs dict' rest
 assembleBindEs dict (xsRec:rest) =
   let (dict', recBind) = assembleRec dict xsRec
   in recBind : assembleBindEs dict' rest
@@ -561,7 +553,7 @@ assembleRec dict xs =
   let dict' = dict <> (fst <$> xs)
       abstr = abstract (abstractMany dict')
       recBind = Recursive
-                . map (uncurry $ \(FVar _ ixx) xp -> (ixx, abstr xp))
+                . map (uncurry $ \(FVar _ ixx) xp -> (disqualify ixx, abstr xp))
                 $ xs
   in (dict', recBind)
 
@@ -569,7 +561,7 @@ mkBindings :: [FVar ty] -> Bindings ty
 mkBindings = M.fromList . zip [0..]
 
 abstractMany :: Eq ty => [FVar ty] -> FVar ty -> Maybe (BVar ty)
-abstractMany xs v@(FVar t i) = (\index -> BVar index t i) <$> elemIndex v xs
+abstractMany xs v@(FVar t i) = (\index -> BVar index t $ disqualify i) <$> elemIndex v xs
 
 toPat :: Binder ann -> Pat x (Exp x ty) (FVar ty)
 toPat = \case

@@ -7,7 +7,7 @@ import Data.Bifunctor (first, Bifunctor (..))
 import Control.Monad.Reader ( MonadReader(ask), Reader )
 
 import Language.PureScript.Environment
-    ( tyRecord, tyFunction )
+    ( tyRecord, tyFunction, pattern ArrayT )
 import Language.PureScript.Names (OpName(..), ProperName(..), disqualify, showQualified)
 import Language.PureScript.Types (Type (..), WildcardData (..), TypeVarVisibility (..), eqType)
 import Language.PureScript.PSString (prettyPrintString)
@@ -44,6 +44,10 @@ import Data.Text qualified as T
 
 prettyType :: forall a ann. Show a => Type a -> Printer ann
 prettyType t  =  group <$> case t of
+  ArrayT tx -> do -- this is a stupid hack, figure out the proper fix later
+    inner <- parens <$> prettyType tx
+    pure $ "Array" <+> inner
+
   TUnknown _ n -> pure $ "t" <> pretty n
 
   TypeVar _ txt -> pure $ pretty txt

@@ -22,7 +22,7 @@ import Control.Monad.Supply.Class (MonadSupply)
 import Control.Monad.IO.Class (MonadIO (liftIO))
 
 import Language.PureScript.AST qualified as AST
-import Language.PureScript.CoreFn (Ann, Module(..), Expr(..), Literal(..), Meta)
+import Language.PureScript.CoreFn (Ann, Module(..), Expr(..), Literal(..), Meta, Bind)
 import Language.PureScript.Errors (MultipleErrors(..))
 import Language.PureScript.Options (Options(..))
 
@@ -55,7 +55,7 @@ meta (_,_,x) = x
 
 moduleToUPLC :: forall m
               . (MonadReader Options m, MonadSupply m, MonadError MultipleErrors m)
-             => Module Ann -> m PIRProgram
+             => Module (Bind Ann) Ann -> m PIRProgram
 moduleToUPLC = error "Error: UPLC Backend not yet implemented!"
 
 

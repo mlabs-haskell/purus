@@ -31,7 +31,7 @@ import Language.PureScript.Types ()
 import Text.ParserCombinators.ReadP (readP_to_S)
 
 -- dunno how to work around the orphan
-instance FromJSON (Module Ann) where
+instance FromJSON (Module (Bind Ann) Ann) where
   parseJSON = fmap snd .  moduleFromJSON
 
 parseVersion' :: String -> Maybe Version
@@ -133,7 +133,7 @@ qualifiedFromJSON f = withObject "Qualified" qualifiedFromObj
 moduleNameFromJSON :: Value -> Parser ModuleName
 moduleNameFromJSON v = ModuleName . T.intercalate "." <$> listParser parseJSON v
 
-moduleFromJSON :: Value -> Parser (Version, Module Ann)
+moduleFromJSON :: Value -> Parser (Version, Module (Bind Ann) Ann)
 moduleFromJSON = withObject "Module" moduleFromObj
   where
   moduleFromObj o = do

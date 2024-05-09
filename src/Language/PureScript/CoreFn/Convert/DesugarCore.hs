@@ -8,10 +8,10 @@ import Language.PureScript.Types (Type(..))
 import Language.PureScript.Names (Ident, Qualified(Qualified),
                                   QualifiedBy (ByModuleName, BySourcePos),
                                   pattern ByNullSourcePos,
-                                  ModuleName (ModuleName), ProperName (ProperName))
+                                  ModuleName (ModuleName), ProperName (ProperName), disqualify)
 import Language.PureScript.CoreFn.Expr (Expr(..), PurusType, Bind (NonRec, Rec),
                                         CaseAlternative(CaseAlternative), _Var)
-import Language.PureScript.CoreFn.Ann (Ann)
+import Language.PureScript.CoreFn.Ann (Ann, annSS)
 import Language.PureScript.CoreFn.Convert.IR hiding ((:~>))
 import Data.Map qualified as M
 import Language.PureScript.AST.Literals (Literal (..))
@@ -25,6 +25,7 @@ import Control.Lens.Operators ((^..))
 import Control.Lens.IndexedPlated (icosmos)
 import Control.Lens.Combinators (to)
 import Control.Monad.Error.Class (MonadError(throwError))
+import Language.PureScript.AST.SourcePos (spanStart)
 
 -- TODO: Something more reasonable
 type DS = Either String
@@ -47,7 +48,7 @@ desugarCore (App _ann expr1 expr2) = do
   expr1' <- desugarCore expr1
   expr2' <- desugarCore expr2
   pure $ AppE expr1' expr2'
-desugarCore (Var _ann ty (Qualified _ ident)) = pure $ V $ FVar ty ident
+desugarCore (Var _ann ty qi) = pure $ V $ FVar ty qi
 desugarCore (Let _ann binds cont) = do
   binds' <- desugarBinds binds
   cont' <- desugarCore cont
@@ -88,12 +89,12 @@ getBoundVar body binder = case binder of
   VarBinder _ ident -> case body of
     Right expr -> case findBoundVar ident expr of
       Nothing -> [] -- probably should trace or warn at least
-      Just (ty, _) -> [FVar ty ident]
+      Just (ty, qi) -> [FVar ty qi]
     Left fml -> do
       let allResults = concatMap (\(x,y) -> [x,y]) fml
           matchingVar = mapMaybe (findBoundVar ident) allResults
       case matchingVar of
-        ((ty, _) : _) -> [FVar ty ident]
+        ((ty, qi) : _) -> [FVar ty qi]
         _ -> []
   _ -> []
 
@@ -108,14 +109,18 @@ findBoundVar nm ex = find (goFind . snd) (allVars ex)
 allVars :: forall ann. Expr ann -> [(PurusType, Qualified Ident)]
 allVars ex = ex ^.. icosmos @Context @(Expr ann) M.empty . _Var . to (\(_,b,c) -> (b,c))
 
+qualifySS :: Ann -> Ident -> Qualified Ident
+qualifySS ann i = Qualified (BySourcePos $ spanStart (annSS ann)) i
+
 -- Stolen from DesugarObjects
 desugarBinds :: [Bind Ann] -> DS [[(FVar PurusType, Exp WithObjects PurusType (FVar PurusType))]]
 desugarBinds [] = pure []
 desugarBinds (b:bs) = case b of
   NonRec _ann ident expr -> do
+    let qualifiedIdent = qualifySS _ann ident
     e' <- desugarCore expr
     rest <- desugarBinds bs
-    pure $ [(FVar (exprType expr) ident,e')] : rest
+    pure $ [(FVar (exprType expr) qualifiedIdent,e')] : rest
   -- TODO: Fix this to preserve recursivity (requires modifying the *LET* ctor of Exp)
   Rec xs -> do
     let xs' = map (\((ann,nm),e) -> NonRec ann nm e) xs
@@ -150,7 +155,7 @@ functionArgumentIfFunction t = t
 -- | For usage with `Bound`, use only with lambda
 matchVarLamAbs :: Eq ty => ty -> Ident -> FVar ty -> Maybe (BVar ty)
 matchVarLamAbs t nm (FVar ty n')
-  | ty == t && nm == n' =  Just (BVar 0 t nm)
+  | ty == t && nm == disqualify n' =  Just (BVar 0 t nm)
   | otherwise = Nothing
 
 -- TODO (t4ccer): Move somehwere, but cycilc imports are annoying

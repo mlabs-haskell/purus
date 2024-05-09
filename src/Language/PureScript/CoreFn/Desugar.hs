@@ -116,7 +116,7 @@ import Data.Either (lefts)
 -}
 
 -- | Desugars a module from AST to CoreFn representation.
-moduleToCoreFn :: forall m. M m => A.Module -> m (Module Ann)
+moduleToCoreFn :: forall m. M m => A.Module -> m (Module (Bind Ann) Ann)
 moduleToCoreFn  (A.Module _ _ _ _ Nothing) =
   internalError "Module exports were not elaborated before moduleToCoreFn"
 moduleToCoreFn (A.Module modSS coms mn _decls (Just exps)) = do

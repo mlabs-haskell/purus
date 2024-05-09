@@ -10,7 +10,6 @@ module Language.PureScript.CoreFn.Convert.Monomorphize (
   findDeclBody,
   mkFieldMap,
   monomorphizeExpr,
-  nullAnn,
   ) where
 
 import Prelude
@@ -20,7 +19,7 @@ import Data.Maybe
 import Language.PureScript.CoreFn.Ann (Ann)
 import Language.PureScript.CoreFn.Expr (PurusType)
 import Language.PureScript.CoreFn.Module ( Module(..) )
-import Language.PureScript.CoreFn.Convert.IR (Exp(..), FVar(..), Alt(..), Lit(..), BindE(..), ppExp)
+import Language.PureScript.CoreFn.Convert.IR (Exp(..), FVar(..), Alt(..), Lit(..), BindE(..), ppExp, unsafeAnalyzeApp)
 import Language.PureScript.Names (Ident(..), Qualified (..), QualifiedBy (..), pattern ByNullSourcePos, ModuleName (..))
 import Language.PureScript.Types
     ( rowToList, RowListItem(..), SourceType, Type(..), replaceTypeVars, isMonoType )
@@ -57,6 +56,7 @@ import Data.Text (Text)
 import Debug.Trace (trace, traceM)
 import Language.PureScript.CoreFn.Convert.DesugarCore (WithObjects, desugarCore)
 import Bound (fromScope)
+import Bound.Var (Var(..))
 
 {- Instead of mutual recursion, return ADTs that describe the "next step" of the computation
 
@@ -92,6 +92,10 @@ data MonoState = MonoState {
 type Monomorphizer a = RWST (ModuleName, [BindE PurusType (Exp WithObjects PurusType) (FVar PurusType)]) () MonoState (Either MonoError)  a
 type Monomorphizer' a = RWST (ModuleName, [BindE PurusType (Exp WithObjects PurusType) (FVar PurusType)]) () MonoState Identity (Maybe a)
 
+type IR_Decl = BindE PurusType (Exp WithObjects PurusType) (FVar PurusType)
+
+defInstantiate scoped = instantiateEither  (either (V . B) (V . F))  scoped
+
 hoist1 ::
   MonoState ->
   Monomorphizer a ->
@@ -111,7 +115,7 @@ hoist1 st act = RWST $ \r s -> f (runRWST act r s)
       Right (x,st',_) -> pure (Just x, st', ())
 
 monomorphizeExpr ::
-  Module Ann ->
+  Module IR_Decl Ann ->
   Exp WithObjects PurusType (FVar PurusType) ->
   Either MonoError (Exp WithObjects PurusType (FVar PurusType))
 monomorphizeExpr m@Module{..} expr =
@@ -120,7 +124,7 @@ monomorphizeExpr m@Module{..} expr =
     Right (a,_,_) -> Right a
 
 monomorphizeMain ::
-  Module Ann ->
+  Module IR_Decl Ann ->
   Maybe (Exp WithObjects PurusType (FVar PurusType))
 monomorphizeMain Module{..} =  runMono g
   where
@@ -141,7 +145,7 @@ monomorphizeMain Module{..} =  runMono g
                      (a,_,_) -> a
 
 monomorphizeMain' ::
-  Module Ann ->
+  Module IR_Decl Ann ->
   Either MonoError (Exp WithObjects PurusType (FVar PurusType))
 monomorphizeMain' Module{..} =  g
   where
@@ -154,7 +158,7 @@ monomorphizeMain' Module{..} =  g
                      Left err -> Left err
                      Right (a,_,_) -> Right a
 
-decodeModuleIO :: FilePath -> IO (Module Ann)
+decodeModuleIO :: FilePath -> IO (Module IR_Decl Ann)
 decodeModuleIO path = Aeson.eitherDecodeFileStrict' path >>= \case
   Left err -> throwIO $ userError err
   Right modx -> pure modx
@@ -212,7 +216,7 @@ getResult :: SourceType -> SourceType
 getResult (_ :-> b) = getResult b
 getResult other = other
 
-findDeclBody :: Text -> Module Ann -> Maybe (Exp WithObjects PurusType (FVar PurusType))
+findDeclBody :: Text -> Module IR_Decl  Ann -> Maybe (Exp WithObjects PurusType (FVar PurusType))
 findDeclBody nm Module{..} = case findInlineDeclGroup (Ident nm) moduleDecls of
   Nothing -> Nothing
   Just decl -> case decl of
@@ -238,7 +242,7 @@ monomorphizeA ::
   Monomorphizer (Exp WithObjects PurusType (FVar PurusType))
 monomorphizeA d xpr = trace ("monomorphizeA " <>  "\n  " <> ppExp xpr)  $ case xpr of
   app@(AppE _ arg) ->  do
-    (f,args) <-  note d ("Not an App: " <> ppExp app) $ analyzeApp app
+    let (f,args) = unsafeAnalyzeApp app
     traceM $ "FUN: " <> ppExp f
     traceM $ "ARGS: " <> show (ppExp <$> args)
     let types = concatMap (toArgs . exprType)  args
@@ -323,26 +327,30 @@ updateVarTy :: Context -> Ident -> PurusType -> Exp WithObjects PurusType (FVar 
 updateVarTy d ident ty = itransform goVar d
   where
     goVar :: Context -> Exp WithObjects PurusType (FVar PurusType) -> Exp WithObjects PurusType (FVar PurusType)
-    goVar _d expr = case expr ^? _Var of
+    goVar _d expr = undefined {- -case expr ^? _Var of
       Just (ann,_,Qualified q@(BySourcePos _) varId) | varId == ident -> Var ann ty (Qualified q ident)
       _ -> expr
+-}
 
 updateFreeVar :: M.Map Ident (Ident,SourceType) -> Context -> Exp WithObjects PurusType (FVar PurusType) -> Exp WithObjects PurusType (FVar PurusType)
-updateFreeVar dict _ expr = case expr ^? _Var of
+updateFreeVar dict _ expr = undefined  {-
+
+  case expr ^? _Var of
      Just (_,_,Qualified (ByModuleName _) varId) -> case M.lookup varId dict of
        Nothing -> expr
        Just (newId,newType) -> Var nullAnn newType (Qualified ByNullSourcePos newId)
      _ -> expr
-
+-}
 updateFreeVars :: Map Ident (Ident, SourceType) -> Context -> Exp WithObjects PurusType (FVar PurusType) -> Exp WithObjects PurusType (FVar PurusType)
 updateFreeVars dict = itransform (updateFreeVar dict)
 
 -- doesn't change types!
 renameBoundVar :: Ident -> Ident -> Context -> Exp WithObjects PurusType (FVar PurusType) -> Exp WithObjects PurusType (FVar PurusType)
-renameBoundVar old new _ e = case e ^? _Var of
+renameBoundVar old new _ e = undefined  {-
+ case e ^? _Var of
   Just (ann,ty,Qualified (BySourcePos sp) varId) | varId == old -> Var ann ty (Qualified (BySourcePos sp) new)
   _ -> e
-
+-}
 renameBoundVars :: Ident -> Ident -> Context -> Exp WithObjects PurusType (FVar PurusType) -> Exp WithObjects PurusType (FVar PurusType)
 renameBoundVars old new  = itransform (renameBoundVar old new)
                                                                     -- \/ Replace with ([BindE PurusType (Exp WithObjects PurusType) (FVar PurusType)], Exp WithObjects PurusType (FVar PurusType))
@@ -356,7 +364,7 @@ inlineAs ::
                   (Exp WithObjects PurusType (FVar PurusType)))
 -- TODO: Review whether this has any purpose here \/
 inlineAs _ ty nm@(Qualified (ByModuleName (ModuleName "Builtin")) idnt) = trace ("inlineAs BUILTIN:\n  " <> "IDENT: " <> showIdent' idnt <> "\n  TYPE: " <> prettyTypeStr ty)
-  $ pure . Right $ Var nullAnn ty nm
+  $ pure . Right $ undefined -- Var nullAnn ty nm
 -- TODO: Probably can inline locally bound variables? FIX: Keep track of local name bindings
 inlineAs d _ (Qualified (BySourcePos _) ident) = throwError $ MonoError d  $ "can't inline bound variable " <> showIdent' ident
 inlineAs  d ty qmn@(Qualified (ByModuleName mn') ident) = trace ("inlineAs: " <> showIdent' ident <> " :: " <>  prettyTypeStr ty) $ ask >>= \(mn,modDict) ->
@@ -378,7 +386,7 @@ inlineAs  d ty qmn@(Qualified (ByModuleName mn') ident) = trace ("inlineAs: " <>
               cxt = foldl' (\acc (idx,tyx)-> M.insert idx tyx acc) d $ (\(a,b,_) -> (a,b)) <$> M.elems dict
           binds <- traverse (\(newId,newTy,oldE) -> makeBind renameMap cxt newId newTy oldE) bindingMap
           case M.lookup targIdent renameMap of
-            Just (newId,newTy) -> pure $ Left (binds,Var nullAnn newTy (Qualified ByNullSourcePos newId))
+            Just (newId,newTy) -> pure $ Left (binds, undefined ) {- -Var nullAnn newTy (Qualified ByNullSourcePos newId)) -}
             Nothing -> throwError
                        $ MonoError d
                        $ "Couldn't inline " <> showIdent' ident <> " - identifier didn't appear in collected bindings:\n  "  <> show renameMap
