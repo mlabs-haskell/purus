@@ -1,0 +1,17 @@
+Lib (tests/purus/passing/4101/Lib.purs)
+Imported Modules: 
+  Builtin,
+  Prim
+Exports: 
+  Const,
+  Unit
+Re-Exports: 
+  
+Foreign: 
+  
+Declarations: 
+Unit :: Unit
+Unit = Unit
+
+Const :: forall a. a -> a
+Const = \(x: a) -> (x: a)

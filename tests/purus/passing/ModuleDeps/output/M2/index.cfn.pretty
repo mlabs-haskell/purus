@@ -1,0 +1,14 @@
+M2 (tests/purus/passing/ModuleDeps/M2.purs)
+Imported Modules: 
+  Builtin,
+  M3,
+  Prim
+Exports: 
+  bar
+Re-Exports: 
+  
+Foreign: 
+  
+Declarations: 
+bar :: Int
+bar = (baz: Int)

@@ -1,0 +1,17 @@
+M1 (tests/purus/passing/ExportExplicit2/M1.purs)
+Imported Modules: 
+  Builtin,
+  M1,
+  Prim
+Exports: 
+  bar
+Re-Exports: 
+  
+Foreign: 
+  
+Declarations: 
+foo :: Int
+foo = (0: Int)
+
+bar :: Int
+bar = (foo: Int)

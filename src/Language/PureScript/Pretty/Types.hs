@@ -17,6 +17,7 @@ module Language.PureScript.Pretty.Types
   ) where
 
 import Prelude hiding ((<>))
+import Prelude qualified as P
 
 import Control.Arrow ((<+>))
 import Control.Lens (_2, (%~))
@@ -35,6 +36,7 @@ import Language.PureScript.PSString (PSString, prettyPrintString, decodeString)
 import Language.PureScript.Label (Label(..))
 
 import Text.PrettyPrint.Boxes (Box(..), hcat, hsep, left, moveRight, nullBox, render, text, top, vcat, (<>))
+
 
 data PrettyPrintType
   = PPTUnknown Int
@@ -56,6 +58,7 @@ data PrettyPrintType
   | PPRecord [(Label, PrettyPrintType)] (Maybe PrettyPrintType)
   | PPRow [(Label, PrettyPrintType)] (Maybe PrettyPrintType)
   | PPTruncated
+  deriving (Show)
 
 type PrettyPrintConstraint = (Qualified (ProperName 'ClassName), [PrettyPrintType], [PrettyPrintType])
 
@@ -75,7 +78,7 @@ convertPrettyPrintType = go
   -- Guard the remaining "complex" type atoms on the current depth value. The
   -- prior  constructors can all be printed simply so it's not really helpful to
   -- truncate them.
-  go d _ | d < 0 = PPTruncated
+  -- go d _ | d < 0 = PPTruncated
   go d (ConstrainedType _ (Constraint _ cls kargs args _) ty) = PPConstrainedType (cls, go (d-1) <$> kargs, go (d-1) <$> args) (go d ty)
   go d (KindedType _ ty k) = PPKindedType (go (d-1) ty) (go (d-1) k)
   go d (BinaryNoParensType _ ty1 ty2 ty3) = PPBinaryNoParensType (go (d-1) ty1) (go (d-1) ty2) (go (d-1) ty3)
@@ -123,7 +126,7 @@ prettyPrintRowWith tro open close labels rest =
     ([], Nothing) ->
       if troRowAsDiff tro then text [ open, ' ' ] <> text "..." <> text [ ' ', close ] else text [ open, close ]
     ([], Just _) ->
-      text [ open, ' ' ] <> tailToPs rest <> text [ ' ', close ]
+      text [ open {-, ' ' -}] <> tailToPs rest <> text [ ' ' {-, close -}]
     _ ->
       vcat left $
         zipWith (\(nm, ty) i -> nameAndTypeToPs (if i == 0 then open else ',') nm ty) labels [0 :: Int ..] ++
@@ -192,7 +195,7 @@ matchTypeAtom tro@TypeRenderOptions{troSuggesting = suggesting} =
         | suggesting = Just $ text "_"
         | otherwise = Just $ text $ 't' : show u
       match (PPSkolem name s)
-        | suggesting =  Just $ text $ T.unpack name
+        | suggesting =  Just $ text $ "skolem[" P.<> show s P.<> "]=" P.<> T.unpack name
         | otherwise = Just $ text $ T.unpack name ++ show s
       match (PPRecord labels tail_) = Just $ prettyPrintRowWith tro '{' '}' labels tail_
       match (PPRow labels tail_) = Just $ prettyPrintRowWith tro '(' ')' labels tail_

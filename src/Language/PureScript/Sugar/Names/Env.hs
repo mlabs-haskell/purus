@@ -38,6 +38,7 @@ import Language.PureScript.Crash (internalError)
 import Language.PureScript.Environment
 import Language.PureScript.Errors (MultipleErrors, SimpleErrorMessage(..), errorMessage, errorMessage')
 import Language.PureScript.Names (Ident, ModuleName, Name(..), OpName, OpNameType(..), ProperName, ProperNameType(..), Qualified(..), QualifiedBy(..), coerceProperName, disqualify, getQual)
+import Language.PureScript.Constants.Purus qualified as PLC
 
 -- |
 -- The details for an import: the name of the thing that is being imported
@@ -158,6 +159,12 @@ nullExports = Exports M.empty M.empty M.empty M.empty M.empty
 type Env = M.Map ModuleName (SourceSpan, Imports, Exports)
 
 -- |
+-- The exported types and primitive values from the Builtin module
+--
+builtinExports :: Exports
+builtinExports = mkBuiltinExports builtinTypes builtinFunctions
+
+-- |
 -- Extracts the 'Exports' from an 'Env' value.
 --
 envModuleExports :: (a, b, Exports) -> Exports
@@ -217,6 +224,19 @@ primTypeErrorExports :: Exports
 primTypeErrorExports = mkPrimExports primTypeErrorTypes primTypeErrorClasses
 
 -- |
+-- Create a set of exports for a Purus Builtins module
+--
+mkBuiltinExports
+  :: M.Map (Qualified (ProperName 'TypeName)) a
+  -> M.Map (Qualified Ident) b
+  -> Exports
+mkBuiltinExports ts vs =
+  nullExports
+    { exportedTypes = M.fromList $ mkTypeEntry <$> M.keys ts,
+      exportedValues = M.fromList $ mkValueEntry <$> M.keys vs
+    }
+
+-- |
 -- Create a set of exports for a Prim module.
 --
 mkPrimExports
@@ -228,25 +248,31 @@ mkPrimExports ts cs =
     { exportedTypes = M.fromList $ mkTypeEntry `map` M.keys ts
     , exportedTypeClasses = M.fromList $ mkClassEntry `map` M.keys cs
     }
-  where
-  mkTypeEntry (Qualified (ByModuleName mn) name) = (name, ([], primExportSource mn))
-  mkTypeEntry _ = internalError
-    "mkPrimExports.mkTypeEntry: a name is qualified BySourcePos instead of ByModuleName"
 
-  mkClassEntry (Qualified (ByModuleName mn) name) = (name, primExportSource mn)
-  mkClassEntry _ = internalError
-    "mkPrimExports.mkClassEntry: a name is qualified BySourcePos instead of ByModuleName"
+mkTypeEntry (Qualified (ByModuleName mn) name) = (name, ([], primExportSource mn))
+mkTypeEntry _ = internalError
+  "mkPrimExports.mkTypeEntry: a name is qualified BySourcePos instead of ByModuleName"
 
-  primExportSource mn =
-    ExportSource
-      { exportSourceImportedFrom = Nothing
-      , exportSourceDefinedIn = mn
-      }
+mkClassEntry (Qualified (ByModuleName mn) name) = (name, primExportSource mn)
+mkClassEntry _ = internalError
+  "mkPrimExports.mkClassEntry: a name is qualified BySourcePos instead of ByModuleName"
+
+mkValueEntry (Qualified (ByModuleName mn) name) = (name, primExportSource mn)
+
+primExportSource mn =
+  ExportSource
+    { exportSourceImportedFrom = Nothing
+    , exportSourceDefinedIn = mn
+    }
 
 -- | Environment which only contains the Prim modules.
 primEnv :: Env
 primEnv = M.fromList
-  [ ( C.M_Prim
+  [ ( PLC.M_Builtin
+    , (internalModuleSourceSpan "<Builtin>", nullImports, builtinExports)
+    )
+  ,
+    ( C.M_Prim
     , (internalModuleSourceSpan "<Prim>", nullImports, primExports)
     )
   , ( C.M_Prim_Boolean

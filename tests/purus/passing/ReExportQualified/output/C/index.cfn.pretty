@@ -1,0 +1,14 @@
+C (tests/purus/passing/ReExportQualified/C.purs)
+Imported Modules: 
+  A,
+  B,
+  Builtin,
+  Prim
+Exports: 
+  
+Re-Exports: 
+  A.x,
+  B.y
+Foreign: 
+  
+Declarations: 

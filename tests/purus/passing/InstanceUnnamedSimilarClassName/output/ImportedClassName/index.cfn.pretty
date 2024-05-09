@@ -1,0 +1,20 @@
+ImportedClassName (tests/purus/passing/InstanceUnnamedSimilarClassName/ImportedClassName.purs)
+Imported Modules: 
+  Builtin,
+  ImportedClassName,
+  Prim
+Exports: 
+  foo
+Re-Exports: 
+  
+Foreign: 
+  
+Declarations: 
+ClassName$Dict :: forall a. { foo :: a -> Int } -> { foo :: a -> Int }
+ClassName$Dict = \(x: { foo :: a -> Int }) -> (x: { foo :: a -> Int })
+
+foo :: forall (@a :: Type). ClassName$Dict a -> a -> Int
+foo = 
+  \(dict: ClassName$Dict a) -> 
+    case (dict: ClassName$Dict a) of 
+       ClassName$Dict v -> (v: { foo :: a -> Int }).foo

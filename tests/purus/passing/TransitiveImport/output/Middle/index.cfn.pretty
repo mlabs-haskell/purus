@@ -1,0 +1,22 @@
+Middle (tests/purus/passing/TransitiveImport/Middle.purs)
+Imported Modules: 
+  Builtin,
+  Prim,
+  Test
+Exports: 
+  unit,
+  middle
+Re-Exports: 
+  Test.Unit
+  Test.test
+Foreign: 
+  
+Declarations: 
+unit :: Unit
+unit = (Unit: Unit)
+
+middle :: forall (a :: Type). TestCls$Dict a -> a -> a
+middle = 
+  \(dictTestCls: TestCls$Dict a) -> 
+    (test: forall (@a :: Type). TestCls$Dict a -> a -> a)
+    (dictTestCls: TestCls$Dict a)

@@ -33,10 +33,10 @@ import Data.Text qualified as T
 import Data.List.NonEmpty (NonEmpty(..))
 import Data.List.NonEmpty qualified as NEL
 
-import Language.PureScript.AST (Binder(..), ErrorMessageHint(..), Expr(..), Literal(..), pattern NullSourceSpan, everywhereOnValuesTopDownM, nullSourceSpan, everythingOnValues)
+import Language.PureScript.AST (Binder(..), ErrorMessageHint(..), Expr(..), Literal(..), pattern NullSourceSpan, everywhereOnValuesTopDownM, nullSourceSpan, everythingOnValues, nullSourceAnn)
 import Language.PureScript.AST.Declarations (UnknownsHint(..))
 import Language.PureScript.Crash (internalError)
-import Language.PureScript.Environment (Environment(..), FunctionalDependency(..), TypeClassData(..), dictTypeName, kindRow, tyBoolean, tyInt, tyString)
+import Language.PureScript.Environment (Environment(..), FunctionalDependency(..), TypeClassData(..), dictTypeName, kindRow, tyBoolean, tyInt, tyString, mkRecordT)
 import Language.PureScript.Errors (MultipleErrors, SimpleErrorMessage(..), addHint, addHints, errorMessage, rethrow)
 import Language.PureScript.Names (pattern ByNullSourcePos, Ident(..), ModuleName, ProperName(..), ProperNameType(..), Qualified(..), QualifiedBy(..), byMaybeModuleName, coerceProperName, disqualify, freshIdent, getQual)
 import Language.PureScript.TypeChecker.Entailment.Coercible (GivenSolverState(..), WantedSolverState(..), initialGivenSolverState, initialWantedSolverState, insoluble, solveGivens, solveWanteds)
@@ -231,6 +231,9 @@ entails SolverOptions{..} constraint context hints =
 
     valUndefined :: Expr
     valUndefined = Var nullSourceSpan C.I_undefined
+
+    typedEmptyRecord :: Expr
+    typedEmptyRecord = TypedValue False (Literal nullSourceSpan $ ObjectLiteral []) (mkRecordT $ REmpty nullSourceAnn)
 
     solve :: SourceConstraint -> WriterT (Any, [(Ident, InstanceContext, SourceConstraint)]) (StateT InstanceContext m) Expr
     solve = go 0 hints
@@ -466,7 +469,7 @@ entails SolverOptions{..} constraint context hints =
         -- Turn a DictionaryValue into a Expr
         subclassDictionaryValue :: Expr -> Qualified (ProperName 'ClassName) -> Integer -> Expr
         subclassDictionaryValue dict className index =
-          App (Accessor (mkString (superclassName className index)) dict) valUndefined
+          App (Accessor (mkString (superclassName className index)) dict) typedEmptyRecord -- valUndefined
 
     solveCoercible :: Environment -> InstanceContext -> [SourceType] -> [SourceType] -> m (Maybe [TypeClassDict])
     solveCoercible env ctx kinds [a, b] = do

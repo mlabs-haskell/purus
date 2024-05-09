@@ -21,12 +21,12 @@ everywhereOnValues f g h = (f', g', h')
   f' (NonRec a name e) = f (NonRec a name (g' e))
   f' (Rec es) = f (Rec (map (second g') es))
 
-  g' (Literal ann e) = g (Literal ann (handleLiteral g' e))
-  g' (Accessor ann prop e) = g (Accessor ann prop (g' e))
-  g' (ObjectUpdate ann obj copy vs) = g (ObjectUpdate ann (g' obj) copy (map (fmap g') vs))
-  g' (Abs ann name e) = g (Abs ann name (g' e))
+  g' (Literal ann t e) = g (Literal ann t (handleLiteral g' e))
+  g' (Accessor ann t prop e) = g (Accessor ann t prop (g' e))
+  g' (ObjectUpdate ann t obj copy vs) = g (ObjectUpdate ann t (g' obj) copy (map (fmap g') vs))
+  g' (Abs ann t name e) = g (Abs ann t name (g' e))
   g' (App ann v1 v2) = g (App ann (g' v1) (g' v2))
-  g' (Case ann vs alts) = g (Case ann (map g' vs) (map handleCaseAlternative alts))
+  g' (Case ann t vs alts) = g (Case ann t (map g' vs) (map handleCaseAlternative alts))
   g' (Let ann ds e) = g (Let ann (map f' ds) (g' e))
   g' e = g e
 
@@ -64,13 +64,13 @@ traverseCoreFn f g h i = (f', g', h', i')
   f' (NonRec a name e) = NonRec a name <$> g e
   f' (Rec es) = Rec <$> traverse (traverse g) es
 
-  g' (Literal ann e) = Literal ann <$> handleLiteral g e
-  g' (Accessor ann prop e) = Accessor ann prop <$> g e
-  g' (ObjectUpdate ann obj copy vs) = (\obj' -> ObjectUpdate ann obj' copy) <$> g obj <*> traverse (traverse g) vs
-  g' (Abs ann name e) = Abs ann name <$> g e
+  g' (Literal ann t e) = Literal ann t <$> handleLiteral g e
+  g' (Accessor ann t prop e) = Accessor ann t prop <$> g e
+  g' (ObjectUpdate ann t obj copy vs) = (\obj' -> ObjectUpdate ann t obj' copy) <$> g obj <*> traverse (traverse g) vs
+  g' (Abs ann t name e) = Abs ann t name <$> g e
   g' (App ann v1 v2) = App ann <$> g v1 <*> g v2
-  g' (Case ann vs alts) = Case ann <$> traverse g vs <*> traverse i alts
-  g' (Let ann ds e) = Let ann <$> traverse f ds <*> g' e
+  g' (Case ann t vs alts) = Case ann t <$> traverse g vs <*> traverse i alts
+  g' (Let ann ds e) = Let ann  <$> traverse f ds <*> g' e
   g' e = pure e
 
   h' (LiteralBinder a b) = LiteralBinder a <$> handleLiteral h b

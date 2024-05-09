@@ -90,6 +90,7 @@ data Type a
   -- | Explicit kind application
   | KindApp a (Type a) (Type a)
   -- | Forall quantifier
+  --                                   \/ TODO: Remove the maybe
   | ForAll a TypeVarVisibility Text (Maybe (Type a)) (Type a) (Maybe SkolemScope)
   -- | A type with a set of type class constraints
   | ConstrainedType a (Constraint a) (Type a)

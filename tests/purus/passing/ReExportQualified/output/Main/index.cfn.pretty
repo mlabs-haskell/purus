@@ -1,0 +1,21 @@
+Main (tests/purus/passing/ReExportQualified/ReExportQualified.purs)
+Imported Modules: 
+  A,
+  B,
+  Builtin,
+  C,
+  Main,
+  Prim
+Exports: 
+  concat,
+  main
+Re-Exports: 
+  
+Foreign: 
+  
+Declarations: 
+concat :: String -> String -> String
+concat = \(v: String) -> \(v1: String) -> ("concat": String)
+
+main :: String
+main = (concat: String -> String -> String) (x: String) (y: String)

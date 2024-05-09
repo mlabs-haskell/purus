@@ -1,16 +1,26 @@
--- |
--- The core functional representation
---
+{-# LANGUAGE TemplateHaskell #-}
 module Language.PureScript.CoreFn.Expr where
-
 import Prelude
 
 import Control.Arrow ((***))
+
+import GHC.Generics
+import Data.Aeson (FromJSON, ToJSON)
+
 
 import Language.PureScript.AST.Literals (Literal)
 import Language.PureScript.CoreFn.Binders (Binder)
 import Language.PureScript.Names (Ident, ProperName, ProperNameType(..), Qualified)
 import Language.PureScript.PSString (PSString)
+import Language.PureScript.Types (Type (..), SourceType)
+
+import Control.Lens.TH (makePrisms)
+import Control.Lens (Traversal', Lens')
+import Data.Text (Text)
+import Language.PureScript.Environment
+import Data.Bifunctor (Bifunctor(first))
+
+type PurusType = SourceType -- Type ()
 
 -- |
 -- Data type for expressions and terms
@@ -19,23 +29,23 @@ data Expr a
   -- |
   -- A literal value
   --
-  = Literal a (Literal (Expr a))
+  = Literal a PurusType (Literal (Expr a))
   -- |
   -- A data constructor (type name, constructor name, field names)
   --
-  | Constructor a (ProperName 'TypeName) (ProperName 'ConstructorName) [Ident]
+  | Constructor a PurusType (ProperName 'TypeName) (ProperName 'ConstructorName) [Ident]
   -- |
   -- A record property accessor
   --
-  | Accessor a PSString (Expr a)
+  | Accessor a PurusType PSString (Expr a)
   -- |
   -- Partial record update (original value, fields to copy (if known), fields to update)
   --
-  | ObjectUpdate a (Expr a) (Maybe [PSString]) [(PSString, Expr a)]
+  | ObjectUpdate a PurusType (Expr a) (Maybe [PSString]) [(PSString, Expr a)]
   -- |
   -- Function introduction
   --
-  | Abs a Ident (Expr a)
+  | Abs a PurusType Ident (Expr a)
   -- |
   -- Function application
   --
@@ -43,16 +53,19 @@ data Expr a
   -- |
   -- Variable
   --
-  | Var a (Qualified Ident)
+  | Var a PurusType (Qualified Ident)
   -- |
   -- A case expression
   --
-  | Case a [Expr a] [CaseAlternative a]
+  | Case a PurusType [Expr a] [CaseAlternative a]
   -- |
   -- A let binding
   --
   | Let a [Bind a] (Expr a)
-  deriving (Eq, Ord, Show, Functor)
+  deriving (Eq, Ord, Show, Functor, Generic)
+
+instance FromJSON a => FromJSON (Expr a)
+instance ToJSON a => ToJSON (Expr a)
 
 -- |
 -- A let or module binding.
@@ -65,7 +78,10 @@ data Bind a
   -- |
   -- Mutually recursive binding group for several values
   --
-  | Rec [((a, Ident), Expr a)] deriving (Eq, Ord, Show, Functor)
+  | Rec [((a, Ident), Expr a)] deriving (Eq, Ord, Show, Functor, Generic)
+
+instance FromJSON a => FromJSON (Bind a)
+instance ToJSON a => ToJSON (Bind a)
 
 -- |
 -- A guard is just a boolean-valued expression that appears alongside a set of binders
@@ -84,7 +100,10 @@ data CaseAlternative a = CaseAlternative
     -- The result expression or a collect of guarded expressions
     --
   , caseAlternativeResult :: Either [(Guard a, Expr a)] (Expr a)
-  } deriving (Eq, Ord, Show)
+  } deriving (Eq, Ord, Show, Generic)
+
+instance FromJSON a => FromJSON (CaseAlternative a)
+instance ToJSON a => ToJSON (CaseAlternative a)
 
 instance Functor CaseAlternative where
 
@@ -96,14 +115,14 @@ instance Functor CaseAlternative where
 -- Extract the annotation from a term
 --
 extractAnn :: Expr a -> a
-extractAnn (Literal a _) = a
-extractAnn (Constructor a _ _ _) = a
-extractAnn (Accessor a _ _) = a
-extractAnn (ObjectUpdate a _ _ _) = a
-extractAnn (Abs a _ _) = a
-extractAnn (App a _ _) = a
-extractAnn (Var a _) = a
-extractAnn (Case a _ _) = a
+extractAnn (Literal a _ _) = a
+extractAnn (Constructor a _ _   _ _) = a
+extractAnn (Accessor a _ _ _) = a
+extractAnn (ObjectUpdate a _ _ _ _) = a
+extractAnn (Abs a _ _ _) = a
+extractAnn (App a  _ _) = a
+extractAnn (Var a _ _) = a
+extractAnn (Case a _ _ _) = a
 extractAnn (Let a _ _) = a
 
 
@@ -111,12 +130,15 @@ extractAnn (Let a _ _) = a
 -- Modify the annotation on a term
 --
 modifyAnn :: (a -> a) -> Expr a -> Expr a
-modifyAnn f (Literal a b)          = Literal (f a) b
-modifyAnn f (Constructor a b c d)  = Constructor (f a) b c d
-modifyAnn f (Accessor a b c)       = Accessor (f a) b c
-modifyAnn f (ObjectUpdate a b c d) = ObjectUpdate (f a) b c d
-modifyAnn f (Abs a b c)            = Abs (f a) b c
-modifyAnn f (App a b c)            = App (f a) b c
-modifyAnn f (Var a b)              = Var (f a) b
-modifyAnn f (Case a b c)           = Case (f a) b c
-modifyAnn f (Let a b c)            = Let (f a) b c
+modifyAnn f (Literal a b c)          = Literal (f a) b c
+modifyAnn f (Constructor a b c d e)  = Constructor (f a) b c d e
+modifyAnn f (Accessor a b c d)       = Accessor (f a) b c d
+modifyAnn f (ObjectUpdate a b c d e) = ObjectUpdate (f a) b c d e
+modifyAnn f (Abs a b c d)            = Abs (f a) b c d
+modifyAnn f (App a b c)              = App (f a) b c
+modifyAnn f (Var a b c)              = Var (f a) b c
+modifyAnn f (Case a b c d)           = Case (f a) b c d
+modifyAnn f (Let a b c)              = Let (f a) b c
+
+makePrisms ''Expr
+makePrisms ''Bind

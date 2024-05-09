@@ -1,0 +1,18 @@
+Main (tests/purus/passing/ResolvableScopeConflict3/ResolvableScopeConflict3.purs)
+Imported Modules: 
+  A,
+  Builtin,
+  Prim
+Exports: 
+  thing,
+  main
+Re-Exports: 
+  
+Foreign: 
+  
+Declarations: 
+thing :: Int
+thing = (2: Int)
+
+main :: String
+main = ("Done": String)

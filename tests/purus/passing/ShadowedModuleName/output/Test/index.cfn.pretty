@@ -1,0 +1,21 @@
+Test (tests/purus/passing/ShadowedModuleName/Test.purs)
+Imported Modules: 
+  Builtin,
+  Prim,
+  Test
+Exports: 
+  Z,
+  runZ
+Re-Exports: 
+  
+Foreign: 
+  
+Declarations: 
+Z :: String -> Z
+Z = Z
+
+runZ :: Z -> String
+runZ = 
+  \(v: Z) -> 
+    case (v: Z) of 
+       Z s -> (s: String)

@@ -1,0 +1,18 @@
+Main (tests/purus/passing/ShadowedModuleName/ShadowedModuleName.purs)
+Imported Modules: 
+  Builtin,
+  Prim,
+  Test
+Exports: 
+  Test,
+  main
+Re-Exports: 
+  
+Foreign: 
+  
+Declarations: 
+Test :: Test
+Test = Test
+
+main :: String
+main = (runZ: Z -> String) ((Z: String -> Z) ("Done": String))

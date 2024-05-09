@@ -1,0 +1,13 @@
+Coercible.Lib2 (tests/purus/passing/Coercible/Lib2.purs)
+Imported Modules: 
+  Builtin,
+  Prim
+Exports: 
+  NTLib2
+Re-Exports: 
+  
+Foreign: 
+  
+Declarations: 
+NTLib2 :: forall a. a -> a
+NTLib2 = \(x: a) -> (x: a)

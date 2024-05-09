@@ -1,0 +1,18 @@
+Coercible.Lib (tests/purus/passing/Coercible/Lib.purs)
+Imported Modules: 
+  Builtin,
+  Coercible.Lib2,
+  Prim
+Exports: 
+  NTLib1,
+  NTLib3
+Re-Exports: 
+  Coercible.Lib2.NTLib2
+Foreign: 
+  
+Declarations: 
+NTLib3 :: forall a. a -> a
+NTLib3 = \(x: a) -> (x: a)
+
+NTLib1 :: forall a. a -> a
+NTLib1 = \(x: a) -> (x: a)

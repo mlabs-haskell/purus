@@ -1,0 +1,13 @@
+B (tests/purus/passing/PendingConflictingImports/B.purs)
+Imported Modules: 
+  Builtin,
+  Prim
+Exports: 
+  thing
+Re-Exports: 
+  
+Foreign: 
+  
+Declarations: 
+thing :: Int
+thing = (2: Int)

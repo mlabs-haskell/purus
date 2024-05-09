@@ -1,0 +1,55 @@
+ForeignKinds.Lib (tests/purus/passing/ForeignKind/Lib.purs)
+Imported Modules: 
+  Builtin,
+  ForeignKinds.Lib,
+  Prim
+Exports: 
+  NatProxy,
+  addNat,
+  proxy1,
+  proxy2,
+  addNatZero,
+  addNatSucc
+Re-Exports: 
+  
+Foreign: 
+  
+Declarations: 
+NatProxy :: forall (@t :: Nat). NatProxy t
+NatProxy = NatProxy
+
+AddNat$Dict :: Record {} -> Record {}
+AddNat$Dict = \(x: Record {}) -> (x: Record {})
+
+succProxy :: forall (n :: Nat). NatProxy n -> NatProxy Succ n
+succProxy = \(v: NatProxy n) -> (NatProxy: NatProxy Succ n)
+
+proxy3 :: NatProxy Succ Succ Succ Zero
+proxy3 = (NatProxy: NatProxy Succ Succ Succ Zero)
+
+proxy2 :: NatProxy Succ Succ Zero
+proxy2 = (NatProxy: NatProxy Succ Succ Zero)
+
+proxy1 :: NatProxy Succ Zero
+proxy1 = (NatProxy: NatProxy Succ Zero)
+
+proxy0 :: NatProxy Zero
+proxy0 = (NatProxy: NatProxy Zero)
+
+addNatZero :: ((AddNat$Dict Zero r) r)
+addNatZero = 
+  (AddNat$Dict: Record {}@Type -> ((AddNat$Dict Zero r) r))
+  ({  }: Record {}@Type)
+
+addNatSucc :: forall (l :: Nat) (r :: Nat) (o :: Nat). ((AddNat$Dict l r) o) -> ((AddNat$Dict Succ l r) Succ o)
+addNatSucc = 
+  \($__unused: ((AddNat$Dict l r) o)) -> 
+    (AddNat$Dict: Record {}@Type -> ((AddNat$Dict Succ l r) Succ o))
+    ({  }: Record {}@Type)
+
+addNat :: forall (l :: Nat) (r :: Nat) (o :: Nat). ((AddNat$Dict l r) o) -> NatProxy l -> NatProxy r -> NatProxy o
+addNat = 
+  \($__unused: ((AddNat$Dict l r) o)) -> 
+    \(v: NatProxy l) -> 
+      \(v1: NatProxy r) -> 
+        (NatProxy: NatProxy o)

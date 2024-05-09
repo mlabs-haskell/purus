@@ -1,0 +1,13 @@
+Lib (tests/purus/passing/4200/Lib.purs)
+Imported Modules: 
+  Builtin,
+  Prim
+Exports: 
+  E
+Re-Exports: 
+  
+Foreign: 
+  
+Declarations: 
+E :: forall (m :: Type) (@msg :: m). T@m msg
+E = E
