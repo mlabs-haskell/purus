@@ -91,23 +91,22 @@ traverseExp ifun tfun = \case
 
 -}
 
-instance IndexedPlated (a -> Var (BVar t) a) (Exp x t (Var (BVar t) a)) where
+instance Plated (Exp x t (Var (BVar t) a)) where
 
-  iplate = go
+  plate = go
    where
      -- yes it really needs that grotesque type signature lol
-     go :: forall f p
-         . (Indexable (a -> Var (BVar t) a) p, Applicative f)
-        => (a -> Var (BVar t) a)
-        -> p (Exp x t (Var (BVar t) a)) (f  (Exp x t (Var (BVar t) a)))
+     go :: forall f
+         . ( Applicative f)
+        =>  (Exp x t (Var (BVar t) a) -> f  (Exp x t (Var (BVar t) a)))
         -> Exp x t (Var (BVar t) a)
         -> f (Exp x t (Var (BVar t) a))
-     go ifun tfun =  \case
+     go  tfun = \case
       LamE t bv e ->  LamE t bv <$> helper e
       CaseE t es alts ->
         let goAlt ::  Alt x t (Exp x t) (Var (BVar t) a) -> f (Alt x t (Exp x t) (Var (BVar t) a))
             goAlt (UnguardedAlt bs pats scoped) = UnguardedAlt bs pats <$> helper scoped
-        in CaseE t <$> traverse (indexed tfun ifun) es <*>  traverse goAlt alts
+        in CaseE t <$> traverse tfun es <*>  traverse goAlt alts
       LetE binds decls scoped ->
         let goDecls :: BindE t (Exp x t) (Var (BVar t) a) -> f (BindE t (Exp x t) (Var (BVar t) a))
             goDecls = \case
@@ -116,13 +115,13 @@ instance IndexedPlated (a -> Var (BVar t) a) (Exp x t (Var (BVar t) a)) where
               Recursive xs ->
                 Recursive <$> traverse (\(i,x) -> (i,) <$> helper x) xs
         in LetE binds <$> traverse goDecls decls <*> helper scoped
-      AppE e1 e2 -> AppE <$> indexed tfun ifun e1 <*> indexed tfun ifun e2
-      AccessorE x t pss e -> AccessorE x t pss <$> indexed tfun ifun e
+      AppE e1 e2 -> AppE <$> tfun e1 <*> tfun e2
+      AccessorE x t pss e -> AccessorE x t pss <$> tfun e
       ObjectUpdateE x t e cf fs -> (\e' fs' -> ObjectUpdateE x t e' cf fs')
-                                   <$> indexed tfun ifun  e
-                                   <*> traverse (\(nm,expr) -> (nm,) <$> indexed tfun ifun expr) fs
+                                   <$> tfun  e
+                                   <*> traverse (\(nm,expr) -> (nm,) <$> tfun expr) fs
       LitE t lit -> LitE t <$> traverseLit lit
-      other -> indexed tfun ifun other
+      other -> tfun other
       where
         traverseLit :: Lit x (Exp x t (Var (BVar t) a))
                     -> f (Lit x (Exp x t (Var (BVar t) a)))
@@ -132,14 +131,17 @@ instance IndexedPlated (a -> Var (BVar t) a) (Exp x t (Var (BVar t) a)) where
           StringL str -> pure $ StringL str
           CharL char -> pure $ CharL char
           BoolL b -> pure $ BoolL b
-          ArrayL xs -> ArrayL <$> traverse (indexed tfun ifun)  xs
+          ArrayL xs -> ArrayL <$> traverse tfun  xs
           ConstArrayL xs -> ConstArrayL <$> pure xs
-          ObjectL x fs -> ObjectL x <$> traverse (\(str,e) -> (str,) <$> indexed tfun ifun e) fs
+          ObjectL x fs -> ObjectL x <$> traverse (\(str,e) -> (str,) <$> tfun e) fs
 
         helper ::  Scope (BVar t) (Exp x t) (Var (BVar t) a) -> f (Scope (BVar t) (Exp x t) (Var (BVar t) a))
-        helper expr = let mm = join <$> instantiateEither (either (V . B) (V . F)) expr
-                          bop = fmap (fmap ifun) <$> indexed tfun ifun mm
-                      in toScope <$> bop
+        helper expr = let mm = join <$> splat (V . F) (V . B) expr
+                          pow :: Var (BVar t) a -> Var (BVar t) (Var (BVar t) a)
+                          pow = \case
+                            B bv -> B bv
+                            F fv -> F (F fv)
+                      in toScope . fmap pow <$> tfun mm
 
 -- TODO: better error messages
 data MonoError
@@ -197,10 +199,10 @@ type Vars t = (Var (BVar t) (FVar t))
 -- I *think* all CTors should be translated to functions at this point?
 -- TODO: We can make sure the variables are well-scoped too
 updateVarTy ::  Ident -> PurusType -> WithObjs PurusType (Vars PurusType) -> WithObjs PurusType (Vars PurusType)
-updateVarTy  ident ty e = itransform  goVar F e
+updateVarTy  ident ty e = transform  goVar e
   where
-    goVar ::  (FVar PurusType -> Vars PurusType) -> WithObjs PurusType (Vars PurusType) -> WithObjs PurusType (Vars PurusType)
-    goVar  _ expr = case expr ^? _V of
+    goVar ::   WithObjs PurusType (Vars PurusType) -> WithObjs PurusType (Vars PurusType)
+    goVar  expr = case expr ^? _V of
       Just (F (FVar _ (Qualified q@(BySourcePos _) varId))) | varId == ident -> V . F $ FVar ty (Qualified q ident)
       Just (B (BVar i _ ident')) | ident == ident'  -> V . B $ BVar i ty ident
       _ -> expr
