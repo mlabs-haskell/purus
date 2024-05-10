@@ -13,7 +13,7 @@ import Data.Aeson (FromJSON, ToJSON)
 -- Data type for literal values. Parameterised so it can be used for Exprs and
 -- Binders.
 --
-data Literal a
+data Literal a -- a ~ Expr Ann
   -- |
   -- A numeric literal
   --
@@ -34,6 +34,7 @@ data Literal a
   -- An array literal
   --
   | ArrayLiteral [a]
+  -- | ArrayLiteral [Literal Void]
   -- |
   -- An object literal
   --

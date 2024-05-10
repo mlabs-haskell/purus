@@ -37,6 +37,7 @@ import Protolude.List (ordNub)
 import Data.List (elemIndex, sortOn)
 import Control.Lens (view,_2)
 import Language.PureScript.CoreFn.TypeLike
+import Data.Void (Void)
 -- The final representation of types and terms, where all constructions that
 -- *should* have been eliminated in previous steps are impossible
 -- TODO: Make sure we error on exotic kinds
@@ -143,6 +144,7 @@ data Lit x a
   | CharL Char
   | BoolL Bool
   | ArrayL [a]
+  | ConstArrayL [Lit x Void]
   | ObjectL !(XObjectLiteral x) [(PSString, a)]
   deriving (Functor, Foldable, Traversable)
 
