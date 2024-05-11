@@ -40,17 +40,3 @@ data Module decl a = Module
 
 deriving instance Eq a => Eq (Module (Bind a) a)
 
-data DiffResult a =
-    DiffSourceSpan SourceSpan SourceSpan
-  | DiffComments [Comment] [Comment]
-  | DiffName ModuleName ModuleName
-  | DiffPath FilePath FilePath
-  | DiffImports [(a,ModuleName)] [(a,ModuleName)]
-  | DiffReExports (Map ModuleName [Ident]) (Map ModuleName [Ident])
-  | DiffExports [Ident] [Ident]
-  | DiffForeign [Ident] [Ident]
-  | DiffDecl (Maybe (Bind a)) (Maybe (Bind a))
-
-deriving instance Eq a => Eq (DiffResult a)
-deriving instance Ord a => Ord (DiffResult a)
-deriving instance Show a => Show (DiffResult a)

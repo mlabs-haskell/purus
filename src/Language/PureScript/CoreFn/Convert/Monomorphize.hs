@@ -19,7 +19,7 @@ import Data.Maybe
 import Language.PureScript.CoreFn.Ann (Ann)
 import Language.PureScript.CoreFn.Expr (PurusType)
 import Language.PureScript.CoreFn.Module ( Module(..) )
-import Language.PureScript.CoreFn.Convert.IR (Exp(..), FVar(..), Alt(..), Lit(..), BindE(..), ppExp, unsafeAnalyzeApp)
+import Language.PureScript.CoreFn.Convert.IR (Exp(..), FVar(..), Alt(..), Lit(..), BindE(..), ppExp, unsafeAnalyzeApp, expTy)
 import Language.PureScript.Names (Ident(..), Qualified (..), QualifiedBy (..), pattern ByNullSourcePos, ModuleName (..))
 import Language.PureScript.Types
     ( rowToList, RowListItem(..), SourceType, Type(..), replaceTypeVars, isMonoType )
@@ -275,7 +275,7 @@ unsafeApply ::
   Exp WithObjects PurusType (FVar PurusType) ->
   [Exp WithObjects PurusType (FVar PurusType)] ->
   Exp WithObjects PurusType (FVar PurusType)
-unsafeApply e (arg:args)= case exprType e of
+unsafeApply e (arg:args)= case expTy F e of
   (a :-> b) -> unsafeApply (AppE e arg) args
   other -> Prelude.error $ "boom: " <> prettyTypeStr other
 unsafeApply e [] = e

@@ -6,12 +6,13 @@
 {-# HLINT ignore "Use if" #-}
 {-# LANGUAGE InstanceSigs #-}
 {-# LANGUAGE PartialTypeSignatures #-}
+{-# LANGUAGE TypeApplications #-}
 module Language.PureScript.CoreFn.Convert.Monomorphize.Utils  where
 
 import Prelude
 
 import Language.PureScript.CoreFn.Expr (PurusType)
-import Language.PureScript.CoreFn.Convert.IR (_V, Exp(..), FVar(..), BindE(..), Ty (..), pattern (:~>), BVar (..), flattenBind, expTy', abstractMany, mkBindings, Alt (..), Lit (..))
+import Language.PureScript.CoreFn.Convert.IR (_V, Exp(..), FVar(..), BindE(..), Ty (..), pattern (:~>), BVar (..), flattenBind, expTy', abstractMany, mkBindings, Alt (..), Lit (..), expTy)
 import Language.PureScript.Names (Ident(..), ModuleName (..), QualifiedBy (..), Qualified (..), pattern ByNullSourcePos)
 import Language.PureScript.Types
     ( SourceType, TypeVarVisibility (TypeVarInvisible), genPureName )
@@ -20,18 +21,18 @@ import Data.Text qualified as T
 import Data.Map (Map)
 import Data.Map qualified as M
 import Control.Lens
-    ( _2, view, Indexable (..) )
-import Control.Monad.RWS.Class (gets, modify')
-import Control.Monad.RWS (RWST(..))
+    ( _2, view, Indexable (..), (<&>) )
+import Control.Monad.RWS.Class (gets, modify', MonadReader (..))
+import Control.Monad.RWS (RWST(..), MonadTrans (..))
 import Control.Monad.Except (throwError)
 import Language.PureScript.CoreFn.Utils (Context)
 import Data.Text (Text)
 import Language.PureScript.CoreFn.Convert.DesugarCore (WithObjects)
 import Bound.Var (Var(..))
-import Bound.Scope (instantiateEither, Scope (..), abstract, abstractEither, splat, toScope)
+import Bound.Scope (instantiateEither, Scope (..), abstract, abstractEither, splat, toScope, fromScope, mapScope)
 import Data.Bifunctor (first, Bifunctor (..))
 import Data.Maybe (fromMaybe)
-import Data.List (sortOn)
+import Data.List (sortOn, find)
 import Protolude.List (ordNub)
 import Language.PureScript.CoreFn.TypeLike (TypeLike(..))
 import Control.Lens ((^?))
@@ -41,74 +42,42 @@ import Control.Lens.Plated
 import Bound (instantiate)
 import Control.Monad (join)
 import Control.Lens.Type (IndexedTraversal')
+import Data.Functor.Identity (Identity(..))
+import Language.PureScript.Environment (pattern (:->))
+import Language.PureScript.CoreFn.Pretty (prettyTypeStr)
 
-{- This instance is morally the same thing as:
 
-traverseExp :: forall x t a f
-             .  Applicative f
-             => (a -> Var (BVar t) a)
-             -> (Exp x t (Var (BVar t) a) -> f (Exp x t (Var (BVar t) a)))
-             -> Exp x t (Var (BVar t) a)
-             -> f (Exp x t (Var (BVar t) a))
-traverseExp ifun tfun = \case
-  LamE t bv e ->  LamE t bv  <$> helper e
-  CaseE t es alts ->
-    let goAlt :: Alt x t (Exp x t) (Var (BVar t) a) -> f (Alt x t (Exp x t) (Var (BVar t) a))
-        goAlt (UnguardedAlt bs pats scoped) = UnguardedAlt bs pats <$> helper scoped
-    in CaseE t <$> traverse tfun es <*>  traverse goAlt alts
-  LetE binds decls scoped ->
-    let mm = join <$> instantiateEither (either (V . B) (V . F)) scoped
-        bop = fmap (fmap ifun) <$> tfun mm
+transverseScopeAndVariables ::
+  (Monad exp, Traversable exp, Applicative f) =>
+  (exp a -> f fvar1) ->
+  (Var bvar1 fvar1 -> exp (Var bvar2 fvar2)) ->
+  Scope bvar1 exp a ->
+  f (Scope bvar2 exp fvar2)
+transverseScopeAndVariables f g expr = toScope . (g =<<) <$> traverse (traverse f) (unscope expr)
 
-        goDecls :: BindE t (Exp x t) (Var (BVar t) a) -> f (BindE t (Exp x t) (Var (BVar t) a))
-        goDecls = \case
-          NonRecursive ident scopd -> NonRecursive ident <$> helper scopd
-          Recursive xs -> Recursive <$> traverse (\(i,x) -> (i,) <$> helper x) xs
-    in LetE binds <$> traverse goDecls decls <*> (toScope <$> bop)
-  AppE e1 e2 -> AppE <$> tfun e1 <*> tfun e2
-  AccessorE x t pss e -> AccessorE x t pss <$> tfun e
-  ObjectUpdateE x t e cf fs -> (\e' fs' -> ObjectUpdateE x t e' cf fs')
-                               <$> tfun e
-                               <*> traverse (\(nm,expr) -> (nm,) <$> tfun expr) fs
-  LitE t lit -> LitE t <$> traverseLit lit
-  other -> tfun other
- where
-   traverseLit :: Lit x (Exp x t (Var (BVar t) a)) -> f (Lit x (Exp x t (Var (BVar t) a)))
-   traverseLit = \case
-     IntL i -> pure $ IntL i
-     NumL d -> pure $ NumL d
-     StringL str -> pure $ StringL str
-     CharL char -> pure $ CharL char
-     BoolL b -> pure $ BoolL b
-     ArrayL xs -> ArrayL <$> traverse tfun xs
-     ConstArrayL xs -> ConstArrayL <$> pure xs
-     ObjectL x fs -> ObjectL x <$> traverse (\(str,e) -> (str,) <$> tfun e) fs
+transverseScopeViaExp :: Applicative f
+                     => (Exp x t a -> f (Exp x t a))
+                     -> Scope (BVar t) (Exp x t) a
+                     -> f (Scope (BVar t) (Exp x t) a)
+transverseScopeViaExp f scope
+  = toScope  . (sequence =<<) <$> traverse (traverse f) (unscope scope)
 
-   helper :: Scope (BVar t) (Exp x t) (Var (BVar t) a) -> f (Scope (BVar t) (Exp x t) (Var (BVar t) a))
-   helper expr = let mm = join <$> instantiateEither (either (V . B) (V . F)) expr
-                     bop = fmap (fmap ifun) <$> tfun mm
-                 in toScope <$> bop
-
--}
-
-instance Plated (Exp x t (Var (BVar t) a)) where
-
+instance Plated (Exp x t a) where
   plate = go
    where
-     -- yes it really needs that grotesque type signature lol
      go :: forall f
          . ( Applicative f)
-        =>  (Exp x t (Var (BVar t) a) -> f  (Exp x t (Var (BVar t) a)))
-        -> Exp x t (Var (BVar t) a)
-        -> f (Exp x t (Var (BVar t) a))
+        => (Exp x t a -> f  (Exp x t a))
+        -> Exp x t a
+        -> f (Exp x t  a)
      go  tfun = \case
       LamE t bv e ->  LamE t bv <$> helper e
       CaseE t es alts ->
-        let goAlt ::  Alt x t (Exp x t) (Var (BVar t) a) -> f (Alt x t (Exp x t) (Var (BVar t) a))
+        let goAlt ::  Alt x t (Exp x t) a -> f (Alt x t (Exp x t) a)
             goAlt (UnguardedAlt bs pats scoped) = UnguardedAlt bs pats <$> helper scoped
         in CaseE t <$> traverse tfun es <*>  traverse goAlt alts
       LetE binds decls scoped ->
-        let goDecls :: BindE t (Exp x t) (Var (BVar t) a) -> f (BindE t (Exp x t) (Var (BVar t) a))
+        let goDecls :: BindE t (Exp x t) a -> f (BindE t (Exp x t) a)
             goDecls = \case
               NonRecursive ident scopd ->
                 NonRecursive ident <$> helper scopd
@@ -123,8 +92,8 @@ instance Plated (Exp x t (Var (BVar t) a)) where
       LitE t lit -> LitE t <$> traverseLit lit
       other -> tfun other
       where
-        traverseLit :: Lit x (Exp x t (Var (BVar t) a))
-                    -> f (Lit x (Exp x t (Var (BVar t) a)))
+        traverseLit :: Lit x (Exp x t a)
+                    -> f (Lit x (Exp x t a))
         traverseLit  = \case
           IntL i -> pure $ IntL i
           NumL d -> pure $ NumL d
@@ -135,17 +104,14 @@ instance Plated (Exp x t (Var (BVar t) a)) where
           ConstArrayL xs -> ConstArrayL <$> pure xs
           ObjectL x fs -> ObjectL x <$> traverse (\(str,e) -> (str,) <$> tfun e) fs
 
-        helper ::  Scope (BVar t) (Exp x t) (Var (BVar t) a) -> f (Scope (BVar t) (Exp x t) (Var (BVar t) a))
-        helper expr = let mm = join <$> splat (V . F) (V . B) expr
-                          pow :: Var (BVar t) a -> Var (BVar t) (Var (BVar t) a)
-                          pow = \case
-                            B bv -> B bv
-                            F fv -> F (F fv)
-                      in toScope . fmap pow <$> tfun mm
+        helper ::  Scope (BVar t) (Exp x t) a -> f (Scope (BVar t) (Exp x t) a)
+        helper expr = toScope  . (sequence =<<) <$> traverse (traverse tfun) (unscope expr)
+
+
 
 -- TODO: better error messages
 data MonoError
- = MonoError Context String deriving (Show)
+ = MonoError String deriving (Show)
 
 -- ok we need monads
 data MonoState = MonoState {
@@ -157,9 +123,15 @@ data MonoState = MonoState {
 
 type Monomorphizer a = RWST (ModuleName, [BindE PurusType (Exp WithObjects PurusType) (FVar PurusType)]) () MonoState (Either MonoError)  a
 
-note :: Context  -> String -> Maybe b -> Monomorphizer b
-note d err = \case
-  Nothing -> throwError $ MonoError d err
+getModName :: Monomorphizer ModuleName
+getModName = ask <&> fst
+
+getModBinds :: Monomorphizer [BindE PurusType (Exp WithObjects PurusType) (FVar PurusType)]
+getModBinds = ask <&> snd
+
+note ::  String -> Maybe b -> Monomorphizer b
+note  err = \case
+  Nothing -> throwError $ MonoError err
   Just x -> pure x
 
 type IR_Decl = BindE PurusType (Exp WithObjects PurusType) (FVar PurusType)
@@ -191,18 +163,59 @@ gLet binds e = LetE bindings binds (abstract (abstractMany allBoundIdents) e)
     bindings = mkBindings allBoundIdents
     allBoundIdents = uncurry (flip FVar . qualifyNull) <$> second (expTy' F) <$> concatMap flattenBind binds
 
-type WithObjs t a = Exp WithObjects t a
+type WithObjs t f = Exp WithObjects t (f t)
 
 type Vars t = (Var (BVar t) (FVar t))
 
 
 -- I *think* all CTors should be translated to functions at this point?
 -- TODO: We can make sure the variables are well-scoped too
-updateVarTy ::  Ident -> PurusType -> WithObjs PurusType (Vars PurusType) -> WithObjs PurusType (Vars PurusType)
-updateVarTy  ident ty e = transform  goVar e
+updateVarTyE ::  Ident
+            -> PurusType
+            -> Exp WithObjects PurusType (FVar PurusType)
+            -> Exp WithObjects PurusType (FVar PurusType)
+updateVarTyE  ident ty e = transform  goVar e
   where
-    goVar ::   WithObjs PurusType (Vars PurusType) -> WithObjs PurusType (Vars PurusType)
+    goVar :: Exp WithObjects PurusType (FVar PurusType)  -> Exp WithObjects PurusType (FVar PurusType)
     goVar  expr = case expr ^? _V of
-      Just (F (FVar _ (Qualified q@(BySourcePos _) varId))) | varId == ident -> V . F $ FVar ty (Qualified q ident)
-      Just (B (BVar i _ ident')) | ident == ident'  -> V . B $ BVar i ty ident
+      Just (FVar _ (Qualified q@(BySourcePos _) varId)) | varId == ident -> V  $ FVar ty (Qualified q ident)
       _ -> expr
+
+updateVarTyS :: forall x t. Int -> Ident -> t -> Scope (BVar t) (Exp x t) (FVar t) -> Scope (BVar t) (Exp x t) (FVar t)
+updateVarTyS ix ident ty scoped = mapScope goBound goFree scoped
+  where
+    goBound :: BVar t -> BVar t
+    goBound bv@(BVar bvIx _ bvIdent)
+      | bvIx == ix && bvIdent == ident = BVar bvIx ty ident
+      | otherwise = bv
+
+    goFree :: FVar t -> FVar t
+    goFree fv@(FVar _ (Qualified q@(BySourcePos _) varId))
+      | varId == ident = FVar ty (Qualified q varId)
+      | otherwise = fv
+    goFree other = other
+
+-- TODO: Eventually we shouldn't need this but it's useful to throw errors
+--       while debugging if we get something that's not a function
+unsafeApply ::
+  Exp WithObjects PurusType (FVar PurusType) ->
+  [Exp WithObjects PurusType (FVar PurusType)] ->
+  Exp WithObjects PurusType (FVar PurusType)
+unsafeApply e (arg:args)= case expTy F e of
+  (_ :-> _) -> unsafeApply (AppE e arg) args
+  other -> Prelude.error $ "Unexpected argument to unsafeApply:" <> prettyTypeStr other
+unsafeApply e [] = e
+
+
+findInlineDeclGroup ::
+  Ident ->
+  [BindE PurusType (Exp x ty) a] ->
+  Maybe (BindE PurusType (Exp x ty) a)
+findInlineDeclGroup _ [] = Nothing
+findInlineDeclGroup ident (NonRecursive ident' expr:rest)
+  | ident == ident' = Just $ NonRecursive ident' expr
+  | otherwise = findInlineDeclGroup ident rest
+findInlineDeclGroup ident (Recursive xs:rest) = case  find (\x -> snd (fst x) == ident) xs of
+  Nothing -> findInlineDeclGroup ident rest
+         -- idk if we need to specialize the whole group?
+  Just _ -> Just (Recursive xs)
