@@ -15,7 +15,7 @@ import Language.PureScript.CoreFn.Expr (PurusType)
 import Language.PureScript.CoreFn.Convert.IR (_V, Exp(..), FVar(..), BindE(..), Ty (..), pattern (:~>), BVar (..), flattenBind, expTy', abstractMany, mkBindings, Alt (..), Lit (..), expTy)
 import Language.PureScript.Names (Ident(..), ModuleName (..), QualifiedBy (..), Qualified (..), pattern ByNullSourcePos)
 import Language.PureScript.Types
-    ( SourceType, TypeVarVisibility (TypeVarInvisible), genPureName )
+    ( SourceType, TypeVarVisibility (TypeVarInvisible), genPureName, RowListItem (..), rowToList )
 import Language.PureScript.CoreFn.FromJSON ()
 import Data.Text qualified as T
 import Data.Map (Map)
@@ -29,7 +29,7 @@ import Language.PureScript.CoreFn.Utils (Context)
 import Data.Text (Text)
 import Language.PureScript.CoreFn.Convert.DesugarCore (WithObjects)
 import Bound.Var (Var(..))
-import Bound.Scope (instantiateEither, Scope (..), abstract, abstractEither, splat, toScope, fromScope, mapScope)
+import Bound.Scope (instantiateEither, Scope (..), abstract, abstractEither, splat, toScope, fromScope, mapScope, mapBound)
 import Data.Bifunctor (first, Bifunctor (..))
 import Data.Maybe (fromMaybe)
 import Data.List (sortOn, find)
@@ -45,6 +45,9 @@ import Control.Lens.Type (IndexedTraversal')
 import Data.Functor.Identity (Identity(..))
 import Language.PureScript.Environment (pattern (:->))
 import Language.PureScript.CoreFn.Pretty (prettyTypeStr)
+import Language.PureScript.AST (SourceAnn)
+import Language.PureScript.PSString (PSString)
+import Language.PureScript.Label (Label(runLabel))
 
 
 transverseScopeAndVariables ::
@@ -56,11 +59,17 @@ transverseScopeAndVariables ::
 transverseScopeAndVariables f g expr = toScope . (g =<<) <$> traverse (traverse f) (unscope expr)
 
 transverseScopeViaExp :: Applicative f
-                     => (Exp x t a -> f (Exp x t a))
+                     => (Exp x t a -> f (Exp x t b))
                      -> Scope (BVar t) (Exp x t) a
-                     -> f (Scope (BVar t) (Exp x t) a)
+                     -> f (Scope (BVar t) (Exp x t) b)
 transverseScopeViaExp f scope
   = toScope  . (sequence =<<) <$> traverse (traverse f) (unscope scope)
+
+mapScopeViaExp :: (Exp x t a -> Exp x t a)
+               -> Scope (BVar t) (Exp x t) a
+               -> Scope (BVar t) (Exp x t) a
+mapScopeViaExp f scope = runIdentity $ transverseScopeViaExp (Identity . f) scope
+
 
 instance Plated (Exp x t a) where
   plate = go
@@ -156,33 +165,32 @@ qualifyNull = Qualified ByNullSourcePos
 
 gLet ::
   [BindE PurusType (Exp WithObjects PurusType) (FVar PurusType)] ->
-  Exp WithObjects PurusType (FVar PurusType) ->
+  Scope (BVar PurusType) (Exp WithObjects PurusType) (FVar PurusType) ->
   Exp WithObjects PurusType (FVar PurusType)
-gLet binds e = LetE bindings binds (abstract (abstractMany allBoundIdents) e)
+gLet binds e =  LetE bindings binds $ abstractEither abstr e' -- (abstract (abstractMany allBoundIdents) $ e')
   where
+    e' = fromScope e
     bindings = mkBindings allBoundIdents
     allBoundIdents = uncurry (flip FVar . qualifyNull) <$> second (expTy' F) <$> concatMap flattenBind binds
+
+    abstr :: Var (BVar PurusType) (FVar PurusType) -> Either (BVar PurusType) (FVar PurusType)
+    abstr = \case
+      B bv -> Left bv
+      F fv -> case abstractMany allBoundIdents fv of
+        Nothing -> Right fv
+        Just bv -> Left bv
 
 type WithObjs t f = Exp WithObjects t (f t)
 
 type Vars t = (Var (BVar t) (FVar t))
 
 
--- I *think* all CTors should be translated to functions at this point?
--- TODO: We can make sure the variables are well-scoped too
-updateVarTyE ::  Ident
-            -> PurusType
-            -> Exp WithObjects PurusType (FVar PurusType)
-            -> Exp WithObjects PurusType (FVar PurusType)
-updateVarTyE  ident ty e = transform  goVar e
-  where
-    goVar :: Exp WithObjects PurusType (FVar PurusType)  -> Exp WithObjects PurusType (FVar PurusType)
-    goVar  expr = case expr ^? _V of
-      Just (FVar _ (Qualified q@(BySourcePos _) varId)) | varId == ident -> V  $ FVar ty (Qualified q ident)
-      _ -> expr
-
-updateVarTyS :: forall x t. Int -> Ident -> t -> Scope (BVar t) (Exp x t) (FVar t) -> Scope (BVar t) (Exp x t) (FVar t)
-updateVarTyS ix ident ty scoped = mapScope goBound goFree scoped
+updateVarTyS :: forall x t
+              . BVar t
+             -> t
+             -> Scope (BVar t) (Exp x t) (FVar t)
+             -> Scope (BVar t) (Exp x t) (FVar t)
+updateVarTyS (BVar ix _ ident) ty scoped = mapScope goBound goFree scoped
   where
     goBound :: BVar t -> BVar t
     goBound bv@(BVar bvIx _ bvIdent)
@@ -193,6 +201,26 @@ updateVarTyS ix ident ty scoped = mapScope goBound goFree scoped
     goFree fv@(FVar _ (Qualified q@(BySourcePos _) varId))
       | varId == ident = FVar ty (Qualified q varId)
       | otherwise = fv
+    goFree other = other
+
+
+updateVarTyS' :: forall x t
+              . BVar t
+             -> t
+             -> Scope (BVar t) (Exp x t) (Var (BVar t) (FVar t))
+             -> Scope (BVar t) (Exp x t) (Var (BVar t) (FVar t))
+updateVarTyS' (BVar ix _ ident) ty scoped = mapScope goBound goFree scoped
+  where
+    goBound :: BVar t -> BVar t
+    goBound bv@(BVar bvIx _ bvIdent)
+      | bvIx == ix && bvIdent == ident = BVar bvIx ty ident
+      | otherwise = bv
+
+    goFree :: Var (BVar t) (FVar t) -> Var (BVar t) (FVar t)
+    goFree fv@(F (FVar _ (Qualified q@(BySourcePos _) varId)))
+      | varId == ident = F $ FVar ty (Qualified q varId)
+      | otherwise = fv
+    goFree bv@(B bvar) = B (goBound bvar)
     goFree other = other
 
 -- TODO: Eventually we shouldn't need this but it's useful to throw errors
@@ -215,7 +243,39 @@ findInlineDeclGroup _ [] = Nothing
 findInlineDeclGroup ident (NonRecursive ident' expr:rest)
   | ident == ident' = Just $ NonRecursive ident' expr
   | otherwise = findInlineDeclGroup ident rest
-findInlineDeclGroup ident (Recursive xs:rest) = case  find (\x -> snd (fst x) == ident) xs of
+findInlineDeclGroup ident (Recursive xs:rest) = case  find (\x -> fst x == ident) xs of
   Nothing -> findInlineDeclGroup ident rest
          -- idk if we need to specialize the whole group?
   Just _ -> Just (Recursive xs)
+
+mkFieldMap :: SourceType -> M.Map PSString (RowListItem SourceAnn)
+mkFieldMap fs = M.fromList $ (\x -> (runLabel (rowListLabel x),x)) <$> (fst . rowToList $ fs)
+
+
+extractAndFlattenAlts :: Alt x t (Exp x t) a -> [Scope (BVar t) (Exp x t) a]
+extractAndFlattenAlts (UnguardedAlt _ _ res) = [res]
+
+joinScope :: Monad f => Scope bv f (Var bv a) -> Scope bv f a
+joinScope = toScope . fmap join . fromScope
+
+updateFreeVars :: Map Ident (Ident, SourceType)
+               ->  Exp WithObjects PurusType (FVar PurusType)
+               -> Exp WithObjects PurusType (FVar PurusType)
+updateFreeVars dict = transform (updateFreeVar dict)
+
+updateFreeVar :: M.Map Ident (Ident,SourceType) -> Exp WithObjects PurusType (FVar PurusType) -> Exp WithObjects PurusType (FVar PurusType)
+updateFreeVar dict  expr = case expr ^? _V of
+     Just (FVar _ (Qualified (ByModuleName _) varId)) -> case M.lookup varId dict of
+       Nothing -> expr
+       Just (newId,newType) -> V (FVar newType (Qualified ByNullSourcePos newId))
+     _ -> expr
+
+
+-- doesn't change types!
+renameBoundVar :: Ident
+               -> Ident
+               -> Scope (BVar t) (Exp WithObjects t) (FVar t)
+               -> Scope (BVar t) (Exp WithObjects t) (FVar t)
+renameBoundVar old new  = mapBound $ \case
+  BVar bvIx bvTy bvIdent | bvIdent == old -> BVar bvIx bvTy new
+  other -> other
