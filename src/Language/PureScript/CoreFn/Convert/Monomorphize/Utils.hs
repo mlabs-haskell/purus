@@ -1,53 +1,43 @@
 {-# OPTIONS_GHC -Wno-orphans #-} -- has to be here (more or less)
 {-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE ScopedTypeVariables #-}
-{-# LANGUAGE MultiWayIf #-}
-{-# OPTIONS_GHC -Wno-unrecognised-pragmas #-}
-{-# HLINT ignore "Use if" #-}
 {-# LANGUAGE InstanceSigs #-}
 {-# LANGUAGE PartialTypeSignatures #-}
-{-# LANGUAGE TypeApplications #-}
+
 module Language.PureScript.CoreFn.Convert.Monomorphize.Utils  where
 
 import Prelude
 
 import Language.PureScript.CoreFn.Expr (PurusType)
-import Language.PureScript.CoreFn.Convert.IR (_V, Exp(..), FVar(..), BindE(..), Ty (..), pattern (:~>), BVar (..), flattenBind, expTy', abstractMany, mkBindings, Alt (..), Lit (..), expTy)
+import Language.PureScript.CoreFn.Convert.IR (_V, Exp(..), FVar(..), BindE(..), BVar (..), flattenBind, expTy', abstractMany, mkBindings, Alt (..), Lit (..), expTy)
 import Language.PureScript.Names (Ident(..), ModuleName (..), QualifiedBy (..), Qualified (..), pattern ByNullSourcePos)
 import Language.PureScript.Types
-    ( SourceType, TypeVarVisibility (TypeVarInvisible), genPureName, RowListItem (..), rowToList )
+    ( SourceType, RowListItem (..), rowToList )
 import Language.PureScript.CoreFn.FromJSON ()
 import Data.Text qualified as T
 import Data.Map (Map)
 import Data.Map qualified as M
-import Control.Lens
-    ( _2, view, Indexable (..), (<&>) )
+import Control.Lens ( (<&>), (^?) )
 import Control.Monad.RWS.Class (gets, modify', MonadReader (..))
-import Control.Monad.RWS (RWST(..), MonadTrans (..))
+import Control.Monad.RWS (RWST(..))
 import Control.Monad.Except (throwError)
-import Language.PureScript.CoreFn.Utils (Context)
 import Data.Text (Text)
 import Language.PureScript.CoreFn.Convert.DesugarCore (WithObjects)
 import Bound.Var (Var(..))
-import Bound.Scope (instantiateEither, Scope (..), abstract, abstractEither, splat, toScope, fromScope, mapScope, mapBound)
-import Data.Bifunctor (first, Bifunctor (..))
-import Data.Maybe (fromMaybe)
-import Data.List (sortOn, find)
-import Protolude.List (ordNub)
+import Bound.Scope (instantiateEither, Scope (..), abstractEither, toScope, fromScope, mapScope, mapBound)
+import Data.Bifunctor (Bifunctor (..))
+import Data.List (find)
 import Language.PureScript.CoreFn.TypeLike (TypeLike(..))
-import Control.Lens ((^?))
-import Control.Lens.IndexedPlated
-import Bound (Scope(unscope), Bound (..))
 import Control.Lens.Plated
-import Bound (instantiate)
 import Control.Monad (join)
-import Control.Lens.Type (IndexedTraversal')
 import Data.Functor.Identity (Identity(..))
 import Language.PureScript.Environment (pattern (:->))
 import Language.PureScript.CoreFn.Pretty (prettyTypeStr)
 import Language.PureScript.AST (SourceAnn)
 import Language.PureScript.PSString (PSString)
 import Language.PureScript.Label (Label(runLabel))
+import Language.PureScript.CoreFn.Module
+import Language.PureScript.CoreFn.Ann
 
 
 transverseScopeAndVariables ::
@@ -160,6 +150,19 @@ freshen ident = do
     -- other two shouldn't exist at this stage
     other -> pure other
 
+freshBVar :: t -> Monomorphizer (BVar t)
+freshBVar t = do
+  u <- gets unique
+  modify' $ \(MonoState v _) -> MonoState v (u + 1)
+  let gIdent = Ident $ T.pack ("x_$$" <> show u)
+  pure $ BVar u t gIdent
+
+uniqueIx :: Monomorphizer Int
+uniqueIx = do
+  u <- gets unique
+  modify' $ \(MonoState v _) -> MonoState v (u + 1)
+  pure u
+
 qualifyNull :: Ident -> Qualified Ident
 qualifyNull = Qualified ByNullSourcePos
 
@@ -220,8 +223,17 @@ updateVarTyS' (BVar ix _ ident) ty scoped = mapScope goBound goFree scoped
     goFree fv@(F (FVar _ (Qualified q@(BySourcePos _) varId)))
       | varId == ident = F $ FVar ty (Qualified q varId)
       | otherwise = fv
-    goFree bv@(B bvar) = B (goBound bvar)
+    goFree (B bvar) = B (goBound bvar)
     goFree other = other
+
+-- doesn't change types!
+renameBoundVar :: Ident
+               -> Ident
+               -> Scope (BVar t) (Exp WithObjects t) (FVar t)
+               -> Scope (BVar t) (Exp WithObjects t) (FVar t)
+renameBoundVar old new  = mapBound $ \case
+  BVar bvIx bvTy bvIdent | bvIdent == old -> BVar bvIx bvTy new
+  other -> other
 
 -- TODO: Eventually we shouldn't need this but it's useful to throw errors
 --       while debugging if we get something that's not a function
@@ -270,12 +282,23 @@ updateFreeVar dict  expr = case expr ^? _V of
        Just (newId,newType) -> V (FVar newType (Qualified ByNullSourcePos newId))
      _ -> expr
 
+scopedToExp :: TypeLike t
+            => Scope (BVar t) (Exp x t) (FVar t)
+            -> Monomorphizer (Exp x t (FVar t))
+scopedToExp scoped = do
+  let ty = expTy' F scoped
+  newBVar@(BVar bvIx _ bvId) <- freshBVar ty
+  let fv = FVar ty (qualifyNull bvId)
+      bindings = M.singleton bvIx fv
+      binds = [NonRecursive bvId scoped]
+  pure $ LetE bindings binds (Scope $ pure $  B newBVar)
 
--- doesn't change types!
-renameBoundVar :: Ident
-               -> Ident
-               -> Scope (BVar t) (Exp WithObjects t) (FVar t)
-               -> Scope (BVar t) (Exp WithObjects t) (FVar t)
-renameBoundVar old new  = mapBound $ \case
-  BVar bvIx bvTy bvIdent | bvIdent == old -> BVar bvIx bvTy new
-  other -> other
+
+findDeclBody :: Text
+             -> Module IR_Decl Ann
+             -> Maybe (Scope (BVar PurusType) (Exp WithObjects PurusType) (FVar PurusType))
+findDeclBody nm Module{..} = case findInlineDeclGroup (Ident nm) moduleDecls of
+  Nothing -> Nothing
+  Just decl -> case decl of
+    NonRecursive _ e -> Just e
+    Recursive xs -> snd <$> find (\x -> fst x == Ident nm) xs

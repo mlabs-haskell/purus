@@ -1,18 +1,29 @@
 {-# OPTIONS_GHC -Wno-orphans #-} -- has to be here (more or less)
 {-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE ScopedTypeVariables #-}
-{-# LANGUAGE MultiWayIf #-}
 {-# OPTIONS_GHC -Wno-unrecognised-pragmas #-}
 {-# HLINT ignore "Use if" #-}
 module Language.PureScript.CoreFn.Convert.MonomorphizeV2  where
 
 import Prelude
-import Data.Bifunctor
+import Data.Bifunctor ( Bifunctor(second) )
 
 import Language.PureScript.CoreFn.Ann (Ann)
 import Language.PureScript.CoreFn.Expr (PurusType)
 import Language.PureScript.CoreFn.Module ( Module(..) )
-import Language.PureScript.CoreFn.Convert.IR (Exp(..), FVar(..), Lit(..), BindE(..), ppExp, unsafeAnalyzeApp, BVar (..), expTy, expTy', FuncType (..))
+import Language.PureScript.CoreFn.Convert.IR
+    ( Exp(..),
+      FVar(..),
+      Lit(..),
+      BindE(..),
+      ppExp,
+      unsafeAnalyzeApp,
+      BVar(..),
+      expTy,
+      expTy',
+      FuncType(..),
+      Alt(..),
+      Alt )
 import Language.PureScript.Names (Ident(..), Qualified (..), QualifiedBy (..), ModuleName (..))
 import Language.PureScript.Types
     ( RowListItem(..), SourceType, Type(..), replaceTypeVars, isMonoType )
@@ -35,9 +46,30 @@ import Debug.Trace (trace, traceM)
 import Language.PureScript.CoreFn.Convert.DesugarCore (WithObjects)
 import Bound (fromScope)
 import Bound.Var (Var(..))
-import Bound.Scope (Scope (..), toScope)
+import Bound.Scope (Scope (..), toScope, mapBound)
 import Language.PureScript.CoreFn.TypeLike
+    ( TypeLike(splitFunTyParts, instantiates) )
 import Language.PureScript.CoreFn.Convert.Monomorphize.Utils
+    ( IR_Decl,
+      Monomorphizer,
+      MonoState(MonoState),
+      MonoError(..),
+      transverseScopeViaExp,
+      getModBinds,
+      note,
+      freshen,
+      freshBVar,
+      qualifyNull,
+      gLet,
+      updateVarTyS,
+      updateVarTyS',
+      unsafeApply,
+      findInlineDeclGroup,
+      mkFieldMap,
+      extractAndFlattenAlts,
+      joinScope,
+      updateFreeVars,
+      scopedToExp )
 
 {- This is the entry point for monomorphization. Typically,
    you will search the module for a 'main' decl and use its
@@ -47,17 +79,16 @@ monomorphizeExpr ::
   Module IR_Decl Ann ->
   Exp WithObjects PurusType (FVar PurusType) ->
   Either MonoError (Exp WithObjects PurusType (FVar PurusType))
-monomorphizeExpr m@Module{..} expr =
+monomorphizeExpr Module{..} expr =
   runRWST (monomorphize  expr) (moduleName,moduleDecls) (MonoState M.empty 0) & \case
     Left err -> Left err
     Right (a,_,_) -> Right a
 
 monomorphize ::
-  forall a.
   Exp WithObjects PurusType (FVar PurusType)  ->
   Monomorphizer (Exp WithObjects PurusType (FVar PurusType))
 monomorphize  xpr = trace ("monomorphizeA " <>  "\n  " <> ppExp xpr)  $ case xpr of
-  app@(AppE _ arg) ->  do
+  app@(AppE _ _) ->  do
     let (f,args) = unsafeAnalyzeApp app
     traceM $ "FUN: " <> ppExp f
     traceM $ "ARGS: " <> show (ppExp <$> args)
@@ -70,11 +101,9 @@ monomorphize  xpr = trace ("monomorphizeA " <>  "\n  " <> ppExp xpr)  $ case xpr
   other -> pure other
  where
    -- N.B. we need qualified names in the vars to write this, will fix later
-   isBuiltin = undefined
-
-   isMonomorphizedVar :: Exp WithObjects PurusType (FVar PurusType)  -> Bool
-   isMonomorphizedVar (V (FVar sty  _)) = snd (stripQuantifiers sty) == sty
-   isMonomorphizedVar _ = error "IsMonomorphizedVar called on BVar (I think that shouldn't happen and indicates a mistakes?)"
+   isBuiltin = \case
+     V (FVar _ (Qualified (ByModuleName (ModuleName "Builtin")) _ )) -> True
+     _ -> False
 
 handleFunction ::  Exp WithObjects PurusType (FVar PurusType)
                -> [Exp WithObjects PurusType (FVar PurusType)] -- TODO: List could be empty?
@@ -100,7 +129,7 @@ handleFunction  expr@(LamE (ForAll _ _ var _ inner  _) bv@(BVar bvIx _ bvIdent) 
 handleFunction  v@(V (FVar ty  qn)) es = trace ("handleFunction VarGo: " <> ppExp v) $ do
   traceM (ppExp v)
   traceM (show $ ppExp <$> es)
-  e' <- either (uncurry gLet) id <$> inlineAs ty qn
+  e' <- inlineAs ty qn
   handleFunction e' es
 handleFunction e es | isMonoType (expTy F e)  = pure $ unsafeApply e es
 handleFunction e es = throwError $ MonoError
@@ -111,22 +140,18 @@ handleFunction e es = throwError $ MonoError
 inlineAs ::
   PurusType ->
   Qualified Ident ->
-  Monomorphizer (Either
-                  ( [BindE PurusType (Exp WithObjects PurusType) (FVar PurusType)]
-                  , Scope (BVar PurusType) (Exp WithObjects PurusType) (FVar PurusType))
-                  (Exp WithObjects PurusType (FVar PurusType)))
+  Monomorphizer (Exp WithObjects PurusType (FVar PurusType))
 -- TODO: Review whether this has any purpose here \/
-inlineAs ty nm@(Qualified (ByModuleName (ModuleName "Builtin")) idnt ) = do
-  pure . Right $ undefined
+inlineAs ty nm@(Qualified (ByModuleName (ModuleName "Builtin")) _ ) = do
+  pure $ V (FVar ty nm)
 -- TODO: Probably can inline locally bound variables? FIX: Keep track of local name bindings
-inlineAs _ (Qualified (BySourcePos _) ident) = throwError $ MonoError  $ "can't inline bound variable " <> showIdent' ident
-inlineAs ty qmn@(Qualified (ByModuleName mn') ident) = trace ("inlineAs: " <> showIdent' ident <> " :: " <>  prettyTypeStr ty) $ ask >>= \(mn,modDict) ->
+inlineAs ty (Qualified (ByModuleName mn') ident) = trace ("inlineAs: " <> showIdent' ident <> " :: " <>  prettyTypeStr ty) $ ask >>= \(mn,modDict) ->
   if  mn ==  mn' then  do
       let msg = "Couldn't find a declaration with identifier " <> showIdent' ident <> " to inline as " <> prettyTypeStr ty
       note msg  (findInlineDeclGroup ident modDict) >>= \case
         NonRecursive _ e -> do
           e' <- transverseScopeViaExp (monomorphizeWithType ty) e
-          pure . Right $ e'
+          scopedToExp e'
         Recursive xs -> do
           let msg' = "Target expression with identifier " <> showIdent' ident <> " not found in mutually recursive group"
           (targIdent,targExpr) <- note msg' $ find (\x -> fst x == ident)  xs -- has to be there
@@ -137,7 +162,9 @@ inlineAs ty qmn@(Qualified (ByModuleName mn') ident) = trace ("inlineAs: " <> sh
               bindingMap = M.elems dict
           binds <- traverse (\(newId,newTy,oldE) -> makeBind renameMap newId newTy oldE) bindingMap
           case M.lookup targIdent renameMap of
-            Just (newId,newTy) -> pure $ Left (binds, undefined ) {- -Var nullAnn newTy (Qualified ByNullSourcePos newId)) -}
+            Just (newId,newTy) -> do
+              let body = pure (FVar newTy $ qualifyNull newId)
+              pure $ gLet binds body
             Nothing -> throwError
                        $ MonoError
                        $ "Couldn't inline " <> showIdent' ident <> " - identifier didn't appear in collected bindings:\n  "  <> show renameMap
@@ -218,6 +245,7 @@ inlineAs ty qmn@(Qualified (ByModuleName mn') ident) = trace ("inlineAs: " <> sh
              collectRecBinds visited' t' declBody
            Just _ -> pure visited
         other -> throwError $ MonoError $ "Unexpected expression in collectFun:\n  " <> ppExp other
+   collectFun _ _ [] = throwError $ MonoError "Ran out of types in collectFun"
 
    collectRecBinds ::
      Map Ident (Ident, SourceType, Scope (BVar PurusType) (Exp WithObjects PurusType) (FVar PurusType)) ->
@@ -270,6 +298,8 @@ inlineAs ty qmn@(Qualified (ByModuleName mn') ident) = trace ("inlineAs: " <> sh
      LetE _ _ ex ->
        -- not sure abt this
        collectRecBinds visited t (joinScope ex)
+     -- TODO: Figure out what to do w/ bound vars
+     V (B bv) -> throwError $ MonoError $  "collectRecBinds: Not sure what to do with BVars yet: " <> show bv
 
 
 
@@ -282,7 +312,7 @@ monomorphizeWithType ::
 monomorphizeWithType ty expr
   | expTy F expr == ty = pure expr
   | otherwise = trace ("monomorphizeWithType:\n  " <> ppExp expr <> "\n  " <> prettyTypeStr ty) $ case expr of
-      LitE ty (ArrayL arr) -> case ty of
+      LitE ty' (ArrayL arr) -> case ty' of
         ArrayT inner -> LitE ty . ArrayL <$> traverse (monomorphizeWithType inner)  arr
         _ -> throwError $ MonoError  ("Failed to collect recursive binds: " <> prettyTypeStr ty <> " is not a Record type")
 
@@ -292,7 +322,7 @@ monomorphizeWithType ty expr
           LitE ty . ObjectL ext <$> monomorphizeFieldsWithTypes fieldMap  fs
         _ -> throwError $ MonoError ("Failed to collect recursive binds: " <> prettyTypeStr ty <> " is not a Record type")
 
-      LitE ty lit -> pure $ LitE ty lit
+      LitE _ lit -> pure $ LitE ty lit
 
       CtorE _ tName cName fs -> pure $ CtorE ty tName cName fs
 
@@ -306,31 +336,31 @@ monomorphizeWithType ty expr
 
       -- TODO: IMPORTANT! We need something like 'freshen' for BVar indices
       AccessorE ext _ str e -> pure $ AccessorE ext ty str e -- idk?
-      fun@(LamE _ bv@(BVar _ _ ident) body) -> trace ("MTABs:\n  " <> ppExp fun <> " :: " <> prettyTypeStr ty) $ do
+      fun@(LamE _ bv@(BVar oldIx _ oldIdent) body) -> trace ("MTABs:\n  " <> ppExp fun <> " :: " <> prettyTypeStr ty) $ do
         case ty of
           (a :-> b) ->  do
-              freshIdent <- freshen ident
-              let body' = renameBoundVar ident freshIdent $ updateVarTyS bv a body
+              -- REVIEW: If something is weirdly broken w/ bound vars look here first
+              freshBV <- freshBVar a
+              let replaceBVar = mapBound $ \x -> if x == bv then freshBV else x
+                  body' = replaceBVar $ updateVarTyS bv a body
               body'' <- transverseScopeViaExp (monomorphizeWithType b)  body'
-              pure $ LamE ty
-              error "TODO"
-              -- pure $ Abs nullAnn ty freshIdent body''
+              pure $ LamE ty freshBV body''
           _ -> throwError $ MonoError  "Abs isn't a function"
 
       app@(AppE _ e2) -> trace ("MTAPP:\n  " <> ppExp app) $  do
         let (f,args) = unsafeAnalyzeApp app
-            types = (expTy F <$> args) <> [ty]
         e1' <-  handleFunction f args
         pure $ AppE e1' e2
 
       V a -> pure $ V a -- idk
 
-      CaseE _ scrut alts -> error "TODO: wtf?"
-        -- let f = monomorphizeWithType  ty d
-        --     -- goAlt :: Alt WithObjects PurusType -> Monomorphizer (CaseAlternative Ann)
-        --     goAlt (CaseAlternative binders results) =
-        --       CaseAlternative binders <$> bitraverse (traverse (bitraverse f f)) f results
-        -- in Case a ty scrut <$> traverse goAlt alts
+      CaseE _ scrut alts -> do
+        let f = monomorphizeWithType ty
+            goAlt :: Alt WithObjects PurusType (Exp WithObjects PurusType) (FVar PurusType)
+                   -> Monomorphizer (Alt WithObjects PurusType (Exp WithObjects PurusType) (FVar PurusType))
+            goAlt (UnguardedAlt bindings binders result) =
+               UnguardedAlt bindings binders <$> transverseScopeViaExp f result
+        CaseE ty scrut <$> traverse goAlt alts
 
       LetE a binds e -> LetE a binds <$> transverseScopeViaExp (monomorphizeWithType ty) e
   where

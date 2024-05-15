@@ -27,8 +27,8 @@ import Language.PureScript.AST.SourcePos
     ( pattern NullSourceAnn )
 import Control.Lens.IndexedPlated
 import Control.Lens ( ix )
-import Language.PureScript.CoreFn.Convert.Monomorphize
-    ( nullAnn, mkFieldMap, decodeModuleIO, MonoError (..), monomorphizeExpr, findDeclBody )
+import Language.PureScript.CoreFn.Convert.MonomorphizeV2
+import Language.PureScript.CoreFn.Convert.Monomorphize.Utils
 import Data.Text (Text)
 import Bound
 import Data.Bifunctor (Bifunctor(first, second))
@@ -54,8 +54,9 @@ import Data.Void (Void)
 test :: FilePath -> Text -> IO (Exp WithoutObjects Ty (FVar Ty))
 test path decl = do
   myMod <- decodeModuleIO path
-  case monomorphizeExpr myMod decl of
-    Left (MonoError _ msg ) -> throwIO $ userError $ "Couldn't monomorphize " <> T.unpack decl <> "\nReason:\n" <> msg
+  Just myDecl <- pure $ findDeclBody decl myMod
+  case monomorphizeExpr myMod myDecl of
+    Left (MonoError msg ) -> throwIO $ userError $ "Couldn't monomorphize " <> T.unpack decl <> "\nReason:\n" <> msg
     Right body -> case tryConvertExpr body of
       Left convertErr -> throwIO $ userError convertErr
       Right e -> do
@@ -86,7 +87,7 @@ prepPIR path  decl = do
         <> T.unpack (runModuleName moduleName <> ".main") <> "\nReason:\n" <> msg
 
   case monomorphizeExpr myMod desugaredExpr of
-    Left (MonoError _ msg ) ->
+    Left (MonoError msg ) ->
       throwIO
       $ userError
       $ "Couldn't monomorphize "
