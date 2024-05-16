@@ -38,6 +38,7 @@ import Language.PureScript.PSString (PSString, prettyPrintString)
 import Language.PureScript.AST.SourcePos (SourceAnn)
 import Control.Lens
     ( (&) )
+import Control.Monad (foldM)
 import Control.Monad.RWS.Class (MonadReader(ask))
 import Control.Monad.RWS (RWST(..))
 import Control.Monad.Except (throwError)
@@ -51,8 +52,6 @@ import Language.PureScript.CoreFn.Convert.Monomorphize.Utils
 
 import Data.Text (Text)
 import GHC.IO (throwIO)
-
-
 
 {- Function for quickly testing/debugging monomorphization -}
 
@@ -201,7 +200,7 @@ inlineAs ty = \case
           (targIdent,targExpr) <- note msg' $ find (\x -> fst x == ident)  xs -- has to be there
           fresh <- freshen targIdent
           let initialRecDict = M.singleton targIdent (fresh,ty,targExpr)
-          dict <- collectRecBinds initialRecDict ty targExpr
+          dict <- collectRecBinds  ty initialRecDict targExpr
           let renameMap = (\(i,t,_) -> (i,t)) <$> dict
               bindingMap = M.elems dict
           binds <- traverse (\(newId,newTy,oldE) -> makeBind renameMap newId newTy oldE) bindingMap
@@ -265,14 +264,14 @@ inlineAs ty = \case
 
    -- Top-level collection function
    collectRecBinds ::
-     Map Ident (Ident, SourceType, Exp WithObjects PurusType (FVar PurusType)) ->
      PurusType ->
+     Map Ident (Ident, SourceType, Exp WithObjects PurusType (FVar PurusType)) ->
      Exp WithObjects PurusType (FVar PurusType) ->
      Monomorphizer (Map Ident (Ident, SourceType, Exp WithObjects PurusType (FVar PurusType)))
-   collectRecBinds visited t e = trace ("collectRecBinds:\n  " <> ppExp  e <> "\n  " <> prettyTypeStr t) $ case  e of
+   collectRecBinds t visited  e = trace ("collectRecBinds:\n  " <> ppExp  e <> "\n  " <> prettyTypeStr t) $ case  e of
      LitE _ (ArrayL arr) -> trace "crbARRAYLIT" $ case t of
        ArrayT inner -> do
-         innerBinds <- collectMany visited inner arr
+         innerBinds <- foldM (collectRecBinds inner) visited arr
          pure $ visited <> innerBinds
        _ -> throwError $ MonoError ("Failed to collect recursive binds: " <> prettyTypeStr t <> " is not an Array type")
      LitE _ (ObjectL _ fs) -> trace "crbOBJLIT" $ case t of
@@ -289,14 +288,14 @@ inlineAs ty = \case
           innerBinds <- collectRecFieldBinds visited fieldMap  updateFields
           pure $ visited <> innerBinds
         _ -> throwError $ MonoError  ("Failed to collect recursive binds: " <> prettyTypeStr t <> " is not a Record type")
-     AccessorE _ _ _ _ -> trace "crbACCSR" $ pure visited -- idk. given (x.a :: t) we can't say what x is
+     AccessorE _ _ _ _ -> trace "crbACCSR" $ pure visited -- idk. given (x.a :: t) we can't say what x is.
      absE@(LamE _ _ _) -> trace ("crbABS TOARGS: " <> prettyTypeStr t) $ collectFun visited  absE (splitFunTyParts t)
      app@(AppE _ e2) -> trace "crbAPP" $ do
        let (f,args) = unsafeAnalyzeApp app
            types = (expTy F <$> args) <> [t]
        funBinds' <- collectFun visited f types
        let funBinds = visited <> funBinds'
-       argBinds <- collectRecBinds funBinds (head types) e2
+       argBinds <- collectRecBinds (head types) funBinds  e2
        pure $ funBinds <> argBinds
      V ((FVar _ (Qualified (ByModuleName _) nm))) -> trace ("crbVAR: " <> showIdent' nm)  $ case M.lookup nm visited of
        Nothing -> findDeclarationBody nm >>= \case
@@ -309,22 +308,10 @@ inlineAs ty = \case
      V ((FVar _ (Qualified _ nm))) -> trace ("crbVAR_: " <> showIdent' nm) $ pure visited
      CaseE _ _  alts -> trace "crbCASE" $ do
        let flatAlts = concatMap extractAndFlattenAlts alts
-       foldMScopeViaExp visited (\b x -> collectRecBinds b t x)  flatAlts
-     LetE _ _ ex -> case transverseScopeViaExp' (\expr' ->  collectRecBinds visited t expr') ex of
+       foldMScopeViaExp visited (collectRecBinds t) flatAlts
+     LetE _ _ ex -> case transverseScopeViaExp' (\expr' ->  collectRecBinds t visited expr') ex of
        B _ -> pure visited
        F act -> act
-
-
-   -- Collect from a list of expressions
-   collectMany :: Map Ident (Ident, SourceType, Exp WithObjects PurusType (FVar PurusType))
-               -> PurusType
-               -> [Exp WithObjects PurusType (FVar PurusType)]
-               -> Monomorphizer (Map Ident (Ident, SourceType, Exp WithObjects PurusType (FVar PurusType)))
-   collectMany acc _  [] = trace "collectMany" $ pure acc
-   collectMany acc t  (x:xs) = do
-     xBinds <- collectRecBinds acc t x
-     let acc' = acc <> xBinds
-     collectMany acc' t xs
 
    -- Collect from the fields of an object
    collectRecFieldBinds :: Map Ident (Ident, SourceType, Exp WithObjects PurusType (FVar PurusType))
@@ -335,7 +322,7 @@ inlineAs ty = \case
    collectRecFieldBinds visited cxt ((lbl,e):rest) = trace "collectRecFieldBinds" $ do
      RowListItem{..} <- note ("No type for field with label " <> T.unpack (prettyPrintString lbl) <> " when collecting record binds")
                           $ M.lookup lbl cxt
-     this <- collectRecBinds visited rowListType e
+     this <- collectRecBinds rowListType visited e
      collectRecFieldBinds (visited <> this) cxt rest
 
    -- Collect from a function expression
@@ -344,7 +331,7 @@ inlineAs ty = \case
               -> [SourceType]
               -> Monomorphizer (Map Ident (Ident, SourceType, Exp WithObjects PurusType (FVar PurusType)))
    collectFun visited e [t] = trace ("collectFun FIN:\n  " <> {- -ppExp e <> " :: " -}  prettyTypeStr t)  $ do
-     rest <- collectRecBinds visited t e
+     rest <- collectRecBinds t visited e
      pure $ visited <> rest
    collectFun visited  e (t:ts) =
      trace ("collectFun:\n  " <> ppExp e <> "\n  " <> prettyTypeStr t <> "\n" <> show ts)  $
@@ -365,8 +352,9 @@ inlineAs ty = \case
              declBody <- note  msg =<< findDeclarationBody nm
              freshNm <- freshen nm
              let visited' = M.insert nm (freshNm,t',declBody) visited
-             collectRecBinds visited' t' declBody
+             collectRecBinds t' visited' declBody
            Just _ -> pure visited
+
         other -> throwError $ MonoError $ "Unexpected expression in collectFun:\n  " <> ppExp other
    collectFun _ _ [] = throwError $ MonoError "Ran out of types in collectFun"
 
@@ -412,8 +400,8 @@ monomorphizeWithType ty expr
           pure $ ObjectUpdateE ext ty orig copyFields updateFields'
         _ -> throwError $ MonoError ("Failed to collect recursive binds: " <> prettyTypeStr ty <> " is not a Record type")
 
-      -- TODO: IMPORTANT! We need something like 'freshen' for BVar indices
       AccessorE ext _ str e -> pure $ AccessorE ext ty str e -- idk?
+
       fun@(LamE _ bv body) -> trace ("MTABs:\n  " <> ppExp fun <> " :: " <> prettyTypeStr ty) $ do
         case ty of
           (a :-> b) ->  do

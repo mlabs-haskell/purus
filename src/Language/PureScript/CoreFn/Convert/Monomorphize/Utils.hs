@@ -29,7 +29,6 @@ import Bound.Scope (Scope (..), abstractEither, toScope, fromScope, mapScope, ma
 import Data.Bifunctor (Bifunctor (..))
 import Data.List (find)
 import Control.Lens.Plated ( transform, Plated(..) )
-import Data.Functor.Identity (Identity(..))
 import Language.PureScript.Environment (pattern (:->))
 import Language.PureScript.CoreFn.Pretty (prettyTypeStr)
 import Language.PureScript.AST.SourcePos ( SourceAnn )
@@ -276,11 +275,6 @@ foldMScopeViaExp e f (x:xs) = case transverseScopeViaExp' (f e) x of
   F act -> do
     e' <- act
     foldMScopeViaExp e' f xs
-
-mapScopeViaExp :: (Exp x t a -> Exp x t a)
-               -> Scope (BVar t) (Exp x t) a
-               -> Scope (BVar t) (Exp x t) a
-mapScopeViaExp f scope = runIdentity $ transverseScopeViaExp (Identity . f) scope
 
 
 {- Useful for transform/rewrite/cosmos/etc -}
