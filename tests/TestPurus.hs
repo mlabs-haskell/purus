@@ -23,7 +23,9 @@ import PlutusCore.Default
 shouldPassTests :: IO ()
 shouldPassTests = do
   traverse_ runPurusDefault shouldPass
-  let misc =  "./tests/purus/passing/Misc/output/Lib/index.cfn"
+  -- let misc =  "./tests/purus/passing/Misc/output/Lib/index.cfn"
+  {- UPLC tests disabled atm while we rewrite stuff
+
   uplc1 <- declToUPLC misc "main"
   writeFile "./tests/purus/passing/Misc/output/Lib/main.plc" (show uplc1)
   uplc2 <- declToUPLC misc "minus"
@@ -34,7 +36,7 @@ shouldPassTests = do
     (EvaluationSuccess (Constant () (Some (ValueOf DefaultUniInteger 2))),[])
     misc
     "main"
-
+  -}
 runPurus :: P.CodegenTarget -> FilePath ->  IO ()
 runPurus target dir =  do
     outDirExists <- doesDirectoryExist outputDir

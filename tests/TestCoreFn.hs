@@ -22,11 +22,11 @@ import Language.PureScript.Environment
 import Test.Hspec (Spec, context, shouldBe, shouldSatisfy, specify)
 import Language.PureScript.CoreFn.Desugar.Utils (purusTy)
 
-parseModule :: Value -> Result (Version, Module Ann)
+parseModule :: Value -> Result (Version, Module (Bind Ann) Ann)
 parseModule = parse moduleFromJSON
 
 -- convert a module to its json CoreFn representation and back
-parseMod :: Module Ann -> Result (Module Ann)
+parseMod :: Module (Bind Ann) Ann -> Result (Module (Bind Ann) Ann)
 parseMod m =
   let v = Version [0] []
   in snd <$> parseModule (moduleToJSON v m)

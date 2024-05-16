@@ -85,7 +85,7 @@ Ord$Dict =
 ConInt :: Int -> TestBinderSum
 ConInt = ConInt
 
-ConInts :: Array Int -> TestBinderSum
+ConInts :: Array (Int) -> TestBinderSum
 ConInts = ConInts
 
 ConBoolean :: Boolean -> TestBinderSum
@@ -332,23 +332,23 @@ workingEven =
        true -> (1: Int)
        _ -> (42: Int)
 
-emptyList :: forall (t121 :: Type). Array t121
-emptyList = ([]: forall (t121 :: Type). Array t121)
+emptyList :: forall (t121 :: Type). Array (t121)
+emptyList = ([]: forall (t121 :: Type). Array (t121))
 
-cons :: forall (a :: Type). a -> Array a -> Array a
-cons = \(x: a) -> \(xs: Array a) -> ([(x: a)]: Array a)
+cons :: forall (a :: Type). a -> Array (a) -> Array (a)
+cons = \(x: a) -> \(xs: Array (a)) -> ([(x: a)]: Array (a))
 
-consEmptyList1 :: Array Int
+consEmptyList1 :: Array (Int)
 consEmptyList1 = 
-  (cons: forall (a :: Type). a -> Array a -> Array a)
+  (cons: forall (a :: Type). a -> Array (a) -> Array (a))
   (1: Int)
-  (emptyList: forall (t121 :: Type). Array t121)
+  (emptyList: forall (t121 :: Type). Array (t121))
 
-consEmptyList2 :: Array String
+consEmptyList2 :: Array (String)
 consEmptyList2 = 
-  (cons: forall (a :: Type). a -> Array a -> Array a)
+  (cons: forall (a :: Type). a -> Array (a) -> Array (a))
   ("hello": String)
-  (emptyList: forall (t121 :: Type). Array t121)
+  (emptyList: forall (t121 :: Type). Array (t121))
 
 compare :: forall (@a :: Type). Ord$Dict a -> a -> a -> Int
 compare = 
@@ -366,9 +366,9 @@ brokenEven =
        _ -> 
          (brokenEven: Int -> Int) ((minus: Int -> Int -> Int) (n: Int) (2: Int))
 
-arrForall :: forall (a :: Type). Array a -> a
+arrForall :: forall (a :: Type). Array (a -> a)
 arrForall = 
-  ([(id: forall (t :: Type). t -> t)]: forall (a :: Type). Array a -> a)
+  ([(id: forall (t :: Type). t -> t)]: forall (a :: Type). Array (a -> a))
 
 anObj :: { foo :: Int }
 anObj = ({ foo: (3: Int) }: { foo :: Int })
@@ -444,8 +444,8 @@ guardedCase =
                             _ -> (v: forall $23. $23 -> Int) (true: Boolean)
                     _ -> (v: forall $23. $23 -> Int) (true: Boolean)
 
-aList :: Array Int
-aList = ([(1: Int), (2: Int), (3: Int), (4: Int), (5: Int)]: Array Int)
+aList :: Array (Int)
+aList = ([(1: Int), (2: Int), (3: Int), (4: Int), (5: Int)]: Array (Int))
 
 aFunction4 :: forall (r :: Row Type). { a :: Int | r } -> Int
 aFunction4 = \(r: { a :: Int | r }) -> (r: { a :: Int | r }).a
@@ -462,8 +462,8 @@ aFunction3 =
        true -> (4: Int)
        _ -> (1: Int)
 
-aFunction2 :: Int -> Array Int
-aFunction2 = \(x: Int) -> ([(x: Int), (1: Int)]: Array Int)
+aFunction2 :: Int -> Array (Int)
+aFunction2 = \(x: Int) -> ([(x: Int), (1: Int)]: Array (Int))
 
 aFunction :: forall (x :: Type). x -> forall (y :: Type). y -> Int -> Int
 aFunction = 
@@ -477,7 +477,7 @@ aFunction6 =
     go :: forall (z :: Type). z -> Int
     go = \(v: z) -> (10: Int)
   in (aFunction: forall (x :: Type). x -> forall (y :: Type). y -> Int -> Int)
-     ([]: Array t151)
+     ([]: Array (t151))
      (go: forall (z :: Type). z -> Int)
 
 aBool :: Boolean
