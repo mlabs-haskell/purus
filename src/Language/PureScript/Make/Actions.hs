@@ -115,7 +115,7 @@ data MakeActions m = MakeActions
   , readExterns :: ModuleName -> m (FilePath, Maybe ExternsFile)
   -- ^ Read the externs file for a module as a string and also return the actual
   -- path for the file.
-  , codegen :: CF.Module CF.Ann -> Docs.Module -> ExternsFile -> SupplyT m ()
+  , codegen :: CF.Module (CF.Bind CF.Ann) CF.Ann -> Docs.Module -> ExternsFile -> SupplyT m ()
   -- ^ Run the code generator for the module and write any required output files.
   , progress :: ProgressMessage -> m ()
   -- ^ Respond to a progress update.
@@ -249,7 +249,7 @@ buildMakeActions outputDir filePathMap foreigns usePrefix =
     when (S.member Docs codegenTargets) $ for_ Docs.Prim.primModules $ \docsMod@Docs.Module{..} ->
       writeJSONFile (outputFilename modName "docs.json") docsMod
 
-  codegen :: CF.Module CF.Ann -> Docs.Module -> ExternsFile -> SupplyT Make ()
+  codegen :: CF.Module (CF.Bind CF.Ann) CF.Ann -> Docs.Module -> ExternsFile -> SupplyT Make ()
   codegen m docs exts = do
     let mn = CF.moduleName m
     lift $ writeCborFile (outputFilename mn externsFileName) exts
@@ -272,12 +272,9 @@ buildMakeActions outputDir filePathMap foreigns usePrefix =
       case mabOldModule of
         Nothing -> error "Cannot check CoreFn output - could not parse JSON serialization of old module"
         Just oldM -> do
-          let oldM' = CF.canonicalizeModule oldM
-              m'    = CF.canonicalizeModule (jsonRoundTrip m)
-              diff  = CF.diffModule oldM' m'
-          lift $ makeIO "print golden result" $ putStrLn $ "checkCoreFn mismatches: " <> show diff
+          lift $ makeIO "print golden result" $ putStrLn $ mn' <>  ": old module == new module: " <> show (m == oldM)
    where
-     jsonRoundTrip :: CF.Module CF.Ann -> CF.Module CF.Ann
+     jsonRoundTrip :: CF.Module (CF.Bind CF.Ann) CF.Ann -> CF.Module (CF.Bind CF.Ann) CF.Ann
      jsonRoundTrip mdl =  case fromJSON $  moduleToJSON (makeVersion [0,0,1]) mdl of
        Error str -> error str
        Success a -> a
@@ -309,7 +306,7 @@ buildMakeActions outputDir filePathMap foreigns usePrefix =
     normalizeSMPath :: FilePath -> FilePath
     normalizeSMPath = Posix.joinPath . splitDirectories
 
-  requiresForeign :: CF.Module a -> Bool
+  requiresForeign :: CF.Module (CF.Bind a) a -> Bool
   requiresForeign = not . null . CF.moduleForeign
 
   progress :: ProgressMessage -> Make ()
@@ -328,7 +325,7 @@ data ForeignModuleType = ESModule | CJSModule deriving (Show)
 
 -- | Check that the declarations in a given PureScript module match with those
 -- in its corresponding foreign module.
-checkForeignDecls :: CF.Module ann -> FilePath -> Make (Either MultipleErrors (ForeignModuleType, S.Set Ident))
+checkForeignDecls :: CF.Module (CF.Bind ann) ann -> FilePath -> Make (Either MultipleErrors (ForeignModuleType, S.Set Ident))
 checkForeignDecls m path = do
   jsStr <- T.unpack <$> readTextFile path
 

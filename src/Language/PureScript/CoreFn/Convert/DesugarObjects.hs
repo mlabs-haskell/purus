@@ -4,6 +4,7 @@
 
 module Language.PureScript.CoreFn.Convert.DesugarObjects where
 
+{- turning this module off for now to test the monomorphizer rewrite
 import Prelude
 import Language.PureScript.CoreFn.Expr
     ( _Var,
@@ -490,3 +491,4 @@ mkTyConMap decls = M.union _100TupleTyCons <$> foldM go M.empty (M.toList decls)
       tyArgs' <- (traverse . traverse . traverse) tryConvertType tyArgs
       indexedProducts <- zip [0..] <$> traverse (traverse (tryConvertType . snd) . dataCtorFields) ctorDatas
       pure $ M.insert tn (declTy,tyArgs',indexedProducts) acc
+-}

@@ -1,6 +1,6 @@
 {-# OPTIONS_GHC -Werror -Wno-orphans #-}
 {-# LANGUAGE TypeApplications #-}
-module Language.PureScript.CoreFn.Convert.DesugarCore (WithObjects, desugarCore) where
+module Language.PureScript.CoreFn.Convert.DesugarCore (WithObjects, desugarCore, desugarCoreModule) where
 
 import Prelude
 
@@ -26,6 +26,12 @@ import Control.Lens.IndexedPlated (icosmos)
 import Control.Lens.Combinators (to)
 import Control.Monad.Error.Class (MonadError(throwError))
 import Language.PureScript.AST.SourcePos (spanStart)
+import Language.PureScript.CoreFn.Module (Module(..))
+import Bound.Scope (Scope, toScope)
+import Bound.Var (Var(..))
+import Language.PureScript.CoreFn.Pretty (renderExprStr)
+import Debug.Trace (traceM)
+import Language.PureScript.CoreFn.Desugar.Utils (wrapTrace, showIdent')
 
 -- TODO: Something more reasonable
 type DS = Either String
@@ -35,6 +41,37 @@ data WithObjects
 type instance XAccessor WithObjects = ()
 type instance XObjectUpdate WithObjects = ()
 type instance XObjectLiteral WithObjects = ()
+
+type IR_Decl = BindE PurusType (Exp WithObjects PurusType) (FVar PurusType)
+
+desugarCoreModule :: Module (Bind Ann) Ann -> DS (Module IR_Decl Ann)
+desugarCoreModule Module{..} = do
+  decls <- traverse desugarCoreDecl moduleDecls
+  pure $ Module {moduleDecls = decls,..}
+
+desugarCoreDecl :: Bind Ann
+                -> Either String (BindE PurusType (Exp WithObjects PurusType) (FVar PurusType))
+desugarCoreDecl = \case
+  NonRec _ ident expr -> wrapTrace ("desugarCoreDecl: " <> showIdent' ident) $
+    NonRecursive ident . trivialScope <$> desugarCore' expr
+  Rec xs -> Recursive
+          <$> traverse (\((_,ident),expr) ->
+                          wrapTrace ("desugarCoreDecl: " <> showIdent' ident) $
+                          (ident,)
+                          . trivialScope
+                          <$> desugarCore' expr) xs
+ where
+   trivialScope :: Exp WithObjects PurusType (FVar PurusType)
+                -> Scope (BVar PurusType) (Exp WithObjects PurusType) (FVar PurusType)
+   trivialScope = toScope . fmap F
+
+desugarCore' :: Expr Ann -> DS (Exp WithObjects PurusType (FVar PurusType))
+desugarCore' e = do
+  traceM $ "desugarCore INPUT: " <> renderExprStr e
+  res <- desugarCore e
+  traceM $ "desugarCore OUTPUT: " <> ppExp res
+  pure res
+
 
 desugarCore :: Expr Ann -> DS (Exp WithObjects PurusType (FVar PurusType))
 desugarCore (Literal _ann ty lit) = LitE ty <$> desugarLit lit

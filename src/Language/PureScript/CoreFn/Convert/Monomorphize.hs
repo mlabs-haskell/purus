@@ -4,14 +4,9 @@
 {-# LANGUAGE MultiWayIf #-}
 {-# OPTIONS_GHC -Wno-unrecognised-pragmas #-}
 {-# HLINT ignore "Use if" #-}
-module Language.PureScript.CoreFn.Convert.Monomorphize (
-  MonoError (..),
-  decodeModuleIO,
-  findDeclBody,
-  mkFieldMap,
-  monomorphizeExpr,
-  ) where
+module Language.PureScript.CoreFn.Convert.Monomorphize  where
 
+{-
 import Prelude
 import Data.Bifunctor
 import Data.Maybe
@@ -601,3 +596,4 @@ toArgs :: SourceType -> [SourceType]
 toArgs = \case
   (a :-> b) -> a : toArgs b
   other -> [other]
+-}

@@ -7,8 +7,8 @@
 {-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE PartialTypeSignatures #-}
 
-module Language.PureScript.CoreFn.Convert.ToPIR (runPLCProgramTest, declToUPLC) where
-
+module Language.PureScript.CoreFn.Convert.ToPIR  where
+{- turning this module off for now to test the monomorphizer rewrite
 import Prelude
 import Language.PureScript.Names (Qualified (..), ProperName(..), runIdent, pattern ByThisModuleName, disqualify)
 import Language.PureScript.CoreFn.FromJSON ()
@@ -411,3 +411,4 @@ splitFunTyParts :: Type tyname uni a -> NE.NonEmpty (Type tyname uni a)
 splitFunTyParts = \case
     TyFun _ t1 t2 -> t1 NE.<| splitFunTyParts t2
     t             -> pure t
+-}

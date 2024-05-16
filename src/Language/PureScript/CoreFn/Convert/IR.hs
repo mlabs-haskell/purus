@@ -267,6 +267,7 @@ instance Monad (Exp x ty) where
         CharL c     -> CharL c
         BoolL b     -> BoolL b
         ArrayL xs   -> ArrayL $ map (\x -> x >>= f) xs
+        ConstArrayL lits -> ConstArrayL  lits
         ObjectL ext obj -> ObjectL ext $ map (\(field, x) -> (field, x >>= f)) obj
   AccessorE ext ty field expr >>= f = AccessorE ext ty field (expr >>= f)
   ObjectUpdateE ext ty expr toCopy toUpdate >>= f =
@@ -285,6 +286,7 @@ instance Bound (Pat x) where
         StringL str -> StringL str
         CharL c     -> CharL c
         BoolL b     -> BoolL b
+        ConstArrayL lits -> ConstArrayL lits
         ArrayL xs   -> ArrayL $ map (\x -> x >>>= f) xs
         ObjectL ext obj -> ObjectL ext $ map (\(field, x) -> (field, x >>>= f)) obj
 
@@ -392,6 +394,7 @@ instance Pretty a => Pretty (Lit x a) where
     StringL pss -> pretty . T.unpack $ prettyPrintString pss
     CharL c -> viaShow . show $ c
     BoolL b -> if b then "true" else "false"
+    ConstArrayL xs -> list $ pretty <$> xs
     ArrayL xs -> list $ pretty <$> xs
     ObjectL _ obj -> encloseSep "{" "}" ", "
       (map (\(field, expr) -> (pretty $ T.pack $ decodeStringWithReplacement field) <> ":" <+> pretty expr) obj)
@@ -407,6 +410,7 @@ instance Pretty a => Pretty (Pat x (Exp x ty) a) where
       StringL pss -> pretty . T.unpack $ prettyPrintString pss
       CharL c -> viaShow . show $ c
       BoolL b -> if b then "true" else "false"
+      ConstArrayL xs -> list $ pretty <$> xs
       ArrayL xs -> list $ pretty <$> xs
       ObjectL _ _obj -> "TODO: Implement ObjectL pattern printer"
     ConP cn _ ps -> pretty (runProperName . disqualify $ cn) <+> hsep (pretty <$> ps)

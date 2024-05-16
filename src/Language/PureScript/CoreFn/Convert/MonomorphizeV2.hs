@@ -24,7 +24,7 @@ import Language.PureScript.CoreFn.Convert.IR
       FuncType(..),
       Alt(..),
       Alt )
-import Language.PureScript.Names (Ident(..), Qualified (..), QualifiedBy (..), ModuleName (..))
+import Language.PureScript.Names (Ident(..), Qualified (..), QualifiedBy (..), ModuleName (..), showQualified, showIdent)
 import Language.PureScript.Types
     ( RowListItem(..), SourceType, Type(..), replaceTypeVars, isMonoType )
 import Language.PureScript.CoreFn.Desugar.Utils ( showIdent' )
@@ -43,33 +43,31 @@ import Control.Monad.RWS.Class (MonadReader(ask))
 import Control.Monad.RWS (RWST(..))
 import Control.Monad.Except (throwError)
 import Debug.Trace (trace, traceM)
-import Language.PureScript.CoreFn.Convert.DesugarCore (WithObjects)
+import Language.PureScript.CoreFn.Convert.DesugarCore
 import Bound (fromScope)
 import Bound.Var (Var(..))
 import Bound.Scope (Scope (..), toScope, mapBound)
 import Language.PureScript.CoreFn.TypeLike
     ( TypeLike(splitFunTyParts, instantiates) )
 import Language.PureScript.CoreFn.Convert.Monomorphize.Utils
-    ( IR_Decl,
-      Monomorphizer,
-      MonoState(MonoState),
-      MonoError(..),
-      transverseScopeViaExp,
-      getModBinds,
-      note,
-      freshen,
-      freshBVar,
-      qualifyNull,
-      gLet,
-      updateVarTyS,
-      updateVarTyS',
-      unsafeApply,
-      findInlineDeclGroup,
-      mkFieldMap,
-      extractAndFlattenAlts,
-      joinScope,
-      updateFreeVars,
-      scopedToExp )
+
+import Data.Text (Text)
+import GHC.IO (throwIO)
+
+
+{- Function for quickly testing/debugging monomorphization -}
+
+testMono :: FilePath -> Text -> IO ()
+testMono path decl = do
+  myModCoreFn <- decodeModuleIO path
+  myMod <- either (throwIO . userError) pure $ desugarCoreModule myModCoreFn
+  Just myDecl <- pure $ findDeclBody decl myMod
+  case transverseScopeViaExp (monomorphizeExpr myMod) myDecl of
+    Left (MonoError msg ) -> throwIO $ userError $ "Couldn't monomorphize " <> T.unpack decl <> "\nReason:\n" <> msg
+    Right body -> do
+      let unscopedBody = fromScope body
+      putStrLn $ "MONO RESULT: \n" <>  ppExp unscopedBody
+      -- pure unscopedBody
 
 {- This is the entry point for monomorphization. Typically,
    you will search the module for a 'main' decl and use its
@@ -87,7 +85,7 @@ monomorphizeExpr Module{..} expr =
 monomorphize ::
   Exp WithObjects PurusType (FVar PurusType)  ->
   Monomorphizer (Exp WithObjects PurusType (FVar PurusType))
-monomorphize  xpr = trace ("monomorphizeA " <>  "\n  " <> ppExp xpr)  $ case xpr of
+monomorphize  xpr = trace ("monomorphize " <>  "\n  " <> ppExp xpr)  $ case xpr of
   app@(AppE _ _) ->  do
     let (f,args) = unsafeAnalyzeApp app
     traceM $ "FUN: " <> ppExp f
@@ -98,7 +96,7 @@ monomorphize  xpr = trace ("monomorphizeA " <>  "\n  " <> ppExp xpr)  $ case xpr
     if isBuiltin f
       then pure app
       else handleFunction  f args
-  other -> pure other
+  other -> trace ("monomorphize: other: " <> ppExp other) $ pure other
  where
    -- N.B. we need qualified names in the vars to write this, will fix later
    isBuiltin = \case
@@ -111,7 +109,7 @@ handleFunction ::  Exp WithObjects PurusType (FVar PurusType)
 -- handleFunction d exp args | isBuiltin exp = trace ("handleFunction: Builtin") $ pure . Right $ unsafeApply exp args
 handleFunction  e [] = trace ("handleFunction FIN: " <> ppExp e) $ pure e
 handleFunction  expr@(LamE (ForAll _ _ var _ inner  _) bv@(BVar bvIx _ bvIdent) body'') (arg:args) = do
-  traceM  ("handleFunction abs:\n  " <> ppExp expr <> "\n  " <> show (ppExp <$> (arg:args)))
+  traceM  ("handleFunction abs:\n  " <> ppExp expr)
   let t = expTy F arg
   traceM $ prettyTypeStr t
   let polyArgT = getFunArgTy inner
@@ -127,11 +125,11 @@ handleFunction  expr@(LamE (ForAll _ _ var _ inner  _) bv@(BVar bvIx _ bvIdent) 
       e' = LamE funT (BVar bvIx firstArgT bvIdent) body
   pure $  AppE  e' arg -- Abs ann (function t bodyT) ident body)
 handleFunction  v@(V (FVar ty  qn)) es = trace ("handleFunction VarGo: " <> ppExp v) $ do
-  traceM (ppExp v)
-  traceM (show $ ppExp <$> es)
+  --traceM (ppExp v)
+  -- traceM (show $ ppExp <$> es)
   e' <- inlineAs ty qn
   handleFunction e' es
-handleFunction e es | isMonoType (expTy F e)  = pure $ unsafeApply e es
+handleFunction e es | isMonoType (expTy F e)  = trace ("handleFunction isMono: " <> ppExp e) $ pure $ unsafeApply e es
 handleFunction e es = throwError $ MonoError
                         $ "Error in handleFunction:\n  "
                         <> ppExp e
@@ -143,6 +141,7 @@ inlineAs ::
   Monomorphizer (Exp WithObjects PurusType (FVar PurusType))
 -- TODO: Review whether this has any purpose here \/
 inlineAs ty nm@(Qualified (ByModuleName (ModuleName "Builtin")) _ ) = do
+  traceM ("inlineAs BUILTIN: " <> T.unpack (showQualified showIdent nm))
   pure $ V (FVar ty nm)
 -- TODO: Probably can inline locally bound variables? FIX: Keep track of local name bindings
 inlineAs ty (Qualified (ByModuleName mn') ident) = trace ("inlineAs: " <> showIdent' ident <> " :: " <>  prettyTypeStr ty) $ ask >>= \(mn,modDict) ->

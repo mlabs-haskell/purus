@@ -8,7 +8,7 @@ module Language.PureScript.CoreFn.Convert.Monomorphize.Utils  where
 
 import Prelude
 
-import Language.PureScript.CoreFn.Expr (PurusType)
+import Language.PureScript.CoreFn.Expr (PurusType, Bind)
 import Language.PureScript.CoreFn.Convert.IR (_V, Exp(..), FVar(..), BindE(..), BVar (..), flattenBind, expTy', abstractMany, mkBindings, Alt (..), Lit (..), expTy)
 import Language.PureScript.Names (Ident(..), ModuleName (..), QualifiedBy (..), Qualified (..), pattern ByNullSourcePos)
 import Language.PureScript.Types
@@ -38,6 +38,11 @@ import Language.PureScript.PSString (PSString)
 import Language.PureScript.Label (Label(runLabel))
 import Language.PureScript.CoreFn.Module
 import Language.PureScript.CoreFn.Ann
+import Language.PureScript.CoreFn.Convert.DesugarCore
+import Data.Aeson qualified as Aeson
+import GHC.IO (throwIO)
+
+
 
 
 transverseScopeAndVariables ::
@@ -53,7 +58,11 @@ transverseScopeViaExp :: Applicative f
                      -> Scope (BVar t) (Exp x t) a
                      -> f (Scope (BVar t) (Exp x t) b)
 transverseScopeViaExp f scope
-  = toScope  . (sequence =<<) <$> traverse (traverse f) (unscope scope)
+  = let fromScoped = fromScope scope
+        sequenced  = sequence fromScoped
+        traversed  = traverse f sequenced
+        hm         = sequence <$> traversed
+    in toScope <$> hm
 
 mapScopeViaExp :: (Exp x t a -> Exp x t a)
                -> Scope (BVar t) (Exp x t) a
@@ -104,7 +113,7 @@ instance Plated (Exp x t a) where
           ObjectL x fs -> ObjectL x <$> traverse (\(str,e) -> (str,) <$> tfun e) fs
 
         helper ::  Scope (BVar t) (Exp x t) a -> f (Scope (BVar t) (Exp x t) a)
-        helper expr = toScope  . (sequence =<<) <$> traverse (traverse tfun) (unscope expr)
+        helper = transverseScopeViaExp tfun
 
 
 
@@ -186,7 +195,6 @@ gLet binds e =  LetE bindings binds $ abstractEither abstr e' -- (abstract (abst
 type WithObjs t f = Exp WithObjects t (f t)
 
 type Vars t = (Var (BVar t) (FVar t))
-
 
 updateVarTyS :: forall x t
               . BVar t
@@ -291,7 +299,7 @@ scopedToExp scoped = do
   let fv = FVar ty (qualifyNull bvId)
       bindings = M.singleton bvIx fv
       binds = [NonRecursive bvId scoped]
-  pure $ LetE bindings binds (Scope $ pure $  B newBVar)
+  pure $ LetE bindings binds (pure fv)-- (Scope $ pure $  B newBVar)
 
 
 findDeclBody :: Text
@@ -302,3 +310,8 @@ findDeclBody nm Module{..} = case findInlineDeclGroup (Ident nm) moduleDecls of
   Just decl -> case decl of
     NonRecursive _ e -> Just e
     Recursive xs -> snd <$> find (\x -> fst x == Ident nm) xs
+
+decodeModuleIO :: FilePath -> IO (Module (Bind Ann) Ann)
+decodeModuleIO path = Aeson.eitherDecodeFileStrict' path >>= \case
+  Left err -> throwIO $ userError err
+  Right modx -> pure modx
