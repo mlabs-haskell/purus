@@ -27,8 +27,6 @@ import Control.Lens.Combinators (to)
 import Control.Monad.Error.Class (MonadError(throwError))
 import Language.PureScript.AST.SourcePos (spanStart)
 import Language.PureScript.CoreFn.Module (Module(..))
-import Bound.Scope (Scope, toScope)
-import Bound.Var (Var(..))
 import Language.PureScript.CoreFn.Pretty (renderExprStr)
 import Debug.Trace (traceM)
 import Language.PureScript.CoreFn.Desugar.Utils (wrapTrace, showIdent')
@@ -53,17 +51,12 @@ desugarCoreDecl :: Bind Ann
                 -> Either String (BindE PurusType (Exp WithObjects PurusType) (FVar PurusType))
 desugarCoreDecl = \case
   NonRec _ ident expr -> wrapTrace ("desugarCoreDecl: " <> showIdent' ident) $
-    NonRecursive ident . trivialScope <$> desugarCore' expr
+    NonRecursive ident  <$> desugarCore' expr
   Rec xs -> Recursive
           <$> traverse (\((_,ident),expr) ->
                           wrapTrace ("desugarCoreDecl: " <> showIdent' ident) $
                           (ident,)
-                          . trivialScope
                           <$> desugarCore' expr) xs
- where
-   trivialScope :: Exp WithObjects PurusType (FVar PurusType)
-                -> Scope (BVar PurusType) (Exp WithObjects PurusType) (FVar PurusType)
-   trivialScope = toScope . fmap F
 
 desugarCore' :: Expr Ann -> DS (Exp WithObjects PurusType (FVar PurusType))
 desugarCore' e = do

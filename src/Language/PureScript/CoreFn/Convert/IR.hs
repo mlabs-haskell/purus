@@ -179,11 +179,11 @@ getPat = \case
 
 -- idk if we really need the identifiers?
 data BindE ty (f :: GHC.Type -> GHC.Type) a
-  = NonRecursive Ident (Scope (BVar ty) f a)
-  | Recursive [(Ident, Scope (BVar ty) f a)]
+  = NonRecursive Ident (f a)
+  | Recursive [(Ident, f a)]
   deriving (Eq,Ord,Show,Functor,Foldable,Traversable)
 
-flattenBind :: BindE ty f a -> [(Ident, Scope (BVar ty) f a)]
+flattenBind :: BindE ty f a -> [(Ident, f a)]
 flattenBind = \case
   NonRecursive i e -> [(i,e)]
   Recursive xs -> xs
@@ -233,11 +233,11 @@ instance (Eq1 f, Monad f) => Eq1 (Pat x f) where
   liftEq eq (LitP l1) (LitP l2) =  liftEq (liftEq eq) l1 l2
   liftEq _ _ _ = False
 
-instance (Eq1 f, Monad f, Eq ty) => Eq1 (BindE ty f) where
+instance (Eq1 f) => Eq1 (BindE ty f) where
   liftEq eq (NonRecursive i1 b1) (NonRecursive i2 b2) = i1 == i2 && liftEq eq b1 b2
   liftEq eq (Recursive xs) (Recursive ys) = go eq xs ys
     where
-      go :: forall a b. (a -> b -> Bool) -> [(Ident, Scope (BVar ty) f a)] -> [(Ident, Scope (BVar ty) f b)] -> Bool
+      go :: forall a b. (a -> b -> Bool) -> [(Ident, f a)] -> [(Ident, f b)] -> Bool
       go f ((i1,x):xss) ((i2,y):yss) = i1 == i2 && liftEq f x y && go f xss yss
       go _ [] [] = True
       go _ _ _ = False
@@ -294,13 +294,13 @@ instance Bound (Alt x ty) where
   UnguardedAlt i ps e >>>= f = UnguardedAlt i (map (>>>= f) ps) (e >>>= f)
 
 instance Bound (BindE ty) where
-  NonRecursive i e >>>= f = NonRecursive i $ e >>>= f
+  NonRecursive i e >>>= f = NonRecursive i $ e >>= f
   Recursive xs     >>>= f = Recursive $ go f xs
     where
-      go :: forall a f c. Monad f => (a -> f c) -> [(Ident, Scope (BVar ty) f a)] -> [(Ident, Scope (BVar ty) f c)]
+      go :: forall a f c. Monad f => (a -> f c) -> [(Ident, f a)] -> [(Ident, f c)]
       go _ [] = []
       go g ((i,e):rest) =
-        let e' = e >>>= g
+        let e' = e >>= g
             rest' = go g rest
         in (i,e') : rest'
 
@@ -415,10 +415,12 @@ instance Pretty a => Pretty (Pat x (Exp x ty) a) where
       ObjectL _ _obj -> "TODO: Implement ObjectL pattern printer"
     ConP cn _ ps -> pretty (runProperName . disqualify $ cn) <+> hsep (pretty <$> ps)
 
-instance (Pretty a, Pretty ty, FuncType ty) => Pretty (BindE ty (Exp x ty) a) where
+instance (Pretty a, Pretty ty, FuncType ty, Pretty (Exp x ty a)) => Pretty (BindE ty (Exp x ty) a) where
   pretty = \case
-    NonRecursive i e -> pretty (runIdent i) <+> "=" <+> pretty (fromScope e)
-    Recursive es -> align . vcat $ pretty . uncurry NonRecursive <$> es
+    NonRecursive i e -> pretty (runIdent i) <+> "=" <+> pretty e
+    Recursive es ->
+      let go (ident,expr) = pretty (runIdent ident) <+> "=" <+> pretty expr
+      in align . vcat $ go <$> es
 
 ppExp :: (Pretty a, Pretty ty, FuncType ty) => Exp x ty a -> String
 ppExp = T.unpack . renderStrict . layoutPretty defaultLayoutOptions . pretty
@@ -548,18 +550,18 @@ assembleBindEs _ [] = []
 assembleBindEs dict ([]:rest) = assembleBindEs dict rest -- shouldn't happen but w/e
 assembleBindEs dict ([(fv@(FVar _tx ix),e)]:rest) =
   let dict' = fv:dict
-      abstr = abstract (abstractMany dict')
-  in NonRecursive (disqualify ix) (abstr e) : assembleBindEs dict' rest
+      -- abstr = abstract (abstractMany dict')
+  in NonRecursive (disqualify ix)  e : assembleBindEs dict' rest
 assembleBindEs dict (xsRec:rest) =
   let (dict', recBind) = assembleRec dict xsRec
   in recBind : assembleBindEs dict' rest
 
-assembleRec :: Eq ty => [FVar ty] -> [(FVar ty, Exp x ty (FVar ty))] -> ([FVar ty], BindE ty (Exp x ty) (FVar ty))
+assembleRec ::  [FVar ty] -> [(FVar ty, Exp x ty (FVar ty))] -> ([FVar ty], BindE ty (Exp x ty) (FVar ty))
 assembleRec dict xs =
   let dict' = dict <> (fst <$> xs)
-      abstr = abstract (abstractMany dict')
+      -- abstr = abstract (abstractMany dict')
       recBind = Recursive
-                . map (uncurry $ \(FVar _ ixx) xp -> (disqualify ixx, abstr xp))
+                . map (uncurry $ \(FVar _ ixx) xp -> (disqualify ixx, xp))
                 $ xs
   in (dict', recBind)
 
