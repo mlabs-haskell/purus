@@ -38,6 +38,7 @@ import Data.List (elemIndex, sortOn)
 import Control.Lens (view,_2)
 import Language.PureScript.CoreFn.TypeLike
 import Data.Void (Void)
+import Control.Lens.Plated
 -- The final representation of types and terms, where all constructions that
 -- *should* have been eliminated in previous steps are impossible
 -- TODO: Make sure we error on exotic kinds
@@ -53,6 +54,18 @@ data Ty
 pattern (:~>) :: Ty -> Ty -> Ty
 pattern a :~> b = TyApp (TyApp (TyCon C.Function) a) b
 infixr 0 :~>
+
+instance Plated Ty where
+  plate f = \case
+    TyVar txt -> pure $ TyVar txt
+    TyCon nm  -> pure $ TyCon nm
+    TyApp t1 t2 -> TyApp <$> f t1 <*> f t2
+    KApp t1 t2 -> KApp <$> f t1 <*> f t2
+    Forall vis var mk innerTy scop ->
+      (\mk' innerTy' -> Forall vis var mk' innerTy' scop )
+      <$> traverse f mk
+      <*> f innerTy
+    KType t1 t2 -> KType <$> f t1 <*> f t2
 
 instance TypeLike Ty where
   applyType = TyApp

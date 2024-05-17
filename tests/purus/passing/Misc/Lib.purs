@@ -163,14 +163,14 @@ recG1 x = recF1 x
 testBuiltin :: Int
 testBuiltin = Builtin.addInteger 1 2
 
--- main = aFunction4 {a: 101, b: "hello"} -- recF1 "hello"
+main = aFunction4 {a: 101, b: "hello"} -- recF1 "hello"
 
 plus :: Int -> Int -> Int
 plus a b = Builtin.addInteger a b
 
 infixr 5 plus as +
 
-main = plus 1 1
+-- main = plus 1 1
 
 guardedCase :: Int -> Int -> Int
 guardedCase w x = case w, x of

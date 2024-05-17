@@ -3,7 +3,7 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# OPTIONS_GHC -Wno-unrecognised-pragmas #-}
 {-# HLINT ignore "Use if" #-}
-module Language.PureScript.CoreFn.Convert.MonomorphizeV2  where
+module Language.PureScript.CoreFn.Convert.MonomorphizeV2 (runMonomorphize, testMono) where
 
 import Prelude
 
@@ -37,7 +37,7 @@ import Data.Map qualified as M
 import Language.PureScript.PSString (PSString, prettyPrintString)
 import Language.PureScript.AST.SourcePos (SourceAnn)
 import Control.Lens
-    ( (&) )
+    ( (&), (^..), cosmos )
 import Control.Monad (foldM)
 import Control.Monad.RWS.Class (MonadReader(ask))
 import Control.Monad.RWS (RWST(..))
@@ -52,7 +52,10 @@ import Language.PureScript.CoreFn.Convert.Monomorphize.Utils
 
 import Data.Text (Text)
 import GHC.IO (throwIO)
-
+import Control.Lens.Combinators (folding)
+import Control.Lens.Getter (to)
+import qualified Data.Set as S
+import Data.Foldable (traverse_)
 {- Function for quickly testing/debugging monomorphization -}
 
 testMono :: FilePath -> Text -> IO ()
@@ -63,6 +66,9 @@ testMono path decl = do
   case runMonomorphize myMod myDecl of
     Left (MonoError msg ) -> throwIO $ userError $ "Couldn't monomorphize " <> T.unpack decl <> "\nReason:\n" <> msg
     Right body -> do
+      let allSubExpressionTypes = S.toList . S.fromList $  body ^.. cosmos . to (expTy F) . cosmos
+      putStrLn "All subexpression types:"
+      traverse_ (\ty -> putStrLn (prettyTypeStr ty)) allSubExpressionTypes
       putStrLn $ "MONO RESULT: \n" <>  ppExp body
       -- pure unscopedBody
 

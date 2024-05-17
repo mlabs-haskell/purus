@@ -45,8 +45,8 @@ Exports:
   recF1,
   recG1,
   testBuiltin,
-  plus,
   main,
+  plus,
   guardedCase,
   nestedApplications,
   anObj,
@@ -276,9 +276,6 @@ mutuallyRecursiveBindingGroup =
 minus :: Int -> Int -> Int
 minus = \(v: Int) -> \(v1: Int) -> (42: Int)
 
-main :: Int
-main = (plus: Int -> Int -> Int) (1: Int) (1: Int)
-
 id :: forall (t :: Type). t -> t
 id = \(x: t) -> (x: t)
 
@@ -332,8 +329,8 @@ workingEven =
        true -> (1: Int)
        _ -> (42: Int)
 
-emptyList :: forall (t121 :: Type). Array (t121)
-emptyList = ([]: forall (t121 :: Type). Array (t121))
+emptyList :: forall (t120 :: Type). Array (t120)
+emptyList = ([]: forall (t120 :: Type). Array (t120))
 
 cons :: forall (a :: Type). a -> Array (a) -> Array (a)
 cons = \(x: a) -> \(xs: Array (a)) -> ([(x: a)]: Array (a))
@@ -342,13 +339,13 @@ consEmptyList1 :: Array (Int)
 consEmptyList1 = 
   (cons: forall (a :: Type). a -> Array (a) -> Array (a))
   (1: Int)
-  (emptyList: forall (t121 :: Type). Array (t121))
+  (emptyList: forall (t120 :: Type). Array (t120))
 
 consEmptyList2 :: Array (String)
 consEmptyList2 = 
   (cons: forall (a :: Type). a -> Array (a) -> Array (a))
   ("hello": String)
-  (emptyList: forall (t121 :: Type). Array (t121))
+  (emptyList: forall (t120 :: Type). Array (t120))
 
 compare :: forall (@a :: Type). Ord$Dict a -> a -> a -> Int
 compare = 
@@ -455,6 +452,11 @@ aFunction5 =
   (aFunction4: forall (r :: Row Type). {   a :: Int | r } -> Int)
   ({ a: (2: Int) }: { a :: Int })
 
+main :: Int
+main = 
+  (aFunction4: forall (r :: Row Type). {   a :: Int | r } -> Int)
+  ({ b: ("hello": String), a: (101: Int) }: { a :: Int, b :: String })
+
 aFunction3 :: Int -> Int
 aFunction3 = 
   \(x: Int) -> 
@@ -477,7 +479,7 @@ aFunction6 =
     go :: forall (z :: Type). z -> Int
     go = \(v: z) -> (10: Int)
   in (aFunction: forall (x :: Type). x -> forall (y :: Type). y -> Int -> Int)
-     ([]: Array (t151))
+     ([]: Array (t154))
      (go: forall (z :: Type). z -> Int)
 
 aBool :: Boolean

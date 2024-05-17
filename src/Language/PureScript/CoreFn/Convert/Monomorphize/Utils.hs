@@ -14,7 +14,7 @@ import Language.PureScript.CoreFn.Expr (PurusType, Bind)
 import Language.PureScript.CoreFn.Convert.IR (_V, Exp(..), FVar(..), BindE(..), BVar (..), flattenBind, abstractMany, mkBindings, Alt (..), Lit (..), expTy)
 import Language.PureScript.Names (Ident(..), ModuleName (..), QualifiedBy (..), Qualified (..), pattern ByNullSourcePos)
 import Language.PureScript.Types
-    ( SourceType, RowListItem (..), rowToList )
+    ( SourceType, RowListItem (..), rowToList, Type (..), Constraint(..) )
 import Language.PureScript.CoreFn.FromJSON ()
 import Data.Text qualified as T
 import Data.Map (Map)
@@ -91,7 +91,7 @@ freshBVar t = do
    Misc utils for constructing/analyzing expressions
 -}
 
-qualifyNull :: Ident -> Qualified Ident
+qualifyNull :: a -> Qualified a
 qualifyNull = Qualified ByNullSourcePos
 
 -- Construct a Let expression from a list of BindEs and a scoped body
@@ -164,8 +164,8 @@ unsafeApply e [] = e
 -}
 findInlineDeclGroup ::
   Ident ->
-  [BindE PurusType (Exp x ty) a] ->
-  Maybe (BindE PurusType (Exp x ty) a)
+  [BindE ty (Exp x ty) a] ->
+  Maybe (BindE ty (Exp x ty) a)
 findInlineDeclGroup _ [] = Nothing
 findInlineDeclGroup ident (NonRecursive ident' expr:rest)
   | ident == ident' = Just $ NonRecursive ident' expr
@@ -179,12 +179,14 @@ findInlineDeclGroup ident (Recursive xs:rest) = case  find (\x -> fst x == ident
 findDeclBody :: Text
              -> Module IR_Decl Ann
              -> Maybe (Exp WithObjects PurusType (FVar PurusType))
-findDeclBody nm Module{..} = case findInlineDeclGroup (Ident nm) moduleDecls of
+findDeclBody nm Module{..} = findDeclBody' (Ident nm) moduleDecls
+
+findDeclBody' :: Ident -> [BindE ty (Exp x ty) a] -> Maybe (Exp x ty a)
+findDeclBody' ident binds = case findInlineDeclGroup ident binds of
   Nothing -> Nothing
   Just decl -> case decl of
     NonRecursive _ e -> Just e
-    Recursive xs -> snd <$> find (\x -> fst x == Ident nm) xs
-
+    Recursive xs -> snd <$> find (\x -> fst x == ident) xs
 {- Turns a Row Type into a Map of field names to Row item data.
 
    NOTE: Be sure to unwrap the enclosing record if you're working w/ a
@@ -306,7 +308,7 @@ instance Plated (Exp x t a) where
                                    <$> tfun  e
                                    <*> traverse (\(nm,expr) -> (nm,) <$> tfun expr) fs
       LitE t lit -> LitE t <$> traverseLit lit
-      other -> tfun other
+      other -> pure other
       where
         traverseLit :: Lit x (Exp x t a)
                     -> f (Lit x (Exp x t a))
@@ -322,3 +324,38 @@ instance Plated (Exp x t a) where
 
         helper ::  Scope (BVar t) (Exp x t) a -> f (Scope (BVar t) (Exp x t) a)
         helper = transverseScopeViaExp tfun
+
+-- put this somewhere else
+
+instance Plated SourceType where
+  plate f = \case
+    tu@(TUnknown _ _) -> pure tu
+    tv@(TypeVar _ _) -> pure tv
+    tstr@(TypeLevelString _ _) -> pure tstr
+    tint@(TypeLevelInt _  _) -> pure tint
+    twild@(TypeWildcard _ _) -> pure twild
+    tcon@(TypeConstructor _ _) -> pure tcon
+    top@(TypeOp _ _) -> pure top
+    TypeApp a t1 t2 -> TypeApp a <$> f t1 <*> f t2
+    KindApp a t1 t2 -> KindApp a <$> f t1 <*> f t2
+    ForAll a vis var mk innerTy scop ->
+      (\mk' innerTy' -> ForAll a vis var mk' innerTy' scop)
+      <$> traverse f mk
+      <*> f innerTy
+    ConstrainedType a constraint t -> ConstrainedType a <$> goConstraint f constraint <*> f t
+    Skolem a txt mk i scop -> (\mk' -> Skolem a txt mk' i scop) <$> traverse f mk
+    REmpty a -> pure $ REmpty a
+    RCons a l x xs -> RCons a l <$> f x <*> f xs
+    KindedType a t1 t2 -> KindedType a <$> f t1 <*> f t2
+    BinaryNoParensType a t1 t2 t3 -> BinaryNoParensType a <$> f t1 <*> f t2 <*> f t3
+    ParensInType a t -> ParensInType a <$> f t
+   where
+    goConstraint :: forall f
+                  . Applicative f
+                 => (SourceType -> f SourceType)
+                 -> Constraint SourceAnn
+                 -> f (Constraint SourceAnn)
+    goConstraint g (Constraint a cn kargs args cdata) =
+      (\kargs' args' -> Constraint a cn kargs' args' cdata)
+      <$> traverse g kargs
+      <*> traverse g args

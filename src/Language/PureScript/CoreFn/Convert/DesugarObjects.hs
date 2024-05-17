@@ -4,7 +4,7 @@
 
 module Language.PureScript.CoreFn.Convert.DesugarObjects where
 
-{- turning this module off for now to test the monomorphizer rewrite
+
 import Prelude
 import Language.PureScript.CoreFn.Expr
     ( _Var,
@@ -52,6 +52,7 @@ import Language.PureScript.Constants.Prim qualified as C
 import Language.PureScript.CoreFn.Convert.DesugarCore (desugarCore)
 import Data.Void (Void)
 
+{-
 test :: FilePath -> Text -> IO (Exp WithoutObjects Ty (FVar Ty))
 test path decl = do
   myMod <- decodeModuleIO path
@@ -101,7 +102,7 @@ prepPIR path  decl = do
     --   Right e -> do
     --     putStrLn (ppExp e)
     --     pure (e,moduleDataTypes)
-
+-}
 -- This gives us a way to report the exact location of the error (which may no longer correspond *at all* to
 -- the location given in the SourcePos annotations due to inlining and monomorphization)
 data TypeConvertError
@@ -150,6 +151,19 @@ tryConvertType = go id
 
       other -> Left $ TypeConvertError f other $ "Unsupported type: " <> prettyTypeStr other
 
+isClosedRow :: SourceType -> Bool
+isClosedRow t = case rowToList t of
+  (_,REmpty{}) -> True
+  (_,KindApp _ REmpty{} k) | eqType k kindType -> True
+  _ -> False
+
+rowLast :: SourceType -> SourceType
+rowLast t = case rowToList t of
+  (_,r) -> r
+
+allTypes :: Expr Ann -> [SourceType]
+allTypes e = e ^.. icosmos @Context @(Expr Ann) M.empty . to exprType
+
 data ExprConvertError
   = ExprConvertError (Expr Ann -> Expr Ann) (Expr Ann) (Maybe TypeConvertError) String
 
@@ -161,6 +175,7 @@ prettyErrorT (TypeConvertError g t msg1)
      <> "\nin type:\n  " <>  prettyTypeStr (g $ TypeVar NullSourceAnn "<ERROR HERE>")
      <> "\nin type component:\n  " <> prettyTypeStr t
 
+{-
 prettyError :: ExprConvertError -> String
 prettyError = \case
   ExprConvertError f e Nothing msg -> "Error when converting expression: " <> msg <> "\n  "
@@ -411,18 +426,7 @@ desugarObjectUpdate _ e _ updateFields = do
       let altBranch = CaseAlternative [ctorBndr] $ Right res
       pure $ Case nullAnn ctorType [e] [altBranch]
 
-isClosedRow :: SourceType -> Bool
-isClosedRow t = case rowToList t of
-  (_,REmpty{}) -> True
-  (_,KindApp _ REmpty{} k) | eqType k kindType -> True
-  _ -> False
 
-rowLast :: SourceType -> SourceType
-rowLast t = case rowToList t of
-  (_,r) -> r
-
-allTypes :: Expr Ann -> [SourceType]
-allTypes e = e ^.. icosmos @Context @(Expr Ann) M.empty . to exprType
 
 -- TODO: Fuck these tuples, make real data types when more time
 
