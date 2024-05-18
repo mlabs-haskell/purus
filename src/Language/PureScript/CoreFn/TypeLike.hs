@@ -8,7 +8,10 @@ import Language.PureScript.Types qualified as T
 import Language.PureScript.Environment qualified as E
 import Data.Bifunctor (Bifunctor(..))
 
+import Data.Kind qualified as GHC
+
 class TypeLike t where
+  type KindOf t :: GHC.Type
   {- | Usually this will be the Type Application constructor -}
   applyType :: t -> t -> t
 
@@ -16,7 +19,7 @@ class TypeLike t where
        keeping track of the quantifier metadata (visibility, name, kind)
        for each removed quantifier.
   -}
-  stripQuantifiers :: t -> ([(TypeVarVisibility, Text, Maybe t)], t)
+  stripQuantifiers :: t -> ([(TypeVarVisibility, Text, KindOf t)], t)
 
   {- Given TypeLikes `a` and `b`, construct a function type `a -> b`
   -}
@@ -54,10 +57,10 @@ class TypeLike t where
                -> Maybe t
 
   {- | Collect the used type variables in a type -}
-  usedTypeVariables :: t -> [Text]
+  usedTypeVariables :: t -> [(Text,KindOf t)]
 
   {- | Collect the free type variables in a type -}
-  freeTypeVariables :: t -> [Text]
+  freeTypeVariables :: t -> [(Text,KindOf t)]
 
   {- | Get the (final) return type of a function. Returns the argument
        type if the argument is not a function.
@@ -65,6 +68,8 @@ class TypeLike t where
   resultTy :: t -> t
 
 instance TypeLike T.SourceType where
+  type KindOf T.SourceType = T.SourceType
+
   applyType = T.srcTypeApp
 
   stripQuantifiers = \case
@@ -83,7 +88,7 @@ instance TypeLike T.SourceType where
 
   quantify = T.quantify
 
-  instantiates var x (T.TypeVar _ y) | y == var = Just x
+  instantiates var x (T.TypeVar _ y _) | y == var = Just x
   instantiates var (T.TypeApp _ t1 t2) (T.TypeApp _ t1' t2') = case instantiates var t1 t1' of
     Just x -> Just x
     Nothing -> instantiates var t2 t2'

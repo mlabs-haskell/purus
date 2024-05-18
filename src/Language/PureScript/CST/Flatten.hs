@@ -278,7 +278,7 @@ flattenLabeled ka kc (Labeled a b c) = ka a <> pure b <> kc c
 
 flattenType :: Type a -> DList SourceToken
 flattenType = \case
-  TypeVar _ a -> pure $ nameTok a
+  TypeVar _ a  -> pure (nameTok a)
   TypeConstructor _ a -> pure $ qualTok a
   TypeWildcard _ a -> pure a
   TypeHole _ a -> pure $ nameTok a

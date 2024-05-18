@@ -273,7 +273,7 @@ memberToNameAndType _ = internalError "Invalid declaration in type class definit
 typeClassDictionaryDeclaration
   :: SourceAnn
   -> ProperName 'ClassName
-  -> [(Text, Maybe SourceType)]
+  -> [(Text,  SourceType)]
   -> [SourceConstraint]
   -> [Declaration]
   -> Declaration
@@ -292,7 +292,7 @@ typeClassDictionaryDeclaration sa name args implies members =
 typeClassMemberToDictionaryAccessor
   :: ModuleName
   -> ProperName 'ClassName
-  -> [(Text, Maybe SourceType)]
+  -> [(Text,  SourceType)]
   -> Declaration
   -> Declaration
 typeClassMemberToDictionaryAccessor mn name args (TypeDeclaration (TypeDeclarationData sa@(ss, _) ident ty)) =
@@ -306,7 +306,7 @@ typeClassMemberToDictionaryAccessor mn name args (TypeDeclaration (TypeDeclarati
   in ValueDecl sa ident Public []
     [MkUnguarded (
      TypedValue False (Abs (VarBinder ss dictIdent) (Case [Var ss $ Qualified ByNullSourcePos dictIdent] [CaseAlternative [ctor] [MkUnguarded acsr]])) $
-       addVisibility visibility (moveQuantifiersToFront NullSourceAnn (quantify (srcConstrainedType (srcConstraint className [] (map (srcTypeVar . fst) args) Nothing) ty)))
+       addVisibility visibility (moveQuantifiersToFront NullSourceAnn (quantify (srcConstrainedType (srcConstraint className [] (map (uncurry srcTypeVar) args) Nothing) ty)))
     )]
 typeClassMemberToDictionaryAccessor _ _ _ _ = internalError "Invalid declaration in type class definition"
 

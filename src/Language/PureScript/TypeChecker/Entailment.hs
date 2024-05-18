@@ -36,7 +36,7 @@ import Data.List.NonEmpty qualified as NEL
 import Language.PureScript.AST (Binder(..), ErrorMessageHint(..), Expr(..), Literal(..), pattern NullSourceSpan, everywhereOnValuesTopDownM, nullSourceSpan, everythingOnValues, nullSourceAnn)
 import Language.PureScript.AST.Declarations (UnknownsHint(..))
 import Language.PureScript.Crash (internalError)
-import Language.PureScript.Environment (Environment(..), FunctionalDependency(..), TypeClassData(..), dictTypeName, kindRow, tyBoolean, tyInt, tyString, mkRecordT)
+import Language.PureScript.Environment (Environment(..), FunctionalDependency(..), TypeClassData(..), dictTypeName, kindRow, tyBoolean, tyInt, tyString, mkRecordT, kindType)
 import Language.PureScript.Errors (MultipleErrors, SimpleErrorMessage(..), addHint, addHints, errorMessage, rethrow)
 import Language.PureScript.Names (pattern ByNullSourcePos, Ident(..), ModuleName, ProperName(..), ProperNameType(..), Qualified(..), QualifiedBy(..), byMaybeModuleName, coerceProperName, disqualify, freshIdent, getQual)
 import Language.PureScript.TypeChecker.Entailment.Coercible (GivenSolverState(..), WantedSolverState(..), initialGivenSolverState, initialWantedSolverState, insoluble, solveGivens, solveWanteds)
@@ -630,7 +630,7 @@ entails SolverOptions{..} constraint context hints =
       where
         (fixed, rest) = rowToList l
 
-        rowVar = srcTypeVar "r"
+        rowVar = srcTypeVar "r" (kindRow kindType)
 
         (canMakeProgress, lOut, rOut, uOut, cons, vars) =
           case rest of
@@ -779,7 +779,7 @@ matches deps TypeClassDictionaryInScope{..} tys =
     typeHeadsAreEqual t1                     (KindedType _ t2 _)               = typeHeadsAreEqual t1 t2
     typeHeadsAreEqual (TUnknown _ u1)        (TUnknown _ u2)      | u1 == u2   = (Match (), M.empty)
     typeHeadsAreEqual (Skolem _ _ _ s1 _)      (Skolem _ _ _ s2 _)    | s1 == s2   = (Match (), M.empty)
-    typeHeadsAreEqual t                      (TypeVar _ v)                     = (Match (), M.singleton v [t])
+    typeHeadsAreEqual t                      (TypeVar _ v _)                     = (Match (), M.singleton v [t])
     typeHeadsAreEqual (TypeConstructor _ c1) (TypeConstructor _ c2) | c1 == c2 = (Match (), M.empty)
     typeHeadsAreEqual (TypeLevelString _ s1) (TypeLevelString _ s2) | s1 == s2 = (Match (), M.empty)
     typeHeadsAreEqual (TypeLevelInt _ n1)    (TypeLevelInt _ n2)    | n1 == n2 = (Match (), M.empty)
@@ -799,10 +799,10 @@ matches deps TypeClassDictionaryInScope{..} tys =
         go (l,  KindApp _ t1 k1)   (r,  KindApp _ t2 k2) | eqType k1 k2 = go (l, t1) (r, t2)
         go ([], REmpty _)          ([], REmpty _)                      = (Match (), M.empty)
         go ([], TUnknown _ u1)     ([], TUnknown _ u2)      | u1 == u2 = (Match (), M.empty)
-        go ([], TypeVar _ v1)      ([], TypeVar _ v2)       | v1 == v2 = (Match (), M.empty)
+        go ([], TypeVar _ v1 _)      ([], TypeVar _ v2 _)       | v1 == v2 = (Match (), M.empty)
         go ([], Skolem _ _ _ sk1 _)  ([], Skolem _ _ _ sk2 _) | sk1 == sk2 = (Match (), M.empty)
         go ([], TUnknown _ _)      _                                   = (Unknown, M.empty)
-        go (sd, r)                 ([], TypeVar _ v)                   = (Match (), M.singleton v [rowFromList (sd, r)])
+        go (sd, r)                 ([], TypeVar _ v _)                   = (Match (), M.singleton v [rowFromList (sd, r)])
         go _ _                                                         = (Apart, M.empty)
     typeHeadsAreEqual (TUnknown _ _) _ = (Unknown, M.empty)
     typeHeadsAreEqual Skolem{} _       = (Unknown, M.empty)
@@ -828,7 +828,7 @@ matches deps TypeClassDictionaryInScope{..} tys =
       typesAreEqual (Skolem _ _ _ s1 _)    (Skolem _ _ _ s2 _)    | s1 == s2 = Match ()
       typesAreEqual (Skolem _ _ _ s1 _)    t2                     = if t2 `containsSkolem` s1 then Apart else Unknown
       typesAreEqual t1                     (Skolem _ _ _ s2 _)    = if t1 `containsSkolem` s2 then Apart else Unknown
-      typesAreEqual (TypeVar _ v1)         (TypeVar _ v2)         | v1 == v2 = Match ()
+      typesAreEqual (TypeVar _ v1 _)         (TypeVar _ v2 _)         | v1 == v2 = Match ()
       typesAreEqual (TypeLevelString _ s1) (TypeLevelString _ s2) | s1 == s2 = Match ()
       typesAreEqual (TypeLevelInt _ n1)    (TypeLevelInt _ n2)    | n1 == n2 = Match ()
       typesAreEqual (TypeConstructor _ c1) (TypeConstructor _ c2) | c1 == c2 = Match ()
@@ -850,7 +850,7 @@ matches deps TypeClassDictionaryInScope{..} tys =
           go ([], Skolem _ _ _ _ _)   _                               = Unknown
           go _                      ([], Skolem _ _ _ _ _)            = Unknown
           go ([], REmpty _)         ([], REmpty _)                    = Match ()
-          go ([], TypeVar _ v1)     ([], TypeVar _ v2)     | v1 == v2 = Match ()
+          go ([], TypeVar _ v1 _)     ([], TypeVar _ v2 _)     | v1 == v2 = Match ()
           go _  _                                                     = Apart
       typesAreEqual _               _                                 = Apart
 

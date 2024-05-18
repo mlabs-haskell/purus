@@ -431,8 +431,7 @@ debugTypeSynonyms = fmap go . M.toList . typeSynonyms
   go (qual, (binders, subTy)) = do
     let
       vars = unwords $ flip fmap binders $ \case
-               (v, Just k) -> "(" <> unpack v <> " :: " <> init (prettyPrintType 100 k) <> ")"
-               (v, Nothing) -> unpack v
+               (v,  k) -> "(" <> unpack v <> " :: " <> init (prettyPrintType 100 k) <> ")"
       ppTy = prettyPrintType 100 subTy
       name = showQualified runProperName qual
     "type " <> unpack name <> " " <> vars <> " = " <> init ppTy
@@ -458,7 +457,7 @@ debugTypeClasses = fmap go . M.toList . typeClasses
   go (className, tc) = do
     let
       className' = showQualified runProperName className
-      args = unwords $ (\(a, b) -> "(" <> debugType (maybe (srcTypeVar a) (srcKindedType (srcTypeVar a)) b) <> ")") <$> typeClassArguments tc
+      args = unwords $ (\(a, b) -> "(" <> debugType (srcTypeVar a  b) <> ")") <$> typeClassArguments tc
     "class " <> unpack className' <> " " <> args
 
 debugValue :: Expr -> String

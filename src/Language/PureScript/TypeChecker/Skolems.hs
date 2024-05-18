@@ -45,13 +45,13 @@ newSkolemScope = do
   return $ SkolemScope s
 
 -- | Skolemize a type variable by replacing its instances with fresh skolem constants
-skolemize :: a -> Text -> Maybe (Type a) -> Int -> SkolemScope -> Type a -> Type a
+skolemize :: a -> Text ->  (Type a) -> Int -> SkolemScope -> Type a -> Type a
 skolemize ann ident mbK sko scope = replaceTypeVars ident (Skolem ann ident mbK sko scope)
 
 -- | This function skolemizes type variables appearing in any type signatures or
 -- 'DeferredDictionary' placeholders. These type variables are the only places
 -- where scoped type variables can appear in expressions.
-skolemizeTypesInValue :: SourceAnn -> Text -> Maybe SourceType -> Int -> SkolemScope -> Expr -> Expr
+skolemizeTypesInValue :: SourceAnn -> Text ->  SourceType -> Int -> SkolemScope -> Expr -> Expr
 skolemizeTypesInValue ann ident mbK sko scope =
     runIdentity . onExpr'
   where

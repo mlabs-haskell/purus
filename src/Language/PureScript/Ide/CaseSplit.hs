@@ -44,7 +44,7 @@ explicitAnnotations = WildcardAnnotations True
 noAnnotations :: WildcardAnnotations
 noAnnotations = WildcardAnnotations False
 
-type DataType = ([(Text, Maybe P.SourceType, P.Role)], [(P.ProperName 'P.ConstructorName, [P.SourceType])])
+type DataType = ([(Text,  P.SourceType, P.Role)], [(P.ProperName 'P.ConstructorName, [P.SourceType])])
 
 caseSplit
   :: (Ide m, MonadError IdeError m)

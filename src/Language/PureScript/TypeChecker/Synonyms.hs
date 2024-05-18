@@ -23,7 +23,7 @@ import Language.PureScript.TypeChecker.Monad (CheckState, getEnv)
 import Language.PureScript.Types (SourceType, Type(..), completeBinderList, everywhereOnTypesTopDownM, getAnnForType, replaceAllTypeVars)
 
 -- | Type synonym information (arguments with kinds, aliased type), indexed by name
-type SynonymMap = M.Map (Qualified (ProperName 'TypeName)) ([(Text, Maybe SourceType)], SourceType)
+type SynonymMap = M.Map (Qualified (ProperName 'TypeName)) ([(Text,  SourceType)], SourceType)
 
 type KindMap = M.Map (Qualified (ProperName 'TypeName)) (SourceType, TypeKind)
 

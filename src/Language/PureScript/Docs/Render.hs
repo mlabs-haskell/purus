@@ -131,12 +131,11 @@ ident' = ident . P.Qualified P.ByNullSourcePos . P.Ident
 dataCtor' :: Text -> RenderedCode
 dataCtor' = dataCtor . notQualified
 
-typeApp :: Text -> [(Text, Maybe Type')] -> Type'
+typeApp :: Text -> [(Text, Type')] -> Type'
 typeApp title typeArgs =
   foldl (P.TypeApp ())
         (P.TypeConstructor () (notQualified title))
         (map toTypeVar typeArgs)
 
-toTypeVar :: (Text, Maybe Type') -> Type'
-toTypeVar (s, Nothing) = P.TypeVar () s
-toTypeVar (s, Just k) = P.KindedType () (P.TypeVar () s) k
+toTypeVar :: (Text, Type') -> Type'
+toTypeVar (s, k) = P.TypeVar () s k

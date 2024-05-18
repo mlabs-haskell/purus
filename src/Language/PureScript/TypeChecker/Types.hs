@@ -339,7 +339,7 @@ instantiatePolyTypeWithUnknowns
   -> SourceType
   -> m (Expr, SourceType)
 instantiatePolyTypeWithUnknowns val (ForAll _ _ ident mbK ty _) = do
-  u <- maybe (internalCompilerError "Unelaborated forall") freshTypeWithKind mbK
+  u <-  freshTypeWithKind mbK
   insertUnkName' u ident
   instantiatePolyTypeWithUnknowns val $ replaceTypeVars ident u ty
 instantiatePolyTypeWithUnknowns val (ConstrainedType _ con ty) = do
@@ -354,7 +354,7 @@ instantiatePolyTypeWithUnknownsUntilVisible
   -> SourceType
   -> m (Expr, SourceType)
 instantiatePolyTypeWithUnknownsUntilVisible val (ForAll _ TypeVarInvisible ident mbK ty _) = do
-  u <- maybe (internalCompilerError "Unelaborated forall") freshTypeWithKind mbK
+  u <- freshTypeWithKind mbK
   insertUnkName' u ident
   instantiatePolyTypeWithUnknownsUntilVisible val $ replaceTypeVars ident u ty
 instantiatePolyTypeWithUnknownsUntilVisible val ty = return (val, ty)
@@ -485,7 +485,7 @@ infer' (VisibleTypeApp valFn tyArg) = do
   tyArg' <- introduceSkolemScope <=< replaceAllTypeSynonyms <=< replaceTypeWildcards $ tyArg
   (valFn'', valTy') <- instantiatePolyTypeWithUnknownsUntilVisible valFn' valTy
   case valTy' of
-    ForAll _ _ qName (Just qKind) qBody _ -> do
+    ForAll _ _ qName qKind qBody _ -> do
       tyArg'' <- replaceAllTypeSynonyms <=< checkKind tyArg' $ qKind
       let resTy = replaceTypeVars qName tyArg'' qBody
       (valFn''', resTy') <- instantiateConstraint valFn'' resTy
@@ -1006,7 +1006,7 @@ checkFunctionApplication' fn (TypeApp _ (TypeApp _ tyFunction' argTy) retTy) arg
   arg' <- tvToExpr <$> check arg argTy
   return (retTy, App fn arg')
 checkFunctionApplication' fn (ForAll _ _ ident mbK ty _) arg = do
-  u <- maybe (internalCompilerError "Unelaborated forall") freshTypeWithKind mbK
+  u <- freshTypeWithKind mbK
   insertUnkName' u ident
   let replaced = replaceTypeVars ident u ty
   checkFunctionApplication fn replaced arg

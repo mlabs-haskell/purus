@@ -21,7 +21,7 @@ import Control.Monad.Supply.Class (MonadSupply, freshName)
 
 import Language.PureScript.AST
 import Language.PureScript.Crash (internalError)
-import Language.PureScript.Environment (NameKind(..), function)
+import Language.PureScript.Environment (NameKind(..), function, kindType)
 import Language.PureScript.Errors (ErrorMessage(..), MultipleErrors(..), SimpleErrorMessage(..), addHint, errorMessage', parU, rethrow, withPosition)
 import Language.PureScript.Names (pattern ByNullSourcePos, Ident(..), Qualified(..), freshIdent')
 import Language.PureScript.TypeChecker.Monad (guardWith)
@@ -239,7 +239,7 @@ desugarGuardedExprs ss (Case scrut alternatives) =
         freshTyVar <- freshName
 
         let
-          remTy = quantify $ function (TypeVar (ss,[]) freshTyVar) (unsafeExprType desugared)
+          remTy = quantify $ function (TypeVar (ss,[]) freshTyVar kindType) (unsafeExprType desugared)
           mkType e = TypedValue False e remTy
 
           goto_rem_case :: Expr

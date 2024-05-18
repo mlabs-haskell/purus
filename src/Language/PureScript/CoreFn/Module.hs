@@ -35,7 +35,7 @@ data Module decl a = Module
   , moduleReExports :: Map ModuleName [Ident]
   , moduleForeign :: [Ident]
   , moduleDecls :: [decl]
-  , moduleDataTypes :: Map (ProperName 'TypeName) (DataDeclType,[(Text, Maybe SourceType)],[DataConstructorDeclaration])
+  , moduleDataTypes :: Map (ProperName 'TypeName) (DataDeclType,[(Text, SourceType)],[DataConstructorDeclaration])
   } deriving (Functor, Show)
 
 deriving instance Eq a => Eq (Module (Bind a) a)

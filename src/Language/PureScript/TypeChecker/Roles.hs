@@ -92,7 +92,7 @@ lookupRoles env tyName =
 checkRoles
   :: forall m
    . (MonadError MultipleErrors m)
-  => [(Text, Maybe SourceType, Role)]
+  => [(Text, SourceType, Role)]
     -- ^ type parameters for the data type whose roles we are checking
   -> [Role]
     -- ^ roles declared for the data type
@@ -123,7 +123,7 @@ inferRoles
   -> ModuleName
   -> ProperName 'TypeName
     -- ^ The name of the data type whose roles we are checking
-  -> [(Text, Maybe SourceType)]
+  -> [(Text, SourceType)]
     -- ^ type parameters for the data type whose roles we are checking
   -> [DataConstructorDeclaration]
     -- ^ constructors of the data type whose roles we are checking
@@ -137,7 +137,7 @@ inferDataBindingGroupRoles
   -> [RoleDeclarationData]
   -> [DataDeclaration]
   -> ProperName 'TypeName
-  -> [(Text, Maybe SourceType)]
+  -> [(Text, SourceType)]
   -> [Role]
 inferDataBindingGroupRoles env moduleName roleDeclarations group =
   let declaredRoleEnv = M.fromList $ map (Qualified (ByModuleName moduleName) . rdeclIdent &&& rdeclRoles) roleDeclarations
@@ -151,7 +151,7 @@ inferDataBindingGroupRoles env moduleName roleDeclarations group =
 
 type DataDeclaration =
   ( ProperName 'TypeName
-  , [(Text, Maybe SourceType)]
+  , [(Text, SourceType)]
   , [DataConstructorDeclaration]
   )
 
@@ -186,7 +186,7 @@ inferDataDeclarationRoles moduleName (tyName, tyArgs, ctors) roleEnv =
   -- "Role inference" section of the paper "Safe Zero-cost Coercions for
   -- Haskell".
   walk :: S.Set Text -> SourceType -> RoleMap
-  walk btvs (TypeVar _ v)
+  walk btvs (TypeVar _ v _)
     -- A type variable standing alone (e.g. @a@ in @data D a b = D a@) is
     -- representational, _unless_ it has been bound by a quantifier, in which
     -- case it is not actually a parameter to the type (e.g. @z@ in
@@ -259,5 +259,5 @@ inferDataDeclarationRoles moduleName (tyName, tyArgs, ctors) roleEnv =
 -- ascribing a nominal role to each of those variables.
 freeNominals :: S.Set Text -> SourceType -> RoleMap
 freeNominals btvs x =
-  let ftvs = filter (flip S.notMember btvs) (freeTypeVariables x)
+  let ftvs = filter (flip S.notMember btvs) (fst <$> freeTypeVariables x)
   in  RoleMap (M.fromList $ map (, Nominal) ftvs)

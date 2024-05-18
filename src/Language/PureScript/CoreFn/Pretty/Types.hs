@@ -50,7 +50,9 @@ prettyType t  =  group <$> case t of
 
   TUnknown _ n -> pure $ "t" <> pretty n
 
-  TypeVar _ txt -> pure $ pretty txt
+  TypeVar _ txt ki -> do
+    ki' <- prettyType ki
+    pure $ parens (pretty txt <::> ki')
 
   TypeLevelString _ pss -> pure . pretty . prettyPrintString $ pss
 
@@ -97,9 +99,9 @@ prettyType t  =  group <$> case t of
 
   ParensInType _ ty -> parens <$> prettyType ty
  where
-   goForall :: [(TypeVarVisibility,Text,Maybe (Type a))] -> Type a -> Printer ann
+   goForall :: [(TypeVarVisibility,Text,(Type a))] -> Type a -> Printer ann
    goForall xs inner = do
-     boundVars <- fmtSep =<< traverse renderBoundVar xs
+     boundVars <- fmtSep =<<  traverse renderBoundVar xs
      inner'    <- prettyType inner
      pure $
        "forall" <+> boundVars <> "." <+> inner'
@@ -109,14 +111,13 @@ prettyType t  =  group <$> case t of
      TypeVarVisible -> hcat ["@",tv]
      TypeVarInvisible -> tv
 
-   renderBoundVar :: (TypeVarVisibility, Text, Maybe (Type a)) -> Printer ann
-   renderBoundVar (vis,var,mk) =  case mk of
-     Just k -> do
+   renderBoundVar :: (TypeVarVisibility, Text,  (Type a)) -> Printer ann
+   renderBoundVar (vis,var,k) =   do
        ty' <- prettyType k
        pure . parens $ prefixVis vis (pretty var) <::> ty'
-     Nothing -> pure $ prefixVis vis (pretty var)
 
-   stripQuantifiers :: Type a -> ([(TypeVarVisibility,Text,Maybe (Type a))],Type a)
+
+   stripQuantifiers :: Type a -> ([(TypeVarVisibility,Text,(Type a))],Type a)
    stripQuantifiers = \case
      ForAll _ vis var mk inner _ -> first ((vis,var,mk):) $ stripQuantifiers inner
      other -> ([],other)
@@ -145,7 +146,9 @@ prettyType t  =  group <$> case t of
            pure $ bimap (first f) f rest'
          REmpty _ -> pure $ Right []
          KindApp _ REmpty{} _  -> pure $ Right [] -- REmpty is sometimes wrapped in a kind app
-         TypeVar _ txt -> pure $ Left ([],pretty txt)
+         TypeVar _ txt k -> do
+           k' <- prettyType k
+           pure $ Left ([],parens (pretty txt <::> k'))
          other -> Right . pure <$> prettyType other  --  error $ "Malformed row fields: \n" <> prettyTypeStr other
 
 

@@ -945,7 +945,7 @@ testCases =
   hasTypeVar varName =
     getAny . P.everythingOnTypes (<>) (Any . isVar varName)
 
-  isVar varName (P.TypeVar _ name) | varName == T.unpack name = True
+  isVar varName (P.TypeVar _ name _) | varName == T.unpack name = True
   isVar _ _ = False
 
   renderedType expected ty =

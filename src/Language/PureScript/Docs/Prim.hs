@@ -216,7 +216,7 @@ primClass cn comments = Declaration
   , declInfo =
       let
         tcd = lookupPrimClass cn
-        args = fmap (fmap ($> ())) <$> P.typeClassArguments tcd
+        args =  (fmap ($> ())) <$> P.typeClassArguments tcd
         superclasses = ($> ()) <$> P.typeClassSuperclasses tcd
         fundeps = convertFundepsToStrings args (P.typeClassDependencies tcd)
       in

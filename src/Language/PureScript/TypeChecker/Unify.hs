@@ -128,7 +128,7 @@ unifyTypes t1 t2 = do
     sk `unifyTypes` ty2
   unifyTypes' ForAll{} _ = internalError "unifyTypes: unspecified skolem scope"
   unifyTypes' ty f@ForAll{} = f `unifyTypes` ty
-  unifyTypes' (TypeVar _ v1) (TypeVar _ v2) | v1 == v2 = return ()
+  unifyTypes' (TypeVar _ v1 k1) (TypeVar _ v2 k2) | v1 == v2 = unifyTypes k1 k2  -- REVIEW/HACK: Not sure if this is right...
   unifyTypes' ty1@(TypeConstructor _ c1) ty2@(TypeConstructor _ c2) =
     guardWith (errorMessage (TypesDoNotUnify ty1 ty2)) (c1 == c2)
   unifyTypes' (TypeLevelString _ s1) (TypeLevelString _ s2) | s1 == s2 = return ()
@@ -170,7 +170,7 @@ unifyRows r1 r2 = sequence_ matches *> uncurry unifyTails rest where
   unifyTails ([], TUnknown _ u)    (sd, r)               = solveType u (rowFromList (sd, r))
   unifyTails (sd, r)               ([], TUnknown _ u)    = solveType u (rowFromList (sd, r))
   unifyTails ([], REmptyKinded _ _) ([], REmptyKinded _ _) = return ()
-  unifyTails ([], TypeVar _ v1)    ([], TypeVar _ v2)    | v1 == v2 = return ()
+  unifyTails ([], TypeVar _ v1 k1)    ([], TypeVar _ v2 k2)    | v1 == v2 && k1 == k2 = return ()
   unifyTails ([], Skolem _ _ _ s1 _) ([], Skolem _ _ _ s2 _) | s1 == s2 = return ()
   unifyTails (sd1, TUnknown a u1)  (sd2, TUnknown _ u2)  | u1 /= u2 = do
     forM_ sd1 $ occursCheck u2 . rowListType
@@ -204,20 +204,29 @@ replaceTypeWildcards = everywhereOnTypesM replace
 varIfUnknown :: forall m. (MonadState CheckState m) => [(Unknown, SourceType)] -> SourceType -> m SourceType
 varIfUnknown unks ty = do
   bn' <- traverse toBinding unks
+  -- This *should* be a map from TyVar names to their kinds. ugh
+  let bindings = M.fromList $ snd <$> bn'
   ty' <- go ty
-  pure $ mkForAll bn' ty'
+  pure $ mkForAll bn' $ cleanup bindings ty'
   where
   toName :: Unknown -> m T.Text
   toName u = (<> T.pack (show u)) . fromMaybe "t" <$> lookupUnkName u
 
-  toBinding :: (Unknown, SourceType) -> m (SourceAnn, (T.Text, Maybe SourceType))
+  toBinding :: (Unknown, SourceType) -> m (SourceAnn, (T.Text, SourceType))
   toBinding (u, k) = do
     u' <- toName u
     k' <- go k
-    pure (getAnnForType ty, (u', Just k'))
+    pure (getAnnForType ty, (u', k'))
+
+  cleanup :: M.Map T.Text SourceType -> SourceType ->  SourceType
+  cleanup dict = everywhereOnTypes $ \case
+    tv@(TypeVar ann nm _) -> case M.lookup nm dict of
+      Nothing -> tv
+      Just k' -> TypeVar ann nm k'
+    other -> other
 
   go :: SourceType -> m SourceType
   go = everywhereOnTypesM $ \case
-    (TUnknown ann u) ->
-      TypeVar ann <$> toName u
+    tu@(TUnknown ann u) ->
+      (\nm -> TypeVar ann nm tu) <$> toName u
     t -> pure t

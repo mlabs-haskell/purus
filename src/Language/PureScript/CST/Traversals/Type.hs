@@ -9,7 +9,7 @@ everythingOnTypes :: (r -> r -> r) -> (Type a -> r) -> Type a -> r
 everythingOnTypes op k = goTy
   where
   goTy ty = case ty of
-    TypeVar _ _ -> k ty
+    TypeVar _ _  -> k ty
     TypeConstructor _ _ -> k ty
     TypeWildcard _ _ -> k ty
     TypeHole _ _ -> k ty

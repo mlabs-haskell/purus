@@ -141,7 +141,7 @@ moduleToCoreFn (A.Module modSS coms mn _decls (Just exps)) = do
 
 -}
 
-type DeclMapElem =  (DataDeclType,[(T.Text, Maybe SourceType)], [A.DataConstructorDeclaration])
+type DeclMapElem =  (DataDeclType,[(T.Text, SourceType)], [A.DataConstructorDeclaration])
 
 mkDataDecls :: [A.Declaration] -> M.Map (ProperName 'TypeName) DeclMapElem
 mkDataDecls [] = M.empty

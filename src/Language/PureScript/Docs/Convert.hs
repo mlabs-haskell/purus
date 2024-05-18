@@ -29,6 +29,7 @@ import Language.PureScript.Sugar qualified as P
 import Language.PureScript.Types qualified as P
 import Language.PureScript.Constants.Prim qualified as Prim
 import Language.PureScript.Sugar (RebracketCaller(CalledByDocs))
+import Language.PureScript.Types (Type(TUnknown))
 
 -- |
 -- Convert a single module to a Docs.Module, making use of a pre-existing
@@ -112,10 +113,10 @@ insertValueTypesAndAdjustKinds env m =
   -- Return a list of values, one for each implicit type parameter
   -- of `(tX, Nothing)` where `X` refers to the index of he parameter
   -- in that list, matching the values expected by `Render.toTypeVar`
-  genTypeParams :: Type' -> [(Text, Maybe Type')]
+  genTypeParams :: Type' -> [(Text,  Type')]
   genTypeParams kind = do
     let n = countParams 0 kind
-    map (\(i :: Int) -> ("t" <> T.pack (show i), Nothing)) $ take n [0..]
+    map (\(i :: Int) -> ("t" <> T.pack (show i), TUnknown () i)) $ take n [0..] -- REVIEW: Is TUnknown ok?
     where
       countParams :: Int -> Type' -> Int
       countParams acc = \case
@@ -232,8 +233,8 @@ insertValueTypesAndAdjustKinds env m =
           -- changes `forall (k :: Type). k -> ...`
           -- to      `forall k          . k -> ...`
           dropTypeSortAnnotation = \case
-            P.ForAll sa vis txt (Just (P.TypeConstructor _ Prim.Type)) rest skol ->
-              P.ForAll sa vis txt Nothing (dropTypeSortAnnotation rest) skol
+            P.ForAll sa vis txt (P.TypeConstructor a Prim.Type) rest skol ->
+              P.ForAll sa vis txt (P.TypeConstructor a Prim.Type) (dropTypeSortAnnotation rest) skol
             rest -> rest
 
       Nothing ->

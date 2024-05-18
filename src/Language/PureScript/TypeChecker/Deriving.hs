@@ -120,6 +120,7 @@ deriveNewtypeInstance className tys (UnwrappedTypeConstructor mn tyConNm dkargs 
     (dtype, tyKindNames, tyArgNames, ctors) <- lookupTypeDecl mn tyConNm
     go dtype tyKindNames tyArgNames ctors
   where
+    go :: Maybe DataDeclType -> [Text] -> [(Text, SourceType)] -> [(ProperName 'ConstructorName, [SourceType])] -> m Expr
     go (Just Newtype) tyKindNames tyArgNames [(_, [wrapped])] = do
       -- The newtype might not be applied to all type arguments.
       -- This is okay as long as the newtype wraps something which ends with
@@ -143,9 +144,9 @@ deriveNewtypeInstance className tys (UnwrappedTypeConstructor mn tyConNm dkargs 
     takeReverse :: Int -> [a] -> [a]
     takeReverse n = take n . reverse
 
-    stripRight :: [(Text, Maybe kind)] -> SourceType -> Maybe SourceType
+    stripRight :: [(Text, SourceType)] -> SourceType -> Maybe SourceType
     stripRight [] ty = Just ty
-    stripRight ((arg, _) : args) (TypeApp _ t (TypeVar _ arg'))
+    stripRight ((arg, _) : args) (TypeApp _ t (TypeVar _ arg' _))
       | arg == arg' = stripRight args t
     stripRight _ _ = Nothing
 
@@ -158,14 +159,14 @@ deriveNewtypeInstance className tys (UnwrappedTypeConstructor mn tyConNm dkargs 
           for_ (M.lookup constraintClass (typeClasses env)) $ \TypeClassData{ typeClassDependencies = deps } ->
             -- We need to check whether the newtype is mentioned, because of classes like MonadWriter
             -- with its Monoid superclass constraint.
-            when (not (null args) && any ((fst (last args) `elem`) . usedTypeVariables) constraintArgs) $ do
+            when (not (null args) && any ((last args `elem`) . usedTypeVariables) constraintArgs) $ do
               -- For now, we only verify superclasses where the newtype is the only argument,
               -- or for which all other arguments are determined by functional dependencies.
               -- Everything else raises a UnverifiableSuperclassInstance warning.
               -- This covers pretty much all cases we're interested in, but later we might want to do
               -- more work to extend this to other superclass relationships.
-              let determined = map (srcTypeVar . fst . (args !!)) . ordNub . concatMap fdDetermined . filter ((== [length args - 1]) . fdDeterminers) $ deps
-              if eqType (last constraintArgs) (srcTypeVar . fst $ last args) && all (`elem` determined) (init constraintArgs)
+              let determined = map (uncurry srcTypeVar  . (args !!)) . ordNub . concatMap fdDetermined . filter ((== [length args - 1]) . fdDeterminers) $ deps
+              if eqType (last constraintArgs) (uncurry srcTypeVar $ last args) && all (`elem` determined) (init constraintArgs)
                 then do
                   -- Now make sure that a superclass instance was derived. Again, this is not a complete
                   -- check, since the superclass might have multiple type arguments, so overlaps might still
@@ -359,7 +360,7 @@ lookupTypeDecl
   => MonadState CheckState m
   => ModuleName
   -> ProperName 'TypeName
-  -> m (Maybe DataDeclType, [Text], [(Text, Maybe SourceType)], [(ProperName 'ConstructorName, [SourceType])])
+  -> m (Maybe DataDeclType, [Text], [(Text,  SourceType)], [(ProperName 'ConstructorName, [SourceType])])
 lookupTypeDecl mn typeName = do
   env <- getEnv
   note (errorMessage $ CannotFindDerivingType typeName) $ do
@@ -372,7 +373,7 @@ lookupTypeDecl mn typeName = do
     pure (dtype, fst . snd <$> kargs, map (\(v, k, _) -> (v, k)) args, dctors)
 
 isAppliedVar :: Type a -> Bool
-isAppliedVar (TypeApp _ (TypeVar _ _) _) = True
+isAppliedVar (TypeApp _ (TypeVar _ _ _) _) = True
 isAppliedVar _ = False
 
 objectType :: Type a -> Maybe (Type a)
@@ -473,7 +474,7 @@ validateParamsInTypeConstructors derivingClass utc isBi CovariantClasses{..} con
 
     assertParamNotUsedIn :: Text -> SourceType -> Writer [SourceSpan] ()
     assertParamNotUsedIn param = everythingOnTypes (*>) $ \case
-      TypeVar (ss, _) name | name == param -> tell [ss]
+      TypeVar (ss, _) name _ | name == param -> tell [ss]
       _ -> pure ()
 
     tryBiClasses ht tyLArg tyArg
@@ -515,7 +516,7 @@ validateParamsInTypeConstructors derivingClass utc isBi CovariantClasses{..} con
       TypeApp _ tyFn tyArg ->
         assertNoParamUsedIn tyFn *> tryMonoClasses (headOfTypeWithSubst tyFn) tyArg
 
-      TypeVar (ss, _) name -> mergeTheseWith (checkName lparamIsContra IsLParam) (checkName paramIsContra IsParam) (liftA2 (<|>)) params
+      TypeVar (ss, _) name _ -> mergeTheseWith (checkName lparamIsContra IsLParam) (checkName paramIsContra IsParam) (liftA2 (<|>)) params
         where
         checkName thisParamIsContra usage param
           | name == param = when (thisParamIsContra /= isNegative) (tell [ss]) $> Just usage
@@ -543,7 +544,7 @@ validateParamsInTypeConstructors derivingClass utc isBi CovariantClasses{..} con
   headOfType = fix $ \go -> \case
     TypeApp _ ty _ -> go ty
     KindApp _ ty _ -> go ty
-    TypeVar _ nm -> Qualified ByNullSourcePos (Left nm)
+    TypeVar _ nm _ -> Qualified ByNullSourcePos (Left nm)
     Skolem _ nm _ _ _ -> Qualified ByNullSourcePos (Left nm)
     TypeConstructor _ (Qualified qb nm) -> Qualified qb (Right nm)
     ty -> internalError $ "headOfType missing a case: " <> show (void ty)

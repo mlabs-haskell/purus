@@ -47,7 +47,7 @@ import Language.PureScript.Pretty.Common (endWith)
 import Language.PureScript.PSString (decodeStringWithReplacement)
 import Language.PureScript.Roles (Role, displayRole)
 import Language.PureScript.Traversals (sndM)
-import Language.PureScript.Types (Constraint(..), ConstraintData(..), RowListItem(..), SourceConstraint, SourceType, Type(..), eraseForAllKindAnnotations, eraseKindApps, everywhereOnTypesTopDownM, getAnnForType, isMonoType, overConstraintArgs, rowFromList, rowToList, srcTUnknown)
+import Language.PureScript.Types (Constraint(..), ConstraintData(..), RowListItem(..), SourceConstraint, SourceType, Type(..), eraseKindApps, everywhereOnTypesTopDownM, getAnnForType, isMonoType, overConstraintArgs, rowFromList, rowToList, srcTUnknown)
 import Language.PureScript.Publish.BoxesHelpers qualified as BoxHelpers
 import System.Console.ANSI qualified as ANSI
 import System.FilePath (makeRelative)
@@ -446,14 +446,14 @@ replaceUnknowns = everywhereOnTypesTopDownM replaceTypes where
   -- We intentionally remove the kinds from skolems, because they are never
   -- presented when pretty-printing. Any unknowns in those kinds shouldn't
   -- appear in the list of unknowns unless used somewhere else.
-  replaceTypes (Skolem ann name _ s sko) = do
+  replaceTypes (Skolem ann name k s sko) = do
     m <- get
     case M.lookup s (umSkolemMap m) of
       Nothing -> do
         let s' = umNextIndex m
         put $ m { umSkolemMap = M.insert s (T.unpack name, s', Just (fst ann)) (umSkolemMap m), umNextIndex = s' + 1 }
-        return (Skolem ann name Nothing s' sko)
-      Just (_, s', _) -> return (Skolem ann name Nothing s' sko)
+        return (Skolem ann name k s' sko)
+      Just (_, s', _) -> return (Skolem ann name k s' sko)
   replaceTypes other = return other
 
 onTypesInErrorMessage :: (SourceType -> SourceType) -> ErrorMessage -> ErrorMessage
@@ -1606,7 +1606,7 @@ prettyPrintSingleError (PPEOptions codeColor full level showDocs relPath fileCon
 
     printRow :: (Int -> Type a -> Box.Box) -> Type a -> Box.Box
     printRow f = markCodeBox . indent . f prettyDepth .
-      if full then id else eraseForAllKindAnnotations . eraseKindApps
+      if full then id else  eraseKindApps
 
     -- If both rows are not empty, print them as diffs
     -- If verbose print all rows else only print unique rows
@@ -1695,12 +1695,12 @@ prettyPrintSingleError (PPEOptions codeColor full level showDocs relPath fileCon
   prettyTypeWithDepth :: Int -> Type a -> Box.Box
   prettyTypeWithDepth depth
     | full = typeAsBox depth
-    | otherwise = typeAsBox depth . eraseForAllKindAnnotations . eraseKindApps
+    | otherwise = typeAsBox depth .  eraseKindApps
 
   prettyTypeAtom :: Type a -> Box.Box
   prettyTypeAtom
     | full = typeAtomAsBox prettyDepth
-    | otherwise = typeAtomAsBox prettyDepth . eraseForAllKindAnnotations . eraseKindApps
+    | otherwise = typeAtomAsBox prettyDepth .  eraseKindApps
 
   levelText :: Text
   levelText = case level of
@@ -1933,7 +1933,7 @@ prettyPrintKindSignatureFor TypeSynonymSig = "type"
 prettyPrintKindSignatureFor ClassSig = "class"
 
 prettyPrintSuggestedTypeSimplified :: Type a -> String
-prettyPrintSuggestedTypeSimplified = prettyPrintSuggestedType . eraseForAllKindAnnotations . eraseKindApps
+prettyPrintSuggestedTypeSimplified = prettyPrintSuggestedType . eraseKindApps
 
 -- | Pretty print multiple errors
 prettyPrintMultipleErrors :: PPEOptions -> MultipleErrors -> String

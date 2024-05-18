@@ -394,7 +394,7 @@ data Declaration
   -- |
   -- A data type declaration (data or newtype, name, arguments, data constructors)
   --
-  = DataDeclaration SourceAnn DataDeclType (ProperName 'TypeName) [(Text, Maybe SourceType)] [DataConstructorDeclaration]
+  = DataDeclaration SourceAnn DataDeclType (ProperName 'TypeName) [(Text, SourceType)] [DataConstructorDeclaration]
   -- |
   -- A minimal mutually recursive set of data type declarations
   --
@@ -402,7 +402,7 @@ data Declaration
   -- |
   -- A type synonym declaration (name, arguments, type)
   --
-  | TypeSynonymDeclaration SourceAnn (ProperName 'TypeName) [(Text, Maybe SourceType)] SourceType
+  | TypeSynonymDeclaration SourceAnn (ProperName 'TypeName) [(Text,  SourceType)] SourceType
   -- |
   -- A kind signature declaration
   --
@@ -445,7 +445,7 @@ data Declaration
   -- |
   -- A type class declaration (name, argument, implies, member declarations)
   --
-  | TypeClassDeclaration SourceAnn (ProperName 'ClassName) [(Text, Maybe SourceType)] [SourceConstraint] [FunctionalDependency] [Declaration]
+  | TypeClassDeclaration SourceAnn (ProperName 'ClassName) [(Text, SourceType)] [SourceConstraint] [FunctionalDependency] [Declaration]
   -- |
   -- A type instance declaration (instance chain, chain index, name,
   -- dependencies, class name, instance types, member declarations)

@@ -372,13 +372,13 @@ updateTypes goType = (goDecl, goExpr, goBinder)
   goDecl :: Declaration -> m Declaration
   goDecl (DataDeclaration sa@(ss, _) ddt name args dctors) =
     DataDeclaration sa ddt name
-      <$> traverse (traverse (traverse (goType' ss))) args
+      <$> traverse (traverse (goType' ss)) args
       <*> traverse (traverseDataCtorFields (traverse (sndM (goType' ss)))) dctors
   goDecl (ExternDeclaration sa@(ss, _) name ty) =
     ExternDeclaration sa name <$> goType' ss ty
   goDecl (TypeClassDeclaration sa@(ss, _) name args implies deps decls) = do
     implies' <- traverse (overConstraintArgs (traverse (goType' ss))) implies
-    args' <- traverse (traverse (traverse (goType' ss))) args
+    args' <- traverse (traverse (goType' ss)) args
     return $ TypeClassDeclaration sa name args' implies' deps decls
   goDecl (TypeInstanceDeclaration sa@(ss, _) na ch idx name cs className tys impls) = do
     cs' <- traverse (overConstraintArgs (traverse (goType' ss))) cs
@@ -386,7 +386,7 @@ updateTypes goType = (goDecl, goExpr, goBinder)
     return $ TypeInstanceDeclaration sa na ch idx name cs' className tys' impls
   goDecl (TypeSynonymDeclaration sa@(ss, _) name args ty) =
     TypeSynonymDeclaration sa name
-      <$> traverse (traverse (traverse (goType' ss))) args
+      <$> traverse (traverse (goType' ss)) args
       <*> goType' ss ty
   goDecl (TypeDeclaration (TypeDeclarationData sa@(ss, _) expr ty)) =
     TypeDeclaration . TypeDeclarationData sa expr <$> goType' ss ty

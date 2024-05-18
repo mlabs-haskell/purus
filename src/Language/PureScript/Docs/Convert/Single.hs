@@ -167,7 +167,7 @@ convertDeclaration (P.ExternDeclaration sa _ ty) title =
 convertDeclaration (P.DataDeclaration sa dtype _ args ctors) title =
   Just (Right (mkDeclaration sa title info) { declChildren = children })
   where
-  info = DataDeclaration dtype (fmap (fmap (fmap ($> ()))) args) []
+  info = DataDeclaration dtype (fmap (fmap ($> ())) args) []
   children = map convertCtor ctors
   convertCtor :: P.DataConstructorDeclaration -> ChildDeclaration
   convertCtor P.DataConstructorDeclaration{..} =
@@ -176,11 +176,11 @@ convertDeclaration (P.DataDeclaration sa dtype _ args ctors) title =
 convertDeclaration (P.ExternDataDeclaration sa _ kind') title =
   basicDeclaration sa title (ExternDataDeclaration (kind' $> ()) [])
 convertDeclaration (P.TypeSynonymDeclaration sa _ args ty) title =
-  basicDeclaration sa title (TypeSynonymDeclaration (fmap (fmap (fmap ($> ()))) args) (ty $> ()))
+  basicDeclaration sa title (TypeSynonymDeclaration (fmap (fmap ($> ())) args) (ty $> ()))
 convertDeclaration (P.TypeClassDeclaration sa _ args implies fundeps ds) title =
   Just (Right (mkDeclaration sa title info) { declChildren = children })
   where
-  args' = fmap (fmap (fmap ($> ()))) args
+  args' = fmap (fmap ($> ())) args
   info = TypeClassDeclaration args' (fmap ($> ()) implies) (convertFundepsToStrings args' fundeps)
   children = map convertClassMember ds
   convertClassMember (P.TypeDeclaration (P.TypeDeclarationData (ss, com) ident' ty)) =

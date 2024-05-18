@@ -121,8 +121,12 @@ convertType' withinVta fileName = go
         rowTail
 
   go = \case
-    TypeVar _ a ->
-      T.TypeVar (sourceName fileName a) . getIdent $ nameValue a
+    TypeKinded _ (TypeVar _ a) _ kd ->
+      T.TypeVar (sourceName fileName a) (getIdent $ nameValue a) (go kd)
+    TypeVar _ a  -> error $ "tyvar "
+                    <> Text.unpack (getIdent $ nameValue a)
+                    <> " lacks kind annotation (TODO: better error)"
+      -- T.TypeVar (sourceName fileName a) (getIdent $ nameValue a) (go ki)
     TypeConstructor _ a ->
       T.TypeConstructor (sourceQualName fileName a) $ qualified a
     TypeWildcard _ a ->
@@ -145,8 +149,9 @@ convertType' withinVta fileName = go
         mkForAll a b v t = do
           let ann' = widenLeft (tokAnn $ nameTok a) $ T.getAnnForType t
           T.ForAll ann' (maybe T.TypeVarInvisible (const T.TypeVarVisible) v) (getIdent $ nameValue a) b t Nothing
-        k (TypeVarKinded (Wrapped _ (Labeled (v, a) _ b) _)) = mkForAll a (Just (go b)) v
-        k (TypeVarName (v, a)) = mkForAll a Nothing v
+        k (TypeVarKinded (Wrapped _ (Labeled (v, a) _ b) _)) = mkForAll a ( (go b)) v
+        -- TODO: Fix this better
+        k (TypeVarName (v, a)) = error "forall w/o kind annotation" -- mkForAll a Nothing v
         ty' = foldr k (go ty) bindings
         ann = widenLeft (tokAnn kw) $ T.getAnnForType ty'
       T.setAnnForType ann ty'
@@ -602,8 +607,8 @@ convertDeclaration fileName decl = case decl of
         TypeUnaryRow{} -> "Row"
 
   goTypeVar = \case
-    TypeVarKinded (Wrapped _ (Labeled (_, x) _ y) _) -> (getIdent $ nameValue x, Just $ convertType fileName y)
-    TypeVarName (_, x) -> (getIdent $ nameValue x, Nothing)
+    TypeVarKinded (Wrapped _ (Labeled (_, x) _ y) _) -> (getIdent $ nameValue x, convertType fileName y)
+    TypeVarName (_, x) -> error $ "Missing kind annotation for type variable: " <> Text.unpack (getIdent $ nameValue x) -- , Nothing)
 
   goInstanceBinding = \case
     InstanceBindingSignature _ lbl ->

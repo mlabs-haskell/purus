@@ -53,7 +53,7 @@ data PrettyPrintType
   | PPKindedType PrettyPrintType PrettyPrintType
   | PPBinaryNoParensType PrettyPrintType PrettyPrintType PrettyPrintType
   | PPParensInType PrettyPrintType
-  | PPForAll [(TypeVarVisibility, Text, Maybe PrettyPrintType)] PrettyPrintType
+  | PPForAll [(TypeVarVisibility, Text,  PrettyPrintType)] PrettyPrintType
   | PPFunction PrettyPrintType PrettyPrintType
   | PPRecord [(Label, PrettyPrintType)] (Maybe PrettyPrintType)
   | PPRow [(Label, PrettyPrintType)] (Maybe PrettyPrintType)
@@ -66,7 +66,7 @@ convertPrettyPrintType :: Int -> Type a -> PrettyPrintType
 convertPrettyPrintType = go
   where
   go _ (TUnknown _ n) = PPTUnknown n
-  go _ (TypeVar _ t) = PPTypeVar t Nothing
+  go _ (TypeVar _ t _) = PPTypeVar t Nothing
   go _ (TypeLevelString _ s) = PPTypeLevelString s
   go _ (TypeLevelInt _ n) = PPTypeLevelInt n
   go _ (TypeWildcard _ (HoleWildcard n)) = PPTypeWildcard (Just n)
@@ -84,11 +84,11 @@ convertPrettyPrintType = go
   go d (BinaryNoParensType _ ty1 ty2 ty3) = PPBinaryNoParensType (go (d-1) ty1) (go (d-1) ty2) (go (d-1) ty3)
   go d (ParensInType _ ty) = PPParensInType (go (d-1) ty)
   go d ty@RCons{} = uncurry PPRow (goRow d ty)
-  go d (ForAll _ vis v mbK ty _) = goForAll d [(vis, v, fmap (go (d-1)) mbK)] ty
+  go d (ForAll _ vis v mbK ty _) = goForAll d [(vis, v, go (d-1) mbK)] ty
   go d (TypeApp _ a b) = goTypeApp d a b
   go d (KindApp _ a b) = PPTypeApp (go (d-1) a) (PPKindArg (go (d-1) b))
 
-  goForAll d vs (ForAll _ vis v mbK ty _) = goForAll d ((vis, v, fmap (go (d-1)) mbK) : vs) ty
+  goForAll d vs (ForAll _ vis v mbK ty _) = goForAll d ((vis, v, go (d-1) mbK) : vs) ty
   goForAll d vs ty = PPForAll (reverse vs) (go (d-1) ty)
 
   goRow d ty =
@@ -222,8 +222,8 @@ matchType tro = buildPrettyPrinter operators (matchTypeAtom tro) where
   forall' = if troUnicode tro then "∀" else "forall"
   doubleColon = if troUnicode tro then "∷" else "::"
 
-  printMbKindedType (vis, v, Nothing) = text (T.unpack $ typeVarVisibilityPrefix vis) <> text v
-  printMbKindedType (vis, v, Just k) = text ("(" ++ T.unpack (typeVarVisibilityPrefix vis) ++ v ++ " " ++ doubleColon ++ " ") <> typeAsBox' k <> text ")"
+
+  printMbKindedType (vis, v,  k) = text ("(" ++ T.unpack (typeVarVisibilityPrefix vis) ++ v ++ " " ++ doubleColon ++ " ") <> typeAsBox' k <> text ")"
 
   -- If both boxes span a single line, keep them on the same line, or else
   -- use the specified function to modify the second box, then combine vertically.
@@ -232,7 +232,7 @@ matchType tro = buildPrettyPrinter operators (matchTypeAtom tro) where
     | rows b1 > 1 || rows b2 > 1 = vcat left [ b1, f b2 ]
     | otherwise = hcat top [ b1, text " ", b2]
 
-forall_ :: Pattern () PrettyPrintType ([(TypeVarVisibility, String, Maybe PrettyPrintType)], PrettyPrintType)
+forall_ :: Pattern () PrettyPrintType ([(TypeVarVisibility, String,  PrettyPrintType)], PrettyPrintType)
 forall_ = mkPattern match
   where
   match (PPForAll idents ty) = Just ((_2 %~ T.unpack) <$> idents, ty)

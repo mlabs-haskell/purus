@@ -126,7 +126,7 @@ tryConvertType = go id
                 ctorType = foldl' srcTypeApp (srcTypeConstructor fakeTName) types
             go f ctorType
           else Left $ TypeConvertError f t $ prettyTypeStr fs <> " is not a closed row. Last: " <> prettyTypeStr (rowLast fs)
-      TypeVar _ txt -> Right $ TyVar txt
+      TypeVar _ txt k -> TyVar txt <$> tryConvertKind f t k
       TypeConstructor _ tn -> Right $ TyCon tn
       TypeApp ann t1 t2 -> do
         t2' <- go (f . TypeApp ann t1) t2
@@ -137,19 +137,30 @@ tryConvertType = go id
         t1' <- go (f . (\x -> KindApp ann x t2)) t1
         pure $ KApp t1' t2'
       ForAll ann vis var mbk inner skol -> do
-        let khole = f . (\x -> ForAll ann vis var (Just x) inner skol)
+        let khole = f . (\x -> ForAll ann vis var x inner skol)
             ihole = f . (\x -> ForAll ann vis var mbk x skol)
-        mbk' <- case mbk of
-                  Nothing -> pure Nothing
-                  Just k -> Just <$> go khole k
+        k <- tryConvertKind khole t mbk
         inner' <- go ihole inner
-        pure $ Forall vis var mbk' inner' skol
+        pure $ Forall vis var k inner' skol
       KindedType ann t1 t2 -> do
         t2' <- go (f . KindedType ann t1) t2
         t1' <- go (f . (\x -> KindedType ann x t2)) t1
         pure $ KType t1' t2'
 
       other -> Left $ TypeConvertError f other $ "Unsupported type: " <> prettyTypeStr other
+
+tryConvertKind :: (SourceType -> SourceType) -> SourceType -> SourceType -> Either TypeConvertError Kind
+tryConvertKind f t = \case
+  TypeConstructor _ C.Type -> pure KindType
+  k1 :-> k2 -> do
+    k1' <- tryConvertKind f t k1
+    k2' <- tryConvertKind f t k2
+    pure $ KindArrow k1' k2'
+  other -> Left $ TypeConvertError f t
+           $ "Couldn't convert type: "
+             <> prettyTypeStr other
+             <> " to a Plutus Kind.\n"
+             <> "Plutus only supports kinds * and (* -> Plutus Kind)"
 
 isClosedRow :: SourceType -> Bool
 isClosedRow t = case rowToList t of
@@ -172,7 +183,7 @@ type ConvertM = Either ExprConvertError
 prettyErrorT :: TypeConvertError -> String
 prettyErrorT (TypeConvertError g t msg1)
   = "Error when converting types to final IR: " <> msg1
-     <> "\nin type:\n  " <>  prettyTypeStr (g $ TypeVar NullSourceAnn "<ERROR HERE>")
+     <> "\nin type:\n  " <>  prettyTypeStr (g $ TypeVar NullSourceAnn "<ERROR HERE>" (TUnknown NullSourceAnn 0))
      <> "\nin type component:\n  " <> prettyTypeStr t
 
 {-

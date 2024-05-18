@@ -8,7 +8,7 @@
 {-# LANGUAGE PartialTypeSignatures #-}
 
 module Language.PureScript.CoreFn.Convert.ToPIR  where
-{- turning this module off for now to test the monomorphizer rewrite
+{-
 import Prelude
 import Language.PureScript.Names (Qualified (..), ProperName(..), runIdent, pattern ByThisModuleName, disqualify)
 import Language.PureScript.CoreFn.FromJSON ()

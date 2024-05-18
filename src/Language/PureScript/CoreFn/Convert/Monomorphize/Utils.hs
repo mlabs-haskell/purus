@@ -330,7 +330,7 @@ instance Plated (Exp x t a) where
 instance Plated SourceType where
   plate f = \case
     tu@(TUnknown _ _) -> pure tu
-    tv@(TypeVar _ _) -> pure tv
+    tv@(TypeVar _ _ _) -> pure tv
     tstr@(TypeLevelString _ _) -> pure tstr
     tint@(TypeLevelInt _  _) -> pure tint
     twild@(TypeWildcard _ _) -> pure twild
@@ -340,10 +340,10 @@ instance Plated SourceType where
     KindApp a t1 t2 -> KindApp a <$> f t1 <*> f t2
     ForAll a vis var mk innerTy scop ->
       (\mk' innerTy' -> ForAll a vis var mk' innerTy' scop)
-      <$> traverse f mk
+      <$>  f mk
       <*> f innerTy
     ConstrainedType a constraint t -> ConstrainedType a <$> goConstraint f constraint <*> f t
-    Skolem a txt mk i scop -> (\mk' -> Skolem a txt mk' i scop) <$> traverse f mk
+    Skolem a txt mk i scop -> (\mk' -> Skolem a txt mk' i scop) <$>  f mk
     REmpty a -> pure $ REmpty a
     RCons a l x xs -> RCons a l <$> f x <*> f xs
     KindedType a t1 t2 -> KindedType a <$> f t1 <*> f t2

@@ -239,7 +239,7 @@ instantiatePolyType mn = \case
     (inner,g,act) ->
       let f = \case
                 Abs ann' ty' ident' expr' ->
-                  Abs ann' (ForAll ann vis var (purusTy <$> mbk) (purusTy ty') mSkol) ident' expr'
+                  Abs ann' (ForAll ann vis var (purusTy mbk) (purusTy ty') mSkol) ident' expr'
                 other -> other
           -- FIXME: kindType?
           act' ma = withScopedTypeVars mn [(var,kindType)] $ act ma -- NOTE: Might need to pattern match on mbk and use the real kind (though in practice this should always be of kind Type, I think?)
@@ -507,7 +507,7 @@ getTypeClassData nm = do
     Just cls -> pure cls
 
 -- | Given a class name, return the parameters to the class and their *kinds*. (Maybe SourceType is a kind. Type classes cannot be parameterized by anything other than type variables)
-getTypeClassArgs :: M m => Qualified (ProperName 'ClassName) -> m [(T.Text,Maybe SourceType)]
+getTypeClassArgs :: M m => Qualified (ProperName 'ClassName) -> m [(T.Text, SourceType)]
 getTypeClassArgs nm = getTypeClassData nm >>= (pure . typeClassArguments)
 
 

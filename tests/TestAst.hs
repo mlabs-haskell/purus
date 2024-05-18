@@ -80,7 +80,7 @@ genTypeAnnotatedWith genTypeAnn genConstraintAnn = genType where
   genSkolemScope = SkolemScope <$> arbitrary
 
   genType :: Gen (Type a)
-  genType = genericArbitraryRecG (genTypeAnn :+ generatorEnvironment) uniform `withBaseCase` (TypeVar <$> genTypeAnn <*> genText)
+  genType = genericArbitraryRecG (genTypeAnn :+ generatorEnvironment) uniform `withBaseCase` (TypeVar <$> genTypeAnn <*> genText <*> genType) -- FIXME: generate "real" kinds
 
   genWildcardData :: Gen WildcardData
   genWildcardData = genericArbitraryUG genText

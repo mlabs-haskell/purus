@@ -321,7 +321,7 @@ typeAtom :: { Type ()}
   | '{' row '}' { TypeRecord () (Wrapped $1 $2 $3) }
   | '(' row ')' { TypeRow () (Wrapped $1 $2 $3) }
   | '(' type1 ')' { TypeParens () (Wrapped $1 $2 $3) }
-  | '(' typeKindedAtom '::' type ')' { TypeParens () (Wrapped $1 (TypeKinded () $2 $3 $4) $5) }
+  | '(' typeKindedAtom '::' type ')' %shift { TypeParens () (Wrapped $1 (TypeKinded () $2 $3 $4) $5) }
 
 -- Due to a conflict between row syntax and kinded type syntax, we require
 -- kinded type variables to be wrapped in parens. Thus `(a :: Foo)` is always a

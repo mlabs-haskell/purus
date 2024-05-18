@@ -53,7 +53,7 @@ addDataType
   => ModuleName
   -> DataDeclType
   -> ProperName 'TypeName
-  -> [(Text, Maybe SourceType, Role)]
+  -> [(Text,  SourceType, Role)]
   -> [(DataConstructorDeclaration, SourceType)]
   -> SourceType
   -> m ()
@@ -108,7 +108,7 @@ addTypeSynonym
   :: (MonadState CheckState m, MonadError MultipleErrors m, MonadWriter MultipleErrors m)
   => ModuleName
   -> ProperName 'TypeName
-  -> [(Text, Maybe SourceType)]
+  -> [(Text, SourceType)]
   -> SourceType
   -> SourceType
   -> m ()
@@ -149,7 +149,7 @@ addTypeClass
    . (MonadState CheckState m, MonadError MultipleErrors m, MonadWriter MultipleErrors m)
   => ModuleName
   -> Qualified (ProperName 'ClassName)
-  -> [(Text, Maybe SourceType)]
+  -> [(Text, SourceType)]
   -> [SourceConstraint]
   -> [FunctionalDependency]
   -> [Declaration]
@@ -214,7 +214,7 @@ checkTypeClassInstance cls i = check where
   -- row types are allowed in determined type class arguments.
   isFunDepDetermined = S.member i (typeClassDeterminedArguments cls)
   check = \case
-    TypeVar _ _ -> return ()
+    TypeVar _ _ _ -> return ()
     TypeLevelString _ _ -> return ()
     TypeLevelInt _ _ -> return ()
     TypeConstructor _ _ -> return ()
@@ -299,7 +299,7 @@ typeCheckAll moduleName = traverse go
         let qualifiedClassName = Qualified (ByModuleName moduleName) pn
         guardWith (errorMessage (DuplicateTypeClass pn (fst sa))) $
           not (M.member qualifiedClassName (typeClasses env))
-        addTypeClass moduleName qualifiedClassName (fmap Just <$> args') implies' deps tys' kind
+        addTypeClass moduleName qualifiedClassName args' implies' deps tys' kind
     return d
     where
     toTypeSynonym (TypeSynonymDeclaration sa nm args ty) = Just (sa, nm, args, ty)
@@ -385,7 +385,7 @@ typeCheckAll moduleName = traverse go
       guardWith (errorMessage (DuplicateTypeClass pn ss)) $
         not (M.member qualifiedClassName (typeClasses env))
       (args', implies', tys', kind) <- kindOfClass moduleName (sa, pn, args, implies, tys)
-      addTypeClass moduleName qualifiedClassName (fmap Just <$> args') implies' deps tys' kind
+      addTypeClass moduleName qualifiedClassName  args' implies' deps tys' kind
       return d
   go (TypeInstanceDeclaration _ _ _ _ (Left _) _ _ _ _) = internalError "typeCheckAll: type class instance generated name should have been desugared"
   go d@(TypeInstanceDeclaration sa@(ss, _) _ ch idx (Right dictName) deps className tys body) =
@@ -449,7 +449,7 @@ typeCheckAll moduleName = traverse go
     nonOrphanModules = S.insert mn' nonOrphanModules'
 
     typeModule :: SourceType -> Maybe ModuleName
-    typeModule (TypeVar _ _) = Nothing
+    typeModule (TypeVar _ _ _) = Nothing
     typeModule (TypeLevelString _ _) = Nothing
     typeModule (TypeLevelInt _ _) = Nothing
     typeModule (TypeConstructor _ (Qualified (ByModuleName mn'') _)) = Just mn''
@@ -523,8 +523,8 @@ typeCheckAll moduleName = traverse go
       -- TUnknown, Skolem, etc.
       typeHeadsApart :: SourceType -> SourceType -> Bool
       typeHeadsApart l                   r             | eqType l r = False
-      typeHeadsApart (TypeVar _ _)       _                          = False
-      typeHeadsApart _                   (TypeVar _ _)              = False
+      typeHeadsApart (TypeVar _ _ _)       _                          = False
+      typeHeadsApart _                   (TypeVar _ _ _)              = False
       typeHeadsApart (KindedType _ t1 _) t2                         = typeHeadsApart t1 t2
       typeHeadsApart t1                  (KindedType _ t2 _)        = typeHeadsApart t1 t2
       typeHeadsApart (TypeApp _ h1 t1)   (TypeApp _ h2 t2)          = typeHeadsApart h1 h2 || typeHeadsApart t1 t2
@@ -543,14 +543,13 @@ typeCheckAll moduleName = traverse go
   -- This function adds the argument kinds for a type constructor so that they may appear in the externs file,
   -- extracted from the kind of the type constructor itself.
   --
-  withKinds :: [(Text, Maybe SourceType)] -> SourceType -> [(Text, Maybe SourceType)]
+  withKinds :: [(Text, SourceType)] -> SourceType -> [(Text,  SourceType)]
   withKinds [] _ = []
   withKinds ss (ForAll _ _ _ _ k _) = withKinds ss k
-  withKinds (s@(_, Just _):ss) (TypeApp _ (TypeApp _ tyFn _) k2) | eqType tyFn tyFunction = s : withKinds ss k2
-  withKinds ((s, Nothing):ss) (TypeApp _ (TypeApp _ tyFn k1) k2) | eqType tyFn tyFunction = (s, Just k1) : withKinds ss k2
+  withKinds (s@(_, _):ss) (TypeApp _ (TypeApp _ tyFn _) k2) | eqType tyFn tyFunction = s : withKinds ss k2
   withKinds _ _ = internalError "Invalid arguments to withKinds"
 
-  withRoles :: [(Text, Maybe SourceType)] -> [Role] -> [(Text, Maybe SourceType, Role)]
+  withRoles :: [(Text,  SourceType)] -> [Role] -> [(Text, SourceType, Role)]
   withRoles = zipWith $ \(v, k) r -> (v, k, r)
 
   replaceTypeSynonymsInDataConstructor :: DataConstructorDeclaration -> m DataConstructorDeclaration

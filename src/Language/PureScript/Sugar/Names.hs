@@ -345,9 +345,9 @@ renameInModule imports (Module modSS coms mn decls exps) =
         a
 
   updateTypeArguments
-    :: (Traversable f, Traversable g)
-    => f (a, g SourceType) -> m (f (a, g SourceType))
-  updateTypeArguments = traverse (sndM (traverse updateTypesEverywhere))
+    :: (Traversable f)
+    => f (a, SourceType) -> m (f (a, SourceType))
+  updateTypeArguments = traverse (traverse updateTypesEverywhere)
 
   updateTypesEverywhere :: SourceType -> m SourceType
   updateTypesEverywhere = everywhereOnTypesM updateType

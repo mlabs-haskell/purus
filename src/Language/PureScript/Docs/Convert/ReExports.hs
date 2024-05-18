@@ -515,4 +515,4 @@ typeClassConstraintFor Declaration{..} =
     _ ->
       Nothing
   where
-  mkConstraint = map (P.TypeVar () . fst)
+  mkConstraint = map (uncurry (P.TypeVar ()))

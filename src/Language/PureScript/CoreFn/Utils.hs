@@ -76,7 +76,7 @@ instance IndexedPlated Context (Expr a) where
              in  Left <$> traverse (bitraverse g' g') es
 
 -- Bound tyVars and kinds. Idk if we'll use it but it takes like 10 seconds
-type TyContext = Map Text (Maybe SourceType )
+type TyContext = Map Text SourceType
 -- Might be able to do something useful with a non-natural index (think about later)
 instance IndexedPlated TyContext SourceType where
   iplate d f = \case
@@ -85,7 +85,7 @@ instance IndexedPlated TyContext SourceType where
     ForAll a vis var mbK inner skol ->
       let cxt = M.insert var mbK d
       in (\mbK' inner' -> ForAll a vis var mbK' inner' skol)
-          <$> traverse (indexed f d) mbK
+          <$> indexed f d mbK
           <*> indexed f cxt inner
     -- \/ Just for completeness, they shouldn't exist
     ConstrainedType ann c t1 -> ConstrainedType ann c <$> indexed f d t1
@@ -110,7 +110,7 @@ instantiates :: Text -- Name of the TyVar we're checking
              -> SourceType -- Monomorphic type (or "more monomorphic" type)
              -> SourceType -- Polymorphic type (or "more polymoprhic" type)
              -> Maybe SourceType
-instantiates var x (TypeVar _ y) | y == var = Just x
+instantiates var x (TypeVar _ y _) | y == var = Just x
 instantiates var (TypeApp _ t1 t2) (TypeApp _ t1' t2') = case instantiates var t1 t1' of
   Just x -> Just x
   Nothing -> instantiates var t2 t2'

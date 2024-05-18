@@ -41,7 +41,7 @@ data Environment = Environment
   , dataConstructors :: M.Map (Qualified (ProperName 'ConstructorName)) (DataDeclType, ProperName 'TypeName, SourceType, [Ident])
   -- ^ Data constructors currently in scope, along with their associated type
   -- constructor name, argument types and return type.
-  , typeSynonyms :: M.Map (Qualified (ProperName 'TypeName)) ([(Text, Maybe SourceType)], SourceType)
+  , typeSynonyms :: M.Map (Qualified (ProperName 'TypeName)) ([(Text,  SourceType)], SourceType)
   -- ^ Type synonyms currently in scope
   , typeClassDictionaries :: M.Map QualifiedBy (M.Map (Qualified (ProperName 'ClassName)) (M.Map (Qualified Ident) (NEL.NonEmpty NamedDict)))
   -- ^ Available type class dictionaries. When looking up 'Nothing' in the
@@ -55,7 +55,7 @@ instance NFData Environment
 
 -- | Information about a type class
 data TypeClassData = TypeClassData
-  { typeClassArguments :: [(Text, Maybe SourceType)]
+  { typeClassArguments :: [(Text, SourceType)]
   -- ^ A list of type argument names, and their kinds, where kind annotations
   -- were provided.
   , typeClassMembers :: [(Ident, SourceType, Maybe (S.Set (NEL.NonEmpty Int)))]
@@ -128,7 +128,7 @@ initEnvironment = Environment builtinFunctions allPrimTypes M.empty M.empty M.em
 -- determine X that X does not determine. This is the same thing: everything X determines includes everything
 -- in its SCC, and everything determining X is either before it in an SCC path, or in the same SCC.
 makeTypeClassData
-  :: [(Text, Maybe SourceType)]
+  :: [(Text,  SourceType)]
   -> [(Ident, SourceType)]
   -> [SourceConstraint]
   -> [FunctionalDependency]
@@ -144,7 +144,7 @@ makeTypeClassData args m s deps = TypeClassData args m' s deps determinedArgs co
     
     addVtaInfo :: SourceType -> Maybe (S.Set (NEL.NonEmpty Int))
     addVtaInfo memberTy = do
-      let mentionedArgIndexes = S.fromList (mapMaybe argToIndex $ freeTypeVariables memberTy)
+      let mentionedArgIndexes = S.fromList (mapMaybe (argToIndex . fst) $ freeTypeVariables memberTy)
       let leftovers = map (`S.difference` mentionedArgIndexes) coveringSets'
       S.fromList <$> traverse (NEL.nonEmpty . S.toList) leftovers
 
@@ -259,7 +259,7 @@ instance Serialise NameKind
 
 -- | The kinds of a type
 data TypeKind
-  = DataType DataDeclType [(Text, Maybe SourceType, Role)] [(ProperName 'ConstructorName, [SourceType])]
+  = DataType DataDeclType [(Text,  SourceType, Role)] [(ProperName 'ConstructorName, [SourceType])]
   -- ^ Data type
   | TypeSynonym
   -- ^ Type synonym
@@ -321,7 +321,7 @@ kindRow :: SourceType -> SourceType
 kindRow = TypeApp nullSourceAnn (srcTypeConstructor C.Row)
 
 kindOfREmpty :: SourceType
-kindOfREmpty = tyForall "k" kindType (kindRow (tyVar "k"))
+kindOfREmpty = tyForall "k" kindType (kindRow (tyVar "k" kindType))
 
 -- | Type constructor for functions
 tyFunction :: SourceType
@@ -355,11 +355,11 @@ tyArray = srcTypeConstructor C.Array
 tyRecord :: SourceType
 tyRecord = srcTypeConstructor C.Record
 
-tyVar :: Text -> SourceType
+tyVar :: Text -> SourceType -> SourceType
 tyVar = TypeVar nullSourceAnn
 
 tyForall :: Text -> SourceType -> SourceType -> SourceType
-tyForall var k ty = ForAll nullSourceAnn TypeVarInvisible var (Just k) ty Nothing
+tyForall var k ty = ForAll nullSourceAnn TypeVarInvisible var k ty Nothing
 
 -- | Smart constructor for function types
 function :: SourceType -> SourceType -> SourceType
@@ -459,7 +459,7 @@ primBooleanTypes =
 primCoerceTypes :: M.Map (Qualified (ProperName 'TypeName)) (SourceType, TypeKind)
 primCoerceTypes =
   M.fromList $ mconcat
-    [ primClass C.Coercible (\kind -> tyForall "k" kindType $ tyVar "k" -:> tyVar "k" -:> kind)
+    [ primClass C.Coercible (\kind -> tyForall "k" kindType $ tyVar "k" kindType -:> tyVar "k" kindType -:> kind)
     ]
 
 primOrderingTypes :: M.Map (Qualified (ProperName 'TypeName)) (SourceType, TypeKind)
@@ -474,20 +474,20 @@ primOrderingTypes =
 primRowTypes :: M.Map (Qualified (ProperName 'TypeName)) (SourceType, TypeKind)
 primRowTypes =
   M.fromList $ mconcat
-    [ primClass C.RowUnion (\kind -> tyForall "k" kindType $ kindRow (tyVar "k") -:> kindRow (tyVar "k") -:> kindRow (tyVar "k") -:> kind)
-    , primClass C.RowNub   (\kind -> tyForall "k" kindType $ kindRow (tyVar "k") -:> kindRow (tyVar "k") -:> kind)
-    , primClass C.RowLacks (\kind -> tyForall "k" kindType $ kindSymbol -:> kindRow (tyVar "k") -:> kind)
-    , primClass C.RowCons  (\kind -> tyForall "k" kindType $ kindSymbol -:> tyVar "k" -:> kindRow (tyVar "k") -:> kindRow (tyVar "k") -:> kind)
+    [ primClass C.RowUnion (\kind -> tyForall "k" kindType $ kindRow (tyVar "k" kindType) -:> kindRow (tyVar "k" kindType) -:> kindRow (tyVar "k" kindType) -:> kind)
+    , primClass C.RowNub   (\kind -> tyForall "k" kindType $ kindRow (tyVar "k" kindType) -:> kindRow (tyVar "k" kindType) -:> kind)
+    , primClass C.RowLacks (\kind -> tyForall "k" kindType $ kindSymbol -:> kindRow (tyVar "k" kindType) -:> kind)
+    , primClass C.RowCons  (\kind -> tyForall "k" kindType $ kindSymbol -:> tyVar "k" kindType -:> kindRow (tyVar "k" kindType) -:> kindRow (tyVar "k" kindType) -:> kind)
     ]
 
 primRowListTypes :: M.Map (Qualified (ProperName 'TypeName)) (SourceType, TypeKind)
 primRowListTypes =
   M.fromList $
     [ (C.RowList, (kindType -:> kindType, ExternData [Phantom]))
-    , (C.RowListCons, (tyForall "k" kindType $ kindSymbol -:> tyVar "k" -:> kindRowList (tyVar "k") -:> kindRowList (tyVar "k"), ExternData [Phantom, Phantom, Phantom]))
-    , (C.RowListNil, (tyForall "k" kindType $ kindRowList (tyVar "k"), ExternData []))
+    , (C.RowListCons, (tyForall "k" kindType $ kindSymbol -:> tyVar "k" kindType -:> kindRowList (tyVar "k" kindType) -:> kindRowList (tyVar "k" kindType), ExternData [Phantom, Phantom, Phantom]))
+    , (C.RowListNil, (tyForall "k" kindType $ kindRowList (tyVar "k" kindType), ExternData []))
     ] <> mconcat
-    [ primClass C.RowToList  (\kind -> tyForall "k" kindType $ kindRow (tyVar "k") -:> kindRowList (tyVar "k") -:> kind)
+    [ primClass C.RowToList  (\kind -> tyForall "k" kindType $ kindRow (tyVar "k" kindType) -:> kindRowList (tyVar "k" kindType) -:> kind)
     ]
 
 primSymbolTypes :: M.Map (Qualified (ProperName 'TypeName)) (SourceType, TypeKind)
@@ -514,7 +514,7 @@ primTypeErrorTypes =
     , (C.Fail <&> coerceProperName, (kindDoc -:> kindConstraint, ExternData [Nominal]))
     , (C.Warn <&> coerceProperName, (kindDoc -:> kindConstraint, ExternData [Nominal]))
     , (C.Text, (kindSymbol -:> kindDoc, ExternData [Phantom]))
-    , (C.Quote, (tyForall "k" kindType $ tyVar "k" -:> kindDoc, ExternData [Phantom]))
+    , (C.Quote, (tyForall "k" kindType $ tyVar "k" kindType -:> kindDoc, ExternData [Phantom]))
     , (C.QuoteLabel, (kindSymbol -:> kindDoc, ExternData [Phantom]))
     , (C.Beside, (kindDoc -:> kindDoc -:> kindDoc, ExternData [Phantom, Phantom]))
     , (C.Above, (kindDoc -:> kindDoc -:> kindDoc, ExternData [Phantom, Phantom]))
@@ -548,8 +548,8 @@ primCoerceClasses =
   M.fromList
     -- class Coercible (a :: k) (b :: k)
     [ (C.Coercible, makeTypeClassData
-        [ ("a", Just (tyVar "k"))
-        , ("b", Just (tyVar "k"))
+        [ ("a", (tyVar "k" kindType))
+        , ("b", (tyVar "k" kindType))
         ] [] [] [] True)
     ]
 
@@ -558,9 +558,9 @@ primRowClasses =
   M.fromList
     -- class Union (left :: Row k) (right :: Row k) (union :: Row k) | left right -> union, right union -> left, union left -> right
     [ (C.RowUnion, makeTypeClassData
-        [ ("left", Just (kindRow (tyVar "k")))
-        , ("right", Just (kindRow (tyVar "k")))
-        , ("union", Just (kindRow (tyVar "k")))
+        [ ("left",  (kindRow (tyVar "k" kindType)))
+        , ("right", (kindRow (tyVar "k" kindType)))
+        , ("union", (kindRow (tyVar "k" kindType)))
         ] [] []
         [ FunctionalDependency [0, 1] [2]
         , FunctionalDependency [1, 2] [0]
@@ -569,24 +569,24 @@ primRowClasses =
 
     -- class Nub (original :: Row k) (nubbed :: Row k) | original -> nubbed
     , (C.RowNub, makeTypeClassData
-        [ ("original", Just (kindRow (tyVar "k")))
-        , ("nubbed", Just (kindRow (tyVar "k")))
+        [ ("original", (kindRow (tyVar "k" kindType)))
+        , ("nubbed", (kindRow (tyVar "k" kindType)))
         ] [] []
         [ FunctionalDependency [0] [1]
         ] True)
 
     -- class Lacks (label :: Symbol) (row :: Row k)
     , (C.RowLacks, makeTypeClassData
-        [ ("label", Just kindSymbol)
-        , ("row", Just (kindRow (tyVar "k")))
+        [ ("label",  kindSymbol)
+        , ("row",  (kindRow (tyVar "k" kindType)))
         ] [] [] [] True)
 
     -- class RowCons (label :: Symbol) (a :: k) (tail :: Row k) (row :: Row k) | label tail a -> row, label row -> tail a
     , (C.RowCons, makeTypeClassData
-        [ ("label", Just kindSymbol)
-        , ("a", Just (tyVar "k"))
-        , ("tail", Just (kindRow (tyVar "k")))
-        , ("row", Just (kindRow (tyVar "k")))
+        [ ("label",  kindSymbol)
+        , ("a",  (tyVar "k" kindType))
+        , ("tail", (kindRow (tyVar "k" kindType)))
+        , ("row", (kindRow (tyVar "k" kindType)))
         ] [] []
         [ FunctionalDependency [0, 1, 2] [3]
         , FunctionalDependency [0, 3] [1, 2]
@@ -598,8 +598,8 @@ primRowListClasses =
   M.fromList
     -- class RowToList (row :: Row k) (list :: RowList k) | row -> list
     [ (C.RowToList, makeTypeClassData
-        [ ("row", Just (kindRow (tyVar "k")))
-        , ("list", Just (kindRowList (tyVar "k")))
+        [ ("row",  (kindRow (tyVar "k" kindType)))
+        , ("list", (kindRowList (tyVar "k" kindType)))
         ] [] []
         [ FunctionalDependency [0] [1]
         ] True)
@@ -610,9 +610,9 @@ primSymbolClasses =
   M.fromList
     -- class Append (left :: Symbol) (right :: Symbol) (appended :: Symbol) | left right -> appended, right appended -> left, appended left -> right
     [ (C.SymbolAppend, makeTypeClassData
-        [ ("left", Just kindSymbol)
-        , ("right", Just kindSymbol)
-        , ("appended", Just kindSymbol)
+        [ ("left",  kindSymbol)
+        , ("right", kindSymbol)
+        , ("appended", kindSymbol)
         ] [] []
         [ FunctionalDependency [0, 1] [2]
         , FunctionalDependency [1, 2] [0]
@@ -621,18 +621,18 @@ primSymbolClasses =
 
     -- class Compare (left :: Symbol) (right :: Symbol) (ordering :: Ordering) | left right -> ordering
     , (C.SymbolCompare, makeTypeClassData
-        [ ("left", Just kindSymbol)
-        , ("right", Just kindSymbol)
-        , ("ordering", Just kindOrdering)
+        [ ("left",  kindSymbol)
+        , ("right", kindSymbol)
+        , ("ordering", kindOrdering)
         ] [] []
         [ FunctionalDependency [0, 1] [2]
         ] True)
 
     -- class Cons (head :: Symbol) (tail :: Symbol) (symbol :: Symbol) | head tail -> symbol, symbol -> head tail
     , (C.SymbolCons, makeTypeClassData
-        [ ("head", Just kindSymbol)
-        , ("tail", Just kindSymbol)
-        , ("symbol", Just kindSymbol)
+        [ ("head",  kindSymbol)
+        , ("tail",  kindSymbol)
+        , ("symbol",  kindSymbol)
         ] [] []
         [ FunctionalDependency [0, 1] [2]
         , FunctionalDependency [2] [0, 1]
@@ -644,9 +644,9 @@ primIntClasses =
   M.fromList
     -- class Add (left :: Int) (right :: Int) (sum :: Int) | left right -> sum, left sum -> right, right sum -> left
     [ (C.IntAdd, makeTypeClassData
-        [ ("left", Just tyInt)
-        , ("right", Just tyInt)
-        , ("sum", Just tyInt)
+        [ ("left",  tyInt)
+        , ("right",  tyInt)
+        , ("sum",  tyInt)
         ] [] []
         [ FunctionalDependency [0, 1] [2]
         , FunctionalDependency [0, 2] [1]
@@ -655,26 +655,26 @@ primIntClasses =
 
     -- class Compare (left :: Int) (right :: Int) (ordering :: Ordering) | left right -> ordering
     , (C.IntCompare, makeTypeClassData
-        [ ("left", Just tyInt)
-        , ("right", Just tyInt)
-        , ("ordering", Just kindOrdering)
+        [ ("left",  tyInt)
+        , ("right",  tyInt)
+        , ("ordering",  kindOrdering)
         ] [] []
         [ FunctionalDependency [0, 1] [2]
         ] True)
 
     -- class Mul (left :: Int) (right :: Int) (product :: Int) | left right -> product
     , (C.IntMul, makeTypeClassData
-        [ ("left", Just tyInt)
-        , ("right", Just tyInt)
-        , ("product", Just tyInt)
+        [ ("left",  tyInt)
+        , ("right",  tyInt)
+        , ("product",  tyInt)
         ] [] []
         [ FunctionalDependency [0, 1] [2]
         ] True)
 
     -- class ToString (int :: Int) (string :: Symbol) | int -> string
     , (C.IntToString, makeTypeClassData
-        [ ("int", Just tyInt)
-        , ("string", Just kindSymbol)
+        [ ("int",  tyInt)
+        , ("string",  kindSymbol)
         ] [] []
         [ FunctionalDependency [0] [1]
         ] True)
@@ -685,11 +685,11 @@ primTypeErrorClasses =
   M.fromList
     -- class Fail (message :: Symbol)
     [ (C.Fail, makeTypeClassData
-        [("message", Just kindDoc)] [] [] [] True)
+        [("message",  kindDoc)] [] [] [] True)
 
     -- class Warn (message :: Symbol)
     , (C.Warn, makeTypeClassData
-        [("message", Just kindDoc)] [] [] [] True)
+        [("message",  kindDoc)] [] [] [] True)
     ]
 
 -- | Finds information about data constructors from the current environment.
@@ -759,7 +759,7 @@ f #@ t = (f,t)
 
 -- the kind is Type here. This is just to avoid potentially making a typo (and to make the manual function sigs more readable)
 forallT :: Text ->  (SourceType -> SourceType) -> SourceType
-forallT txt  f = tyForall txt kindType (f $ tyVar txt)
+forallT txt  f = tyForall txt kindType (f $ tyVar txt kindType)
 infixr 0 #@
 
 builtinTypes :: M.Map (Qualified (ProperName 'TypeName)) (SourceType, TypeKind)

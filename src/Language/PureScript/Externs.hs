@@ -117,7 +117,7 @@ data ExternsDeclaration =
   -- | A type synonym
   | EDTypeSynonym
       { edTypeSynonymName         :: ProperName 'TypeName
-      , edTypeSynonymArguments    :: [(Text, Maybe SourceType)]
+      , edTypeSynonymArguments    :: [(Text,  SourceType)]
       , edTypeSynonymType         :: SourceType
       }
   -- | A data constructor
@@ -136,7 +136,7 @@ data ExternsDeclaration =
   -- | A type class declaration
   | EDClass
       { edClassName               :: ProperName 'ClassName
-      , edClassTypeArguments      :: [(Text, Maybe SourceType)]
+      , edClassTypeArguments      :: [(Text,  SourceType)]
       , edClassMembers            :: [(Ident, SourceType)]
       , edClassConstraints        :: [SourceConstraint]
       , edFunctionalDependencies  :: [FunctionalDependency]

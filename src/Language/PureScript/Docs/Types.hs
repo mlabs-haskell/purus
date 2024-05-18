@@ -171,7 +171,7 @@ data DeclarationInfo
   -- newtype) and its type arguments. Constructors are represented as child
   -- declarations.
   --
-  | DataDeclaration P.DataDeclType [(Text, Maybe Type')] [P.Role]
+  | DataDeclaration P.DataDeclType [(Text, Type')] [P.Role]
 
   -- |
   -- A data type foreign import, with its kind.
@@ -181,13 +181,13 @@ data DeclarationInfo
   -- |
   -- A type synonym, with its type arguments and its type.
   --
-  | TypeSynonymDeclaration [(Text, Maybe Type')] Type'
+  | TypeSynonymDeclaration [(Text, Type')] Type'
 
   -- |
   -- A type class, with its type arguments, its superclasses and functional
   -- dependencies. Instances and members are represented as child declarations.
   --
-  | TypeClassDeclaration [(Text, Maybe Type')] [Constraint'] [([Text], [Text])]
+  | TypeClassDeclaration [(Text, Type')] [Constraint'] [([Text], [Text])]
 
   -- |
   -- An operator alias declaration, with the member the alias is for and the
@@ -209,7 +209,7 @@ data KindInfo = KindInfo
 
 instance NFData KindInfo
 
-convertFundepsToStrings :: [(Text, Maybe Type')] -> [P.FunctionalDependency] -> [([Text], [Text])]
+convertFundepsToStrings :: [(Text, Type')] -> [P.FunctionalDependency] -> [([Text], [Text])]
 convertFundepsToStrings args fundeps =
   map (\(P.FunctionalDependency from to) -> toArgs from to) fundeps
   where
@@ -663,10 +663,10 @@ asKindSignatureFor =
     "type" -> Right P.TypeSynonymSig
     x -> Left (InvalidKindSignatureFor x)
 
-asTypeArguments :: Parse PackageError [(Text, Maybe Type')]
+asTypeArguments :: Parse PackageError [(Text, Type')]
 asTypeArguments = eachInArray asTypeArgument
   where
-  asTypeArgument = (,) <$> nth 0 asText <*> nth 1 (perhaps asType)
+  asTypeArgument = (,) <$> nth 0 asText <*> nth 1  asType
 
 asRole :: Parse PackageError P.Role
 asRole =

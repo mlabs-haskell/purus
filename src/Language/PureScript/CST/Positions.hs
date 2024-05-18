@@ -240,7 +240,7 @@ whereRange (Where a bs)
 
 typeRange :: Type a -> TokenRange
 typeRange = \case
-  TypeVar _ a -> nameRange a
+  TypeVar _ a  -> nameRange a
   TypeConstructor _ a -> qualRange a
   TypeWildcard _ a -> (a, a)
   TypeHole _ a -> nameRange a

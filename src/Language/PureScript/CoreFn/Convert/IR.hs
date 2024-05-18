@@ -39,15 +39,23 @@ import Control.Lens (view,_2)
 import Language.PureScript.CoreFn.TypeLike
 import Data.Void (Void)
 import Control.Lens.Plated
+import Language.PureScript.CoreFn.Pretty ((<::>))
 -- The final representation of types and terms, where all constructions that
 -- *should* have been eliminated in previous steps are impossible
 -- TODO: Make sure we error on exotic kinds
+
+data Kind
+  = KindType
+  | KindArrow Kind Kind
+  deriving (Show, Eq, Ord)
+
+
 data Ty
-  = TyVar Text
+  = TyVar Text Kind
   | TyCon (Qualified (ProperName 'TypeName))
   | TyApp Ty Ty
   | KApp Ty Ty
-  | Forall TypeVarVisibility Text (Maybe Ty) Ty (Maybe SkolemScope)
+  | Forall TypeVarVisibility Text Kind Ty (Maybe SkolemScope)
   | KType Ty Ty
   deriving (Show, Eq, Ord)
 
@@ -57,17 +65,17 @@ infixr 0 :~>
 
 instance Plated Ty where
   plate f = \case
-    TyVar txt -> pure $ TyVar txt
+    TyVar txt ki -> pure $ TyVar txt ki
     TyCon nm  -> pure $ TyCon nm
     TyApp t1 t2 -> TyApp <$> f t1 <*> f t2
     KApp t1 t2 -> KApp <$> f t1 <*> f t2
-    Forall vis var mk innerTy scop ->
-      (\mk' innerTy' -> Forall vis var mk' innerTy' scop )
-      <$> traverse f mk
-      <*> f innerTy
+    Forall vis var k innerTy scop ->
+      (\x -> Forall vis var k x scop )
+      <$> f innerTy
     KType t1 t2 -> KType <$> f t1 <*> f t2
 
 instance TypeLike Ty where
+  type KindOf Ty = Kind
   applyType = TyApp
 
   stripQuantifiers = \case
@@ -80,18 +88,17 @@ instance TypeLike Ty where
 
   replaceAllTypeVars = go [] where
     go :: [Text] -> [(Text, Ty)] -> Ty -> Ty
-    go _  m (TyVar v) = fromMaybe (TyVar v) (v `lookup` m)
+    go _  m (TyVar v k) = fromMaybe (TyVar v k) (v `lookup` m)
     go bs m (TyApp t1 t2) = TyApp (go bs m t1) (go bs m t2)
     go bs m (KApp t1 t2) = KApp  (go bs m t1) (go bs m t2)
-    go bs m (Forall vis v mbK t sco)
-      | v `elem` keys = go bs (filter ((/= v) . fst) m) $ Forall vis v mbK' t sco
-      | v `elem` usedVars =
-        let v' = genPureName v (keys ++ bs ++ usedVars)
-            t' = go bs [(v, TyVar v')] t
-        in Forall vis v' mbK' (go (v' : bs) m t') sco
-      | otherwise = Forall vis v mbK' (go (v : bs) m t) sco
+    go bs m (Forall vis v k t sco)
+      | v `elem` keys = go bs (filter ((/= v) . fst) m) $ Forall vis v k t sco
+      | (v,k) `elem` usedVars =
+        let v' = genPureName v (keys ++ bs ++ (fst <$> usedVars))
+            t' = go bs [(v, TyVar v' k)] t
+        in Forall vis v' k (go (v' : bs) m t') sco
+      | otherwise = Forall vis v k (go (v : bs) m t) sco
      where
-      mbK' = go bs m <$> mbK
       keys = map fst m
       usedVars = concatMap (usedTypeVariables . snd) m
     go bs m (KType t k) = KType (go bs m t) (go bs m k)
@@ -101,9 +108,9 @@ instance TypeLike Ty where
     (a :~> b) -> a : splitFunTyParts b
     t         -> [t]
 
-  quantify ty = foldr (\arg t -> Forall TypeVarInvisible arg Nothing t Nothing) ty $ freeTypeVariables ty
+  quantify ty = foldr (\(arg,argKind) t -> Forall TypeVarInvisible arg argKind t Nothing) ty $ freeTypeVariables ty
 
-  instantiates var x (TyVar y) | y == var = Just x
+  instantiates var x (TyVar y _) | y == var = Just x
   instantiates var (TyApp t1 t2) (TyApp t1' t2') = case instantiates var t1 t1' of
     Just x -> Just x
     Nothing -> instantiates var t2 t2'
@@ -111,23 +118,23 @@ instance TypeLike Ty where
 
   freeTypeVariables = ordNub . fmap snd . sortOn fst . go 0 [] where
     -- Tracks kind levels so that variables appearing in kind annotations are listed first.
-        go :: Int -> [Text] -> Ty -> [(Int, Text)]
-        go lvl bound (TyVar v) | v `notElem` bound = [(lvl, v)]
+        go :: Int -> [Text] -> Ty -> [(Int, (Text,Kind))]
+        go lvl bound (TyVar v k) | v `notElem` bound = [(lvl, (v,k))]
         go lvl bound (TyApp t1 t2) = go lvl bound t1 ++ go lvl bound t2
         go lvl bound (KApp t1 t2) = go lvl bound t1 ++ go (lvl - 1) bound t2
-        go lvl bound (Forall _ v mbK t _) = foldMap (go (lvl - 1) bound) mbK ++ go lvl (v : bound) t
+        go lvl bound (Forall _ v _ t _) =  go lvl (v : bound) t
         go lvl bound (KType t k) = go lvl bound t ++ go (lvl - 1) bound k
         go _ _ _ = []
 
   usedTypeVariables = ordNub . go
     where
-      go :: Ty -> [Text]
-      go (TyVar v) = [v]
+      go :: Ty -> [(Text,Kind)]
+      go (TyVar v k) = [(v,k)]
       go (TyApp t1 t2) = go t1 <> go t2
       go (KApp t1 t2)  = go t1 <> go t2
       go (KType t1 t2) = go t1 <> go t2
       go (Forall _ _ _ inner _) = go inner
-      go (TyCon _) = error "iUsedTypeVariables: TODO: TyCon" -- not sure what it should be
+      go (TyCon _) = []
 
   resultTy t = case snd $  stripQuantifiers t of
     (_ :~> b) -> resultTy b
@@ -323,9 +330,13 @@ instance Pretty (BVar ty) where
 instance Pretty (FVar ty) where
   pretty (FVar _t i) =  pretty (showQualified showIdent i) -- <+> "::" <+> pretty t)
 
+instance Pretty Kind where
+  pretty = \case
+    KindType -> "*"
+    KindArrow k1 k2 -> parens (pretty k1 <+> "->" <+> pretty k2)
 instance Pretty Ty where
   pretty = \case
-    TyVar t -> pretty t
+    TyVar t k -> parens (pretty t <::> pretty k)
     TyCon (Qualified qb tn) -> case qb of
       ByModuleName mn ->
         let mn'  = runModuleName mn
@@ -350,16 +361,14 @@ instance Pretty Ty where
            in  f' <+> b'
      goTypeApp a b = hsep [pretty a, pretty b]
 
-     goForall :: [(TypeVarVisibility,Text,Maybe Ty)] -> Ty -> Doc ann
+     goForall :: [(TypeVarVisibility,Text,Kind)] -> Ty -> Doc ann
      goForall xs inner =
        let boundVars = hsep $ renderBoundVar <$> xs
            inner'    = pretty inner
        in "forall" <+> boundVars <> "." <+> inner'
       where
-        renderBoundVar :: (TypeVarVisibility, Text, Maybe Ty) -> Doc ann
-        renderBoundVar (_, var, mk) = case mk of
-          Nothing -> pretty var
-          Just k  -> parens (pretty var <+> "::" <+> pretty k)
+        renderBoundVar :: (TypeVarVisibility, Text, Kind) -> Doc ann
+        renderBoundVar (_, var, mk) =  parens (pretty var <+> "::" <+> pretty mk)
 
 instance (Pretty a, Pretty ty, FuncType ty) => Pretty (Exp x ty a) where
   pretty = \case

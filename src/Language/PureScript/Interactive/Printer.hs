@@ -89,7 +89,7 @@ printModuleSignatures moduleName P.Environment{..} =
         showType
           :: M.Map (P.Qualified (P.ProperName 'P.ClassName)) P.TypeClassData
           -> M.Map (P.Qualified (P.ProperName 'P.ConstructorName)) (P.DataDeclType, P.ProperName 'P.TypeName, P.SourceType, [P.Ident])
-          -> M.Map (P.Qualified (P.ProperName 'P.TypeName)) ([(Text, Maybe P.SourceType)], P.SourceType)
+          -> M.Map (P.Qualified (P.ProperName 'P.TypeName)) ([(Text,  P.SourceType)], P.SourceType)
           -> (P.Qualified (P.ProperName 'P.TypeName), Maybe (P.SourceType, P.TypeKind))
           -> Maybe Box.Box
         showType typeClassesEnv dataConstructorsEnv typeSynonymsEnv (n@(P.Qualified modul name), typ) =
