@@ -284,9 +284,23 @@ boolean :: { (SourceToken, Bool) }
   : 'true' { toBoolean $1 }
   | 'false' { toBoolean $1 }
 
+kind :: { Type () }
+  : kind1 %shift { $1 }
+  | kind1 '->' kind { TypeArr () $1 $2 $3 }
+
+kind1 :: { Type () }
+  : kindAtom { $1 }
+  | kind1 kindAtom { TypeApp () $1 $2 }
+
+kindAtom :: { Type () }
+  : '_' { TypeWildcard () $1 }
+  | qualProperName { TypeConstructor () (getQualifiedProperName $1) }
+  | hole { TypeHole () $1 }
+  | '(' kind ')' { TypeParens () (Wrapped $1 $2 $3) }
+
 type :: { Type () }
   : type1 %shift { $1 }
-  | type1 '::' type { TypeKinded () $1 $2 $3 }
+  | type1 '::' kind { TypeKinded () $1 $2 $3 }
 
 type1 :: { Type () }
   : type2 { $1 }
