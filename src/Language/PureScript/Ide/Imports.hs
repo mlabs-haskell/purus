@@ -83,7 +83,7 @@ parseModuleHeader src = do
   let
     mn = CST.nameValue $ CST.modNamespace md
     decls = flip fmap (CST.modImports md) $ \decl -> do
-      let ((ss, _), mn', it, qual) = CST.convertImportDecl "<purs-ide>" decl
+      let ((ss, _), mn', it, qual) = CST.runConvert $ CST.convertImportDecl "<purs-ide>" decl
       (ss, Import mn' it qual)
   case (head decls, lastMay decls) of
     (Just hd, Just ls) -> do
@@ -146,7 +146,7 @@ prettyPrintImportSection imports =
 -- | Test and ghci helper
 parseImport :: Text -> Maybe Import
 parseImport t =
-  case fmap (CST.convertImportDecl "<purs-ide>" . snd)
+  case fmap (CST.runConvert . CST.convertImportDecl "<purs-ide>" . snd)
         $ CST.runTokenParser CST.parseImportDeclP
         $ CST.lex t of
     Right (_, mn, idt, mmn) ->

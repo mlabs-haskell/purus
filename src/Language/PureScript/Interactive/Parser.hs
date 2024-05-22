@@ -104,8 +104,8 @@ parseDirective cmd =
     Paste    -> return PasteLines
     Browse   -> BrowseModule . CST.nameValue <$> parseRest (parseOne CST.parseModuleNameP) arg
     Show     -> ShowInfo <$> parseReplQuery' arg
-    Type     -> TypeOf . CST.convertExpr "" <$> parseRest (parseOne CST.parseExprP) arg
-    Kind     -> KindOf . CST.convertType "" <$> parseRest (parseOne CST.parseTypeP) arg
+    Type     -> TypeOf . (CST.runConvert . CST.convertExpr "") <$> parseRest (parseOne CST.parseExprP) arg
+    Kind     -> KindOf . (CST.runConvert . CST.convertType "") <$> parseRest (parseOne CST.parseTypeP) arg
     Complete -> return (CompleteStr arg)
     Print
       | arg == "" -> return $ ShowInfo QueryPrint
@@ -115,19 +115,19 @@ parseDirective cmd =
 -- Parses expressions entered at the PSCI repl.
 --
 psciExpression :: CST.Parser Command
-psciExpression = Expression . CST.convertExpr "" <$> CST.parseExprP
+psciExpression = Expression . (CST.runConvert . CST.convertExpr "") <$> CST.parseExprP
 
 -- | Imports must be handled separately from other declarations, so that
 -- :show import works, for example.
 psciImport :: FilePath -> CST.Parser Command
 psciImport filePath = do
-  (_, mn, declType, asQ) <- CST.convertImportDecl filePath <$> CST.parseImportDeclP
+  (_, mn, declType, asQ) <- (CST.runConvert . CST.convertImportDecl filePath) <$> CST.parseImportDeclP
   pure $ Import (mn, declType, asQ)
 
 -- | Any declaration that we don't need a 'special case' parser for
 -- (like import declarations).
 psciDeclaration :: CST.Parser Command
-psciDeclaration = Decls . CST.convertDeclaration "" <$> CST.parseDeclP
+psciDeclaration = Decls . (CST.runConvert . CST.convertDeclaration "") <$> CST.parseDeclP
 
 parseReplQuery' :: String -> Either String ReplQuery
 parseReplQuery' str =
