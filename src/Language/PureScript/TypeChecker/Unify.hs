@@ -128,7 +128,7 @@ unifyTypes t1 t2 = do
     sk `unifyTypes` ty2
   unifyTypes' ForAll{} _ = internalError "unifyTypes: unspecified skolem scope"
   unifyTypes' ty f@ForAll{} = f `unifyTypes` ty
-  unifyTypes' (TypeVar _ v1 k1) (TypeVar _ v2 k2) | v1 == v2 = unifyTypes k1 k2  -- REVIEW/HACK: Not sure if this is right...
+  unifyTypes' (TypeVar _ v1 k1) (TypeVar _ v2 k2) | v1 == v2 = pure () -- unifyTypes k1 k2  -- REVIEW/HACK: Not sure if this is right...
   unifyTypes' ty1@(TypeConstructor _ c1) ty2@(TypeConstructor _ c2) =
     guardWith (errorMessage (TypesDoNotUnify ty1 ty2)) (c1 == c2)
   unifyTypes' (TypeLevelString _ s1) (TypeLevelString _ s2) | s1 == s2 = return ()

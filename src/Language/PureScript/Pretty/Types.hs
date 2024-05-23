@@ -36,6 +36,7 @@ import Language.PureScript.PSString (PSString, prettyPrintString, decodeString)
 import Language.PureScript.Label (Label(..))
 
 import Text.PrettyPrint.Boxes (Box(..), hcat, hsep, left, moveRight, nullBox, render, text, top, vcat, (<>))
+import Language.PureScript.CoreFn.Pretty.Types (prettyTypeStr)
 
 
 data PrettyPrintType
@@ -253,8 +254,8 @@ prettyPrintTypeAtom maxDepth = render . typeAtomAsBox maxDepth
 typeAsBox' :: PrettyPrintType -> Box
 typeAsBox' = typeAsBoxImpl defaultOptions
 
-typeAsBox :: Int -> Type a -> Box
-typeAsBox maxDepth = typeAsBox' . convertPrettyPrintType maxDepth
+typeAsBox :: Show a => Int -> Type a -> Box
+typeAsBox maxDepth = text . prettyTypeStr -- typeAsBox' . convertPrettyPrintType maxDepth
 
 typeDiffAsBox' :: PrettyPrintType -> Box
 typeDiffAsBox' = typeAsBoxImpl diffOptions

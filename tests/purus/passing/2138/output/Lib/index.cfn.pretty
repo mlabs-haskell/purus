@@ -10,8 +10,8 @@ Re-Exports:
 Foreign: 
   
 Declarations: 
-B :: A
+B :: Lib.A
 B = B
 
-C :: A
+C :: Lib.A
 C = C

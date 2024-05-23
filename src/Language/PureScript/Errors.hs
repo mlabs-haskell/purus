@@ -53,6 +53,7 @@ import System.Console.ANSI qualified as ANSI
 import System.FilePath (makeRelative)
 import Text.PrettyPrint.Boxes qualified as Box
 import Witherable (wither)
+import Language.PureScript.CoreFn.Pretty.Types ( prettyTypeStr )
 
 -- | A type of error messages
 data SimpleErrorMessage
@@ -1610,7 +1611,7 @@ prettyPrintSingleError (PPEOptions codeColor full level showDocs relPath fileCon
 
     -- If both rows are not empty, print them as diffs
     -- If verbose print all rows else only print unique rows
-    printRows :: Type a -> Type a -> (Box.Box, Box.Box)
+    printRows :: Show a => Type a -> Type a -> (Box.Box, Box.Box)
     printRows r1 r2 = case (full, r1, r2) of
       (True, _ , _) -> (printRow typeAsBox r1, printRow typeAsBox r2)
 
@@ -1689,10 +1690,10 @@ prettyPrintSingleError (PPEOptions codeColor full level showDocs relPath fileCon
   prettyDepth | full = 1000
               | otherwise = 3
 
-  prettyType :: Type a -> Box.Box
-  prettyType = prettyTypeWithDepth prettyDepth
+  prettyType :: SourceType -> Box.Box
+  prettyType = Box.text . prettyTypeStr
 
-  prettyTypeWithDepth :: Int -> Type a -> Box.Box
+  prettyTypeWithDepth :: Show a => Int -> Type a -> Box.Box
   prettyTypeWithDepth depth
     | full = typeAsBox depth
     | otherwise = typeAsBox depth .  eraseKindApps
@@ -1986,7 +1987,7 @@ renderBox = unlines
   where
   whiteSpace = all isSpace
 
-toTypelevelString :: Type a -> Maybe Box.Box
+toTypelevelString :: Show a => Type a -> Maybe Box.Box
 toTypelevelString (TypeLevelString _ s) =
   Just . Box.text $ decodeStringWithReplacement s
 toTypelevelString (TypeApp _ (TypeConstructor _ C.Text) x) =

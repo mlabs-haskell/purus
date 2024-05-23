@@ -356,6 +356,7 @@ renameInModule imports (Module modSS coms mn decls exps) =
     updateType (TypeOp ann@(ss, _) name) = TypeOp ann <$> updateTypeOpName name ss
     updateType (TypeConstructor ann@(ss, _) name) = TypeConstructor ann <$> updateTypeName name ss
     updateType (ConstrainedType ann c t) = ConstrainedType ann <$> updateInConstraint c <*> pure t
+    updateType (TypeVar ann nm ki) = TypeVar ann nm <$> updateType ki
     updateType t = return t
     updateInConstraint :: SourceConstraint -> m SourceConstraint
     updateInConstraint (Constraint ann@(ss, _) name ks ts info) =

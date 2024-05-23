@@ -1,3 +1,5 @@
 module Coercible.Lib2 where
 
-newtype NTLib2 a = NTLib2 a
+import Prim (Type)
+
+newtype NTLib2 (a :: Type) = NTLib2 a

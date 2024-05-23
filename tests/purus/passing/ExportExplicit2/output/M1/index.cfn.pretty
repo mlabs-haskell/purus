@@ -10,8 +10,8 @@ Re-Exports:
 Foreign: 
   
 Declarations: 
-foo :: Int
-foo = (0: Int)
+foo :: Prim.Int
+foo = (0: Prim.Int)
 
-bar :: Int
-bar = (foo: Int)
+bar :: Prim.Int
+bar = (foo: Prim.Int)

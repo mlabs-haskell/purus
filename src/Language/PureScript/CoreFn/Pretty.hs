@@ -71,9 +71,6 @@ renderExpr = smartRender . asDynamic prettyValue
 renderExprStr :: Expr a -> String
 renderExprStr = T.unpack . renderExpr
 
-prettyTypeStr :: forall a. Show a => Type a -> String
-prettyTypeStr = T.unpack . smartRender . asOneLine prettyType
-
 
 {- TYPES (move later) -}
 

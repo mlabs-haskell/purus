@@ -9,5 +9,5 @@ Re-Exports:
 Foreign: 
   
 Declarations: 
-E :: forall (m :: Type) (@msg :: m). T@m msg
+E :: forall (@msg :: Prim.Type). Lib.T (msg :: Prim.Type)
 E = E

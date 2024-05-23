@@ -1,4 +1,4 @@
-module Language.PureScript.CoreFn.Pretty.Types (prettyType) where
+module Language.PureScript.CoreFn.Pretty.Types (prettyType, prettyTypeStr, prettyTypeTxt) where
 
 import Prelude hiding ((<>))
 
@@ -9,7 +9,7 @@ import Control.Monad.Reader ( MonadReader(ask), Reader )
 import Language.PureScript.Environment
     ( tyRecord, tyFunction, pattern ArrayT )
 import Language.PureScript.Names (OpName(..), ProperName(..), disqualify, showQualified)
-import Language.PureScript.Types (Type (..), WildcardData (..), TypeVarVisibility (..), eqType)
+import Language.PureScript.Types (Type (..), WildcardData (..), TypeVarVisibility (..), eqType, Constraint (..))
 import Language.PureScript.PSString (prettyPrintString)
 
 import Prettyprinter
@@ -20,7 +20,7 @@ import Prettyprinter
       hcat,
       group,
       Doc,
-      Pretty(pretty) )
+      Pretty(pretty), hsep )
 import Language.PureScript.CoreFn.Pretty.Common
     ( Printer,
       LineFormat,
@@ -62,7 +62,7 @@ prettyType t  =  group <$> case t of
     HoleWildcard txt -> pure $ "?" <> pretty txt
     _ -> pure "_"
 
-  TypeConstructor _ qPropName -> pure . pretty . runProperName . disqualify $ qPropName
+  TypeConstructor _ qPropName -> pure . pretty . showQualified runProperName  $ qPropName
 
   TypeOp _ opName -> pure . pretty $ showQualified runOpName opName
 
@@ -76,7 +76,11 @@ prettyType t  =  group <$> case t of
   ForAll _ vis var mKind inner' _ -> case stripQuantifiers inner' of
     (quantified,inner) ->  goForall ([(vis,var,mKind)] <> quantified) inner
 
-  ConstrainedType _ _ _ -> error "TODO: ConstrainedType (shouldn't ever appear in Purus CoreFn)"
+  ConstrainedType _ cstrnt innertype -> do
+    cstrnt' <-  prettyConstraint cstrnt
+    inner'  <- prettyType innertype
+    pure . group $ cstrnt' <+> "=>" <+> inner'
+
 
   Skolem _ var _ i _ -> pure $ pretty var <> "#" <> pretty i
 
@@ -151,6 +155,12 @@ prettyType t  =  group <$> case t of
            pure $ Left ([],parens (pretty txt <::> k'))
          other -> Right . pure <$> prettyType other  --  error $ "Malformed row fields: \n" <> prettyTypeStr other
 
+prettyConstraint :: forall a ann. Show a => Constraint a -> Printer ann
+prettyConstraint Constraint{..} = do
+  let classNm = pretty $ showQualified runProperName constraintClass
+  argTypes <- hsep <$> traverse  prettyType constraintArgs
+  pure . group $ classNm <+> argTypes
+
 
 -- TODO For debugging, remove later
 smartRender ::  Doc ann -> Text
@@ -158,3 +168,6 @@ smartRender = renderStrict . layoutPretty defaultLayoutOptions
 
 prettyTypeStr :: forall a. Show a => Type a -> String
 prettyTypeStr = T.unpack . smartRender . asOneLine prettyType
+
+prettyTypeTxt :: forall a. Show a => Type a -> Text
+prettyTypeTxt =  smartRender . asOneLine prettyType

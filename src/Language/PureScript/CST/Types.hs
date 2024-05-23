@@ -193,14 +193,15 @@ data DataMembers a
   deriving (Show, Eq, Ord, Functor, Foldable, Traversable, Generic)
 
 data Declaration a
-  = DeclData a (DataHead a) (Maybe (SourceToken, Separated (DataCtor a)))
+  =
+    DeclKindSignature a SourceToken (Labeled (Name (N.ProperName 'N.TypeName)) (Type a))
+  | DeclSignature a (Labeled (Name Ident) (Type a))
+  | DeclData a (DataHead a) (Maybe (SourceToken, Separated (DataCtor a)))
   | DeclType a (DataHead a) SourceToken (Type a)
   | DeclNewtype a (DataHead a) SourceToken (Name (N.ProperName 'N.ConstructorName)) (Type a)
   | DeclClass a (ClassHead a) (Maybe (SourceToken, NonEmpty (Labeled (Name Ident) (Type a))))
   | DeclInstanceChain a (Separated (Instance a))
   | DeclDerive a SourceToken (Maybe SourceToken) (InstanceHead a)
-  | DeclKindSignature a SourceToken (Labeled (Name (N.ProperName 'N.TypeName)) (Type a))
-  | DeclSignature a (Labeled (Name Ident) (Type a))
   | DeclValue a (ValueBindingFields a)
   | DeclFixity a FixityFields
   | DeclForeign a SourceToken SourceToken (Foreign a)

@@ -10,8 +10,8 @@ Re-Exports:
 Foreign: 
   
 Declarations: 
-Unit :: Unit
+Unit :: Lib.Unit
 Unit = Unit
 
-Const :: forall a. a -> a
-Const = \(x: a) -> (x: a)
+Const :: forall (a :: Prim.Type). (a :: Prim.Type) -> (a :: Prim.Type)
+Const = \(x: (a :: Prim.Type)) -> (x: (a :: Prim.Type))

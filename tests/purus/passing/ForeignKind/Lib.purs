@@ -1,4 +1,4 @@
-module ForeignKinds.Lib (Nat, Kinded, Zero, Succ, N0, N1, N2, N3, NatProxy(..), class AddNat, addNat, proxy1, proxy2) where
+module ForeignKinds.Lib where -- (Nat, Kinded, Zero, Succ, N0, N1, N2, N3, NatProxy(..), class AddNat, addNat, proxy1, proxy2) where
 
 -- declaration
 
@@ -15,12 +15,12 @@ data NatProxy (t :: Nat) = NatProxy
 
 -- use in type sig
 
-succProxy :: forall n. NatProxy n -> NatProxy (Succ n)
+succProxy :: forall (n :: Nat). NatProxy n -> NatProxy (Succ n)
 succProxy _ = NatProxy
 
 -- use in alias
 
-type Kinded f = f :: Nat
+type Kinded (f :: Nat) = f :: Nat
 
 type KindedZero = Kinded Zero
 
@@ -45,16 +45,21 @@ proxy3 = NatProxy
 
 -- use in class
 
+-- TODO: Don't require annotations in fundep
 class AddNat (l :: Nat) (r :: Nat) (o :: Nat) | l -> r o
 
+{-
 instance addNatZero
-  :: AddNat Zero r r
+  :: AddNat Zero (r :: Nat) (r :: Nat)
 
+
+-- TODO: Bind kinds
 instance addNatSucc
-  :: AddNat l r o
-  => AddNat (Succ l) r (Succ o)
+  :: AddNat ((l) :: Nat) ((r) :: Nat) ((o) :: Nat)
+  => AddNat (Succ ((l) :: Nat)) ((r) :: Nat) (Succ ((o) :: Nat))
 
 -- use of class
 
-addNat :: forall l r o. AddNat l r o => NatProxy l -> NatProxy r -> NatProxy o
-addNat _ _ = NatProxy
+--addNat :: forall (l :: Nat) (r :: Nat) (o :: Nat). AddNat l r o => NatProxy l -> NatProxy r -> NatProxy o
+--addNat _ _ = NatProxy
+-}

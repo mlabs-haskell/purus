@@ -5,8 +5,9 @@ module Coercible.Lib
   ) where
 
 import Coercible.Lib2
+import Prim (Type)
 
-newtype NTLib1 a = NTLib1 a
+newtype NTLib1 (a :: Type) = NTLib1 a
 
-newtype NTLib3 a b = NTLib3 a
+newtype NTLib3 (a :: Type) (b :: Type) = NTLib3 a
 type role NTLib3 representational representational

@@ -7,48 +7,36 @@ Exports:
   runTest,
   Tuple,
   mappend,
-  testInt,
-  test/\
+  testInt
 Re-Exports: 
   
 Foreign: 
   
 Declarations: 
-Tuple :: forall (@a :: Type) (@b :: Type). a -> b -> (Tuple a b)
+Tuple :: forall (@a :: Prim.Type) (@b :: Prim.Type). (a :: Prim.Type) -> (b :: Prim.Type) -> (Lib.Tuple (a :: Prim.Type) (b :: Prim.Type))
 Tuple = Tuple
 
-Test$Dict :: forall a. { runTest :: a -> String } -> { runTest :: a -> String }
-Test$Dict = \(x: { runTest :: a -> String }) -> (x: { runTest :: a -> String })
+Test$Dict :: forall (a :: Prim.Type). { runTest :: (a :: Prim.Type) -> Prim.String } -> { runTest :: (a :: Prim.Type) -> Prim.String }
+Test$Dict = 
+  \(x: {   runTest :: (a :: Prim.Type) -> Prim.String }) -> 
+    (x: {   runTest :: (a :: Prim.Type) -> Prim.String })
 
-testInt :: Test$Dict Int
+testInt :: Lib.Test$Dict Prim.Int
 testInt = 
-  (Test$Dict: {   runTest :: Int -> String } -> Test$Dict Int)
-  ({ runTest: \(v: Int) -> ("4": String) }: { runTest :: Int -> String })
+  (Test$Dict: {   runTest :: Prim.Int -> Prim.String } ->
+  Lib.Test$Dict Prim.Int)
+  ({ runTest: \(v: Prim.Int) -> ("4": Prim.String) }: {
+                                                        runTest :: Prim.Int ->
+                                                        Prim.String
+                                                      })
 
-runTest :: forall (@a :: Type). Test$Dict a -> a -> String
+runTest :: forall (@a :: Prim.Type). Lib.Test$Dict (a :: Prim.Type) -> (a :: Prim.Type) -> Prim.String
 runTest = 
-  \(dict: Test$Dict a) -> 
-    case (dict: Test$Dict a) of 
-       Test$Dict v -> (v: { runTest :: a -> String }).runTest
+  \(dict: Lib.Test$Dict (a :: Prim.Type)) -> 
+    case (dict: Lib.Test$Dict (a :: Prim.Type)) of 
+       Test$Dict v -> 
+         (v: {   runTest :: (a :: Prim.Type) -> Prim.String })
+         .runTest
 
-mappend :: String -> String -> String
-mappend = \(v: String) -> \(v1: String) -> ("mappend": String)
-
-test/\ :: forall (a :: Type) (b :: Type). Test$Dict a -> Test$Dict b -> Test$Dict (Tuple a b)
-test/\ = 
-  \(dictTest: Test$Dict a) -> 
-    \(dictTest1: Test$Dict b) -> 
-      (Test$Dict: {   runTest :: (Tuple a b) -> String } ->
-      Test$Dict (Tuple a b))
-      ({
-         runTest: \(v: (Tuple a b)) -> 
-           case (v: (Tuple a b)) of 
-              Tuple a b -> 
-                (mappend: String -> String -> String)
-                ((runTest: forall (@a :: Type). Test$Dict a -> a -> String)
-                 (dictTest: Test$Dict a)
-                 (a: a))
-                ((runTest: forall (@a :: Type). Test$Dict a -> a -> String)
-                 (dictTest1: Test$Dict b)
-                 (b: b))
-       }: { runTest :: (Tuple a b) -> String })
+mappend :: Prim.String -> Prim.String -> Prim.String
+mappend = \(v: Prim.String) -> \(v1: Prim.String) -> ("mappend": Prim.String)

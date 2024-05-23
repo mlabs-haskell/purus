@@ -9,5 +9,5 @@ Re-Exports:
 Foreign: 
   
 Declarations: 
-NTLib2 :: forall a. a -> a
-NTLib2 = \(x: a) -> (x: a)
+NTLib2 :: forall (a :: Prim.Type). (a :: Prim.Type) -> (a :: Prim.Type)
+NTLib2 = \(x: (a :: Prim.Type)) -> (x: (a :: Prim.Type))

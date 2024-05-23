@@ -11,8 +11,8 @@ Re-Exports:
 Foreign: 
   
 Declarations: 
-NTLib3 :: forall a. a -> a
-NTLib3 = \(x: a) -> (x: a)
+NTLib3 :: forall (a :: Prim.Type). (a :: Prim.Type) -> (a :: Prim.Type)
+NTLib3 = \(x: (a :: Prim.Type)) -> (x: (a :: Prim.Type))
 
-NTLib1 :: forall a. a -> a
-NTLib1 = \(x: a) -> (x: a)
+NTLib1 :: forall (a :: Prim.Type). (a :: Prim.Type) -> (a :: Prim.Type)
+NTLib1 = \(x: (a :: Prim.Type)) -> (x: (a :: Prim.Type))

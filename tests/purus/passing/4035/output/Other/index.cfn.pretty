@@ -1,17 +1,11 @@
-B (tests/purus/passing/2018/B.purs)
+Other (tests/purus/passing/4035/Other.purs)
 Imported Modules: 
   Builtin,
   Prim
 Exports: 
-  X,
-  Y
+  
 Re-Exports: 
   
 Foreign: 
   
 Declarations: 
-X :: B.Foo
-X = X
-
-Y :: B.Foo
-Y = Y

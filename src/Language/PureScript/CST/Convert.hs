@@ -19,9 +19,9 @@ module Language.PureScript.CST.Convert
 import Prelude hiding (take)
 
 import Control.Monad.State
-import Data.Bifunctor (bimap, first)
+import Data.Bifunctor (bimap, first, second)
 import Data.Char (toLower)
-import Data.Foldable (foldl', foldrM, toList)
+import Data.Foldable (foldl', foldrM, toList, traverse_)
 import Data.Functor (($>))
 import Data.List.NonEmpty qualified as NE
 import Data.Maybe (isJust, fromJust, mapMaybe)
@@ -43,7 +43,9 @@ import Language.PureScript.CST.Positions
 import Language.PureScript.CST.Print (printToken)
 import Language.PureScript.CST.Types
 import Data.Bitraversable (Bitraversable(..))
+import Language.PureScript.Names (runProperName, coerceProperName)
 
+import Debug.Trace (trace)
 
 type ConvertM a = State (Map Text T.SourceType) a
 
@@ -60,11 +62,43 @@ tvKind nm = do
 bindTv :: Text -> T.SourceType -> ConvertM ()
 bindTv nm ty = modify' (M.insert nm ty)
 
-reset :: ConvertM ()
-reset = modify' (\_ -> M.empty)
+{- Our new way of handling kinds introduces an annoying problem:
 
+   We need to have the kinds of tyvars bound the decl kind signature or
+   type signature in scope when we convert the declaration.
 
+-}
+groupSignaturesAndDeclarations :: Show a => [Declaration a] -> [[Declaration a]]
+groupSignaturesAndDeclarations decls = trace ("DECLARATIONS (grouping): " <> concatMap ((<> "\n\n") . show) decls)
+  $ foldr (go kindSigs typeSigs) [] decls'
+  where
+    -- I think this minimizes the # of traversals?
+    ((kindSigs,typeSigs),decls') = foldr (\x acc -> case x of
+        ksig@(DeclKindSignature _ _ (Labeled (nameValue -> nm) _ ty)) -> first (first $ M.insert nm ksig) acc
+        tsig@(DeclSignature _ (Labeled (nameValue -> nm) _ _)) -> first (second (M.insert nm tsig)) acc
+        other -> second (other:) acc
+      ) ((M.empty,M.empty),[]) decls
 
+    go ksigs tsigs x acc = case x of
+      dataDecl@(DeclData _ (DataHead _ (nameValue -> nm) _ ) _) -> case M.lookup nm ksigs of
+        Just sigDecl -> [sigDecl,dataDecl] : acc
+        Nothing -> [dataDecl] : acc
+      tyDecl@(DeclType _ (DataHead _ (nameValue -> nm) _) _ _) -> case M.lookup nm ksigs of
+        Just sigDecl -> [sigDecl,tyDecl] : acc
+        Nothing -> [tyDecl] : acc
+      newtypeDecl@(DeclNewtype _ (DataHead _ (nameValue -> nm) _) _ _ _) -> case M.lookup nm ksigs of
+        Just sigDecl -> [sigDecl,newtypeDecl] : acc
+        Nothing -> [newtypeDecl] : acc
+      classDecl@(DeclClass _ (clsName -> nm) _) -> case M.lookup (coerceProperName $ nameValue nm) ksigs of
+        Just sigDecl -> [sigDecl,classDecl] : acc
+        Nothing -> [classDecl] : acc
+      valDecl@(DeclValue _ (valName -> nm)) -> case M.lookup (nameValue nm) tsigs of
+        Just sigDecl -> [sigDecl,valDecl] : acc
+        Nothing -> [valDecl] : acc
+      -- I don't think anything else can have a type/kind sig but I could be wrong...
+      other -> [other] : acc
+
+ 
 comment :: Comment a -> Maybe C.Comment
 comment = \case
   Comment t
@@ -177,7 +211,14 @@ convertType' withinVta fileName = go
         annRec = sourceAnn fileName a a
       T.TypeApp ann (Env.tyRecord $> annRec) <$> goRow row b
     TypeForall _ kw bindings _ ty -> do
+      -- TODO: Refactor this (if it works)
       let
+        doBind (TypeVarKinded (Wrapped _ (Labeled (v, a) _ b) _)) = do
+          let nm = getIdent (nameValue a)
+          b' <- go b
+          bindTv nm b'
+        doBind (TypeVarName (v,a)) = internalError $  "Error: Universally quantified type variable without kind annotation: " <> (Text.unpack . getIdent . nameValue $ a) <> "\nat: " <> show v
+
         mkForAll a b v t = do
           let ann' = widenLeft (tokAnn $ nameTok a) $ T.getAnnForType t
           T.ForAll ann' (maybe T.TypeVarInvisible (const T.TypeVarVisible) v) (getIdent $ nameValue a) b t Nothing
@@ -188,7 +229,8 @@ convertType' withinVta fileName = go
           bindTv nm b'
           pure $ mkForAll a b' v t
         -- TODO: Fix this better
-        k (TypeVarName (v, a)) t = internalError  "forall w/o kind annotation" -- mkForAll a Nothing v
+        k (TypeVarName (v, a)) t = internalError $  "Error: Universally quantified type variable without kind annotation: " <> (Text.unpack . getIdent . nameValue $ a) <> "\nat: " <> show v
+      traverse_ doBind bindings
       inner <- go ty
       ty' <- foldrM k inner bindings
       let ann = widenLeft (tokAnn kw) $ T.getAnnForType ty'
@@ -543,6 +585,7 @@ convertBinder fileName = go
 convertDeclaration :: String -> Declaration a -> ConvertM [AST.Declaration]
 convertDeclaration fileName decl = case decl of
   DeclData _ (DataHead _ a vars) bd -> do
+    vars' <- traverse goTypeVar vars
     let
       ctrs :: SourceToken -> DataCtor a -> [(SourceToken, DataCtor a)] -> ConvertM [AST.DataConstructorDeclaration]
       ctrs st (DataCtor _ name fields) tl = do
@@ -554,7 +597,7 @@ convertDeclaration fileName decl = case decl of
             rest <- ctrs st' ctor tl'
             pure $ AST.DataConstructorDeclaration (sourceAnnCommented fileName st (nameTok name)) (nameValue name) (zip ctrFields $  fields')
                    : rest
-    vars' <- traverse goTypeVar vars
+
     ctorDecls <- maybe (pure []) (\(st, Separated hd tl) -> ctrs st hd tl) bd
     pure [AST.DataDeclaration ann Env.Data (nameValue a) vars' ctorDecls]
   DeclType _ (DataHead _ a vars) _ bd -> do
@@ -565,9 +608,9 @@ convertDeclaration fileName decl = case decl of
       vars'
       bd'
   DeclNewtype _ (DataHead _ a vars) st x ys -> do
+    vars' <- traverse goTypeVar vars
     ys' <- convertType fileName ys
     let ctrs = [AST.DataConstructorDeclaration (sourceAnnCommented fileName st (snd $ declRange decl)) (nameValue x) [(head ctrFields, ys')]]
-    vars' <- traverse goTypeVar vars
     pure [AST.DataDeclaration ann Env.Newtype (nameValue a) vars' ctrs]
   DeclClass _ (ClassHead _ sup name vars fdeps) bd -> do
     let
@@ -622,6 +665,9 @@ convertDeclaration fileName decl = case decl of
       args'
       instTy]
   DeclKindSignature _ kw (Labeled name _ ty) -> do
+    let nm =  runProperName (nameValue name)
+    ty' <- convertType fileName ty
+    bindTv nm ty'
     let
       kindFor = case tokValue kw of
         TokLowerName [] "data" -> AST.DataSig
@@ -629,7 +675,7 @@ convertDeclaration fileName decl = case decl of
         TokLowerName [] "type" -> AST.TypeSynonymSig
         TokLowerName [] "class" -> AST.ClassSig
         tok -> internalError $ "Invalid kind signature keyword " <> Text.unpack (printToken tok)
-    pure . AST.KindDeclaration ann kindFor (nameValue name) <$> convertType fileName ty
+    pure $ [AST.KindDeclaration ann kindFor (nameValue name) ty']
   DeclSignature _ lbl ->
     pure <$> convertSignature fileName lbl
   DeclValue _ fields ->
@@ -716,8 +762,15 @@ convertDeclaration fileName decl = case decl of
         TypeUnaryRow{} -> "Row"
 
   goTypeVar = \case
-    TypeVarKinded (Wrapped _ (Labeled (_, x) _ y) _) -> (getIdent $ nameValue x,) <$>  convertType fileName y
-    TypeVarName (_, x) -> error $ "Missing kind annotation for type variable: " <> Text.unpack (getIdent $ nameValue x) -- , Nothing)
+    TypeVarKinded (Wrapped _ (Labeled (_, x) _ y) _) -> do
+      let nm = getIdent (nameValue x)
+      k <- convertType fileName y
+      bindTv nm k
+      pure (nm,k)
+    TypeVarName (_, x) -> do
+      let nm = getIdent (nameValue x)
+      ki <- tvKind nm
+      pure (nm,ki)
 
   goInstanceBinding = \case
     InstanceBindingSignature _ lbl ->
@@ -806,12 +859,13 @@ convertExport fileName export = case export of
   where
   ann = sourceSpan fileName . toSourceRange $ exportRange export
 
-convertModule :: String -> Module a ->  AST.Module
+convertModule :: Show a => String -> Module a ->  AST.Module
 convertModule fileName module'@(Module _ _ modName exps _ imps decls _) = do
   let
+    groupedDecls = groupSignaturesAndDeclarations decls
     ann = uncurry (sourceAnnCommented fileName) $ moduleRange module'
     imps' = importCtr . runConvert . convertImportDecl fileName <$> imps
-    decls' = concatMap (runConvert . convertDeclaration fileName) decls
+    decls' = concatMap (concat . runConvert . traverse (convertDeclaration fileName)) groupedDecls
     exps' = map (runConvert . convertExport fileName) . toList . wrpValue <$> exps
   uncurry AST.Module ann (nameValue modName) (imps' <> decls') exps'
   where

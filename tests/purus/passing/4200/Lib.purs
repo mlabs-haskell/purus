@@ -1,7 +1,7 @@
 module Lib where
 
-data T :: forall m. m -> Type
-data T msg = E
+data T :: Type -> Type
+data T (msg :: Type) = E
 
-type TAlias :: forall k. k -> Type
-type TAlias msg = T msg
+type TAlias :: Type -> Type
+type TAlias (msg :: Type) = T msg

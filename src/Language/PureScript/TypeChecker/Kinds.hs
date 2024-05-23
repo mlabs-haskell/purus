@@ -58,6 +58,7 @@ import Language.PureScript.Types
 import Language.PureScript.Pretty.Types (prettyPrintType)
 import Language.PureScript.CST.Types (Comment)
 
+
 -- TODO/REVIEW/HACK: -----------------------------------
 -- NO CLUE IF THE CHANGES I MADE HERE ARE CORRECT
 generalizeUnknowns :: [(Unknown, SourceType)] -> SourceType -> SourceType
@@ -190,10 +191,10 @@ inferKind = \tyToInfer ->
       pure (ty, E.kindSymbol $> ann)
     ty@(TypeLevelInt ann _) ->
       pure (ty, E.tyInt $> ann)
-    ty@(TypeVar ann v ki) -> do
-      moduleName <- unsafeCheckCurrentModule
-      kind <- apply =<< lookupTypeVariable moduleName (Qualified ByNullSourcePos $ ProperName v)
-      pure (ty, kind $> ann)
+    ty@(TypeVar ann v kx) -> do
+      -- moduleName <- unsafeCheckCurrentModule
+      -- kind <- apply =<< lookupTypeVariable moduleName (Qualified ByNullSourcePos $ ProperName v)
+      pure (ty, kx $> ann)
     ty@(Skolem ann _ mbK _ _) -> do
       kind <- apply $  mbK
       pure (ty, kind $> ann)
@@ -218,7 +219,7 @@ inferKind = \tyToInfer ->
     KindApp ann t1 t2 -> do
       (t1', kind) <- bitraverse pure apply =<< go t1
       case kind of
-        ForAll _ _ arg (argKind) resKind _ -> do
+        ForAll _ _ arg argKind resKind _ -> do
           t2' <- checkKind t2 argKind
           pure (KindApp ann t1' t2', replaceTypeVars arg t2' resKind)
         _ ->
@@ -529,10 +530,10 @@ elaborateKind = \case
         throwError . errorMessage' (fst ann) . UnknownName . fmap TyName $ v
       Just (kind, _) ->
         ($> ann) <$> apply kind
-  TypeVar ann a ki -> do
-    moduleName <- unsafeCheckCurrentModule
-    kind <- apply =<< lookupTypeVariable moduleName (Qualified ByNullSourcePos $ ProperName a)
-    unifyKinds ki kind -- TODO/REVIEW/HACK: I DO NOT KNOW WHETHER THIS IS WHAT WE WANT
+  TypeVar ann a kind -> do
+    -- moduleName <- unsafeCheckCurrentModule
+    -- kind <- apply =<< lookupTypeVariable moduleName (Qualified ByNullSourcePos $ ProperName a)
+    -- unifyKinds ki kind -- TODO/REVIEW/HACK: I DO NOT KNOW WHETHER THIS IS WHAT WE WANT
     pure (kind $> ann)
   (Skolem ann _ mbK _ _) -> do
     kind <- apply $  mbK

@@ -10,5 +10,5 @@ Re-Exports:
 Foreign: 
   
 Declarations: 
-Bar' :: Int -> Int -> Foo'
+Bar' :: Prim.Int -> Prim.Int -> Eg.Foo'
 Bar' = Bar'

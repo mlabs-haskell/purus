@@ -1,4 +1,5 @@
 module Other where
 
-type Id :: forall (k :: Type). (k :: Type) -> (k :: Type)
-type Id a = (a :: Type)
+
+type Id :: Type -> Type
+type Id (a :: Prim.Type) = a

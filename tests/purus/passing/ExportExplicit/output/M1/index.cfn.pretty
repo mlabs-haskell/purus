@@ -12,17 +12,17 @@ Re-Exports:
 Foreign: 
   
 Declarations: 
-Z :: Z
+Z :: M1.Z
 Z = Z
 
-X :: X
+X :: M1.X
 X = X
 
-Y :: X
+Y :: M1.X
 Y = Y
 
-foo :: Int
-foo = (0: Int)
+foo :: Prim.Int
+foo = (0: Prim.Int)
 
-bar :: Int
-bar = (1: Int)
+bar :: Prim.Int
+bar = (1: Prim.Int)

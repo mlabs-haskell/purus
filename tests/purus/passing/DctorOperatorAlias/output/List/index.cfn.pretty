@@ -11,8 +11,8 @@ Re-Exports:
 Foreign: 
   
 Declarations: 
-Cons :: forall (@a :: Type). a -> List a -> List a
+Cons :: forall (@a :: Prim.Type). (a :: Prim.Type) -> List.List (a :: Prim.Type) -> List.List (a :: Prim.Type)
 Cons = Cons
 
-Nil :: forall (@a :: Type). List a
+Nil :: forall (@a :: Prim.Type). List.List (a :: Prim.Type)
 Nil = Nil

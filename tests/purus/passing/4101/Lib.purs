@@ -1,7 +1,7 @@
 module Lib where
 
-newtype Const :: forall k. Type -> k -> Type
-newtype Const a b = Const a
+-- newtype Const :: forall (j :: Type) (k :: j). Type -> k -> Type
+newtype Const (a :: Prim.Type) (b :: Prim.Type) = Const a
 
 data Unit = Unit
 

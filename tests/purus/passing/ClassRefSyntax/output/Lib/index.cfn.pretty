@@ -10,11 +10,13 @@ Re-Exports:
 Foreign: 
   
 Declarations: 
-X$Dict :: forall a. { go :: a -> a } -> { go :: a -> a }
-X$Dict = \(x: { go :: a -> a }) -> (x: { go :: a -> a })
+X$Dict :: forall (a :: Prim.Type). { go :: (a :: Prim.Type) -> (a :: Prim.Type) } -> { go :: (a :: Prim.Type) -> (a :: Prim.Type) }
+X$Dict = 
+  \(x: {   go :: (a :: Prim.Type) -> (a :: Prim.Type) }) -> 
+    (x: {   go :: (a :: Prim.Type) -> (a :: Prim.Type) })
 
-go :: forall (@a :: Type). X$Dict a -> a -> a
+go :: forall (@a :: Prim.Type). Lib.X$Dict (a :: Prim.Type) -> (a :: Prim.Type) -> (a :: Prim.Type)
 go = 
-  \(dict: X$Dict a) -> 
-    case (dict: X$Dict a) of 
-       X$Dict v -> (v: { go :: a -> a }).go
+  \(dict: Lib.X$Dict (a :: Prim.Type)) -> 
+    case (dict: Lib.X$Dict (a :: Prim.Type)) of 
+       X$Dict v -> (v: { go :: (a :: Prim.Type) -> (a :: Prim.Type) }).go

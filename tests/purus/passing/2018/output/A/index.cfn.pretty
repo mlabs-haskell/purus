@@ -10,5 +10,5 @@ Re-Exports:
 Foreign: 
   
 Declarations: 
-foo :: Foo -> Foo
-foo = \(x: Foo) -> (x: Foo)
+foo :: B.Foo -> B.Foo
+foo = \(x: B.Foo) -> (x: B.Foo)
