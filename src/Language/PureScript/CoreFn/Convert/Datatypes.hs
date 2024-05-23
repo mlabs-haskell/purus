@@ -4,7 +4,7 @@ import Prelude
 
 import Language.PureScript.CoreFn.Convert.IR
 import Language.PureScript.CoreFn.Convert.IR qualified as IR
-import Language.PureScript.CoreFn.Convert.DesugarObjectsV2
+import Language.PureScript.CoreFn.Convert.DesugarObjects
 import PlutusIR
 import PlutusIR qualified as PIR
 import PlutusCore qualified as PLC
