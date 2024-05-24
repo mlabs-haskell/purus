@@ -750,10 +750,17 @@ classMember :: { Labeled (Name Ident) (Type ()) }
   : ident '::' type {% checkNoWildcards $3 *> pure (Labeled $1 $2 $3) }
 
 instHead :: { InstanceHead () }
-  : 'instance' constraints '=>' qualProperName manyOrEmpty(typeAtom)
-      { InstanceHead $1 Nothing (Just ($2, $3)) (getQualifiedProperName $4) $5 }
+  : 'instance' instForall constraints '=>' qualProperName manyOrEmpty(typeAtom)
+    { InstanceHead $1 (Just $2) Nothing (Just ($3, $4)) (getQualifiedProperName $5) $6 }
+  | 'instance' instForall qualProperName manyOrEmpty(typeAtom)
+    { InstanceHead $1 (Just $2) Nothing Nothing (getQualifiedProperName $3) $4 }
+  | 'instance' constraints '=>' qualProperName manyOrEmpty(typeAtom)
+    { InstanceHead $1 Nothing Nothing (Just ($2, $3)) (getQualifiedProperName $4) $5 }
   | 'instance' qualProperName manyOrEmpty(typeAtom)
-      { InstanceHead $1 Nothing Nothing (getQualifiedProperName $2) $3 }
+    { InstanceHead $1 Nothing Nothing Nothing (getQualifiedProperName $2) $3 }
+
+instForall :: { (SourceToken, NE.NonEmpty (TypeVarBinding ())) }
+  : forall many(typeVarBinding) '.' { ( $1, $2 ) }
 
 constraints :: { OneOrDelimited (Constraint ()) }
   : constraint { One $1 }
