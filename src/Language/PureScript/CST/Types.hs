@@ -261,6 +261,9 @@ data ClassFundep
 
 data InstanceHead a = InstanceHead
   { instKeyword :: SourceToken
+  , instForall :: Maybe (SourceToken, NonEmpty (TypeVarBinding a))
+  -- we modified the parser to disallow named instances.
+  -- TODO: remove `instNameSep` field.
   , instNameSep :: Maybe (Name Ident, SourceToken)
   , instConstraints :: Maybe (OneOrDelimited (Constraint a), SourceToken)
   , instClass :: QualifiedName (N.ProperName 'N.ClassName)

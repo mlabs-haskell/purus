@@ -363,12 +363,12 @@ rowLabel :: { Labeled Label (Type ()) }
 typeVarBinding :: { TypeVarBinding () }
   : ident { TypeVarName (Nothing, $1) }
   | '@' ident { TypeVarName (Just $1, $2) }
-  | '(' ident '::' type ')' {% checkNoWildcards $4 *> pure (TypeVarKinded (Wrapped $1 (Labeled (Nothing, $2) $3 $4) $5)) }
-  | '(' '@' ident '::' type ')' {% checkNoWildcards $5 *> pure (TypeVarKinded (Wrapped $1 (Labeled (Just $2, $3) $4 $5) $6)) }
+  | '(' ident '::' kind ')' {% checkNoWildcards $4 *> pure (TypeVarKinded (Wrapped $1 (Labeled (Nothing, $2) $3 $4) $5)) }
+  | '(' '@' ident '::' kind ')' {% checkNoWildcards $5 *> pure (TypeVarKinded (Wrapped $1 (Labeled (Just $2, $3) $4 $5) $6)) }
 
 typeVarBindingPlain :: { TypeVarBinding () }
   : ident { TypeVarName (Nothing, $1) }
-  | '(' ident '::' type ')' {% checkNoWildcards $4 *> pure (TypeVarKinded (Wrapped $1 (Labeled (Nothing, $2) $3 $4) $5)) }
+  | '(' ident '::' kind ')' {% checkNoWildcards $4 *> pure (TypeVarKinded (Wrapped $1 (Labeled (Nothing, $2) $3 $4) $5)) }
 
 forall :: { SourceToken }
   : 'forall' { $1 }
@@ -750,14 +750,17 @@ classMember :: { Labeled (Name Ident) (Type ()) }
   : ident '::' type {% checkNoWildcards $3 *> pure (Labeled $1 $2 $3) }
 
 instHead :: { InstanceHead () }
-  : 'instance' constraints '=>' qualProperName manyOrEmpty(typeAtom)
-      { InstanceHead $1 Nothing (Just ($2, $3)) (getQualifiedProperName $4) $5 }
+  : 'instance' instForall constraints '=>' qualProperName manyOrEmpty(typeAtom)
+    { InstanceHead $1 (Just $2) Nothing (Just ($3, $4)) (getQualifiedProperName $5) $6 }
+  | 'instance' instForall qualProperName manyOrEmpty(typeAtom)
+    { InstanceHead $1 (Just $2) Nothing Nothing (getQualifiedProperName $3) $4 }
+  | 'instance' constraints '=>' qualProperName manyOrEmpty(typeAtom)
+    { InstanceHead $1 Nothing Nothing (Just ($2, $3)) (getQualifiedProperName $4) $5 }
   | 'instance' qualProperName manyOrEmpty(typeAtom)
-      { InstanceHead $1 Nothing Nothing (getQualifiedProperName $2) $3 }
-  | 'instance' ident '::' constraints '=>' qualProperName manyOrEmpty(typeAtom)
-      { InstanceHead $1 (Just ($2, $3)) (Just ($4, $5)) (getQualifiedProperName $6) $7 }
-  | 'instance' ident '::' qualProperName manyOrEmpty(typeAtom)
-      { InstanceHead $1 (Just ($2, $3)) Nothing (getQualifiedProperName $4) $5 }
+    { InstanceHead $1 Nothing Nothing Nothing (getQualifiedProperName $2) $3 }
+
+instForall :: { (SourceToken, NE.NonEmpty (TypeVarBinding ())) }
+  : forall many(typeVarBinding) '.' { ( $1, $2 ) }
 
 constraints :: { OneOrDelimited (Constraint ()) }
   : constraint { One $1 }

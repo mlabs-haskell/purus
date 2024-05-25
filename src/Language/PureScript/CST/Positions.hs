@@ -98,6 +98,8 @@ sepLast :: Separated a -> a
 sepLast (Separated hd []) = hd
 sepLast (Separated _ tl) = snd $ last tl
 
+-- | Contains the first and the last source token of a definition,
+-- used to track line numbers for the error messages.
 type TokenRange = (SourceToken, SourceToken)
 
 toSourceRange :: TokenRange -> SourceRange
@@ -207,7 +209,7 @@ instanceRange (Instance hd bd)
   where start = instanceHeadRange hd
 
 instanceHeadRange :: InstanceHead a -> TokenRange
-instanceHeadRange (InstanceHead kw _ _ cls types)
+instanceHeadRange (InstanceHead kw _ _ _ cls types)
   | [] <- types = (kw, qualTok cls)
   | otherwise = (kw, snd . typeRange $ last types)
 
