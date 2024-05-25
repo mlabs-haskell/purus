@@ -5,5 +5,5 @@ data Unit = Unit
 class TestCls (a :: Type) where
   test :: a -> a
 
-instance unitTestCls :: TestCls Unit where
+instance TestCls Unit where
   test _ = Unit

@@ -110,7 +110,7 @@ shouldPass = map (prefix </>) paths
         "ResolvableScopeConflict",
         "ResolvableScopeConflict2",
         "ResolvableScopeConflict3",
-        -- "RowSyntax",
+        "RowSyntax",
         "ShadowedModuleName",
         "TransitiveImport"
       ]

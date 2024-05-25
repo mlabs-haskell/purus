@@ -6,7 +6,7 @@ Imported Modules:
 Exports: 
   test,
   Unit,
-  unitTestCls
+  testClsUnit
 Re-Exports: 
   
 Foreign: 
@@ -20,8 +20,8 @@ TestCls$Dict =
   \(x: {   test :: (a :: Prim.Type) -> (a :: Prim.Type) }) -> 
     (x: {   test :: (a :: Prim.Type) -> (a :: Prim.Type) })
 
-unitTestCls :: Test.TestCls$Dict Test.Unit
-unitTestCls = 
+testClsUnit :: Test.TestCls$Dict Test.Unit
+testClsUnit = 
   (TestCls$Dict: {   test :: Test.Unit -> Test.Unit } ->
   Test.TestCls$Dict Test.Unit)
   ({ test: \(v: Test.Unit) -> (Unit: Test.Unit) }: {

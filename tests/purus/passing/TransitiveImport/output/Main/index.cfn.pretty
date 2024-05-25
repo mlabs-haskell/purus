@@ -15,5 +15,5 @@ main :: Test.Unit
 main = 
   (middle: forall (a :: Prim.Type). Test.TestCls$Dict (a :: Prim.Type) ->
   (a :: Prim.Type) -> (a :: Prim.Type))
-  (unitTestCls: Test.TestCls$Dict Test.Unit)
+  (testClsUnit: Test.TestCls$Dict Test.Unit)
   (unit: Test.Unit)
