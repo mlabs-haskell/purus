@@ -9,5 +9,5 @@ Re-Exports:
 Foreign: 
   
 Declarations: 
-log :: forall (t1 :: Type). t1 -> t1
-log = \(x: t1) -> (x: t1)
+log :: forall (t1 :: Prim.Type). (t1 :: Prim.Type) -> (t1 :: Prim.Type)
+log = \(x: (t1 :: Prim.Type)) -> (x: (t1 :: Prim.Type))

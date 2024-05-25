@@ -57,12 +57,13 @@ import Data.List.NonEmpty qualified as NEL
 import Data.Map qualified as M
 import Data.Set qualified as S
 import Data.IntSet qualified as IS
+import Data.Text qualified as T
 
 import Language.PureScript.AST
 import Language.PureScript.Crash (internalError)
 import Language.PureScript.Environment
 import Language.PureScript.Errors (ErrorMessage(..), MultipleErrors, SimpleErrorMessage(..), errorMessage, errorMessage', escalateWarningWhen, internalCompilerError, onErrorMessages, onTypesInErrorMessage, parU)
-import Language.PureScript.Names (pattern ByNullSourcePos, Ident(..), ModuleName, Name(..), ProperName(..), ProperNameType(..), Qualified(..), QualifiedBy(..), byMaybeModuleName, coerceProperName, freshIdent)
+import Language.PureScript.Names (pattern ByNullSourcePos, Ident(..), ModuleName, Name(..), ProperName(..), ProperNameType(..), Qualified(..), QualifiedBy(..), byMaybeModuleName, coerceProperName, freshIdent, runModuleName, runIdent)
 import Language.PureScript.TypeChecker.Deriving (deriveInstance)
 import Language.PureScript.TypeChecker.Entailment (InstanceContext, newDictionaries, replaceTypeClassDictionaries)
 import Language.PureScript.TypeChecker.Kinds (checkConstraint, checkKind, checkTypeKind, kindOf, kindOfWithScopedVars, unifyKinds', unknownsWithKinds)
@@ -75,6 +76,27 @@ import Language.PureScript.TypeChecker.Unify (freshTypeWithKind, replaceTypeWild
 import Language.PureScript.Types
 import Language.PureScript.Label (Label(..))
 import Language.PureScript.PSString (PSString)
+
+import Debug.Trace
+import Language.PureScript.CoreFn.Pretty.Types (prettyTypeStr)
+import Language.PureScript.Pretty.Values (renderValue)
+
+moduleTraces :: Bool
+moduleTraces = True
+
+goTrace :: forall x. String -> x -> x
+goTrace str x
+  | moduleTraces = trace str x
+  | otherwise = x
+
+goTraceM :: forall f. Applicative f => String -> f ()
+goTraceM msg
+ | moduleTraces = traceM msg
+ | otherwise = pure ()
+
+spacer = '\n' : replicate 20 '-'
+
+
 
 data BindingGroupType
   = RecursiveBindingGroup
@@ -102,7 +124,7 @@ typesOf
   -> ModuleName
   -> [((SourceAnn, Ident), Expr)]
   -> m [((SourceAnn, Ident), (Expr, SourceType))]
-typesOf bindingGroupType moduleName vals = withFreshSubstitution $ do
+typesOf bindingGroupType moduleName vals = goTrace ("TYPESOF: " <> T.unpack (runModuleName moduleName)) $ withFreshSubstitution $ do
     (tys, wInfer) <- capturingSubstitution tidyUp $ do
       (SplitBindingGroup untyped typed dict, w) <- withoutWarnings $ typeDictionaryForBindingGroup (Just moduleName) vals
       ds1 <- parU typed $ \e -> withoutWarnings $ checkTypedBindingGroupElement moduleName e dict
@@ -302,7 +324,7 @@ checkTypedBindingGroupElement
   -> M.Map (Qualified Ident) (SourceType, NameKind, NameVisibility)
   -- ^ Names brought into scope in this binding group
   -> m ((SourceAnn, Ident), (Expr, SourceType))
-checkTypedBindingGroupElement mn (ident, (val, args, ty, checkType)) dict = do
+checkTypedBindingGroupElement mn (ident, (val, args, ty, checkType)) dict = goTrace msg $ do
   -- We replace type synonyms _after_ kind-checking, since we don't want type
   -- synonym expansion to bring type variables into scope. See #2542.
   ty' <- introduceSkolemScope <=< replaceAllTypeSynonyms $ ty
@@ -311,6 +333,12 @@ checkTypedBindingGroupElement mn (ident, (val, args, ty, checkType)) dict = do
             then withScopedTypeVars mn args $ bindNames dict $ check val ty'
             else return (TypedValue' False val ty')
   return (ident, (tvToExpr val', ty'))
+ where
+   msg = "CHECK_TYPED_BINDING_GROUP_ELEMENT: " <> T.unpack (runIdent $ snd ident)
+         <> "\n VALUE: " <> renderValue 100 val
+         <> "\n ARGS: " <> concatMap (\(_nm,_ty) -> "   " <> T.unpack _nm <> " := " <> prettyTypeStr _ty <> "\n") args
+         <> "\n TYPE: " <> prettyTypeStr ty
+         <> spacer
 
 -- | Infer a type for a value in a binding group which lacks an annotation.
 typeForBindingGroupElement
@@ -321,12 +349,17 @@ typeForBindingGroupElement
   -> M.Map (Qualified Ident) (SourceType, NameKind, NameVisibility)
   -- ^ Names brought into scope in this binding group
   -> m ((SourceAnn, Ident), (Expr, SourceType))
-typeForBindingGroupElement (ident, (val, ty)) dict = do
+typeForBindingGroupElement (ident, (val, ty)) dict = goTrace msg $ do
   -- Infer the type with the new names in scope
   TypedValue' _ val' ty' <- bindNames dict $ infer val
   -- Unify the type with the unification variable we chose for this definition
   unifyTypes ty ty'
   return (ident, (TypedValue True val' ty', ty'))
+ where
+   msg = "TYPE_FOR_BINDING_GROUP_ELEMENT: " <> T.unpack (runIdent $ snd ident)
+         <> "\n VALUE: " <> renderValue 100 val
+         <> "\n TYPE: " <> prettyTypeStr ty
+         <> spacer
 
 -- | Remove any ForAlls and ConstrainedType constructors in a type by introducing new unknowns
 -- or TypeClassDictionary values.
@@ -338,14 +371,35 @@ instantiatePolyTypeWithUnknowns
   => Expr
   -> SourceType
   -> m (Expr, SourceType)
-instantiatePolyTypeWithUnknowns val (ForAll _ _ ident mbK ty _) = do
+instantiatePolyTypeWithUnknowns val printMe@(ForAll _ _ ident mbK ty _) =  do
   u <-  freshTypeWithKind mbK
   insertUnkName' u ident
-  instantiatePolyTypeWithUnknowns val $ replaceTypeVars ident u ty
-instantiatePolyTypeWithUnknowns val (ConstrainedType _ con ty) = do
+  result <- instantiatePolyTypeWithUnknowns val $ replaceTypeVars ident u ty
+  let msg = mkMsg result
+  goTraceM msg
+  pure result
+ where
+   mkMsg (resultExpr,resultTy)
+      = "INSTANTIATE POLYTYPES WITH UNKNOWNS"
+         <> "\n EXPR: " <> renderValue 100 val
+         <> "\n TYPE: " <> prettyTypeStr printMe
+         <> "\n RESULT EXPR: " <> renderValue 100 resultExpr
+         <> "\n RESULT TYPE: " <> prettyTypeStr resultTy
+         <> spacer
+instantiatePolyTypeWithUnknowns val printMe@(ConstrainedType _ con ty) = do
   dicts <- getTypeClassDictionaries
   hints <- getHints
-  instantiatePolyTypeWithUnknowns (App val (TypeClassDictionary con dicts hints)) ty
+  result <- instantiatePolyTypeWithUnknowns (App val (TypeClassDictionary con dicts hints)) ty
+  goTraceM (mkMsg result)
+  pure result
+ where
+   mkMsg (resultExpr,resultTy)
+      = "INSTANTIATE POLYTYPES WITH UNKNOWNS"
+         <> "\n EXPR: " <> renderValue 100 val
+         <> "\n TYPE: " <> prettyTypeStr printMe
+         <> "\n RESULT EXPR: " <> renderValue 100 resultExpr
+         <> "\n RESULT TYPE: " <> prettyTypeStr resultTy
+         <> spacer
 instantiatePolyTypeWithUnknowns val ty = return (val, ty)
 
 instantiatePolyTypeWithUnknownsUntilVisible
@@ -368,7 +422,11 @@ instantiateConstraint val ty = pure (val, ty)
 
 -- | Match against TUnknown and call insertUnkName, failing otherwise.
 insertUnkName' :: (MonadState CheckState m, MonadError MultipleErrors m) => SourceType -> Text -> m ()
-insertUnkName' (TUnknown _ i) n = insertUnkName i n
+insertUnkName' tu@(TUnknown _ i) n = goTrace msg $ insertUnkName i n
+  where
+    msg = "INSERT UNK NAME"
+          <> "\n  TYPE: " <> prettyTypeStr tu
+          <> "\n  NAME: " <> T.unpack n
 insertUnkName' _ _ = internalCompilerError "type is not TUnknown"
 
 -- | Infer a type for a value, rethrowing any error to provide a more useful error message
@@ -376,7 +434,8 @@ infer
   :: (MonadSupply m, MonadState CheckState m, MonadError MultipleErrors m, MonadWriter MultipleErrors m)
   => Expr
   -> m TypedValue'
-infer val = withErrorMessageHint (ErrorInferringType val) $ infer' val
+infer val = goTrace ("INFER\n  EXPR: " <> renderValue 100 val <> spacer)
+  withErrorMessageHint (ErrorInferringType val) $ infer' val
 
 -- | Infer a type for a value
 infer'
@@ -772,7 +831,16 @@ check
   => Expr
   -> SourceType
   -> m TypedValue'
-check val ty = withErrorMessageHint' val (ErrorCheckingType val ty) $ check' val ty
+check val ty = do
+  goTraceM msg1
+  result <- withErrorMessageHint' val (ErrorCheckingType val ty) $ check' val ty
+  let msg2 = "\n CHECK RESULT: " <> renderValue 100 (tvToExpr result) <> spacer
+  goTraceM msg2
+  pure result
+ where
+   msg1 = "CHECK"
+         <> "\n  EXPR: " <> renderValue 100 val
+         <> "\n TYPE: " <> prettyTypeStr ty
 
 -- |
 -- Check the type of a value

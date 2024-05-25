@@ -25,6 +25,25 @@ import Language.PureScript.TypeChecker.Skolems (newSkolemConstant, skolemize)
 import Language.PureScript.TypeChecker.Unify (alignRowsWith, freshTypeWithKind, unifyTypes)
 import Language.PureScript.Types (RowListItem(..), SourceType, Type(..), eqType, isREmpty, replaceTypeVars, rowFromList)
 
+import Language.PureScript.CoreFn.Pretty.Types (prettyTypeStr)
+import Debug.Trace ( trace, traceM )
+
+moduleTraces :: Bool
+moduleTraces = True
+
+goTrace :: forall x. String -> x -> x
+goTrace str x
+  | moduleTraces = trace str x
+  | otherwise = x
+
+goTraceM :: forall f. Applicative f => String -> f ()
+goTraceM msg
+ | moduleTraces = traceM msg
+ | otherwise = pure ()
+
+spacer = "\n" <> replicate 20 '-'
+
+
 -- | Subsumption can operate in two modes:
 --
 -- * Elaboration mode, in which we try to insert type class dictionaries
@@ -63,10 +82,13 @@ subsumes
   => SourceType
   -> SourceType
   -> m (Expr -> Expr)
-subsumes ty1 ty2 =
+subsumes ty1 ty2 = goTrace msg $
   withErrorMessageHint (ErrorInSubsumption ty1 ty2) $
     subsumes' SElaborate ty1 ty2
-
+ where
+   msg = "SUBSUMES"
+         <> "\n TYPE 1: " <> prettyTypeStr ty1
+         <> "\n TYPE 2: " <> prettyTypeStr ty2
 -- | Check that one type subsumes another
 subsumes'
   :: (MonadError MultipleErrors m, MonadState CheckState m)

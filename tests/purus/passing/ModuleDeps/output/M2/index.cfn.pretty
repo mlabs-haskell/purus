@@ -10,5 +10,5 @@ Re-Exports:
 Foreign: 
   
 Declarations: 
-bar :: Int
-bar = (baz: Int)
+bar :: Prim.Int
+bar = (baz: Prim.Int)

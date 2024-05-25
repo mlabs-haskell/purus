@@ -1,0 +1,18 @@
+M1 (tests/purus/passing/Import/M1.purs)
+Imported Modules: 
+  Builtin,
+  M1,
+  Prim
+Exports: 
+  id,
+  foo
+Re-Exports: 
+  
+Foreign: 
+  
+Declarations: 
+id :: forall (a :: Prim.Type). (a :: Prim.Type) -> (a :: Prim.Type)
+id = \(x: (a :: Prim.Type)) -> (x: (a :: Prim.Type))
+
+foo :: forall (a :: Prim.Type). (a :: Prim.Type) -> (a :: Prim.Type)
+foo = (id: forall (a :: Prim.Type). (a :: Prim.Type) -> (a :: Prim.Type))

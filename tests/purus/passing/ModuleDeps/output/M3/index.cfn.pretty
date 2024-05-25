@@ -9,5 +9,5 @@ Re-Exports:
 Foreign: 
   
 Declarations: 
-baz :: Int
-baz = (1: Int)
+baz :: Prim.Int
+baz = (1: Prim.Int)

@@ -1,4 +1,4 @@
 module ImportedClassName where
 
-class ClassName a where
+class ClassName (a :: Type) where
   foo :: a -> Int

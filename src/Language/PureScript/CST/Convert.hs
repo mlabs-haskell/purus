@@ -52,15 +52,23 @@ type ConvertM a = State (Map Text T.SourceType) a
 runConvert :: ConvertM a -> a
 runConvert ma = evalState ma M.empty
 
-tvKind :: Text -> ConvertM T.SourceType
-tvKind nm = do
+tvKind :: SourceToken -> Text -> ConvertM T.SourceType
+tvKind srcTok nm = do
   cxt <- get
   case M.lookup nm cxt of
-    Nothing -> internalError $ "Error: Missing kind annotation for TyVar " <> Text.unpack nm
+    Nothing -> internalError
+               $ "Error: Missing kind annotation for TyVar " <> Text.unpack nm
+                 <> "\n  at (or near): " <> prettyRange (srcTokenRange srcTok)
     Just t -> pure t
+ where
+   prettyRange (SourceRange start end) = goPos start <> "-" <> goPos end
+   goPos (SourcePos line col) = show line <> ":" <> show col
 
 bindTv :: Text -> T.SourceType -> ConvertM ()
 bindTv nm ty = modify' (M.insert nm ty)
+
+srcTokenRange :: SourceToken -> SourceRange
+srcTokenRange = tokRange . tokAnn
 
 {- Our new way of handling kinds introduces an annoying problem:
 
@@ -191,7 +199,7 @@ convertType' withinVta fileName = go
       bindTv nm kd'
       pure $ T.TypeVar (sourceName fileName a) (getIdent $ nameValue a) kd'
     TypeVar _ a  -> do
-      kd <- tvKind (getIdent $ nameValue a)
+      kd <- tvKind (nameTok a) (getIdent $ nameValue a)
       pure $ T.TypeVar (sourceName fileName a) (getIdent $ nameValue a) kd
     TypeConstructor _ a ->
       pure $ T.TypeConstructor (sourceQualName fileName a) $ qualified a
@@ -412,7 +420,7 @@ convertExpr fileName = go
       a' <- go a
       b' <- go b
       c' <- go c
-      pure $ positioned ann $ AST.BinaryNoParens a' b' c'
+      pure $ positioned ann $ AST.BinaryNoParens b' a' c'
     expr@(ExprOp _ _ _ _) -> do
       let
         ann = uncurry (sourceAnn fileName) $ exprRange expr
@@ -769,7 +777,7 @@ convertDeclaration fileName decl = case decl of
       pure (nm,k)
     TypeVarName (_, x) -> do
       let nm = getIdent (nameValue x)
-      ki <- tvKind nm
+      ki <- tvKind (nameTok x) nm
       pure (nm,ki)
 
   goInstanceBinding = \case

@@ -11,11 +11,11 @@ Re-Exports:
 Foreign: 
   
 Declarations: 
-Z :: Z
+Z :: M1.Z
 Z = Z
 
-X :: X
+X :: M1.X
 X = X
 
-Y :: X
+Y :: M1.X
 Y = Y

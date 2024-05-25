@@ -2,7 +2,7 @@ module Lib where
 
 {- Type Classes -}
 -- Single Param
-class Eq a where
+class Eq (a :: Type) where
   eq :: a -> a -> Boolean
 
 minus :: Int -> Int -> Int
@@ -26,7 +26,7 @@ brokenEven n =
     else brokenEven (n `minus` 2)
 
 -- Multi Param
-class Eq2 a b where
+class Eq2 (a :: Type) (b :: Type) where
   eq2 :: a -> b -> Boolean
 
 instance Eq2 Int Boolean where
@@ -45,10 +45,10 @@ data TestBinderSum =
   | ConString String
   | ConChar Char
   | ConNested TestBinderSum
-  | ConQuantified (forall x. x -> Int)
-  | ConConstrained (forall x. Eq x => x -> Int) -- kind of nonsensical
+  | ConQuantified (forall (x :: Type). x -> Int)
+  | ConConstrained (forall (x :: Type). Eq x => x -> Int) -- kind of nonsensical
   | ConObject {objField :: Int}
-  | ConObjectQuantified {objFieldQ :: forall x. x -> Int}
+  | ConObjectQuantified {objFieldQ :: forall (x :: Type). x -> Int}
 
 testBinders :: TestBinderSum  -> Int
 testBinders x = case x of
@@ -131,7 +131,7 @@ aList = [1,2,3,4,5]
 
 {- Functions -}
 
-aFunction :: forall x. x -> (forall y. y -> Int) -> Int
+aFunction :: forall (x :: Type). x -> (forall (y :: Type). y -> Int) -> Int
 aFunction any f = f any
 
 aFunction2 :: Int -> Array Int
@@ -154,10 +154,10 @@ aFunction6 = aFunction [] go
 
 -- main = aFunction4 {a: 2, b: 3}
 
-recF1 :: forall x. x -> Int
+recF1 :: forall (x :: Type). x -> Int
 recF1 x = recG1 x
 
-recG1 :: forall x. x -> Int
+recG1 :: forall (x :: Type). x -> Int
 recG1 x = recF1 x
 
 testBuiltin :: Int
@@ -198,10 +198,10 @@ anObj = {foo: 3}
 objUpdate :: {foo :: Int}
 objUpdate = anObj {foo = 4}
 
-polyInObj :: {bar :: forall x. x -> Int, baz :: Int}
+polyInObj :: {bar :: forall (x :: Type). x -> Int, baz :: Int}
 polyInObj = {bar: go, baz : 100}
   where
-    go :: forall y. y -> Int
+    go :: forall (y :: Type). y -> Int
     go _ = 5
 
 polyInObjMatch :: Int
@@ -211,7 +211,7 @@ polyInObjMatch = case polyInObj of
 aPred :: Int -> Boolean
 aPred _ = true
 
-cons :: forall a. a -> Array a -> Array a
+cons :: forall (a :: Type). a -> Array a -> Array a
 cons x xs = [x]
 
 emptyList = []
@@ -220,13 +220,13 @@ consEmptyList1 = cons 1 emptyList
 
 consEmptyList2 = cons "hello" emptyList
 
-id :: forall t. t -> t
+id :: forall (t :: Type). t -> t
 id x = x
 
-objForall :: forall a b. {getIdA :: a -> a, getIdB :: b -> b}
+objForall :: forall (a :: Type) (b :: Type). {getIdA :: a -> a, getIdB :: b -> b}
 objForall = {getIdA: id, getIdB: id}
 
-arrForall :: forall a. Array (a -> a)
+arrForall :: forall (a :: Type). Array (a -> a)
 arrForall = [id]
 
 {- We should probably just remove guarded case branches, see slack msg
@@ -246,11 +246,11 @@ id a = a
 inner = {getId: id}
 -}
 
-class Eq a <= Ord a where
+class Eq a <= Ord (a :: Type) where
   compare :: a -> a -> Int
 
 instance Ord Int where
   compare _ _ = 42
 
-testEqViaOrd :: forall a. Ord a => a -> a -> Boolean
+testEqViaOrd :: forall (a :: Type). Ord a => a -> a -> Boolean
 testEqViaOrd a b = eq a b

@@ -10,11 +10,13 @@ Re-Exports:
 Foreign: 
   
 Declarations: 
-ClassName$Dict :: forall a. { foo :: a -> Int } -> { foo :: a -> Int }
-ClassName$Dict = \(x: { foo :: a -> Int }) -> (x: { foo :: a -> Int })
+ClassName$Dict :: forall (a :: Prim.Type). { foo :: (a :: Prim.Type) -> Prim.Int } -> { foo :: (a :: Prim.Type) -> Prim.Int }
+ClassName$Dict = 
+  \(x: {   foo :: (a :: Prim.Type) -> Prim.Int }) -> 
+    (x: {   foo :: (a :: Prim.Type) -> Prim.Int })
 
-foo :: forall (@a :: Type). ClassName$Dict a -> a -> Int
+foo :: forall (@a :: Prim.Type). ImportedClassName.ClassName$Dict (a :: Prim.Type) -> (a :: Prim.Type) -> Prim.Int
 foo = 
-  \(dict: ClassName$Dict a) -> 
-    case (dict: ClassName$Dict a) of 
-       ClassName$Dict v -> (v: { foo :: a -> Int }).foo
+  \(dict: ImportedClassName.ClassName$Dict (a :: Prim.Type)) -> 
+    case (dict: ImportedClassName.ClassName$Dict (a :: Prim.Type)) of 
+       ClassName$Dict v -> (v: { foo :: (a :: Prim.Type) -> Prim.Int }).foo

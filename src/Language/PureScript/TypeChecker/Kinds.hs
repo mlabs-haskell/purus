@@ -58,16 +58,57 @@ import Language.PureScript.Types
 import Language.PureScript.Pretty.Types (prettyPrintType)
 import Language.PureScript.CST.Types (Comment)
 
+import Data.Bifunctor (bimap)
+import Debug.Trace
+import Language.PureScript.CoreFn.Pretty.Types (prettyTypeStr)
+
+moduleTraces :: Bool
+moduleTraces = True
+
+goTrace :: forall x. String -> x -> x
+goTrace str x
+  | moduleTraces = trace str x
+  | otherwise = x
+
+goTraceM :: forall f. Applicative f => String -> f ()
+goTraceM msg
+ | moduleTraces = traceM msg
+ | otherwise = pure ()
+
+spacer = '\n' : replicate 20 '-'
+prettySubstitution :: Substitution -> String
+
+prettySubstitution Substitution{..} =
+  "SUBSTITUTION: "
+  <> "\n SUBST_TYPE: " <> show (bimap show prettyTypeStr <$> M.toList substType)
+  <> "\n SUBST_UNSOLVED: " <> show (bimap show (bimap show prettyTypeStr) <$> M.toList substUnsolved)
+  <> "\n SUBST_NAMES: " <> show (M.toList substNames)
 
 -- TODO/REVIEW/HACK: -----------------------------------
 -- NO CLUE IF THE CHANGES I MADE HERE ARE CORRECT
 generalizeUnknowns :: [(Unknown, SourceType)] -> SourceType -> SourceType
-generalizeUnknowns unks ty =
+generalizeUnknowns unks ty = goTrace msg $
   generalizeUnknownsWithVars (unknownVarNames (fst <$> usedTypeVariables ty) unks) ty
+ where
+   result =  generalizeUnknownsWithVars (unknownVarNames (fst <$> usedTypeVariables ty) unks) ty
+   msg = "GENERALIZE UNKNOWNS:\nUNKNOWNS" <> prettyUnknowns
+          <> "\n INPUT TYPE: " <> prettyTypeStr ty
+          <> "\n OUTPUT TYPE: " <> prettyTypeStr result
+          <> spacer
+   prettyUnknowns = concatMap (\x -> show (fst x) <> " :: " <> show (snd x) <> "\n") unks
+
 
 generalizeUnknownsWithVars :: [(Unknown, (Text, SourceType))] -> SourceType -> SourceType
-generalizeUnknownsWithVars binders ty =
+generalizeUnknownsWithVars binders ty = goTrace msg $
   mkForAll ((getAnnForType ty,) . fmap (replaceUnknownsWithVars binders) . snd <$> binders) . replaceUnknownsWithVars binders $ ty
+ where
+   prettyBinders :: [(Unknown, (Text, SourceType))] -> String
+   prettyBinders xs = concatMap (\x ->  show (fst x) <> ", " <> T.unpack (fst (snd x)) <> " := " <> prettyTypeStr (snd (snd x)) <> "\n") xs
+
+   msg = "GENERALIZE UNKNOWNS WITH VARS:"
+         <> "\n  UNKNOWNS: " <>  prettyBinders binders
+         <> "\n  TYPE: " <> prettyTypeStr ty
+         <> spacer
 
 replaceUnknownsWithVars :: [(Unknown, (Text, SourceType))] -> SourceType -> SourceType
 replaceUnknownsWithVars binders ty
@@ -92,7 +133,11 @@ unknownVarNames used unks =
   vars = fmap (("k" <>) . T.pack . show) ([1..] :: [Int])
 
 apply :: (MonadState CheckState m) => SourceType -> m SourceType
-apply ty = flip substituteType ty <$> gets checkSubstitution
+apply ty = goTrace msg $ flip substituteType ty <$> gets checkSubstitution
+  where
+    msg = "APPLY"
+          <> "\n  TYPE: " <> prettyTypeStr ty
+          <> spacer
 
 substituteType :: Substitution -> SourceType -> SourceType
 substituteType sub = everywhereOnTypes $ \case
@@ -163,8 +208,13 @@ inferKind
   -> m (SourceType, SourceType)
 inferKind = \tyToInfer ->
   withErrorMessageHint (ErrorInferringKind tyToInfer)
-    . rethrowWithPosition (fst $ getAnnForType tyToInfer)
-    $ go tyToInfer
+    . rethrowWithPosition (fst $ getAnnForType tyToInfer) $ do
+        result <- go tyToInfer
+        let msg = "\nINFERKIND INPUT: " <> prettyTypeStr tyToInfer
+                  <> "\nINFERKIND RESULT: " <> prettyTypeStr (snd result)
+                  <> "\n" <> replicate 20 '-'
+        goTraceM msg
+        pure result
   where
   go = \case
     ty@(TypeConstructor ann v) -> do
@@ -339,7 +389,7 @@ instantiateKind
   -> SourceType
   -> m SourceType
 instantiateKind (ty, kind1) kind2 = case kind1 of
-  ForAll _ _ a ( k) t _ | shouldInstantiate kind2 -> do
+  ForAll _ _ a k t _ | shouldInstantiate kind2 -> do
     let ann = getAnnForType ty
     u <- freshKindWithKind (fst ann) k
     instantiateKind (KindApp ann ty u, replaceTypeVars a u t) kind2
@@ -423,7 +473,7 @@ unifyKindsWithFailure
 unifyKindsWithFailure onFailure = go
   where
   goWithLabel l t1 t2 = withErrorMessageHint (ErrorInRowLabel l) $ go t1 t2
-  go = curry $ \case
+  go tx1 tx2  = goTrace msg $ case (tx1,tx2) of
     (TypeApp _ p1 p2, TypeApp _ p3 p4) -> do
       go p1 p3
       join $ go <$> apply p2 <*> apply p4
@@ -446,6 +496,11 @@ unifyKindsWithFailure onFailure = go
       solveUnknown a' p1
     (w1, w2) ->
       onFailure w1 w2
+   where
+     msg = "UNIFY KINDS WITH FAILURE"
+           <> "\n  Ty1: " <> prettyTypeStr tx1
+           <> "\n  Ty2: " <> prettyTypeStr tx2
+           <> "\n" <> replicate 20 '-'
 
   unifyRows r1 r2 = do
     let (matches, rest) = alignRowsWith goWithLabel r1 r2

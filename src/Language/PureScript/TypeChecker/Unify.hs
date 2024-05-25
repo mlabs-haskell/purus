@@ -30,9 +30,36 @@ import Language.PureScript.Crash (internalError)
 import Language.PureScript.Environment qualified as E
 import Language.PureScript.Errors (ErrorMessageHint(..), MultipleErrors, SimpleErrorMessage(..), SourceAnn, errorMessage, internalCompilerError, onErrorMessages, rethrow, warnWithPosition, withoutPosition)
 import Language.PureScript.TypeChecker.Kinds (elaborateKind, instantiateKind, unifyKinds')
-import Language.PureScript.TypeChecker.Monad (CheckState(..), Substitution(..), UnkLevel(..), Unknown, getLocalContext, guardWith, lookupUnkName, withErrorMessageHint)
+import Language.PureScript.TypeChecker.Monad (CheckState(..), Substitution(..), UnkLevel(..), Unknown, getLocalContext, guardWith, lookupUnkName, withErrorMessageHint, debugSubstitution)
 import Language.PureScript.TypeChecker.Skolems (newSkolemConstant, skolemize)
 import Language.PureScript.Types (Constraint(..), pattern REmptyKinded, RowListItem(..), SourceType, Type(..), WildcardData(..), alignRowsWith, everythingOnTypes, everywhereOnTypes, everywhereOnTypesM, getAnnForType, mkForAll, rowFromList, srcTUnknown)
+
+import Debug.Trace
+import Data.Bifunctor (bimap)
+import Language.PureScript.CoreFn.Pretty.Types (prettyTypeStr)
+
+
+moduleTraces :: Bool
+moduleTraces = True
+
+goTrace :: forall x. String -> x -> x
+goTrace str x
+  | moduleTraces = trace str x
+  | otherwise = x
+
+goTraceM :: forall f. Applicative f => String -> f ()
+goTraceM msg
+ | moduleTraces = traceM msg
+ | otherwise = pure ()
+
+spacer = "\n" <> replicate 20 '-'
+
+prettySubstitution :: Substitution -> String
+prettySubstitution Substitution{..} =
+  "SUBSTITUTION: "
+  <> "\n SUBST_TYPE: " <> show (bimap show prettyTypeStr <$> M.toList substType)
+  <> "\n SUBST_UNSOLVED: " <> show (bimap show (bimap show prettyTypeStr) <$> M.toList substUnsolved)
+  <> "\n SUBST_NAMES: " <> show (M.toList substNames)
 
 -- | Generate a fresh type variable with an unknown kind. Avoid this if at all possible.
 freshType :: (MonadState CheckState m) => m SourceType
@@ -62,7 +89,7 @@ freshTypeWithKind kind = state $ \st -> do
 
 -- | Update the substitution to solve a type constraint
 solveType :: (MonadError MultipleErrors m, MonadState CheckState m) => Int -> SourceType -> m ()
-solveType u t = rethrow (onErrorMessages withoutPosition) $ do
+solveType u t = goTrace msg $ rethrow (onErrorMessages withoutPosition) $ do
   -- We strip the position so that any errors get rethrown with the position of
   -- the original unification constraint. Otherwise errors may arise from arbitrary
   -- locations. We don't otherwise have the "correct" position on hand, since it
@@ -77,11 +104,22 @@ solveType u t = rethrow (onErrorMessages withoutPosition) $ do
                                                     M.insert u t' $ substType $ checkSubstitution cs
                                                 }
                      }
-
+ where
+   msg = "SOLVETYPE"
+         <> "\n UNKNOWN: " <> show u
+         <> "\n TYPE: " <> prettyTypeStr t
 -- | Apply a substitution to a type
 substituteType :: Substitution -> SourceType -> SourceType
-substituteType sub = everywhereOnTypes go
+substituteType sub toSub =  goTrace msg result
   where
+  result = everywhereOnTypes go toSub
+
+  msg = "SUBSTITUTE TYPE"
+        <> "\n SUBSTITUTION: " <> prettySubstitution sub
+        <> "\n INPUT: " <> prettyTypeStr toSub
+        <> "\n RESULT: " <> prettyTypeStr result
+        <> spacer
+
   go (TUnknown ann u) =
     case M.lookup u (substType sub) of
       Nothing -> TUnknown ann u
@@ -108,6 +146,11 @@ unknownsInType t = everythingOnTypes (.) go t []
 -- | Unify two types, updating the current substitution
 unifyTypes :: (MonadError MultipleErrors m, MonadState CheckState m) => SourceType -> SourceType -> m ()
 unifyTypes t1 t2 = do
+  let msg = "UNIFY TYPES"
+            <> "\n  TYPE A: " <> prettyTypeStr t1
+            <> "\n  TYPE B: " <> prettyTypeStr t2
+            <> "\n" <> replicate 20 '-'
+  goTraceM msg
   sub <- gets checkSubstitution
   withErrorMessageHint (ErrorUnifyingTypes t1 t2) $ unifyTypes' (substituteType sub t1) (substituteType sub t2)
   where
@@ -128,7 +171,7 @@ unifyTypes t1 t2 = do
     sk `unifyTypes` ty2
   unifyTypes' ForAll{} _ = internalError "unifyTypes: unspecified skolem scope"
   unifyTypes' ty f@ForAll{} = f `unifyTypes` ty
-  unifyTypes' (TypeVar _ v1 k1) (TypeVar _ v2 k2) | v1 == v2 = pure () -- unifyTypes k1 k2  -- REVIEW/HACK: Not sure if this is right...
+  unifyTypes' (TypeVar _ v1 k1) (TypeVar _ v2 k2) | v1 == v2  =  pure ()  -- REVIEW/HACK: Not sure if this is right...
   unifyTypes' ty1@(TypeConstructor _ c1) ty2@(TypeConstructor _ c2) =
     guardWith (errorMessage (TypesDoNotUnify ty1 ty2)) (c1 == c2)
   unifyTypes' (TypeLevelString _ s1) (TypeLevelString _ s2) | s1 == s2 = return ()
@@ -207,7 +250,14 @@ varIfUnknown unks ty = do
   -- This *should* be a map from TyVar names to their kinds. ugh
   let bindings = M.fromList $ snd <$> bn'
   ty' <- go ty
-  pure $ mkForAll bn' $ cleanup bindings ty'
+  let result =  mkForAll bn' $ cleanup bindings ty'
+      msg = "VAR_IF_UNKNOWN"
+            <> "\n UNKNOWNS: " <> show (bimap show prettyTypeStr <$> unks)
+            <> "\n INPUT: " <> prettyTypeStr ty
+            <> "\n RESULT: " <> prettyTypeStr result
+            <> "\n" <> replicate 20 '-'
+  goTraceM msg
+  pure result
   where
   toName :: Unknown -> m T.Text
   toName u = (<> T.pack (show u)) . fromMaybe "t" <$> lookupUnkName u
