@@ -10,8 +10,11 @@ Re-Exports:
 Foreign: 
   
 Declarations: 
-applyFn :: forall (a :: Type) (b :: Type). forall (c :: Type) (d :: Type). c -> d -> a -> b
+applyFn :: forall (a :: Prim.Type) (b :: Prim.Type). forall (c :: Prim.Type) (d :: Prim.Type). (c :: Prim.Type) -> (d :: Prim.Type) -> (a :: Prim.Type) -> (b :: Prim.Type)
 applyFn = 
-  \(f: forall (c :: Type) (d :: Type). c -> d) -> 
-    \(a: a) -> 
-      (f: forall (c :: Type) (d :: Type). c -> d) (a: a)
+  \(f: forall (c :: Prim.Type)
+    (d :: Prim.Type). (c :: Prim.Type) -> (d :: Prim.Type)) -> 
+    \(a: (a :: Prim.Type)) -> 
+      (f: forall (c :: Prim.Type)
+      (d :: Prim.Type). (c :: Prim.Type) -> (d :: Prim.Type))
+      (a: (a :: Prim.Type))

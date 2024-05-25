@@ -46,6 +46,7 @@ import Data.Bitraversable (Bitraversable(..))
 import Language.PureScript.Names (runProperName, coerceProperName)
 
 import Debug.Trace (trace)
+import Data.List (partition)
 
 type ConvertM a = State (Map Text T.SourceType) a
 
@@ -77,34 +78,42 @@ srcTokenRange = tokRange . tokAnn
 
 -}
 groupSignaturesAndDeclarations :: Show a => [Declaration a] -> [[Declaration a]]
-groupSignaturesAndDeclarations decls = trace ("DECLARATIONS (grouping): " <> concatMap ((<> "\n\n") . show) decls)
-  $ foldr (go kindSigs typeSigs) [] decls'
+groupSignaturesAndDeclarations [] = []
+groupSignaturesAndDeclarations decls = trace ("DECLARATIONS (grouping): \n" <> concatMap ((<> "\n\n") . show) decls)
+  $ go kindSigs typeSigs decls'
   where
-    -- I think this minimizes the # of traversals?
     ((kindSigs,typeSigs),decls') = foldr (\x acc -> case x of
         ksig@(DeclKindSignature _ _ (Labeled (nameValue -> nm) _ ty)) -> first (first $ M.insert nm ksig) acc
         tsig@(DeclSignature _ (Labeled (nameValue -> nm) _ _)) -> first (second (M.insert nm tsig)) acc
         other -> second (other:) acc
       ) ((M.empty,M.empty),[]) decls
 
-    go ksigs tsigs x acc = case x of
+    go ksigs tsigs [] = []
+    go ksigs tsigs (d:ds)  = case d of
       dataDecl@(DeclData _ (DataHead _ (nameValue -> nm) _ ) _) -> case M.lookup nm ksigs of
-        Just sigDecl -> [sigDecl,dataDecl] : acc
-        Nothing -> [dataDecl] : acc
+        Just sigDecl -> [sigDecl,dataDecl] : go ksigs tsigs ds
+        Nothing -> [dataDecl] : go ksigs tsigs ds
       tyDecl@(DeclType _ (DataHead _ (nameValue -> nm) _) _ _) -> case M.lookup nm ksigs of
-        Just sigDecl -> [sigDecl,tyDecl] : acc
-        Nothing -> [tyDecl] : acc
+        Just sigDecl -> [sigDecl,tyDecl] : go ksigs tsigs ds
+        Nothing -> [tyDecl] : go ksigs tsigs ds
       newtypeDecl@(DeclNewtype _ (DataHead _ (nameValue -> nm) _) _ _ _) -> case M.lookup nm ksigs of
-        Just sigDecl -> [sigDecl,newtypeDecl] : acc
-        Nothing -> [newtypeDecl] : acc
+        Just sigDecl -> [sigDecl,newtypeDecl] : go ksigs tsigs ds
+        Nothing -> [newtypeDecl] : go ksigs tsigs ds
       classDecl@(DeclClass _ (clsName -> nm) _) -> case M.lookup (coerceProperName $ nameValue nm) ksigs of
-        Just sigDecl -> [sigDecl,classDecl] : acc
-        Nothing -> [classDecl] : acc
-      valDecl@(DeclValue _ (valName -> nm)) -> case M.lookup (nameValue nm) tsigs of
-        Just sigDecl -> [sigDecl,valDecl] : acc
-        Nothing -> [valDecl] : acc
+        Just sigDecl -> [sigDecl,classDecl] : go ksigs tsigs ds
+        Nothing -> [classDecl] : go ksigs tsigs ds
+      valDecl@(DeclValue _ (valName -> nm)) ->
+        let (valDecls',ds') = partition (valDecWithName nm) ds
+            valDecls = valDecl : valDecls'
+        in case M.lookup (nameValue nm) tsigs of
+             Just sigDecl -> (sigDecl:valDecls) : go ksigs tsigs ds'
+             Nothing -> valDecls : go ksigs tsigs ds'
       -- I don't think anything else can have a type/kind sig but I could be wrong...
-      other -> [other] : acc
+      other -> [other] : go ksigs tsigs ds
+     where
+       valDecWithName :: Name Ident -> Declaration a -> Bool
+       valDecWithName nm (DeclValue _ (valName -> nm')) = nameValue nm == nameValue nm'
+       valDecWithName _ _ = False
 
  
 comment :: Comment a -> Maybe C.Comment

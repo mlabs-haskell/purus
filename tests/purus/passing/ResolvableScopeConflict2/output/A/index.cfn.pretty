@@ -10,8 +10,8 @@ Re-Exports:
 Foreign: 
   
 Declarations: 
-zing :: Int
-zing = (3: Int)
+zing :: Prim.Int
+zing = (3: Prim.Int)
 
-thing :: Int
-thing = (2: Int)
+thing :: Prim.Int
+thing = (2: Prim.Int)

@@ -1,0 +1,584 @@
+Lib (tests/purus/passing/Misc/Lib.purs)
+Imported Modules: 
+  Builtin,
+  Lib,
+  Prim
+Exports: 
+  compare,
+  eq,
+  eq2,
+  minus,
+  testEq,
+  workingEven,
+  brokenEven,
+  testEq2,
+  ConInt,
+  ConInts,
+  ConBoolean,
+  ConString,
+  ConChar,
+  ConNested,
+  ConQuantified,
+  ConConstrained,
+  ConObject,
+  ConObjectQuantified,
+  testBinders,
+  mutuallyRecursiveBindingGroup,
+  mutuallyRecursiveBindingGroupNoTypes,
+  nestedBinds,
+  ADataRec,
+  ANewTypeRec,
+  Constr1,
+  Constr2,
+  anIntLit,
+  aStringLit,
+  aVal,
+  testasum,
+  aBool,
+  aList,
+  aFunction,
+  aFunction2,
+  aFunction3,
+  aFunction4,
+  aFunction5,
+  aFunction6,
+  recF1,
+  recG1,
+  testBuiltin,
+  main,
+  plus,
+  guardedCase,
+  nestedApplications,
+  anObj,
+  objUpdate,
+  polyInObj,
+  polyInObjMatch,
+  aPred,
+  cons,
+  emptyList,
+  consEmptyList1,
+  consEmptyList2,
+  id,
+  objForall,
+  arrForall,
+  testEqViaOrd,
+  eqInt,
+  eq2IntBoolean,
+  ordInt
+Re-Exports: 
+  
+Foreign: 
+  
+Declarations: 
+Eq2$Dict :: forall (a :: Prim.Type) (b :: Prim.Type). { eq2 :: (a :: Prim.Type) -> (b :: Prim.Type) -> Prim.Boolean } -> { eq2 :: (a :: Prim.Type) -> (b :: Prim.Type) -> Prim.Boolean }
+Eq2$Dict = 
+  \(x: {   eq2 :: (a :: Prim.Type) -> (b :: Prim.Type) -> Prim.Boolean }) -> 
+    (x: {   eq2 :: (a :: Prim.Type) -> (b :: Prim.Type) -> Prim.Boolean })
+
+Eq$Dict :: forall (a :: Prim.Type). { eq :: (a :: Prim.Type) -> (a :: Prim.Type) -> Prim.Boolean } -> { eq :: (a :: Prim.Type) -> (a :: Prim.Type) -> Prim.Boolean }
+Eq$Dict = 
+  \(x: {   eq :: (a :: Prim.Type) -> (a :: Prim.Type) -> Prim.Boolean }) -> 
+    (x: {   eq :: (a :: Prim.Type) -> (a :: Prim.Type) -> Prim.Boolean })
+
+Ord$Dict :: forall (a :: Prim.Type). { compare :: (a :: Prim.Type) -> (a :: Prim.Type) -> Prim.Int, Eq0 :: Prim.Record {} -> Lib.Eq$Dict (a :: Prim.Type) } -> { compare :: (a :: Prim.Type) -> (a :: Prim.Type) -> Prim.Int, Eq0 :: Prim.Record {} -> Lib.Eq$Dict (a :: Prim.Type) }
+Ord$Dict = 
+  \(x: {
+         compare :: (a :: Prim.Type) -> (a :: Prim.Type) -> Prim.Int,
+         Eq0 :: Prim.Record {} -> Lib.Eq$Dict (a :: Prim.Type)
+       }) -> 
+    (x: {
+          compare :: (a :: Prim.Type) -> (a :: Prim.Type) -> Prim.Int,
+          Eq0 :: Prim.Record {} -> Lib.Eq$Dict (a :: Prim.Type)
+        })
+
+ConInt :: Prim.Int -> Lib.TestBinderSum
+ConInt = ConInt
+
+ConInts :: Array (Prim.Int) -> Lib.TestBinderSum
+ConInts = ConInts
+
+ConBoolean :: Prim.Boolean -> Lib.TestBinderSum
+ConBoolean = ConBoolean
+
+ConString :: Prim.String -> Lib.TestBinderSum
+ConString = ConString
+
+ConChar :: Prim.Char -> Lib.TestBinderSum
+ConChar = ConChar
+
+ConNested :: Lib.TestBinderSum -> Lib.TestBinderSum
+ConNested = ConNested
+
+ConQuantified :: forall (x :: Prim.Type). (x :: Prim.Type) -> Prim.Int -> Lib.TestBinderSum
+ConQuantified = ConQuantified
+
+ConConstrained :: forall (x :: Prim.Type). Lib.Eq$Dict (x :: Prim.Type) -> (x :: Prim.Type) -> Prim.Int -> Lib.TestBinderSum
+ConConstrained = ConConstrained
+
+ConObject :: { objField :: Prim.Int } -> Lib.TestBinderSum
+ConObject = ConObject
+
+ConObjectQuantified :: { objFieldQ :: forall (x :: Prim.Type). (x :: Prim.Type) -> Prim.Int } -> Lib.TestBinderSum
+ConObjectQuantified = ConObjectQuantified
+
+Constr1 :: Prim.Int -> Lib.ASum
+Constr1 = Constr1
+
+Constr2 :: Prim.Boolean -> Lib.ASum
+Constr2 = Constr2
+
+ANewTypeRec :: { foo :: Prim.Int } -> { foo :: Prim.Int }
+ANewTypeRec = \(x: { foo :: Prim.Int }) -> (x: { foo :: Prim.Int })
+
+ADataRec :: { hello :: Prim.Int, world :: Prim.Boolean } -> Lib.ADataRec
+ADataRec = ADataRec
+
+eqInt :: Lib.Eq$Dict Prim.Int
+eqInt = 
+  (Eq$Dict: {   eq :: Prim.Int -> Prim.Int -> Prim.Boolean } ->
+  Lib.Eq$Dict Prim.Int)
+  ({
+     eq: \(v: Prim.Int) -> 
+       \(v1: Prim.Int) -> 
+         (true: Prim.Boolean)
+   }: { eq :: Prim.Int -> Prim.Int -> Prim.Boolean })
+
+ordInt :: Lib.Ord$Dict Prim.Int
+ordInt = 
+  (Ord$Dict: {
+               compare :: Prim.Int -> Prim.Int -> Prim.Int,
+               Eq0 :: Prim.Record {}@Prim.Type -> Lib.Eq$Dict Prim.Int
+             } ->
+  Lib.Ord$Dict Prim.Int)
+  ({
+     Eq0: \($__unused: Prim.Record {}@Prim.Type) -> 
+       (eqInt: Lib.Eq$Dict Prim.Int),
+     compare: \(v: Prim.Int) -> 
+       \(v1: Prim.Int) -> 
+         (42: Prim.Int)
+   }: {
+        compare :: Prim.Int -> Prim.Int -> Prim.Int,
+        Eq0 :: Prim.Record {}@Prim.Type -> Lib.Eq$Dict Prim.Int
+      })
+
+eq2IntBoolean :: (Lib.Eq2$Dict Prim.Int Prim.Boolean)
+eq2IntBoolean = 
+  (Eq2$Dict: {   eq2 :: Prim.Int -> Prim.Boolean -> Prim.Boolean } ->
+  (Lib.Eq2$Dict Prim.Int Prim.Boolean))
+  ({
+     eq2: \(v: Prim.Int) -> 
+       \(v1: Prim.Boolean) -> 
+         (true: Prim.Boolean)
+   }: { eq2 :: Prim.Int -> Prim.Boolean -> Prim.Boolean })
+
+testasum :: Lib.ASum -> Prim.Int
+testasum = 
+  \(x: Lib.ASum) -> 
+    case (x: Lib.ASum) of 
+       Constr1 y -> (1: Prim.Int)
+       Constr2 z -> (2: Prim.Int)
+
+testBuiltin :: Prim.Int
+testBuiltin = 
+  (addInteger: Prim.Int -> Prim.Int -> Prim.Int) (1: Prim.Int) (2: Prim.Int)
+
+testBinders :: Lib.TestBinderSum -> Prim.Int
+testBinders = 
+  \(x: Lib.TestBinderSum) -> 
+    case (x: Lib.TestBinderSum) of 
+       a@ConInt 3 -> (1: Prim.Int)
+       ConInt a -> (a: Prim.Int)
+       ConInts [3] -> (2: Prim.Int)
+       ConInts [a, b] -> (b: Prim.Int)
+       ConBoolean true -> (4: Prim.Int)
+       ConChar '\n' -> (5: Prim.Int)
+       ConNested ConInt 2 -> (6: Prim.Int)
+       ConQuantified f -> 
+         (f: forall (x :: Prim.Type). (x :: Prim.Type) -> Prim.Int)
+         ("hello": Prim.String)
+       ConConstrained f -> 
+         (f: forall (x :: Prim.Type). Lib.Eq$Dict (x :: Prim.Type) ->
+         (x :: Prim.Type) -> Prim.Int)
+         (eqInt: Lib.Eq$Dict Prim.Int)
+         (2: Prim.Int)
+       ConNested other -> (7: Prim.Int)
+       ConObject obj -> (obj: { objField :: Prim.Int }).objField
+       ConObjectQuantified objQ -> 
+         ((objQ: {
+                   objFieldQ :: forall (x :: Prim.Type). (x :: Prim.Type) ->
+                   Prim.Int
+                 })
+         .objFieldQ)
+         ("world": Prim.String)
+       ConObject { objField: f } -> (f: Prim.Int)
+       _ -> (0: Prim.Int)
+
+recG1 :: forall (x :: Prim.Type). (x :: Prim.Type) -> Prim.Int
+recG1 = 
+  \(x: (x :: Prim.Type)) -> 
+    (recF1: forall (x :: Prim.Type). (x :: Prim.Type) -> Prim.Int)
+    (x: (x :: Prim.Type))
+recF1 :: forall (x :: Prim.Type). (x :: Prim.Type) -> Prim.Int
+recF1 = 
+  \(x: (x :: Prim.Type)) -> 
+    (recG1: forall (x :: Prim.Type). (x :: Prim.Type) -> Prim.Int)
+    (x: (x :: Prim.Type))
+
+polyInObj :: { bar :: forall (x :: Prim.Type). (x :: Prim.Type) -> Prim.Int, baz :: Prim.Int }
+polyInObj = 
+  let
+    go :: forall (y :: Prim.Type). (y :: Prim.Type) -> Prim.Int
+    go = \(v: (y :: Prim.Type)) -> (5: Prim.Int)
+  in ({
+        baz: (100: Prim.Int),
+        bar: (go: forall (y :: Prim.Type). (y :: Prim.Type) -> Prim.Int)
+      }: {
+           bar :: forall (x :: Prim.Type). (x :: Prim.Type) -> Prim.Int,
+           baz :: Prim.Int
+         })
+
+polyInObjMatch :: Prim.Int
+polyInObjMatch = 
+  case (polyInObj: { bar :: forall (x :: Prim.Type). (x :: Prim.Type) -> Prim.Int, baz :: Prim.Int }) of 
+     { bar: f, baz: _ } -> 
+       (f: forall (x :: Prim.Type). (x :: Prim.Type) -> Prim.Int)
+       ("hello": Prim.String)
+
+plus :: Prim.Int -> Prim.Int -> Prim.Int
+plus = 
+  \(a: Prim.Int) -> 
+    \(b: Prim.Int) -> 
+      (addInteger: Prim.Int -> Prim.Int -> Prim.Int) (a: Prim.Int) (b: Prim.Int)
+
+nestedBinds :: Prim.Int
+nestedBinds = 
+  let
+    g :: forall (a :: Prim.Type). (a :: Prim.Type) -> Prim.Int
+    g = \(v: (a :: Prim.Type)) -> (5: Prim.Int)
+    f :: Prim.Int -> Prim.Int
+    f = \(v: Prim.Int) -> (4: Prim.Int)
+    h :: Prim.Int
+    h = 
+      let
+        i :: Prim.Int
+        i = 
+          (g: forall (a :: Prim.Type). (a :: Prim.Type) -> Prim.Int)
+          ("hello": Prim.String)
+        j :: Prim.Int
+        j = (f: Prim.Int -> Prim.Int) (i: Prim.Int)
+      in (f: Prim.Int -> Prim.Int) (j: Prim.Int)
+  in (h: Prim.Int)
+
+nestedApplications :: Prim.Int
+nestedApplications = 
+  let
+    i :: Prim.Int -> Prim.Int -> Prim.Int
+    i = \(x: Prim.Int) -> \(v: Prim.Int) -> (x: Prim.Int)
+    h :: Prim.Int -> Prim.Int
+    h = 
+      \(v: Prim.Int) -> 
+        case (v: Prim.Int) of 
+           2 -> (3: Prim.Int)
+           _ -> (5: Prim.Int)
+    g :: Prim.Int -> Prim.Int
+    g = \(v: Prim.Int) -> (5: Prim.Int)
+    f :: Prim.Int -> Prim.Int
+    f = \(x: Prim.Int) -> (x: Prim.Int)
+  in (i: Prim.Int -> Prim.Int -> Prim.Int)
+     ((f: Prim.Int -> Prim.Int)
+      ((g: Prim.Int -> Prim.Int) ((h: Prim.Int -> Prim.Int) (2: Prim.Int))))
+     (4: Prim.Int)
+
+mutuallyRecursiveBindingGroupNoTypes :: Prim.Int
+mutuallyRecursiveBindingGroupNoTypes = 
+  let
+    h' :: Prim.Int -> Prim.Int -> Prim.Int
+    h' = \(x: Prim.Int) -> \(y: Prim.Int) -> (y: Prim.Int)
+    g' :: Prim.Int -> Prim.Int
+    g' = 
+      \(y: Prim.Int) -> 
+        (h': Prim.Int -> Prim.Int -> Prim.Int)
+        ((f': Prim.Int -> Prim.Int) (y: Prim.Int))
+        (3: Prim.Int)
+    f' :: Prim.Int -> Prim.Int
+    f' = \(x: Prim.Int) -> (g': Prim.Int -> Prim.Int) (2: Prim.Int)
+  in (g': Prim.Int -> Prim.Int) (3: Prim.Int)
+
+mutuallyRecursiveBindingGroup :: Prim.Int
+mutuallyRecursiveBindingGroup = 
+  let
+    h :: Prim.Int -> Prim.Int -> Prim.Int
+    h = \(x: Prim.Int) -> \(y: Prim.Int) -> (y: Prim.Int)
+    g :: Prim.Int -> Prim.Int
+    g = 
+      \(y: Prim.Int) -> 
+        (h: Prim.Int -> Prim.Int -> Prim.Int)
+        ((f: Prim.Int -> Prim.Int) (y: Prim.Int))
+        (3: Prim.Int)
+    f :: Prim.Int -> Prim.Int
+    f = \(x: Prim.Int) -> (g: Prim.Int -> Prim.Int) (2: Prim.Int)
+  in (g: Prim.Int -> Prim.Int) (3: Prim.Int)
+
+minus :: Prim.Int -> Prim.Int -> Prim.Int
+minus = \(v: Prim.Int) -> \(v1: Prim.Int) -> (42: Prim.Int)
+
+id :: forall (t :: Prim.Type). (t :: Prim.Type) -> (t :: Prim.Type)
+id = \(x: (t :: Prim.Type)) -> (x: (t :: Prim.Type))
+
+objForall :: forall (a :: Prim.Type) (b :: Prim.Type). { getIdA :: (a :: Prim.Type) -> (a :: Prim.Type), getIdB :: (b :: Prim.Type) -> (b :: Prim.Type) }
+objForall = 
+  ({
+     getIdB: (id: forall (t :: Prim.Type). (t :: Prim.Type) ->
+     (t :: Prim.Type)),
+     getIdA: (id: forall (t :: Prim.Type). (t :: Prim.Type) -> (t :: Prim.Type))
+   }: forall (a :: Prim.Type)
+      (b :: Prim.Type). {
+                          getIdA :: (a :: Prim.Type) -> (a :: Prim.Type),
+                          getIdB :: (b :: Prim.Type) -> (b :: Prim.Type)
+                        })
+
+eq2 :: forall (@a :: Prim.Type) (@b :: Prim.Type). (Lib.Eq2$Dict (a :: Prim.Type) (b :: Prim.Type)) -> (a :: Prim.Type) -> (b :: Prim.Type) -> Prim.Boolean
+eq2 = 
+  \(dict: (Lib.Eq2$Dict (a :: Prim.Type) (b :: Prim.Type))) -> 
+    case (dict: (Lib.Eq2$Dict (a :: Prim.Type) (b :: Prim.Type))) of 
+       Eq2$Dict v -> 
+         (v: {   eq2 :: (a :: Prim.Type) -> (b :: Prim.Type) -> Prim.Boolean })
+         .eq2
+
+testEq2 :: Prim.Boolean
+testEq2 = 
+  (eq2: forall (@a :: Prim.Type)
+  (@b :: Prim.Type). (Lib.Eq2$Dict (a :: Prim.Type) (b :: Prim.Type)) ->
+  (a :: Prim.Type) -> (b :: Prim.Type) -> Prim.Boolean)
+  (eq2IntBoolean: (Lib.Eq2$Dict Prim.Int Prim.Boolean))
+  (101: Prim.Int)
+  (false: Prim.Boolean)
+
+eq :: forall (@a :: Prim.Type). Lib.Eq$Dict (a :: Prim.Type) -> (a :: Prim.Type) -> (a :: Prim.Type) -> Prim.Boolean
+eq = 
+  \(dict: Lib.Eq$Dict (a :: Prim.Type)) -> 
+    case (dict: Lib.Eq$Dict (a :: Prim.Type)) of 
+       Eq$Dict v -> 
+         (v: {   eq :: (a :: Prim.Type) -> (a :: Prim.Type) -> Prim.Boolean })
+         .eq
+
+testEq :: Prim.Boolean
+testEq = 
+  (eq: forall (@a :: Prim.Type). Lib.Eq$Dict (a :: Prim.Type) ->
+  (a :: Prim.Type) -> (a :: Prim.Type) -> Prim.Boolean)
+  (eqInt: Lib.Eq$Dict Prim.Int)
+  (1: Prim.Int)
+  (2: Prim.Int)
+
+testEqViaOrd :: forall (a :: Prim.Type). Lib.Ord$Dict (a :: Prim.Type) -> (a :: Prim.Type) -> (a :: Prim.Type) -> Prim.Boolean
+testEqViaOrd = 
+  \(dictOrd: Lib.Ord$Dict (a :: Prim.Type)) -> 
+    \(a: (a :: Prim.Type)) -> 
+      \(b: (a :: Prim.Type)) -> 
+        (eq: forall (@a :: Prim.Type). Lib.Eq$Dict (a :: Prim.Type) ->
+        (a :: Prim.Type) -> (a :: Prim.Type) -> Prim.Boolean)
+        (((dictOrd: Lib.Ord$Dict (a :: Prim.Type)).Eq0) ({  }: Prim.Record {}))
+        (a: (a :: Prim.Type))
+        (b: (a :: Prim.Type))
+
+workingEven :: Prim.Int -> Prim.Int
+workingEven = 
+  \(n: Prim.Int) -> 
+    case ((eq: forall (@a :: Prim.Type). Lib.Eq$Dict (a :: Prim.Type) -> (a :: Prim.Type) -> (a :: Prim.Type) -> Prim.Boolean) (eqInt: Lib.Eq$Dict Prim.Int) (n: Prim.Int) (0: Prim.Int)) of 
+       true -> (1: Prim.Int)
+       _ -> (42: Prim.Int)
+
+emptyList :: forall (t90 :: Prim.Type). Array ((t90 :: Prim.Type))
+emptyList = ([]: forall (t90 :: Prim.Type). Array ((t90 :: Prim.Type)))
+
+cons :: forall (a :: Prim.Type). (a :: Prim.Type) -> Array ((a :: Prim.Type)) -> Array ((a :: Prim.Type))
+cons = 
+  \(x: (a :: Prim.Type)) -> 
+    \(xs: Array ((a :: Prim.Type))) -> 
+      ([(x: (a :: Prim.Type))]: Array ((a :: Prim.Type)))
+
+consEmptyList1 :: Array (Prim.Int)
+consEmptyList1 = 
+  (cons: forall (a :: Prim.Type). (a :: Prim.Type) ->
+  Array ((a :: Prim.Type)) -> Array ((a :: Prim.Type)))
+  (1: Prim.Int)
+  (emptyList: forall (t90 :: Prim.Type). Array ((t90 :: Prim.Type)))
+
+consEmptyList2 :: Array (Prim.String)
+consEmptyList2 = 
+  (cons: forall (a :: Prim.Type). (a :: Prim.Type) ->
+  Array ((a :: Prim.Type)) -> Array ((a :: Prim.Type)))
+  ("hello": Prim.String)
+  (emptyList: forall (t90 :: Prim.Type). Array ((t90 :: Prim.Type)))
+
+compare :: forall (@a :: Prim.Type). Lib.Ord$Dict (a :: Prim.Type) -> (a :: Prim.Type) -> (a :: Prim.Type) -> Prim.Int
+compare = 
+  \(dict: Lib.Ord$Dict (a :: Prim.Type)) -> 
+    case (dict: Lib.Ord$Dict (a :: Prim.Type)) of 
+       Ord$Dict v -> 
+         (v: {
+               compare :: (a :: Prim.Type) -> (a :: Prim.Type) -> Prim.Int,
+               Eq0 :: Prim.Record {}@Prim.Type -> Lib.Eq$Dict (a :: Prim.Type)
+             })
+         .compare
+
+brokenEven :: Prim.Int -> Prim.Int
+brokenEven = 
+  \(n: Prim.Int) -> 
+    case ((eq: forall (@a :: Prim.Type). Lib.Eq$Dict (a :: Prim.Type) -> (a :: Prim.Type) -> (a :: Prim.Type) -> Prim.Boolean) (eqInt: Lib.Eq$Dict Prim.Int) (n: Prim.Int) (0: Prim.Int)) of 
+       true -> (1: Prim.Int)
+       _ -> 
+         (brokenEven: Prim.Int -> Prim.Int)
+         ((minus: Prim.Int -> Prim.Int -> Prim.Int) (n: Prim.Int) (2: Prim.Int))
+
+arrForall :: forall (a :: Prim.Type). Array ((a :: Prim.Type) -> (a :: Prim.Type))
+arrForall = 
+  ([ (id: forall (t :: Prim.Type). (t :: Prim.Type) -> (t :: Prim.Type)) ]: forall (a :: Prim.Type). Array ((a :: Prim.Type) ->
+                                                                            (a :: Prim.Type)))
+
+anObj :: { foo :: Prim.Int }
+anObj = ({ foo: (3: Prim.Int) }: { foo :: Prim.Int })
+
+objUpdate :: { foo :: Prim.Int }
+objUpdate = 
+  let
+    v :: { foo :: Prim.Int }
+    v = (anObj: { foo :: Prim.Int })
+  in (v: { foo :: Prim.Int }) { foo = (4: Prim.Int) }
+
+anIntLit :: Prim.Int
+anIntLit = (1: Prim.Int)
+
+aVal :: Prim.Int
+aVal = (1: Prim.Int)
+
+aStringLit :: Prim.String
+aStringLit = ("woop": Prim.String)
+
+aPred :: Prim.Int -> Prim.Boolean
+aPred = \(v: Prim.Int) -> (true: Prim.Boolean)
+
+guardedCase :: Prim.Int -> Prim.Int -> Prim.Int
+guardedCase = 
+  \(w: Prim.Int) -> 
+    \(x: Prim.Int) -> 
+      let
+        v :: forall ($23 :: Prim.Type). ($23 :: Prim.Type) -> Prim.Int
+        v = \(v1: ($23 :: Prim.Type)) -> (0: Prim.Int)
+      in case (w: Prim.Int) (x: Prim.Int) of 
+            y z -> 
+              let
+                v1 :: Prim.Boolean
+                v1 = 
+                  (eq: forall (@a :: Prim.Type). Lib.Eq$Dict (a :: Prim.Type) ->
+                  (a :: Prim.Type) -> (a :: Prim.Type) -> Prim.Boolean)
+                  (eqInt: Lib.Eq$Dict Prim.Int)
+                  (y: Prim.Int)
+                  (2: Prim.Int)
+              in case (v1: Prim.Boolean) of 
+                    true -> 
+                      let
+                        v2 :: Prim.Boolean
+                        v2 = (aPred: Prim.Int -> Prim.Boolean) (y: Prim.Int)
+                      in case (v2: Prim.Boolean) of 
+                            true -> 
+                              let
+                                v3 :: Prim.Boolean
+                                v3 = 
+                                  (eq: forall (@a :: Prim.Type). Lib.Eq$Dict
+                                  (a :: Prim.Type) ->
+                                  (a :: Prim.Type) ->
+                                  (a :: Prim.Type) -> Prim.Boolean)
+                                  (eqInt: Lib.Eq$Dict Prim.Int)
+                                  (z: Prim.Int)
+                                  (0: Prim.Int)
+                              in case (v3: Prim.Boolean) of 
+                                    true -> 
+                                      let
+                                        v4 :: Prim.Boolean
+                                        v4 = 
+                                          (eq: forall (@a :: Prim.Type). Lib.Eq$Dict
+                                          (a :: Prim.Type) ->
+                                          (a :: Prim.Type) ->
+                                          (a :: Prim.Type) -> Prim.Boolean)
+                                          (eqInt: Lib.Eq$Dict Prim.Int)
+                                          (y: Prim.Int)
+                                          (nestedBinds: Prim.Int)
+                                      in case (v4: Prim.Boolean) of 
+                                            true -> (2: Prim.Int)
+                                            _ -> 
+                                              (v: forall ($23 :: Prim.Type). ($23 :: Prim.Type) ->
+                                              Prim.Int)
+                                              (true: Prim.Boolean)
+                                    _ -> 
+                                      (v: forall ($23 :: Prim.Type). ($23 :: Prim.Type) ->
+                                      Prim.Int)
+                                      (true: Prim.Boolean)
+                            _ -> 
+                              (v: forall ($23 :: Prim.Type). ($23 :: Prim.Type) ->
+                              Prim.Int)
+                              (true: Prim.Boolean)
+                    _ -> 
+                      (v: forall ($23 :: Prim.Type). ($23 :: Prim.Type) ->
+                      Prim.Int)
+                      (true: Prim.Boolean)
+
+aList :: Array (Prim.Int)
+aList = 
+  ([ (1: Prim.Int)
+   , (2: Prim.Int)
+   , (3: Prim.Int)
+   , (4: Prim.Int)
+   , (5: Prim.Int) ]: Array (Prim.Int))
+
+aFunction4 :: forall (r :: Prim.Row Prim.Type). { a :: Prim.Int | (r :: Prim.Row Prim.Type) } -> Prim.Int
+aFunction4 = 
+  \(r: {   a :: Prim.Int | (r :: Prim.Row Prim.Type) }) -> 
+    (r: {   a :: Prim.Int | (r :: Prim.Row Prim.Type) })
+    .a
+
+aFunction5 :: Prim.Int
+aFunction5 = 
+  (aFunction4: forall (r :: Prim.Row
+  Prim.Type). {   a :: Prim.Int | (r :: Prim.Row Prim.Type) } -> Prim.Int)
+  ({ a: (2: Prim.Int) }: { a :: Prim.Int })
+
+main :: Prim.Int
+main = 
+  (aFunction4: forall (r :: Prim.Row
+  Prim.Type). {   a :: Prim.Int | (r :: Prim.Row Prim.Type) } -> Prim.Int)
+  ({ b: ("hello": Prim.String), a: (101: Prim.Int) }: {
+                                                        a :: Prim.Int,
+                                                        b :: Prim.String
+                                                      })
+
+aFunction3 :: Prim.Int -> Prim.Int
+aFunction3 = 
+  \(x: Prim.Int) -> 
+    case ((eq: forall (@a :: Prim.Type). Lib.Eq$Dict (a :: Prim.Type) -> (a :: Prim.Type) -> (a :: Prim.Type) -> Prim.Boolean) (eqInt: Lib.Eq$Dict Prim.Int) (x: Prim.Int) (2: Prim.Int)) of 
+       true -> (4: Prim.Int)
+       _ -> (1: Prim.Int)
+
+aFunction2 :: Prim.Int -> Array (Prim.Int)
+aFunction2 = 
+  \(x: Prim.Int) -> ([(x: Prim.Int), (1: Prim.Int)]: Array (Prim.Int))
+
+aFunction :: forall (x :: Prim.Type). (x :: Prim.Type) -> forall (y :: Prim.Type). (y :: Prim.Type) -> Prim.Int -> Prim.Int
+aFunction = 
+  \(any: (x :: Prim.Type)) -> 
+    \(f: forall (y :: Prim.Type). (y :: Prim.Type) -> Prim.Int) -> 
+      (f: forall (y :: Prim.Type). (y :: Prim.Type) -> Prim.Int)
+      (any: (x :: Prim.Type))
+
+aFunction6 :: Prim.Int
+aFunction6 = 
+  let
+    go :: forall (z :: Prim.Type). (z :: Prim.Type) -> Prim.Int
+    go = \(v: (z :: Prim.Type)) -> (10: Prim.Int)
+  in (aFunction: forall (x :: Prim.Type). (x :: Prim.Type) ->
+     forall (y :: Prim.Type). (y :: Prim.Type) -> Prim.Int -> Prim.Int)
+     ([]: Array (t119))
+     (go: forall (z :: Prim.Type). (z :: Prim.Type) -> Prim.Int)
+
+aBool :: Prim.Boolean
+aBool = (true: Prim.Boolean)

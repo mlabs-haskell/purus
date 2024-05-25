@@ -11,8 +11,10 @@ Re-Exports:
 Foreign: 
   
 Declarations: 
-Test :: Test
+Test :: Main.Test
 Test = Test
 
-main :: String
-main = (runZ: Z -> String) ((Z: String -> Z) ("Done": String))
+main :: Prim.String
+main = 
+  (runZ: Test.Z -> Prim.String)
+  ((Z: Prim.String -> Test.Z) ("Done": Prim.String))

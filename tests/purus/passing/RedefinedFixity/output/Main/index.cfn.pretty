@@ -10,5 +10,5 @@ Re-Exports:
 Foreign: 
   
 Declarations: 
-main :: String
-main = ("Done": String)
+main :: Prim.String
+main = ("Done": Prim.String)

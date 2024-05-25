@@ -1,4 +1,4 @@
-Lib (tests/purus/passing/NonOrphanInstanceMulti/Lib.purs)
+Lib (tests/purus/passing/NonOrphanInstanceFunDepExtra/Lib.purs)
 Imported Modules: 
   Builtin,
   Prim

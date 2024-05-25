@@ -11,11 +11,11 @@ Re-Exports:
 Foreign: 
   
 Declarations: 
-Z :: String -> Z
+Z :: Prim.String -> Test.Z
 Z = Z
 
-runZ :: Z -> String
+runZ :: Test.Z -> Prim.String
 runZ = 
-  \(v: Z) -> 
-    case (v: Z) of 
-       Z s -> (s: String)
+  \(v: Test.Z) -> 
+    case (v: Test.Z) of 
+       Z s -> (s: Prim.String)

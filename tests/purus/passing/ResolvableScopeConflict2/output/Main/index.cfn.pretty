@@ -13,15 +13,15 @@ Re-Exports:
 Foreign: 
   
 Declarations: 
-thing :: Int
-thing = (1: Int)
+thing :: Prim.Int
+thing = (1: Prim.Int)
 
-what :: Boolean -> Int
+what :: Prim.Boolean -> Prim.Int
 what = 
-  \(v: Boolean) -> 
-    case (v: Boolean) of 
-       true -> (thing: Int)
-       false -> (zing: Int)
+  \(v: Prim.Boolean) -> 
+    case (v: Prim.Boolean) of 
+       true -> (thing: Prim.Int)
+       false -> (zing: Prim.Int)
 
-main :: String
-main = ("Done": String)
+main :: Prim.String
+main = ("Done": Prim.String)

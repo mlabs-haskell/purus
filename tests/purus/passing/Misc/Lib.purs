@@ -1,5 +1,7 @@
 module Lib where
 
+import Prim
+
 {- Type Classes -}
 -- Single Param
 class Eq (a :: Type) where

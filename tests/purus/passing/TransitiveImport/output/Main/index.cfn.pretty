@@ -11,8 +11,9 @@ Re-Exports:
 Foreign: 
   
 Declarations: 
-main :: Unit
+main :: Test.Unit
 main = 
-  (middle: forall (a :: Type). TestCls$Dict a -> a -> a)
-  (unitTestCls: TestCls$Dict Unit)
-  (unit: Unit)
+  (middle: forall (a :: Prim.Type). Test.TestCls$Dict (a :: Prim.Type) ->
+  (a :: Prim.Type) -> (a :: Prim.Type))
+  (unitTestCls: Test.TestCls$Dict Test.Unit)
+  (unit: Test.Unit)

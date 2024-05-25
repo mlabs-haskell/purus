@@ -5,5 +5,5 @@ import Test
 unit :: Unit
 unit = Unit
 
-middle :: forall a. TestCls a => a -> a
+middle :: forall (a :: Type). TestCls a => a -> a
 middle = test

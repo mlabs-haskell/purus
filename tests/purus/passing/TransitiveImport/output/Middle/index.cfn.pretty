@@ -12,11 +12,12 @@ Re-Exports:
 Foreign: 
   
 Declarations: 
-unit :: Unit
-unit = (Unit: Unit)
+unit :: Test.Unit
+unit = (Unit: Test.Unit)
 
-middle :: forall (a :: Type). TestCls$Dict a -> a -> a
+middle :: forall (a :: Prim.Type). Test.TestCls$Dict (a :: Prim.Type) -> (a :: Prim.Type) -> (a :: Prim.Type)
 middle = 
-  \(dictTestCls: TestCls$Dict a) -> 
-    (test: forall (@a :: Type). TestCls$Dict a -> a -> a)
-    (dictTestCls: TestCls$Dict a)
+  \(dictTestCls: Test.TestCls$Dict (a :: Prim.Type)) -> 
+    (test: forall (@a :: Prim.Type). Test.TestCls$Dict (a :: Prim.Type) ->
+    (a :: Prim.Type) -> (a :: Prim.Type))
+    (dictTestCls: Test.TestCls$Dict (a :: Prim.Type))

@@ -356,11 +356,50 @@ renameInModule imports (Module modSS coms mn decls exps) =
     updateType (TypeOp ann@(ss, _) name) = TypeOp ann <$> updateTypeOpName name ss
     updateType (TypeConstructor ann@(ss, _) name) = TypeConstructor ann <$> updateTypeName name ss
     updateType (ConstrainedType ann c t) = ConstrainedType ann <$> updateInConstraint c <*> pure t
-    updateType (TypeVar ann nm ki) = TypeVar ann nm <$> updateType ki
+    updateType (TypeVar ann nm ki) = TypeVar ann nm <$> updateType' ki
     updateType t = return t
     updateInConstraint :: SourceConstraint -> m SourceConstraint
     updateInConstraint (Constraint ann@(ss, _) name ks ts info) =
       Constraint ann <$> updateClassName name ss <*> pure ks <*> pure ts <*> pure info
+
+    {- NOTE/REVIEW/HACK:
+
+       Before our 'mandatory kinds' changes, `updateType` ignored TypeApps.
+
+       Our changes add mandatory kind annotations to Type variables. If those annotations mention
+       unqualified type constructors (kind constructors) from `Prim`, we need to qualify them to
+       avoid typechecking errors.
+
+       For example, if we have:
+
+       ```
+       aFunction4 :: forall (r :: Row Type). {a :: Int | r} -> Int
+       ```
+
+       Then `updateType` will ignore the `Row Type` annotation because there isn't a case branch
+       for TypeApps.
+
+       Adding a TypeApp case above breaks everything - afaict it qualifies local names
+       that shouldn't need to be qualified such that they're qualified by the module
+       in which they occur. (Didn't look too closely into why because it broke every single test
+       module).
+
+       We need this helper function to ensure that the above example does not have to be explicitly
+       annotated as
+
+       ```
+       aFunction4 :: forall (r :: Prim.Row Prim.Type). {a :: Int | r} -> Int
+       ```
+
+       THIS MIGHT BREAK SOMETHING. It appears to work with our existing tests, but those
+       are not comprehensive.
+    -}
+    updateType' :: SourceType -> m SourceType
+    updateType' = \case
+      TypeApp ann t1 t2 -> TypeApp ann <$> updateType' t1 <*> updateType' t2
+      other -> updateType other
+
+
 
   updateConstraints :: [SourceConstraint] -> m [SourceConstraint]
   updateConstraints = traverse $ \(Constraint ann@(pos, _) name ks ts info) ->

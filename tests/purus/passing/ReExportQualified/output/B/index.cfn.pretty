@@ -9,5 +9,5 @@ Re-Exports:
 Foreign: 
   
 Declarations: 
-y :: String
-y = ("ne": String)
+y :: Prim.String
+y = ("ne": Prim.String)

@@ -9,5 +9,5 @@ Re-Exports:
 Foreign: 
   
 Declarations: 
-thing :: Int
-thing = (1: Int)
+thing :: Prim.Int
+thing = (1: Prim.Int)

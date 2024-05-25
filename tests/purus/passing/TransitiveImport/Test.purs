@@ -2,7 +2,7 @@ module Test  where
 
 data Unit = Unit
 
-class TestCls a where
+class TestCls (a :: Type) where
   test :: a -> a
 
 instance unitTestCls :: TestCls Unit where
