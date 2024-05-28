@@ -7,7 +7,8 @@ Exports:
   runTest,
   Tuple,
   mappend,
-  testInt
+  testInt,
+  test/\
 Re-Exports: 
   
 Foreign: 
@@ -40,3 +41,32 @@ runTest =
 
 mappend :: Prim.String -> Prim.String -> Prim.String
 mappend = \(v: Prim.String) -> \(v1: Prim.String) -> ("mappend": Prim.String)
+
+test/\ :: forall (a :: Prim.Type) (b :: Prim.Type). Lib.Test$Dict (a :: Prim.Type) -> Lib.Test$Dict (b :: Prim.Type) -> Lib.Test$Dict (Lib.Tuple (a :: Prim.Type) (b :: Prim.Type))
+test/\ = 
+  \(dictTest: Lib.Test$Dict (a :: Prim.Type)) -> 
+    \(dictTest1: Lib.Test$Dict (b :: Prim.Type)) -> 
+      (Test$Dict: {
+                    runTest :: (Lib.Tuple (a :: Prim.Type) (b :: Prim.Type)) ->
+                    Prim.String
+                  } ->
+      Lib.Test$Dict (Lib.Tuple (a :: Prim.Type) (b :: Prim.Type)))
+      ({
+         runTest: \(v: (Lib.Tuple (a :: Prim.Type) (b :: Prim.Type))) -> 
+           case (v: (Lib.Tuple (a :: Prim.Type) (b :: Prim.Type))) of 
+              Tuple a b -> 
+                (mappend: Prim.String -> Prim.String -> Prim.String)
+                ((runTest: forall (@a :: Prim.Type). Lib.Test$Dict
+                 (a :: Prim.Type) ->
+                 (a :: Prim.Type) -> Prim.String)
+                 (dictTest: Lib.Test$Dict (a :: Prim.Type))
+                 (a: (a :: Prim.Type)))
+                ((runTest: forall (@a :: Prim.Type). Lib.Test$Dict
+                 (a :: Prim.Type) ->
+                 (a :: Prim.Type) -> Prim.String)
+                 (dictTest1: Lib.Test$Dict (b :: Prim.Type))
+                 (b: (b :: Prim.Type)))
+       }: {
+            runTest :: (Lib.Tuple (a :: Prim.Type) (b :: Prim.Type)) ->
+            Prim.String
+          })

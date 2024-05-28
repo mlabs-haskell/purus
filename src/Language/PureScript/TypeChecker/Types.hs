@@ -375,30 +375,30 @@ instantiatePolyTypeWithUnknowns val printMe@(ForAll _ _ ident mbK ty _) =  do
   u <-  freshTypeWithKind mbK
   insertUnkName' u ident
   result <- instantiatePolyTypeWithUnknowns val $ replaceTypeVars ident u ty
-  let msg = mkMsg result
-  goTraceM msg
+  --let msg = mkMsg result
+  --goTraceM msg
   pure result
  where
    mkMsg (resultExpr,resultTy)
       = "INSTANTIATE POLYTYPES WITH UNKNOWNS"
-         <> "\n EXPR: " <> renderValue 100 val
+         -- <> "\n EXPR: " <> renderValue 100 val
          <> "\n TYPE: " <> prettyTypeStr printMe
          <> "\n RESULT EXPR: " <> renderValue 100 resultExpr
-         <> "\n RESULT TYPE: " <> prettyTypeStr resultTy
+         -- <> "\n RESULT TYPE: " <> prettyTypeStr resultTy
          <> spacer
 instantiatePolyTypeWithUnknowns val printMe@(ConstrainedType _ con ty) = do
   dicts <- getTypeClassDictionaries
   hints <- getHints
   result <- instantiatePolyTypeWithUnknowns (App val (TypeClassDictionary con dicts hints)) ty
-  goTraceM (mkMsg result)
+  -- goTraceM (mkMsg result)
   pure result
  where
    mkMsg (resultExpr,resultTy)
       = "INSTANTIATE POLYTYPES WITH UNKNOWNS"
-         <> "\n EXPR: " <> renderValue 100 val
+         -- <> "\n EXPR: " <> renderValue 100 val
          <> "\n TYPE: " <> prettyTypeStr printMe
          <> "\n RESULT EXPR: " <> renderValue 100 resultExpr
-         <> "\n RESULT TYPE: " <> prettyTypeStr resultTy
+         -- <> "\n RESULT TYPE: " <> prettyTypeStr resultTy
          <> spacer
 instantiatePolyTypeWithUnknowns val ty = return (val, ty)
 
@@ -704,8 +704,14 @@ inferBinder val (VarBinder ss name) = return $ M.singleton name (ss, val)
 inferBinder val (ConstructorBinder ss ctor binders) = do
   env <- getEnv
   case M.lookup ctor (dataConstructors env) of
-    Just (_, _, ty, _) -> do
-      (_, fn) <- instantiatePolyTypeWithUnknowns (internalError "Data constructor types cannot contain constraints") ty
+    Just (_, tn, ty, _) -> do
+      let tn' = T.unpack $ runProperName tn
+      (_, fn) <- instantiatePolyTypeWithUnknowns
+                   (internalError $ "Data constructor types cannot contain constraints: "
+                                    <> prettyTypeStr val
+                                    <> "\n while inferring binders for constructor of type: "
+                                    <> tn' <> "\n " <> prettyTypeStr ty
+                   ) ty
       fn' <- introduceSkolemScope <=< replaceAllTypeSynonyms $ fn
       let (args, ret) = peelArgs fn'
           expected = length args

@@ -48,18 +48,12 @@ proxy3 = NatProxy
 -- TODO: Don't require annotations in fundep
 class AddNat (l :: Nat) (r :: Nat) (o :: Nat) | l -> r o
 
-{-
-instance addNatZero
-  :: AddNat Zero (r :: Nat) (r :: Nat)
+instance forall (r :: Nat). AddNat Zero r r
 
 
 -- TODO: Bind kinds
-instance addNatSucc
-  :: AddNat ((l) :: Nat) ((r) :: Nat) ((o) :: Nat)
-  => AddNat (Succ ((l) :: Nat)) ((r) :: Nat) (Succ ((o) :: Nat))
+instance forall (l :: Nat) (r :: Nat) (o :: Nat). AddNat l r o
+  => AddNat (Succ l) r (Succ o)
 
--- use of class
-
---addNat :: forall (l :: Nat) (r :: Nat) (o :: Nat). AddNat l r o => NatProxy l -> NatProxy r -> NatProxy o
---addNat _ _ = NatProxy
--}
+addNat :: forall (l :: Nat) (r :: Nat) (o :: Nat). AddNat l r o => NatProxy l -> NatProxy r -> NatProxy o
+addNat _ _ = NatProxy

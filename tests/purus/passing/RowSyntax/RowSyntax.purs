@@ -6,12 +6,8 @@ type OneRow = [one :: Int]
 type SomeRow :: Row Type
 type SomeRow = [inn'it :: Int, stirring :: String]
 
-
-class IsARow (r :: Row Type)
-instance IsARow [hello :: String]
-
 class IsARow' (r :: Row Type)
-instance IsARow' (r :: Row Type)
+instance forall (r :: Row Type). IsARow' r
 
 data RowProxy (r :: Row Type) = RowProxy
 

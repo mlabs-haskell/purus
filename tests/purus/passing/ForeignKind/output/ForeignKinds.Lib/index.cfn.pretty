@@ -9,7 +9,10 @@ Exports:
   proxy0,
   proxy1,
   proxy2,
-  proxy3
+  proxy3,
+  addNat,
+  addNatZero,
+  addNatSuccSucc
 Re-Exports: 
   
 Foreign: 
@@ -20,6 +23,24 @@ NatProxy = NatProxy
 
 AddNat$Dict :: Prim.Record {} -> Prim.Record {}
 AddNat$Dict = \(x: Prim.Record {}) -> (x: Prim.Record {})
+
+addNatZero :: ((ForeignKinds.Lib.AddNat$Dict ForeignKinds.Lib.Zero (r :: ForeignKinds.Lib.Nat)) (r :: ForeignKinds.Lib.Nat))
+addNatZero = 
+  (AddNat$Dict: Prim.Record {}@Prim.Type ->
+  ((ForeignKinds.Lib.AddNat$Dict
+  ForeignKinds.Lib.Zero (r :: ForeignKinds.Lib.Nat)) (r :: ForeignKinds.Lib.Nat)))
+  ({  }: Prim.Record {}@Prim.Type)
+
+addNatSuccSucc :: forall (l :: ForeignKinds.Lib.Nat) (r :: ForeignKinds.Lib.Nat) (o :: ForeignKinds.Lib.Nat). ((ForeignKinds.Lib.AddNat$Dict (l :: ForeignKinds.Lib.Nat) (r :: ForeignKinds.Lib.Nat)) (o :: ForeignKinds.Lib.Nat)) -> ((ForeignKinds.Lib.AddNat$Dict ForeignKinds.Lib.Succ (l :: ForeignKinds.Lib.Nat) (r :: ForeignKinds.Lib.Nat)) ForeignKinds.Lib.Succ (o :: ForeignKinds.Lib.Nat))
+addNatSuccSucc = 
+  \($__unused: ((ForeignKinds.Lib.AddNat$Dict
+    (l :: ForeignKinds.Lib.Nat) (r :: ForeignKinds.Lib.Nat)) (o :: ForeignKinds.Lib.Nat))) -> 
+    (AddNat$Dict: Prim.Record {}@Prim.Type ->
+    ((ForeignKinds.Lib.AddNat$Dict
+    ForeignKinds.Lib.Succ
+    (l :: ForeignKinds.Lib.Nat) (r :: ForeignKinds.Lib.Nat)) ForeignKinds.Lib.Succ
+    (o :: ForeignKinds.Lib.Nat)))
+    ({  }: Prim.Record {}@Prim.Type)
 
 succProxy :: forall (n :: ForeignKinds.Lib.Nat). ForeignKinds.Lib.NatProxy (n :: ForeignKinds.Lib.Nat) -> ForeignKinds.Lib.NatProxy ForeignKinds.Lib.Succ (n :: ForeignKinds.Lib.Nat)
 succProxy = 
@@ -45,3 +66,11 @@ proxy1 =
 
 proxy0 :: ForeignKinds.Lib.NatProxy ForeignKinds.Lib.Zero
 proxy0 = (NatProxy: ForeignKinds.Lib.NatProxy ForeignKinds.Lib.Zero)
+
+addNat :: forall (l :: ForeignKinds.Lib.Nat) (r :: ForeignKinds.Lib.Nat) (o :: ForeignKinds.Lib.Nat). ((ForeignKinds.Lib.AddNat$Dict (l :: ForeignKinds.Lib.Nat) (r :: ForeignKinds.Lib.Nat)) (o :: ForeignKinds.Lib.Nat)) -> ForeignKinds.Lib.NatProxy (l :: ForeignKinds.Lib.Nat) -> ForeignKinds.Lib.NatProxy (r :: ForeignKinds.Lib.Nat) -> ForeignKinds.Lib.NatProxy (o :: ForeignKinds.Lib.Nat)
+addNat = 
+  \($__unused: ((ForeignKinds.Lib.AddNat$Dict
+    (l :: ForeignKinds.Lib.Nat) (r :: ForeignKinds.Lib.Nat)) (o :: ForeignKinds.Lib.Nat))) -> 
+    \(v: ForeignKinds.Lib.NatProxy (l :: ForeignKinds.Lib.Nat)) -> 
+      \(v1: ForeignKinds.Lib.NatProxy (r :: ForeignKinds.Lib.Nat)) -> 
+        (NatProxy: ForeignKinds.Lib.NatProxy (o :: ForeignKinds.Lib.Nat))

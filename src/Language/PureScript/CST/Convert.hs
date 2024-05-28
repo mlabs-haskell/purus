@@ -61,8 +61,10 @@ tvKind srcTok nm = do
                $ "Error: Missing kind annotation for TyVar " <> Text.unpack nm
                  <> "\n  at (or near): " <> prettyRange (srcTokenRange srcTok)
     Just t -> pure t
+
+prettyRange :: SourceRange -> String
+prettyRange (SourceRange start end) = goPos start <> "-" <> goPos end
  where
-   prettyRange (SourceRange start end) = goPos start <> "-" <> goPos end
    goPos (SourcePos line col) = show line <> ":" <> show col
 
 bindTv :: Text -> T.SourceType -> ConvertM ()
@@ -653,7 +655,19 @@ convertDeclaration fileName decl = case decl of
   DeclInstanceChain _ insts -> do
     let
       chainId = mkChainId fileName $ startSourcePos $ instKeyword $ instHead $ sepHead insts
+      bindTypeVariables Nothing = pure ()
+      bindTypeVariables (Just (stok, bindings)) = traverse_ (goTvBind stok) (NE.toList bindings)
+      goTvBind stok = \case
+        TypeVarKinded (Wrapped _ (Labeled (_,nm) _ ki) _) -> do
+          let nm' = getIdent (nameValue nm)
+          ki' <- convertType fileName ki
+          bindTv nm' ki'
+        TypeVarName (_, nm) -> do
+          let nm' = Text.unpack . getIdent . nameValue $ nm
+          internalError $ "Error in instance declaration near " <> prettyRange (srcTokenRange stok)
+                          <> "\n  Missing kind annotation for Type Var '" <> nm' <> "'"
       goInst ix inst@(Instance (InstanceHead _ _todo nameSep ctrs cls args) bd) = do
+        bindTypeVariables _todo
         let ann' = uncurry (sourceAnnCommented fileName) $ instanceRange inst
             clsAnn = findInstanceAnn cls args
         cstrnt <- traverse (convertConstraint False fileName) $  maybe [] (toList . fst) ctrs
@@ -665,7 +679,7 @@ convertDeclaration fileName decl = case decl of
           (qualified cls)
           args'
           (AST.ExplicitInstance instBinding)
-    traverse (uncurry goInst) $ zip [0..] (toList insts)
+    pure $  runConvert . uncurry goInst <$> zip [0..] (toList insts)
   DeclDerive _ _ new (InstanceHead kw _todo nameSep ctrs cls args) -> do
     let
       chainId = mkChainId fileName $ startSourcePos kw
