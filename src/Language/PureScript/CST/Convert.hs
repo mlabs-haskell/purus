@@ -83,12 +83,12 @@ groupSignaturesAndDeclarations decls = trace ("DECLARATIONS (grouping): \n" <> c
   $ go kindSigs typeSigs decls'
   where
     ((kindSigs,typeSigs),decls') = foldr (\x acc -> case x of
-        ksig@(DeclKindSignature _ _ (Labeled (nameValue -> nm) _ ty)) -> first (first $ M.insert nm ksig) acc
+        ksig@(DeclKindSignature _ _ (Labeled (nameValue -> nm) _ _)) -> first (first $ M.insert nm ksig) acc
         tsig@(DeclSignature _ (Labeled (nameValue -> nm) _ _)) -> first (second (M.insert nm tsig)) acc
         other -> second (other:) acc
       ) ((M.empty,M.empty),[]) decls
 
-    go ksigs tsigs [] = []
+    go _ _ [] = []
     go ksigs tsigs (d:ds)  = case d of
       dataDecl@(DeclData _ (DataHead _ (nameValue -> nm) _ ) _) -> case M.lookup nm ksigs of
         Just sigDecl -> [sigDecl,dataDecl] : go ksigs tsigs ds
@@ -115,7 +115,7 @@ groupSignaturesAndDeclarations decls = trace ("DECLARATIONS (grouping): \n" <> c
        valDecWithName nm (DeclValue _ (valName -> nm')) = nameValue nm == nameValue nm'
        valDecWithName _ _ = False
 
- 
+
 comment :: Comment a -> Maybe C.Comment
 comment = \case
   Comment t
@@ -262,7 +262,7 @@ convertType' withinVta fileName = go
       b' <- go b
       let ann = Pos.widenSourceAnn (T.getAnnForType a') (T.getAnnForType b')
       pure $ T.TypeApp ann a' b'
-    ty@(TypeOp _ _ _ _) -> do
+    ty@(TypeOp {}) -> do
       let
         reassoc op b' a = do
           a' <- go a
@@ -324,15 +324,15 @@ convertGuarded fileName = \case
     where' <- convertWhere fileName x
     pure $ AST.GuardedExpr ps' where'
   go = convertExpr fileName
-  p (PatternGuard Nothing x) = AST.ConditionGuard <$> (go x)
-  p (PatternGuard (Just (b, _)) x) = AST.PatternGuard <$> (convertBinder fileName b) <*> (go x)
+  p (PatternGuard Nothing x) = AST.ConditionGuard <$> go x
+  p (PatternGuard (Just (b, _)) x) = AST.PatternGuard <$> convertBinder fileName b <*> go x
 
 convertWhere :: String -> Where a -> ConvertM AST.Expr
 convertWhere fileName = \case
   Where expr Nothing -> convertExpr fileName expr
   Where expr (Just (_, bs)) -> do
     let ann = uncurry (sourceAnnCommented fileName) $ exprRange expr
-    letExp <- AST.Let AST.FromWhere <$> (traverse (convertLetBinding fileName) $ NE.toList bs)
+    letExp <- AST.Let AST.FromWhere <$> traverse (convertLetBinding fileName) (NE.toList bs)
     uncurry AST.PositionedValue ann . letExp <$> convertExpr fileName expr
 
 convertLetBinding :: String -> LetBinding a -> ConvertM AST.Declaration
@@ -408,7 +408,7 @@ convertExpr fileName = go
         lbl = \case
           RecordPun f -> do
             exp' <- go . ExprIdent z $ QualifiedName (nameTok f) Nothing (nameValue f)
-            pure $ (mkString . getIdent $ nameValue f, exp')
+            pure (mkString . getIdent $ nameValue f, exp')
           RecordField f _ v -> (lblName f,) <$>  go v
         vals = case bs of
           Just (Separated x xs) -> do
@@ -430,7 +430,7 @@ convertExpr fileName = go
       b' <- go b
       c' <- go c
       pure $ positioned ann $ AST.BinaryNoParens b' a' c'
-    expr@(ExprOp _ _ _ _) -> do
+    expr@(ExprOp {}) -> do
       let
         ann = uncurry (sourceAnn fileName) $ exprRange expr
         reassoc op b a = do
@@ -460,8 +460,8 @@ convertExpr fileName = go
     expr@(ExprRecordUpdate _ a b) -> do
       let
         ann = uncurry (sourceAnnCommented fileName) $ exprRange expr
-        k (RecordUpdateLeaf f _ x) = go x >>= \x' -> pure $ (lblName f, AST.Leaf  x')
-        k (RecordUpdateBranch f xs) = toTree xs >>= \xs' -> pure $ (lblName f, AST.Branch xs')
+        k (RecordUpdateLeaf f _ x) = go x >>= \x' -> pure (lblName f, AST.Leaf  x')
+        k (RecordUpdateBranch f xs) = toTree xs >>= \xs' -> pure (lblName f, AST.Branch xs')
         toTree (Wrapped _ xs _) = do
           xs' <- traverse k $ toList xs
           pure $ AST.PathTree . AST.AssocList $ xs'
@@ -481,9 +481,9 @@ convertExpr fileName = go
       let ann = uncurry (sourceAnnCommented fileName) $ exprRange expr
       a' <- convertBinder fileName (NE.head as)
       b' <- go b
-      let goAbs _b _xs = foldrM (\x acc -> do
+      let goAbs = foldrM (\x acc -> do
                                   x' <- convertBinder fileName x
-                                  pure $ AST.Abs x' acc) _b _xs
+                                  pure $ AST.Abs x' acc)
       inner <- goAbs b' (NE.tail as)
       pure $ positioned ann
         . AST.Abs a'
@@ -526,7 +526,7 @@ convertBinder fileName = go
   positioned =
     uncurry AST.PositionedBinder
 
-  go :: Binder a -> ConvertM (AST.Binder)
+  go :: Binder a -> ConvertM AST.Binder
   go = \case
     BinderWildcard _ a ->
       pure $ positioned (sourceAnnCommented fileName a a) AST.NullBinder
@@ -569,7 +569,7 @@ convertBinder fileName = go
       let
         ann = sourceAnnCommented fileName a c
         lbl = \case
-          RecordPun f -> (mkString . getIdent $ nameValue f,) <$> (go $ BinderVar z f)
+          RecordPun f -> (mkString . getIdent $ nameValue f,) <$> go (BinderVar z f)
           RecordField f _ v -> (lblName f,) <$>  go v
         vals = case bs of
           Just (Separated x xs) -> do
@@ -585,7 +585,7 @@ convertBinder fileName = go
       b' <- convertType fileName b
       let ann = (sourceSpan fileName . toSourceRange $ binderRange binder, [])
       pure $ positioned ann $ AST.TypedBinder b' a'
-    binder@(BinderOp _ _ _ _) -> do
+    binder@(BinderOp {}) -> do
       let
         ann = uncurry (sourceAnn fileName) $ binderRange binder
         reassoc op b a = do
@@ -609,10 +609,10 @@ convertDeclaration fileName decl = case decl of
         fields' <- traverse (convertType fileName) fields
         case tl of
           [] ->
-            pure [AST.DataConstructorDeclaration (sourceAnnCommented fileName st (nameTok name)) (nameValue name) (zip ctrFields $  fields')]
+            pure [AST.DataConstructorDeclaration (sourceAnnCommented fileName st (nameTok name)) (nameValue name) (zip ctrFields fields')]
           (st',ctor) : tl' -> do
             rest <- ctrs st' ctor tl'
-            pure $ AST.DataConstructorDeclaration (sourceAnnCommented fileName st (nameTok name)) (nameValue name) (zip ctrFields $  fields')
+            pure $ AST.DataConstructorDeclaration (sourceAnnCommented fileName st (nameTok name)) (nameValue name) (zip ctrFields fields')
                    : rest
 
     ctorDecls <- maybe (pure []) (\(st, Separated hd tl) -> ctrs st hd tl) bd
@@ -692,7 +692,7 @@ convertDeclaration fileName decl = case decl of
         TokLowerName [] "type" -> AST.TypeSynonymSig
         TokLowerName [] "class" -> AST.ClassSig
         tok -> internalError $ "Invalid kind signature keyword " <> Text.unpack (printToken tok)
-    pure $ [AST.KindDeclaration ann kindFor (nameValue name) ty']
+    pure [AST.KindDeclaration ann kindFor (nameValue name) ty']
   DeclSignature _ lbl ->
     pure <$> convertSignature fileName lbl
   DeclValue _ fields ->
@@ -705,8 +705,7 @@ convertDeclaration fileName decl = case decl of
         Infixl -> AST.Infixl
       fixity = AST.Fixity assoc prec
     pure . pure $ AST.FixityDeclaration ann $ case fxop of
-      FixityValue name _ op -> do
-        Left $ AST.ValueFixity fixity (first ident <$> qualified name) (nameValue op)
+      FixityValue name _ op -> Left $ AST.ValueFixity fixity (first ident <$> qualified name) (nameValue op)
       FixityType _ name _ op ->
         Right $ AST.TypeFixity fixity (qualified name) (nameValue op)
   DeclForeign _ _ _ frn ->
