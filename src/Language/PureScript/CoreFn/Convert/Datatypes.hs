@@ -31,8 +31,9 @@ import Language.PureScript.Constants.Purus qualified as C
 import Language.PureScript.CoreFn.Desugar.Utils (properToIdent, showIdent')
 import Language.PureScript.CoreFn.Convert.DesugarObjects (tryConvertType, prettyErrorT)
 import Language.PureScript.CoreFn.Expr (PurusType)
-import Language.PureScript.CoreFn.Convert.DesugarCore (WithObjects)
-
+import Language.PureScript.CoreFn.Convert.DesugarCore
+import Language.PureScript.CoreFn.Pretty (prettyTypeStr)
+ 
 
 mkTypeBindDict :: Module IR_Decl a
                -> Exp WithoutObjects Ty (FVar Ty)
@@ -50,7 +51,7 @@ allTypeConstructors e = S.fromList $  e ^.. cosmos . to (expTy F) . cosmos . _Ty
 --       that contains then should have qualified keys
 type ModuleDataTypes = Map
                       (Qualified (ProperName 'TypeName))
-                      (DataDeclType,[(Text, Maybe SourceType)],[DataConstructorDeclaration])
+                      (DataDeclType,[(Text, SourceType)],[DataConstructorDeclaration])
 
 -- Maybe this should be the WithObjects / PurusType version? I don't think we ever explicitly convert all of the declarations
 -- (and it'd be better to JUST convert the constructor functions that we need)
@@ -89,7 +90,7 @@ mkPIRDatatypes moduleDecls moduleADTs tyConsInExp = foldM go M.empty tyConsInExp
         declKind <- mkDeclKind args
         let typeNameDecl = TyVarDecl () qn declKind
         argDecls <- traverse mkArgDecl args
-        let deconstructorName = Ident  $ "match_" <> tnm
+        let deconstructorName = Ident $ "match_" <> tnm
         ctors <- traverse mkCtorDecl ctorDecls
         let this :: PIRDatatypeWithPSNames
             this = PIR.Datatype () typeNameDecl argDecls deconstructorName ctors
@@ -108,21 +109,16 @@ mkPIRDatatypes moduleDecls moduleADTs tyConsInExp = foldM go M.empty tyConsInExp
           ctorFunTyPIR <- toPIRType ctorFunTyIR
           pure $ VarDecl () ctorIdent ctorFunTyPIR
 
-    mkDeclKind :: [(Text, Maybe SourceType)] -> Either String (Kind ())
-    mkDeclKind kargs = traverse (goKind . snd) kargs >>= \case
+    mkDeclKind :: [(Text,  SourceType)] -> Either String (PIR.Kind ())
+    mkDeclKind kargs = traverse (sourceTypeToKind . snd) kargs >>= \case
       [] -> pure $ PIR.Type ()
       xs -> pure $ foldr1 (PIR.KindArrow ()) (xs <> [PIR.Type ()])
-     where
-       goKind :: Maybe SourceType -> Either String (Kind ())
-       goKind mk = do
-         mkTy <- either (Left . prettyErrorT) pure $ traverse tryConvertType mk
-         mkKind mkTy
 
     -- the arguments to the *type*, i.e., they're all tyvars
     -- NOTE: We should really make changes such that `Maybe SourceType` is `SourceType`
-    mkArgDecl :: (Text, Maybe SourceType) -> Either String (TyVarDecl (Qualified (ProperName 'TypeName)) ())
-    mkArgDecl (varNm,mKind) = do
-      kind <- mkKind =<< either (Left . prettyErrorT) pure (traverse tryConvertType mKind)
+    mkArgDecl :: (Text, SourceType) -> Either String (TyVarDecl (Qualified (ProperName 'TypeName)) ())
+    mkArgDecl (varNm,ki) = do
+      kind <- sourceTypeToKind ki
       -- Here, as elsewhere, a sourcePos qualified ident represents a bound var
       let qVarNm = qualifyNull (ProperName varNm)
       pure $ TyVarDecl () qVarNm kind
@@ -131,17 +127,16 @@ type PIRTypeWithPSNames = PIR.Type (Qualified (ProperName 'TypeName)) PLC.Defaul
 
 toPIRType :: Ty -> Either String PIRTypeWithPSNames
 toPIRType = \case
-  IR.TyVar txt ->  pure $ PIR.TyVar () $ qualifyNull (ProperName txt)
+  IR.TyVar txt k ->  pure $ PIR.TyVar () $ qualifyNull (ProperName txt)
   TyCon qtn@(Qualified qb tn) -> case qb of
     ByThisModuleName "Builtin" -> handleBuiltinTy qtn
     ByThisModuleName "Prim" ->  handlePrimTy qtn
     _ -> pure $ PIR.TyVar () qtn
   -- TODO: Special handling for function types (-> is a TyCon in PS but a Ctor of the Type ADT in plc )
   IR.TyApp t1 t2 -> goTypeApp t1 t2
-  Forall _ v mbk ty _ -> do
-    k <- mkKind mbk
+  Forall _ v k ty _ -> do
     ty' <- toPIRType ty
-    pure $ TyForall () (qualifyNull $ ProperName v) k ty'
+    pure $ TyForall () (qualifyNull $ ProperName v) (mkKind k) ty'
   other -> error $ "Upon reflection, other types like " <> ppTy other <> " shouldn't be allowed in the Ty ast"
  where
    goTypeApp (IR.TyApp f a) b
@@ -151,15 +146,16 @@ toPIRType = \case
          pure $ PIR.TyFun () a' b'
      | otherwise = PIR.TyApp () <$> toPIRType a <*> toPIRType b
 
-   handleBuiltinTy :: Qualified (ProperName 'TypeName) -> Either String (PIR.Type tyname PLC.DefaultUni ())
-   handleBuiltinTy = \case
+handleBuiltinTy :: Qualified (ProperName 'TypeName) -> Either String (PIR.Type tyname PLC.DefaultUni ())
+handleBuiltinTy = \case
      C.BuiltinData -> pure $ TyBuiltin () (PLC.SomeTypeIn PLC.DefaultUniData)
      C.BuiltinPair -> pure $ TyBuiltin () (PLC.SomeTypeIn PLC.DefaultUniProtoPair)
      C.BuiltinList -> pure $ TyBuiltin () (PLC.SomeTypeIn PLC.DefaultUniProtoList)
      C.BuiltinByteString -> pure $ TyBuiltin () (PLC.SomeTypeIn PLC.DefaultUniByteString)
      other -> Left $   "Error when translating to PIR types: unsupported builtin type: " <> show other
 
-   handlePrimTy = \case
+handlePrimTy :: Qualified (ProperName 'TypeName) -> Either String (PLC.Type tyname PLC.DefaultUni ())
+handlePrimTy = \case
      C.Function -> Left $  "function types should be caught in apps"
      C.Array    -> pure $ TyBuiltin () (PLC.SomeTypeIn PLC.DefaultUniProtoList) -- is this wrong? do we want a SOP list? too tired to know
      C.String   -> pure $ TyBuiltin () (PLC.SomeTypeIn PLC.DefaultUniString)
@@ -168,12 +164,17 @@ toPIRType = \case
      C.Boolean  -> pure $ TyBuiltin () (PLC.SomeTypeIn PLC.DefaultUniBool)
      other      -> Left  $ "unsupported prim tycon: " <> show other
 
-mkKind :: Maybe IR.Ty -> Either String (PIR.Kind ())
-mkKind Nothing = Left  "Missing kind data"
-mkKind (Just t) = foldr1 (PIR.KindArrow ()) <$> collect t
-  where
-    collect :: IR.Ty -> Either String [PIR.Kind ()]
-    collect = \case
-      IR.TyCon C.Type -> pure [PIR.Type ()]
-      IR.TyCon C.Type :~> b -> (PIR.Type () :) <$> collect b
-      other -> Left $ "Error when translating to PIR Kinds: Not a thing of kind type " <> ppTy other
+mkKind ::  IR.Kind -> PIR.Kind ()
+mkKind = \case
+  IR.KindType -> PIR.Type ()
+  IR.KindArrow k1 k2 -> PIR.KindArrow () (mkKind k1) (mkKind k2)
+
+
+sourceTypeToKind :: SourceType  -> Either String (PIR.Kind ())
+sourceTypeToKind = \case
+    TypeConstructor _ C.Type -> pure $ PIR.Type ()
+    t1 :-> t2 -> do
+      t1' <- sourceTypeToKind t1
+      t2' <- sourceTypeToKind t2
+      pure $ PIR.KindArrow () t1' t2'
+    other -> Left $ "Error: PureScript type '" <> prettyTypeStr other <> " is not a valid Plutus Kind"

@@ -7,6 +7,7 @@
 {-# LANGUAGE StandaloneDeriving #-}
 {-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE UndecidableInstances #-}
+{-# LANGUAGE StandaloneKindSignatures #-}
 
 module Language.PureScript.CoreFn.Convert.IR where
 
@@ -155,7 +156,12 @@ type Bindings ty = Map Int (FVar ty)
 -- A Bound variable. Serves as a bridge between the textual representation and the named de bruijn we'll need for PIR
 data BVar ty = BVar Int ty Ident deriving (Show, Eq, Ord) -- maybe BVar Int (FVar ty) ??
 
-data FVar ty = FVar ty (Qualified Ident) deriving (Show, Eq, Ord)
+data FVar ty = FVar ty (Qualified Ident) deriving (Show, Eq, Ord, Functor, Foldable, Traversable)
+
+type VoidList :: GHC.Type -> GHC.Type -> GHC.Type
+type family VoidList voidOrNot argTy where
+  VoidList Void _x = Void
+  VoidList _a    x = [x]
 
 data Lit x a
   = IntL Integer

@@ -96,8 +96,6 @@ goTraceM msg
 
 spacer = '\n' : replicate 20 '-'
 
-
-
 data BindingGroupType
   = RecursiveBindingGroup
   | NonRecursiveBindingGroup

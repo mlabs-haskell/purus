@@ -253,6 +253,7 @@ library
     Language.PureScript.CoreFn.Ann
     Language.PureScript.CoreFn.Binders
     Language.PureScript.CoreFn.Convert
+    Language.PureScript.CoreFn.Convert.Datatypes
     Language.PureScript.CoreFn.Convert.Monomorphize
     Language.PureScript.CoreFn.Convert.Monomorphize.Utils
     Language.PureScript.CoreFn.Convert.MonomorphizeV2

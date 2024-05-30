@@ -25,7 +25,7 @@ import Control.Monad.RWS (RWST(..))
 import Control.Monad.Except (throwError)
 import Data.Text (Text)
 import Bound.Var (Var(..))
-import Bound.Scope (Scope (..), abstractEither, toScope, fromScope, mapScope, mapBound)
+import Bound.Scope (Scope (..), abstractEither, toScope, fromScope, mapScope, mapBound, mapMBound)
 import Data.Bifunctor (Bifunctor (..))
 import Data.List (find)
 import Control.Lens.Plated ( transform, Plated(..) )
@@ -251,6 +251,20 @@ transverseScopeViaExp f scope
         traversed  = traverse f sequenced
         hm         = sequence <$> traversed
     in toScope <$> hm
+
+-- Type changing in the Objects / Type / Var "fields",
+-- needed for DesugarObjects
+transverseScopeViaExpX :: Monad f
+                      => (Exp x t a -> f (Exp y t' b))
+                      -> (BVar t -> f (BVar t'))
+                      -> Scope (BVar t) (Exp x t) a
+                      -> f (Scope (BVar t') (Exp y t') b)
+transverseScopeViaExpX f bvf scope
+  = let fromScoped = fromScope scope
+        sequenced  = sequence fromScoped
+        traversed  = traverse f sequenced
+        hm         = sequence <$> traversed
+    in mapMBound bvf =<< toScope <$> hm
 
 {- Surprisingly this is useful. We often want to ignore bound variables
    when traversing the AST (esp during inlining, where they don't

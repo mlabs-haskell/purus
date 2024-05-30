@@ -7,50 +7,50 @@ module Language.PureScript.CoreFn.Convert.DesugarObjects where
 
 import Prelude
 import Language.PureScript.CoreFn.Expr
-    ( _Var,
-      Bind(..),
-      CaseAlternative(CaseAlternative),
-      Expr(..) )
-import Language.PureScript.Names (Ident(..), Qualified (..), QualifiedBy (..), pattern ByNullSourcePos, ProperNameType (..), ProperName(..), disqualify, ModuleName (..), runModuleName)
+    ( Expr(..) )
+import Language.PureScript.Names (Ident(..), Qualified (..), QualifiedBy (..), pattern ByNullSourcePos, ProperNameType (..), ProperName(..), disqualify, ModuleName (..))
 import Language.PureScript.Types
     ( SourceType, Type(..), srcTypeConstructor, srcTypeApp, RowListItem (rowListType), rowToList, eqType )
-import Language.PureScript.Environment (pattern (:->), pattern RecordT, function, kindType, DataDeclType (Data))
+import Language.PureScript.Environment (pattern (:->), pattern RecordT, kindType, DataDeclType (Data))
 import Language.PureScript.CoreFn.Pretty
-    ( prettyTypeStr, renderExprStr )
+    ( prettyTypeStr )
 import Language.PureScript.CoreFn.Ann (Ann)
 import Language.PureScript.CoreFn.FromJSON ()
 import Data.Text qualified as T
-import Data.List (find, elemIndex, sortOn, foldl')
-import Language.PureScript.AST.Literals (Literal(..))
+import Data.List ( elemIndex, sortOn, foldl', findIndex )
 import Data.Map qualified as M
 import Language.PureScript.PSString (PSString)
 import Language.PureScript.AST.SourcePos
-    ( pattern NullSourceAnn )
+    ( pattern NullSourceAnn, pattern NullSourceSpan )
 import Control.Lens.IndexedPlated
-import Control.Lens ( ix )
-import Language.PureScript.CoreFn.Convert.MonomorphizeV2
+import Control.Lens ( ix, view )
 import Language.PureScript.CoreFn.Convert.Monomorphize.Utils
 import Data.Text (Text)
 import Bound
 import Data.Bifunctor (Bifunctor(first, second))
 import Control.Lens.Combinators (to)
-import Language.PureScript.CoreFn (Binder(..), Module (..))
-import Data.Maybe (mapMaybe)
+import Data.Maybe (fromJust)
 import Control.Lens.Operators
-import Control.Lens (view)
 import Control.Lens.Tuple
-import Language.PureScript.CoreFn.Convert.IR hiding (stripQuantifiers)
-import Language.PureScript.CoreFn.Convert.IR qualified as IR
+import Language.PureScript.CoreFn.Convert.IR
 import Language.PureScript.CoreFn.Utils hiding (stripQuantifiers)
-import Control.Exception (throwIO)
 import Debug.Trace
-import Data.List (findIndex)
-import Control.Monad (join, foldM)
+import Control.Monad (foldM)
 import Language.PureScript.AST.Declarations (DataConstructorDeclaration (..))
 import Data.Map (Map)
 import Language.PureScript.Constants.Prim qualified as C
-import Language.PureScript.CoreFn.Convert.DesugarCore (desugarCore)
-import Data.Void (Void)
+import Language.PureScript.CoreFn.Convert.DesugarCore (WithoutObjects, WithObjects)
+import Data.Void (Void, absurd)
+
+import Unsafe.Coerce qualified as UNSAFE
+
+import Prettyprinter
+import Prettyprinter.Render.Text (renderStrict)
+import Language.PureScript.CoreFn.TypeLike (TypeLike(..))
+
+prettyStr :: Pretty a => a -> String
+prettyStr = T.unpack . renderStrict . layoutPretty defaultLayoutOptions . pretty
+
 
 {-
 test :: FilePath -> Text -> IO (Exp WithoutObjects Ty (FVar Ty))
@@ -105,10 +105,24 @@ prepPIR path  decl = do
 -}
 -- This gives us a way to report the exact location of the error (which may no longer correspond *at all* to
 -- the location given in the SourcePos annotations due to inlining and monomorphization)
+
+type ExpWithoutObjects = Exp WithoutObjects Ty (FVar Ty)
+type ExpWithObjects    = Exp WithObjects SourceType (FVar SourceType)
+
+type BindEWithObjects = BindE SourceType (Exp WithObjects SourceType) (FVar SourceType)
+type BindEWithoutObjects = BindE Ty (Exp WithoutObjects Ty) (FVar Ty)
+
 data TypeConvertError
  = TypeConvertError (SourceType -> SourceType ) SourceType String
 
 type TyConvertM = Either TypeConvertError
+
+nullAnn :: Ann
+nullAnn = (NullSourceSpan, [] , Nothing)
+
+-- unsafeCoerce would probably be safe here?
+forgetConstantLiteral :: Lit x Void -> Lit x a
+forgetConstantLiteral = UNSAFE.unsafeCoerce
 
 tryConvertType :: SourceType -> Either TypeConvertError Ty
 tryConvertType = go id
@@ -122,7 +136,6 @@ tryConvertType = go id
                 arity  = M.size fields
                 fakeTName = mkFakeTName arity
                 types = M.elems fields
-                -- types = types' <> [foldl' srcTypeApp (srcTypeConstructor fakeTName) types'] -- the types applied to the ctor
                 ctorType = foldl' srcTypeApp (srcTypeConstructor fakeTName) types
             go f ctorType
           else Left $ TypeConvertError f t $ prettyTypeStr fs <> " is not a closed row. Last: " <> prettyTypeStr (rowLast fs)
@@ -176,7 +189,7 @@ allTypes :: Expr Ann -> [SourceType]
 allTypes e = e ^.. icosmos @Context @(Expr Ann) M.empty . to exprType
 
 data ExprConvertError
-  = ExprConvertError (Expr Ann -> Expr Ann) (Expr Ann) (Maybe TypeConvertError) String
+  = ExprConvertError (ExpWithObjects -> ExpWithObjects) ExpWithObjects (Maybe TypeConvertError) String
 
 type ConvertM = Either ExprConvertError
 
@@ -186,260 +199,304 @@ prettyErrorT (TypeConvertError g t msg1)
      <> "\nin type:\n  " <>  prettyTypeStr (g $ TypeVar NullSourceAnn "<ERROR HERE>" (TUnknown NullSourceAnn 0))
      <> "\nin type component:\n  " <> prettyTypeStr t
 
-{-
+
 prettyError :: ExprConvertError -> String
 prettyError = \case
   ExprConvertError f e Nothing msg -> "Error when converting expression: " <> msg <> "\n  "
-                                  <> renderExprStr (f $ fakeVar "<ERROR_HERE>")
+                                  <> prettyStr (f $ fakeVar "<ERROR_HERE>")
                                   <> "\nin subexpression:\n  "
-                                  <> renderExprStr e
+                                  <> prettyStr e
   ExprConvertError f e (Just (TypeConvertError g t msg1)) msg2 -> "Error when converting types: " <>  msg1 <> "\n" <> msg2 <> "\n  "
-                                    <> renderExprStr (f $ fakeVar "<ERROR_HERE>")
+                                    <> prettyStr (f $ fakeVar "<ERROR_HERE>")
                                     <> "\nin subexpression:\n  "
-                                    <> renderExprStr e
+                                    <> prettyStr e
                                     <> "\nin type:\n  "
-                                    <> prettyTypeStr (g $ TypeVar NullSourceAnn "<ERROR HERE>")
+                                    <> prettyTypeStr (g $ TypeVar NullSourceAnn "<ERROR HERE>" (TUnknown NullSourceAnn 0))
                                     <> "\nin type component:\n  "
                                     <> prettyTypeStr t
  where
-   fakeVar :: Text -> Expr Ann
-   fakeVar t = Var nullAnn (srcTypeConstructor $ Qualified ByNullSourcePos (ProperName "ERROR!")) (Qualified ByNullSourcePos (Ident t))
+   fakeVar :: Text -> ExpWithObjects
+   fakeVar t = V $ FVar (srcTypeConstructor $ Qualified ByNullSourcePos (ProperName "ERROR!")) (Qualified ByNullSourcePos (Ident t))
 
-tryConvertExprIO :: Expr Ann -> IO ()
+tryConvertExprIO :: ExpWithObjects -> IO ()
 tryConvertExprIO = putStrLn . either id ppExp . tryConvertExpr
 
-tryConvertExpr :: Expr Ann -> Either String (Exp WithoutObjects Ty (FVar Ty))
+tryConvertExpr :: Exp WithObjects SourceType (FVar SourceType) -> Either String (Exp WithoutObjects Ty (FVar Ty))
 tryConvertExpr = first prettyError . tryConvertExpr'
 
-tryConvertExpr' :: Expr Ann -> Either ExprConvertError (Exp WithoutObjects Ty (FVar Ty))
+tryConvertExpr' :: Exp WithObjects SourceType (FVar SourceType)
+                -> Either ExprConvertError (Exp WithoutObjects Ty (FVar Ty))
 tryConvertExpr' = go id
   where
-    go :: (Expr Ann -> Expr Ann) -> Expr Ann -> Either ExprConvertError (Exp WithoutObjects Ty (FVar Ty))
+    go :: (ExpWithObjects -> ExpWithObjects) -> ExpWithObjects -> Either ExprConvertError (Exp WithoutObjects Ty (FVar Ty))
     go f expression = case expression of
-      Literal ann ty lit -> do
-        let lhole = f . Literal ann ty . ArrayLiteral . pure
+      LitE  ty lit -> do
+        let lhole = f . LitE  ty . ArrayL . pure
         ty' <- goType ty
-        tryConvertLit lhole lit >>= \case
+        tryConvertLit  lhole lit >>= \case
           Left desObj -> pure desObj
           Right lit' -> pure $ LitE ty' lit'
-      Constructor _ ty tn cn fs -> do
+      CtorE ty tn cn fs -> do
         ty' <- goType ty
         pure $ CtorE ty' tn cn fs
-      Abs ann ty ident e -> do
+      LamE  ty bv  e -> do
         ty' <- goType ty
-        ex <- go (f . Abs ann ty ident) e
-        let expr = abstract (matchVar (headArg ty') ident) ex
-        pure $ LamE ty' (BVar 0 (headArg ty') ident) expr
-      App ann e1 e2 -> do
-        e2' <- go (f . App ann e1) e2
-        e1' <- go (f . (\x -> App ann x e2)) e1
+        bv' <- updateBV bv
+        -- TODO: Figure out how to get a better error location ehre
+        ex <- transverseScopeViaExpX (go f) updateBV e
+        pure $ LamE ty' bv' ex
+      AppE e1 e2 -> do
+        e2' <- go (f . AppE e1) e2
+        e1' <- go (f . (\x -> AppE x e2)) e1
         pure $ AppE  e1' e2'
-      Case ann ty scrutinees alts -> do
+      CaseE ty scrutinees alts -> do
         ty' <- goType ty
-        scrutinees' <- goList (f . (\x -> Case ann ty [x] alts)) scrutinees
-        alts' <- traverse (goAlt (f . Case ann ty scrutinees . pure)) alts
+        scrutinees' <- goList (f . (\x -> CaseE ty [x] alts)) scrutinees
+        alts' <- traverse (goAlt (f . CaseE  ty scrutinees . pure)) alts
         pure $ CaseE ty' scrutinees' alts'
-      Let ann binds e -> do
-        rawBinds <- goBinds (f . (\x -> Let ann [x] e)) binds
-        e' <- go (f . Let ann binds) e
-        let allBoundIdents = fst <$> join rawBinds
-            abstr = abstract (abstractMany allBoundIdents)
-            bindEs = assembleBindEs [] rawBinds
-            bindings = mkBindings allBoundIdents
-        pure $ LetE  bindings  bindEs (abstr e')
-      xp@(Accessor _ ty lbl e) -> case desugarObjectAccessor ty lbl e of
-        Nothing -> Left $ ExprConvertError f xp Nothing "Failed to desugar Accessor"
-        Just desugE -> go f desugE
-      upd@(ObjectUpdate _ ty orig copF updF) -> case desugarObjectUpdate ty orig copF updF of
-        Nothing -> Left $ ExprConvertError f upd Nothing "Failed to desugar ObjectUpdate"
-        Just desugE -> go f desugE
-      Var _ ty (Qualified _ nm) -> do
-        ty' <- goType ty
-        pure . V $ FVar ty' nm
+      LetE bindings bound e -> do
+        bindings' <- traverse (traverse goType) bindings
+        bound' <- goBinds (f . (\x -> LetE bindings [x] e)) bound
+        e' <- transverseScopeViaExpX (go f) updateBV  e
+        pure $ LetE bindings' bound' e'
+      AccessorE _ ty lbl e -> desugarObjectAccessor ty lbl e
+      ObjectUpdateE _ ty orig copF updF -> desugarObjectUpdate ty orig copF updF
+      V fvar -> V <$> traverse goType fvar
      where
-       goAlt :: (CaseAlternative Ann -> Expr Ann) -> CaseAlternative Ann -> Either ExprConvertError (Alt WithoutObjects Ty (Exp WithoutObjects Ty) (FVar Ty))
-       goAlt g (CaseAlternative binders result) = do
-         boundVars <- concat <$> traverse (getBoundVar result) binders
-         let pats = map toPat binders
-         let resultF = g . CaseAlternative binders
-             abstrE = abstract (abstractMany boundVars)
-         goResult resultF result >>= \case
-           Left _ges -> error "unrechable"
-           Right re -> pure $ UnguardedAlt (mkBindings boundVars) pats (abstrE re)
-        where
-          getBoundVar :: Either [(Expr Ann, Expr Ann)] (Expr Ann) -> Binder Ann -> ConvertM [FVar Ty]
-          getBoundVar body b = case b of
-            ConstructorBinder _ _ _ bs -> concat <$> traverse (getBoundVar body) bs
-            LiteralBinder _ (ArrayLiteral xs) -> concat <$> traverse (getBoundVar body) xs
-            LiteralBinder _ (ObjectLiteral fs) -> concat <$> traverse (getBoundVar body . snd) fs
-            VarBinder _ nm -> case body of
-              Right exbody -> case findBoundVar nm exbody of
-                Nothing -> pure [] -- probably should trace or warn at least
-                Just (t,_) -> do
-                  ty' <- goType t
-                  pure  [FVar ty' nm]
-              Left fml -> do
-                let allResults = concatMap (\(x,y) -> [x,y]) fml
-                    matchingVar = mapMaybe (findBoundVar nm) allResults
-                case matchingVar of
-                  ((t,_):_) -> do
-                    ty' <- goType t
-                    pure [FVar ty' nm]
-                  _ -> pure []
-            _ -> pure []
+       -- TODO: Error location w/ scope in alts
+       goAlt :: (Alt WithObjects SourceType (Exp WithObjects SourceType) (FVar SourceType) -> ExpWithObjects)
+             -> Alt WithObjects SourceType (Exp WithObjects SourceType) (FVar SourceType)
+             -> Either ExprConvertError (Alt WithoutObjects Ty (Exp WithoutObjects Ty) (FVar Ty))
+       goAlt _ (UnguardedAlt binders pat e) = do
+         binders' <- fmap M.fromList . catchTE $ traverse (traverse (traverse tryConvertType)) (M.toList binders)
+         pat' <- traverse goPat pat
+         e' <- transverseScopeViaExpX (go f) updateBV e
+         pure $ UnguardedAlt binders' pat' e'
 
-          goResult :: (Either [(Expr Ann, Expr Ann)] (Expr Ann) -> Expr Ann)
-                   -> Either [(Expr Ann, Expr Ann)] (Expr Ann)
-                   -> Either ExprConvertError (Either [(Exp WithoutObjects Ty (FVar Ty), Exp WithoutObjects Ty (FVar Ty))] (Exp WithoutObjects Ty (FVar Ty)))
-          goResult h = \case
-            Left exs -> do
-              exs' <- traverse (goGuarded (h . Left)) exs
-              pure (Left exs')
-            Right ex -> do
-              ex' <- go (h . Right) ex
-              pure (Right ex')
-           where
-             goGuarded cb (e1,e2) = do
-               e1' <- go (\x -> cb [(x,e2)]) e1
-               e2' <- go (\x -> cb [(e1,x)]) e2
-               pure (e1',e2')
+       goPat :: Pat WithObjects (Exp WithObjects SourceType) (FVar SourceType)
+                -> Either ExprConvertError (Pat WithoutObjects (Exp WithoutObjects Ty) (FVar Ty))
+       goPat = \case
+            VarP i -> pure $ VarP i
+            WildP  -> pure WildP
+            AsP i px -> AsP i <$> goPat px
+            LitP lp -> tryConvertLitP lp >>= \case
+              Left p -> pure p
+              Right litp -> pure $ LitP litp
+            ConP tn cn ps -> ConP tn cn  <$> traverse goPat ps
 
-       goBinds :: (Bind Ann -> Expr Ann) -> [Bind Ann] -> Either ExprConvertError [[(FVar Ty, Exp WithoutObjects Ty (FVar Ty))]]
+       tryConvertLitP :: Lit WithObjects (Pat WithObjects (Exp WithObjects SourceType) (FVar SourceType))
+                      -> Either ExprConvertError
+                                (Either
+                                 (Pat WithoutObjects (Exp WithoutObjects Ty) (FVar Ty))
+                                 (Lit WithoutObjects (Pat WithoutObjects (Exp WithoutObjects Ty) (FVar Ty))))
+       tryConvertLitP = \case
+         IntL i -> pure . pure $ IntL i
+         NumL d -> pure . pure $ NumL d
+         StringL s -> pure . pure $ StringL s
+         CharL c -> pure . pure $ CharL c
+         BoolL b -> pure . pure $ BoolL b
+         ArrayL ps -> pure . ArrayL <$> traverse goPat ps
+         ConstArrayL lits -> pure . ConstArrayL <$> traverse tryConvertConstLitP lits
+         ObjectL _ fs' -> do
+           let fs = sortOn fst fs'
+               len = length fs
+               fakeCName = mkFakeCName len
+               fakeTName = mkFakeTName len
+               bareFields = snd <$> fs
+           bareFields' <- traverse goPat bareFields
+           pure . Left $ ConP fakeTName fakeCName bareFields'
+
+       -- FIXME: We can have empty objects here, so this function is partial, but I'm not sure what to do w/
+       --        an empty Object in a pattern.
+       tryConvertConstLitP :: Lit WithObjects Void -> Either ExprConvertError (Lit WithoutObjects Void)
+       tryConvertConstLitP = \case
+         IntL i -> pure $ IntL i
+         NumL d -> pure $ NumL d
+         StringL s -> pure $ StringL s
+         CharL c -> pure $ CharL c
+         BoolL b -> pure $ BoolL b
+         ArrayL [] -> pure $ ConstArrayL []
+         ConstArrayL lits ->  ConstArrayL <$> traverse tryConvertConstLitP lits
+         _ -> error "impossible (?) pattern"
+
+       goBinds :: (BindEWithObjects -> ExpWithObjects)
+               -> [BindEWithObjects]
+               -> Either ExprConvertError [BindEWithoutObjects]
        goBinds _ [] = pure []
        goBinds g (b:bs) = case b of
-         NonRec ann ident expr -> do
-           ty' <- goType (exprType expr)
-           e' <- go (g . NonRec ann ident ) expr
+         NonRecursive ident expr -> do
+           e' <- go (g . NonRecursive ident) expr
            rest <- goBinds g bs
-           pure $ [(FVar ty' ident,e')] : rest
-         -- TODO: Fix this to preserve recursivity (requires modifying the *LET* ctor of Exp)
-         Rec _xs -> do
-           let xs = map (\((ann,nm),e) -> NonRec ann nm e) _xs
-           xs' <- goBinds g xs
+           pure $ NonRecursive ident e'  : rest
+         Recursive  xs -> do
+           -- TODO: Accurate error reporting
+           let g' = g . NonRecursive (Ident "HERE")
+           xs' <- traverse (traverse (go g')) xs
            rest <- goBinds g bs
-           pure $ xs' <> rest
+           pure $ Recursive xs' : rest
 
-       allVars :: Expr Ann -> [(SourceType, Qualified Ident)]
-       allVars ex = ex ^.. icosmos @Context @(Expr Ann) M.empty . _Var . to (\(_,b,c) -> (b,c))
-
-       findBoundVar :: Ident -> Expr Ann -> Maybe (SourceType, Qualified Ident)
-       findBoundVar nm ex = find (goFind . snd) (allVars ex)
-         where
-           goFind = \case
-             Qualified (ByModuleName _) _ -> False
-             Qualified ByNullSourcePos _ -> False -- idk about this actually, guess we'll find out
-             Qualified (BySourcePos _) nm' -> nm == nm'
-
-       goList :: (Expr Ann -> Expr Ann) -> [Expr Ann] -> Either ExprConvertError [Exp WithoutObjects Ty (FVar Ty)]
+       goList :: (ExpWithObjects -> ExpWithObjects) -> [ExpWithObjects] -> Either ExprConvertError [ExpWithoutObjects]
        goList _ [] = pure []
        goList g (ex:exs) = do
          e' <- go g ex
          es' <- goList g exs
          pure $ e' : es'
 
-       -- ONLY USE THIS IN LAMBDA ABSTRACTIONS!
-       matchVar :: Ty -> Ident -> FVar Ty -> Maybe (BVar Ty)
-       matchVar t nm (FVar ty n')
-         | ty == t && nm == n' =  Just (BVar 0 t nm)
-         | otherwise = Nothing
+       tryConvertLit :: (ExpWithObjects -> ExpWithObjects)
+                     -> Lit WithObjects ExpWithObjects
+                     -> Either ExprConvertError (Either ExpWithoutObjects (Lit WithoutObjects ExpWithoutObjects))
+       tryConvertLit  cb  = \case
+         IntL i -> pure . pure $ IntL i
+         NumL d -> pure . pure $ NumL d
+         StringL psstr -> pure . pure $ StringL psstr
+         CharL c       -> pure . pure $ CharL c
+         BoolL b       -> pure . pure $ BoolL b
+         ArrayL nonLitArr ->  Right . ArrayL <$> traverse (go cb)  nonLitArr
+         ConstArrayL lits -> Right . ConstArrayL <$> traverse constArrHelper lits
+         ObjectL _ fs'  ->  Left <$> handleObjectLiteral fs'
+        where
 
-       tryConvertLit :: (Expr Ann -> Expr Ann) -> Literal (Expr Ann) -> Either ExprConvertError (Either (Exp WithoutObjects Ty (FVar Ty)) (Lit WithoutObjects (Exp WithoutObjects Ty (FVar Ty))))
-       tryConvertLit cb = \case
-         NumericLiteral (Left i) -> pure . Right $ IntL i
-         NumericLiteral (Right d) -> pure . Right $ NumL d
-         StringLiteral pss -> pure . Right $ StringL pss
-         CharLiteral c     -> pure . Right $ CharL c
-         BooleanLiteral b  -> pure . Right $ BoolL b
-         ArrayLiteral xs   -> Right . ArrayL <$> traverse (go cb) xs
-         ObjectLiteral fs'  -> do -- TODO Maybe check for empty? I think that's a legal expr?
+         constArrHelper ::  Lit WithObjects Void
+                        -> Either ExprConvertError (Lit WithoutObjects Void)
+         constArrHelper = \case
+              IntL i -> pure $ IntL i
+              NumL d -> pure $ NumL d
+              StringL s -> pure $ StringL s
+              CharL c   -> pure $ CharL c
+              BoolL b   -> pure $ BoolL b
+              ArrayL [] -> pure $ ConstArrayL []
+              ArrayL (x:_) -> absurd x
+              ObjectL _ [] -> error "Empty record inside ConstArrayL. We should forbid this somehow."
+              ObjectL _ ((_,x):_) -> absurd x
+              ConstArrayL lits -> do
+                res <- traverse constArrHelper lits
+                pure $ ConstArrayL res
+
+         handleObjectLiteral :: [(PSString,ExpWithObjects)]
+                             -> Either ExprConvertError ExpWithoutObjects
+         handleObjectLiteral fs' = do
            let fs = sortOn fst fs'
                len = length fs
                fakeCName = mkFakeCName len
                fakeTName = mkFakeTName len
                bareFields = snd <$> fs
-               types' = exprType <$> bareFields
-               types = types' <> [foldl' srcTypeApp (srcTypeConstructor fakeTName) types']
-               ctorType = foldr1 function types
-               ctorExp = Constructor nullAnn ctorType (disqualify fakeTName) (disqualify fakeCName) []
-           ctor <-  assembleDesugaredObjectLit ctorExp ctorType bareFields
-           Left <$> go cb ctor
+           bareFields' <- traverse (go cb) bareFields
+           let types' = expTy F <$> bareFields'
+               types = types' <> [foldl' applyType (TyCon fakeTName) types']
+               ctorType = foldr1 funTy types
+
+               ctorExp :: ExpWithoutObjects
+               ctorExp = CtorE  ctorType (disqualify fakeTName) (disqualify fakeCName) []
+           assembleDesugaredObjectLit ctorExp ctorType bareFields'
+
 
        goType :: SourceType -> Either ExprConvertError Ty
        goType = catchTE . tryConvertType
 
+
+
+       updateBV ::  BVar SourceType -> Either ExprConvertError (BVar Ty)
+       updateBV (BVar bvIx bvTy bvNm) = do
+         bvTy' <- catchTE $ tryConvertType bvTy
+         pure $ BVar bvIx bvTy' bvNm
+
        catchTE :: forall t. Either TypeConvertError t -> Either ExprConvertError t
        catchTE = first ((\x -> ExprConvertError f expression x "Failed to convert type") . Just)
 
-assembleDesugaredObjectLit :: Expr Ann -> SourceType -> [Expr Ann] -> Either ExprConvertError (Expr Ann)
-assembleDesugaredObjectLit expr (_ :-> b) (arg:args) = assembleDesugaredObjectLit (App nullAnn  expr arg) b args
+       -- TODO/FIXME: We need to ensure that we don't introduce conflicts in the bound variables. Not sure what the best way is ATM
+
+       -- I'm not really sure what the point of the copy fields is? TODO: Figure out what the point of them is
+       desugarObjectUpdate :: SourceType
+                           -> ExpWithObjects
+                           -> Maybe [PSString]
+                           -> [(PSString,ExpWithObjects)]
+                           -> Either ExprConvertError ExpWithoutObjects
+       desugarObjectUpdate _ e _ updateFields = do
+         _fs <- case expTy F e of
+                         RecordT fs -> pure fs
+                         other -> error $ "ERROR: Record expression:\n  "
+                                            <> prettyStr e
+                                            <> "\n  should have a Record type, but instead has type:\n  "
+                                            <> prettyStr other
+
+         updateMap <- traverse (go f) $ M.fromList updateFields
+         updateTypes <-  traverse goType $ M.fromList $ second (expTy F) <$> updateFields
+         origTypes <- traverse (goType . rowListType) (mkFieldMap _fs)
+         let ts = updateTypes  `M.union` origTypes
+             len = M.size ts
+             fakeCName = mkFakeCName len
+             fakeTName = mkFakeTName len
+             types' = M.elems ts
+             types = types' <> [foldl' applyType (TyCon fakeTName) types']
+             ctorType = foldr1 funTy types
+
+             positioned = zip (M.keys ts) [0..]
+
+             withPositioned :: forall x. (PSString -> Int -> x) -> [x]
+             withPositioned f' = uncurry f' <$> positioned
+
+             argBndrTemplate = withPositioned $ \lbl i -> case M.lookup lbl updateMap of
+               Nothing -> VarP . Ident $ "<UPD_" <> T.pack (show i) <> ">"
+               Just _  -> WildP
+
+             resultTemplate = withPositioned $ \lbl i -> case M.lookup lbl updateMap of
+               Nothing ->
+                 let nm = Ident $ "<UPD_" <> T.pack (show i) <> ">"
+                 in V . B  $ BVar (M.findIndex lbl origTypes) (origTypes M.! lbl) nm
+               Just expr -> F <$> expr
+
+             ctorExp = CtorE ctorType (disqualify fakeTName) (disqualify fakeCName) []
+
+             ctorBndr = ConP fakeTName fakeCName argBndrTemplate
+
+         resultExpr <- assembleDesugaredObjectLit ctorExp ctorType resultTemplate
+         e' <- go f e
+         let scoped = toScope resultExpr
+             -- TODO/FIXME/REVIEW/HACK: Either remove the bindings Map from UnguardedAlt or actually construct a real one
+             --                         (I think we never use it so it should be OK to remove?)
+             altBranch = UnguardedAlt M.empty [ctorBndr] scoped
+         pure $ CaseE ctorType [e'] [altBranch]
+
+       desugarObjectAccessor :: SourceType -> PSString -> ExpWithObjects -> Either ExprConvertError ExpWithoutObjects
+       desugarObjectAccessor _ lbl e = do
+         traceM "desugarObjectAccesor"
+         _fs <- case expTy F e of
+                         RecordT fs -> pure fs
+                         other -> error $ "ERROR: Record expression:\n  "
+                                            <> prettyStr e
+                                            <> "\n  should have a Record type, but instead has type:\n  "
+                                            <> prettyStr other
+         fs <- traverse (traverse goType) $  M.toList (rowListType <$> mkFieldMap _fs)
+         let len = length fs
+             fakeCName = mkFakeCName len
+             fakeTName = mkFakeTName len
+             types' = snd <$> fs
+             dummyNm =  Ident "<ACCESSOR>"
+             lblIx = fromJust $ elemIndex lbl (fst <$> fs) -- FIXME: fromJust
+         traceM $ "TYPES: " <> show (prettyStr <$> types')
+
+         let fieldTy = types' !! lblIx -- if it's not there *something* should have caught it by now
+             argBndrTemplate = replicate len WildP & ix lblIx .~ VarP dummyNm
+             ctorBndr = ConP fakeTName fakeCName argBndrTemplate
+             -- NOTE: `lblIx` is a placeholder for a better var ix
+             rhs :: Exp WithoutObjects Ty (Var (BVar Ty) (FVar Ty))
+             rhs = V . B $ BVar lblIx  fieldTy  dummyNm
+             altBranch = UnguardedAlt M.empty [ctorBndr] (toScope rhs)
+         e' <- go f e
+         pure $ CaseE fieldTy [e'] [altBranch]
+
+assembleDesugaredObjectLit :: forall x a. Exp x Ty a  -> Ty -> [Exp x Ty a] -> Either ExprConvertError (Exp x Ty a)
+assembleDesugaredObjectLit expr (_ :~> b) (arg:args) = assembleDesugaredObjectLit (AppE  expr arg) b args
 assembleDesugaredObjectLit expr _ [] = pure expr -- TODO better error
 assembleDesugaredObjectLit _ _ _ = error "something went wrong in assembleDesugaredObjectLit"
 
-desugarObjectAccessor :: SourceType -> PSString -> Expr Ann -> Maybe (Expr Ann)
-desugarObjectAccessor _ lbl e = do
-  traceM "desugarObjectAccesor"
-  RecordT _fs <- pure $ exprType e -- TODO check that it's actually a closed record?
-  let fs = M.toList (rowListType <$> mkFieldMap _fs)
-      len = length fs
-      fakeCName = mkFakeCName len
-      fakeTName = mkFakeTName len
-      types' = snd <$> fs
-      dummyNm =  Ident "<ACCESSOR>"
-  lblIx <-  elemIndex lbl (fst <$> fs)
-  traceM $ "TYPES: " <> show (prettyTypeStr <$> types')
-  let fieldTy = types' !! lblIx -- if it's not there *something* should have caught it by now
-  let argBndrTemplate = replicate len (NullBinder nullAnn) & ix lblIx .~ VarBinder nullAnn dummyNm
-      ctorBndr = ConstructorBinder nullAnn fakeTName fakeCName argBndrTemplate
-      rhs = Var nullAnn fieldTy (Qualified ByNullSourcePos dummyNm)
-      altBranch = CaseAlternative [ctorBndr] $ Right rhs
-  -- the actual expression should get desugared after this (i hope?)
-  pure $ Case nullAnn fieldTy [e] [altBranch]
+
       -- ctorBndr = ConstructorBinder
 
--- I'm not really sure what the point of the copy fields is? TODO: Figure out what the point of them is
-desugarObjectUpdate :: SourceType -> Expr Ann -> Maybe [PSString] -> [(PSString,Expr Ann)] -> Maybe (Expr Ann)
-desugarObjectUpdate _ e _ updateFields = do
-  RecordT _fs <- pure $ exprType e
-  let updateMap = M.fromList updateFields
-      updateTypes = M.fromList $ second exprType <$> updateFields
-      origTypes = rowListType <$> mkFieldMap _fs
-      ts = updateTypes  `M.union` origTypes
-      len = M.size ts
-      fakeCName = mkFakeCName len
-      fakeTName = mkFakeTName len
-      types' = M.elems ts
-      types = types' <> [foldl' srcTypeApp (srcTypeConstructor fakeTName) types']
-      ctorType = foldr1 function types
-
-      positioned = zip (M.keys ts) [0..]
-
-      withPositioned :: forall x. (PSString -> Int -> x) -> [x]
-      withPositioned f = uncurry f <$> positioned
-
-      argBndrTemplate = withPositioned $ \lbl i -> case M.lookup lbl updateMap of
-        Nothing -> VarBinder nullAnn . Ident $ "<UPD_" <> T.pack (show i) <> ">"
-        Just _  -> NullBinder nullAnn
-
-      resultTemplate = withPositioned $ \lbl i -> case M.lookup lbl updateMap of
-        Nothing ->
-          let nm = Ident $ "<UPD_" <> T.pack (show i) <> ">"
-          in Var nullAnn (origTypes M.! lbl) (Qualified ByNullSourcePos nm)
-        Just expr -> expr
-
-      ctorExp = Constructor nullAnn ctorType (disqualify fakeTName) (disqualify fakeCName) []
-
-      resultExpr = assembleDesugaredObjectLit ctorExp ctorType resultTemplate
-
-      ctorBndr = ConstructorBinder nullAnn fakeTName fakeCName argBndrTemplate
-  case resultExpr of
-    Left err -> error $ prettyError err
-    Right res -> do
-      let altBranch = CaseAlternative [ctorBndr] $ Right res
-      pure $ Case nullAnn ctorType [e] [altBranch]
 
 
 
--- TODO: Fuck these tuples, make real data types when more time
+-- TODO/FIXME: Adapt this for use w/ the PIR Data declaration machinery (i.e. don't manually construct SOPs)
 
 mkTupleCtorData :: Int -> (ProperName 'ConstructorName,(ProperName 'TypeName,Int,[Ty]))
 mkTupleCtorData n | n <= 0 = error "Don't try to make a 0-tuple"
@@ -447,7 +504,8 @@ mkTupleCtorData n = (cn,(tn,n,tys))
   where
     cn = disqualify . mkFakeCName $ n
     tn = disqualify . mkFakeTName $ n
-    tys = TyVar . ("~TUPLE_ARG_" <>) . T.pack . show <$> [1..n]
+    mkTV nx = TyVar ("~TUPLE_ARG_" <>  T.pack (show nx)) KindType
+    tys = mkTV <$> [1..n]
 
 _100TupleCtors :: CtorDict
 _100TupleCtors = M.fromList $ mkTupleCtorData <$> [1..100]
@@ -469,7 +527,7 @@ mkConstructorMap decls = M.union _100TupleCtors <$>  foldM go M.empty (M.toList 
        extractCTorData :: DataConstructorDeclaration -> TyConvertM (ProperName 'ConstructorName,ProperName 'TypeName,[Ty])
        extractCTorData (DataConstructorDeclaration _ ctorNm ctorFields) = do
          fields' <- traverse (tryConvertType . snd) ctorFields
-         pure $ (ctorNm,tyNm,fields')
+         pure (ctorNm,tyNm,fields')
        mkIndex :: (ProperName 'ConstructorName, ProperName 'TypeName, [Ty])
                -> (ProperName 'ConstructorName, ProperName 'TypeName, Int,[Ty])
        mkIndex (cn,tn,fs) = case findIndex (\DataConstructorDeclaration{..} -> dataCtorName == cn) ctorDatas of
@@ -506,4 +564,3 @@ mkTyConMap decls = M.union _100TupleTyCons <$> foldM go M.empty (M.toList decls)
       tyArgs' <- (traverse . traverse . traverse) tryConvertType tyArgs
       indexedProducts <- zip [0..] <$> traverse (traverse (tryConvertType . snd) . dataCtorFields) ctorDatas
       pure $ M.insert tn (declTy,tyArgs',indexedProducts) acc
--}

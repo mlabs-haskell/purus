@@ -1,6 +1,6 @@
 {-# OPTIONS_GHC -Werror -Wno-orphans #-}
 {-# LANGUAGE TypeApplications #-}
-module Language.PureScript.CoreFn.Convert.DesugarCore (WithObjects, desugarCore, desugarCoreModule) where
+module Language.PureScript.CoreFn.Convert.DesugarCore (WithObjects, WithoutObjects, desugarCore, desugarCoreModule) where
 
 import Prelude
 
@@ -30,6 +30,7 @@ import Language.PureScript.CoreFn.Module (Module(..))
 import Language.PureScript.CoreFn.Pretty (renderExprStr)
 import Debug.Trace (traceM)
 import Language.PureScript.CoreFn.Desugar.Utils (wrapTrace, showIdent')
+import Data.Void (Void)
 
 -- TODO: Something more reasonable
 type DS = Either String
@@ -39,6 +40,12 @@ data WithObjects
 type instance XAccessor WithObjects = ()
 type instance XObjectUpdate WithObjects = ()
 type instance XObjectLiteral WithObjects = ()
+
+data WithoutObjects
+
+type instance XAccessor WithoutObjects = Void
+type instance XObjectUpdate WithoutObjects = Void
+type instance XObjectLiteral WithoutObjects = Void
 
 type IR_Decl = BindE PurusType (Exp WithObjects PurusType) (FVar PurusType)
 
