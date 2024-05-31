@@ -1,3 +1,4 @@
+{-# LANGUAGE GADTs, PolyKinds #-}
 module Language.PureScript.CoreFn.Convert.Datatypes where
 
 import Prelude
@@ -33,7 +34,8 @@ import Language.PureScript.CoreFn.Convert.DesugarObjects (tryConvertType, pretty
 import Language.PureScript.CoreFn.Expr (PurusType)
 import Language.PureScript.CoreFn.Convert.DesugarCore
 import Language.PureScript.CoreFn.Pretty (prettyTypeStr)
- 
+import Data.Kind qualified as GHC
+import Type.Reflection (Typeable)
 
 mkTypeBindDict :: Module IR_Decl a
                -> Exp WithoutObjects Ty (FVar Ty)
@@ -72,7 +74,6 @@ type PIRDatatype = PIR.Datatype
 
 type PSTypeName = Qualified (ProperName 'TypeName)
 
-
 mkPIRDatatypes :: ModuleDeclarations -- We already translate the constructor functions and it's easier to just *look* for them vs doing it all again
                -> ModuleDataTypes    -- /\ NOTE: We might have to make sure we don't inline constructor functions?
                -> S.Set PSTypeName
@@ -96,7 +97,8 @@ mkPIRDatatypes moduleDecls moduleADTs tyConsInExp = foldM go M.empty tyConsInExp
             this = PIR.Datatype () typeNameDecl argDecls deconstructorName ctors
         pure $ M.insert qn this acc
 
-    mkCtorDecl :: DataConstructorDeclaration -> Either String (VarDecl (Qualified (ProperName 'TypeName)) Ident  PLC.DefaultUni ())
+    mkCtorDecl :: DataConstructorDeclaration
+               -> Either String (VarDecl (Qualified (ProperName 'TypeName)) Ident  PLC.DefaultUni ())
     mkCtorDecl DataConstructorDeclaration{..} = do
       let ctorIdent = properToIdent dataCtorName
       case findDeclBody' ctorIdent moduleDecls of
@@ -139,12 +141,11 @@ toPIRType = \case
     pure $ TyForall () (qualifyNull $ ProperName v) (mkKind k) ty'
   other -> error $ "Upon reflection, other types like " <> ppTy other <> " shouldn't be allowed in the Ty ast"
  where
-   goTypeApp (IR.TyApp f a) b
-     | f == TyCon C.Function = do
+   goTypeApp (IR.TyApp (TyCon C.Function) a) b = do
          a' <- toPIRType a
          b' <- toPIRType b
          pure $ PIR.TyFun () a' b'
-     | otherwise = PIR.TyApp () <$> toPIRType a <*> toPIRType b
+   goTypeApp a b = PIR.TyApp () <$> toPIRType a <*> toPIRType b
 
 handleBuiltinTy :: Qualified (ProperName 'TypeName) -> Either String (PIR.Type tyname PLC.DefaultUni ())
 handleBuiltinTy = \case
@@ -178,3 +179,50 @@ sourceTypeToKind = \case
       t2' <- sourceTypeToKind t2
       pure $ PIR.KindArrow () t1' t2'
     other -> Left $ "Error: PureScript type '" <> prettyTypeStr other <> " is not a valid Plutus Kind"
+
+-- Utilities for PIR conversion (move somewhere else)
+
+pattern (:@) :: PIR.Type tyName PLC.DefaultUni () -> PIR.Type tyName PLC.DefaultUni () -> PIR.Type tyName PLC.DefaultUni ()
+pattern f :@ e = PIR.TyApp () f e
+
+infixl 9 :@
+
+pattern PlcPair :: PIR.Type tyName PLC.DefaultUni () -> PIR.Type tyName PLC.DefaultUni () -> PIR.Type tyName PLC.DefaultUni ()
+pattern PlcPair a b =  TyBuiltin () (PLC.SomeTypeIn PLC.DefaultUniProtoPair) :@ a :@ b
+
+pattern PlcList :: PIR.Type tyName PLC.DefaultUni () -> PIR.Type tyName PLC.DefaultUni ()
+pattern PlcList a =  TyBuiltin () (PLC.SomeTypeIn PLC.DefaultUniProtoList) :@ a
+
+pattern PlcData :: PIR.Type tyName PLC.DefaultUni ()
+pattern PlcData = TyBuiltin () (PLC.SomeTypeIn PLC.DefaultUniData)
+
+pattern PlcInt :: PIR.Type tyName PLC.DefaultUni ()
+pattern PlcInt = TyBuiltin () (PLC.SomeTypeIn PLC.DefaultUniInteger)
+
+pattern PlcBool :: PIR.Type tyName PLC.DefaultUni ()
+pattern PlcBool = TyBuiltin () (PLC.SomeTypeIn PLC.DefaultUniBool)
+
+pattern PlcString :: PIR.Type tyName PLC.DefaultUni ()
+pattern PlcString = TyBuiltin () (PLC.SomeTypeIn PLC.DefaultUniString)
+
+pattern PlcByteString :: PIR.Type tyName PLC.DefaultUni ()
+pattern PlcByteString = TyBuiltin () (PLC.SomeTypeIn PLC.DefaultUniByteString)
+
+-- the kind annotation on `a` is necessary here
+data SomeUni :: GHC.Type where
+  SomeUni :: forall (a :: GHC.Type). Typeable a => PLC.DefaultUni (PLC.Esc a) -> SomeUni
+
+extractUni :: Show tyName => PIR.Type tyName PLC.DefaultUni () -> Either String SomeUni
+extractUni = \case
+  PlcInt -> pure $ SomeUni PLC.DefaultUniInteger
+  PlcBool -> pure $ SomeUni PLC.DefaultUniBool
+  PlcString -> pure $ SomeUni PLC.DefaultUniString
+  PlcByteString -> pure $ SomeUni PLC.DefaultUniByteString
+  PlcPair a b -> do
+    SomeUni a' <- extractUni a
+    SomeUni b' <- extractUni b
+    pure . SomeUni $ PLC.DefaultUniPair a' b'
+  PlcList a -> do
+    SomeUni a' <- extractUni a
+    pure . SomeUni $ PLC.DefaultUniList a'
+  other -> Left $ "Not a PLC constant-able type:\n " <> show other

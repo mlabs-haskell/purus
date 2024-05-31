@@ -8,7 +8,7 @@ module Language.PureScript.CoreFn.Convert.DesugarObjects where
 import Prelude
 import Language.PureScript.CoreFn.Expr
     ( Expr(..) )
-import Language.PureScript.Names (Ident(..), Qualified (..), QualifiedBy (..), pattern ByNullSourcePos, ProperNameType (..), ProperName(..), disqualify, ModuleName (..))
+import Language.PureScript.Names (Ident(..), Qualified (..), QualifiedBy (..), pattern ByNullSourcePos, ProperNameType (..), ProperName(..), disqualify, ModuleName (..), runModuleName)
 import Language.PureScript.Types
     ( SourceType, Type(..), srcTypeConstructor, srcTypeApp, RowListItem (rowListType), rowToList, eqType )
 import Language.PureScript.Environment (pattern (:->), pattern RecordT, kindType, DataDeclType (Data))
@@ -22,42 +22,72 @@ import Data.Map qualified as M
 import Language.PureScript.PSString (PSString)
 import Language.PureScript.AST.SourcePos
     ( pattern NullSourceAnn, pattern NullSourceSpan )
-import Control.Lens.IndexedPlated
+import Control.Lens.IndexedPlated ( icosmos )
 import Control.Lens ( ix, view )
 import Language.PureScript.CoreFn.Convert.Monomorphize.Utils
+    ( transverseScopeViaExpX,
+      mkFieldMap,
+      findDeclBody,
+      decodeModuleIO,
+      MonoError(MonoError),
+      IR_Decl )
+import Language.PureScript.CoreFn.Convert.MonomorphizeV2
+    ( runMonomorphize )
 import Data.Text (Text)
-import Bound
+import Bound ( toScope, Var(..) )
 import Data.Bifunctor (Bifunctor(first, second))
 import Control.Lens.Combinators (to)
 import Data.Maybe (fromJust)
-import Control.Lens.Operators
-import Control.Lens.Tuple
+import Control.Lens.Operators ( (<&>), (.~), (&), (^..) )
+import Control.Lens.Tuple ( Field2(_2), Field3(_3) )
 import Language.PureScript.CoreFn.Convert.IR
-import Language.PureScript.CoreFn.Utils hiding (stripQuantifiers)
-import Debug.Trace
+    ( pattern (:~>),
+      expTy,
+      mkFakeCName,
+      mkFakeTName,
+      ppExp,
+      BindE(..),
+      Alt(..),
+      BVar(..),
+      Pat(..),
+      Kind(..),
+      Lit(..),
+      Exp(..),
+      FVar(..),
+      Ty(..) )
+import Language.PureScript.CoreFn.Utils ( exprType, Context )
+import Debug.Trace ( traceM )
 import Control.Monad (foldM)
 import Language.PureScript.AST.Declarations (DataConstructorDeclaration (..))
 import Data.Map (Map)
 import Language.PureScript.Constants.Prim qualified as C
-import Language.PureScript.CoreFn.Convert.DesugarCore (WithoutObjects, WithObjects)
+import Language.PureScript.CoreFn.Convert.DesugarCore (WithoutObjects, WithObjects, desugarCoreModule)
 import Data.Void (Void, absurd)
 
 import Unsafe.Coerce qualified as UNSAFE
 
 import Prettyprinter
+    ( defaultLayoutOptions, layoutPretty, Pretty(pretty) )
 import Prettyprinter.Render.Text (renderStrict)
 import Language.PureScript.CoreFn.TypeLike (TypeLike(..))
+import Language.PureScript.CoreFn.Module (Module(..))
+import GHC.IO (throwIO)
 
 prettyStr :: Pretty a => a -> String
 prettyStr = T.unpack . renderStrict . layoutPretty defaultLayoutOptions . pretty
 
+decodeModuleIR :: FilePath -> IO (Module IR_Decl Ann)
+decodeModuleIR path = do
+  myMod <- decodeModuleIO path
+  case desugarCoreModule myMod of
+    Left err -> throwIO $ userError err
+    Right myModIR -> pure myModIR
 
-{-
 test :: FilePath -> Text -> IO (Exp WithoutObjects Ty (FVar Ty))
 test path decl = do
-  myMod <- decodeModuleIO path
+  myMod <- decodeModuleIR path
   Just myDecl <- pure $ findDeclBody decl myMod
-  case monomorphizeExpr myMod myDecl of
+  case runMonomorphize myMod myDecl of
     Left (MonoError msg ) -> throwIO $ userError $ "Couldn't monomorphize " <> T.unpack decl <> "\nReason:\n" <> msg
     Right body -> case tryConvertExpr body of
       Left convertErr -> throwIO $ userError convertErr
@@ -65,30 +95,16 @@ test path decl = do
         putStrLn (ppExp e)
         pure e
 
-data WithoutObjects
-
-type instance XAccessor WithoutObjects = Void
-type instance XObjectUpdate WithoutObjects = Void
-type instance XObjectLiteral WithoutObjects = Void
-
 prepPIR :: FilePath
         -> Text
-        -> IO (Exp WithoutObjects Ty (FVar Ty), Map (ProperName 'TypeName) (DataDeclType, [(Text, Maybe SourceType)], [DataConstructorDeclaration]))
+        -> IO (Exp WithoutObjects Ty (FVar Ty), Map (ProperName 'TypeName) (DataDeclType, [(Text, SourceType)], [DataConstructorDeclaration]))
 prepPIR path  decl = do
-  myMod@Module{..} <- decodeModuleIO path
+  myMod@Module{..} <- decodeModuleIR path
 
   desugaredExpr <- case findDeclBody decl myMod of
-    Nothing -> error "findDeclBody"
-    Just expr -> case desugarCore expr of
-      Right expr' -> do
-        putStrLn $ "desugarCore HERE: " <> IR.ppExp expr'
-        pure expr'
-      Left msg -> throwIO
-        $ userError
-        $ "Could not simplify "
-        <> T.unpack (runModuleName moduleName <> ".main") <> "\nReason:\n" <> msg
-
-  case monomorphizeExpr myMod desugaredExpr of
+    Nothing -> throwIO $ userError  "findDeclBody"
+    Just expr -> pure expr
+  case runMonomorphize myMod desugaredExpr of
     Left (MonoError msg ) ->
       throwIO
       $ userError
@@ -96,13 +112,12 @@ prepPIR path  decl = do
         <> T.unpack (runModuleName moduleName <> ".main") <> "\nReason:\n" <> msg
     Right body -> do
       putStrLn (ppExp body)
-      throwIO $ userError "TODO: simplify objects"
-      -- case tryConvertExpr body of
-    --   Left convertErr -> throwIO $ userError convertErr
-    --   Right e -> do
-    --     putStrLn (ppExp e)
-    --     pure (e,moduleDataTypes)
--}
+      case tryConvertExpr body of
+         Left convertErr -> throwIO $ userError convertErr
+         Right e -> do
+           putStrLn (ppExp e)
+           pure (e,moduleDataTypes)
+
 -- This gives us a way to report the exact location of the error (which may no longer correspond *at all* to
 -- the location given in the SourcePos annotations due to inlining and monomorphization)
 
@@ -317,6 +332,7 @@ tryConvertExpr' = go id
          BoolL b -> pure $ BoolL b
          ArrayL [] -> pure $ ConstArrayL []
          ConstArrayL lits ->  ConstArrayL <$> traverse tryConvertConstLitP lits
+         ObjectL _ [] -> undefined
          _ -> error "impossible (?) pattern"
 
        goBinds :: (BindEWithObjects -> ExpWithObjects)
@@ -355,7 +371,6 @@ tryConvertExpr' = go id
          ConstArrayL lits -> Right . ConstArrayL <$> traverse constArrHelper lits
          ObjectL _ fs'  ->  Left <$> handleObjectLiteral fs'
         where
-
          constArrHelper ::  Lit WithObjects Void
                         -> Either ExprConvertError (Lit WithoutObjects Void)
          constArrHelper = \case
@@ -392,8 +407,6 @@ tryConvertExpr' = go id
 
        goType :: SourceType -> Either ExprConvertError Ty
        goType = catchTE . tryConvertType
-
-
 
        updateBV ::  BVar SourceType -> Either ExprConvertError (BVar Ty)
        updateBV (BVar bvIx bvTy bvNm) = do
@@ -490,12 +503,6 @@ assembleDesugaredObjectLit expr (_ :~> b) (arg:args) = assembleDesugaredObjectLi
 assembleDesugaredObjectLit expr _ [] = pure expr -- TODO better error
 assembleDesugaredObjectLit _ _ _ = error "something went wrong in assembleDesugaredObjectLit"
 
-
-      -- ctorBndr = ConstructorBinder
-
-
-
-
 -- TODO/FIXME: Adapt this for use w/ the PIR Data declaration machinery (i.e. don't manually construct SOPs)
 
 mkTupleCtorData :: Int -> (ProperName 'ConstructorName,(ProperName 'TypeName,Int,[Ty]))
@@ -512,6 +519,7 @@ _100TupleCtors = M.fromList $ mkTupleCtorData <$> [1..100]
 
 -- Don't normally like type syns in contexts like this but hlint will probably make this unreadable w/o them
 type CtorDict = Map (ProperName 'ConstructorName) (ProperName 'TypeName,Int,[Ty])
+
 mkConstructorMap :: Map (ProperName 'TypeName) (DataDeclType,[(Text, Maybe SourceType)],[DataConstructorDeclaration])
                  -> TyConvertM CtorDict
 mkConstructorMap decls = M.union _100TupleCtors <$>  foldM go M.empty (M.toList decls)
@@ -553,6 +561,7 @@ _100TupleTyCons :: TyConDict
 _100TupleTyCons = M.fromList $ mkTupleTyConData <$> [1..100]
 
 type TyConDict = (Map (ProperName 'TypeName) (DataDeclType,[(Text,Maybe Ty)],[(Int,[Ty])]))
+
 mkTyConMap :: Map (ProperName 'TypeName) (DataDeclType,[(Text, Maybe SourceType)],[DataConstructorDeclaration])
            -> TyConvertM (Map (ProperName 'TypeName) (DataDeclType,[(Text,Maybe Ty)],[(Int,[Ty])]))
 mkTyConMap decls = M.union _100TupleTyCons <$> foldM go M.empty (M.toList decls)

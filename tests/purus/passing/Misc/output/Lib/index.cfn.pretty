@@ -46,6 +46,7 @@ Exports:
   recG1,
   testBuiltin,
   main,
+  main2,
   plus,
   guardedCase,
   nestedApplications,
@@ -322,6 +323,9 @@ mutuallyRecursiveBindingGroup =
 minus :: Prim.Int -> Prim.Int -> Prim.Int
 minus = \(v: Prim.Int) -> \(v1: Prim.Int) -> (42: Prim.Int)
 
+main2 :: Lib.TestBinderSum
+main2 = (ConBoolean: Prim.Boolean -> Lib.TestBinderSum) (true: Prim.Boolean)
+
 id :: forall (t :: Prim.Type). (t :: Prim.Type) -> (t :: Prim.Type)
 id = \(x: (t :: Prim.Type)) -> (x: (t :: Prim.Type))
 
@@ -388,8 +392,8 @@ workingEven =
        true -> (1: Prim.Int)
        _ -> (42: Prim.Int)
 
-emptyList :: forall (t90 :: Prim.Type). Array ((t90 :: Prim.Type))
-emptyList = ([]: forall (t90 :: Prim.Type). Array ((t90 :: Prim.Type)))
+emptyList :: forall (t91 :: Prim.Type). Array ((t91 :: Prim.Type))
+emptyList = ([]: forall (t91 :: Prim.Type). Array ((t91 :: Prim.Type)))
 
 cons :: forall (a :: Prim.Type). (a :: Prim.Type) -> Array ((a :: Prim.Type)) -> Array ((a :: Prim.Type))
 cons = 
@@ -402,14 +406,14 @@ consEmptyList1 =
   (cons: forall (a :: Prim.Type). (a :: Prim.Type) ->
   Array ((a :: Prim.Type)) -> Array ((a :: Prim.Type)))
   (1: Prim.Int)
-  (emptyList: forall (t90 :: Prim.Type). Array ((t90 :: Prim.Type)))
+  (emptyList: forall (t91 :: Prim.Type). Array ((t91 :: Prim.Type)))
 
 consEmptyList2 :: Array (Prim.String)
 consEmptyList2 = 
   (cons: forall (a :: Prim.Type). (a :: Prim.Type) ->
   Array ((a :: Prim.Type)) -> Array ((a :: Prim.Type)))
   ("hello": Prim.String)
-  (emptyList: forall (t90 :: Prim.Type). Array ((t90 :: Prim.Type)))
+  (emptyList: forall (t91 :: Prim.Type). Array ((t91 :: Prim.Type)))
 
 compare :: forall (@a :: Prim.Type). Lib.Ord$Dict (a :: Prim.Type) -> (a :: Prim.Type) -> (a :: Prim.Type) -> Prim.Int
 compare = 
@@ -577,7 +581,7 @@ aFunction6 =
     go = \(v: (z :: Prim.Type)) -> (10: Prim.Int)
   in (aFunction: forall (x :: Prim.Type). (x :: Prim.Type) ->
      forall (y :: Prim.Type). (y :: Prim.Type) -> Prim.Int -> Prim.Int)
-     ([]: Array (t119))
+     ([]: Array (t120))
      (go: forall (z :: Prim.Type). (z :: Prim.Type) -> Prim.Int)
 
 aBool :: Prim.Boolean

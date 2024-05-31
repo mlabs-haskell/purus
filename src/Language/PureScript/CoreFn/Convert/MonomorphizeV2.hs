@@ -44,18 +44,40 @@ import Control.Monad.RWS (RWST(..))
 import Control.Monad.Except (throwError)
 import Debug.Trace (trace, traceM)
 import Language.PureScript.CoreFn.Convert.DesugarCore
+    ( desugarCoreModule, WithObjects )
 import Bound.Var (Var(..))
 import Bound.Scope (mapBound)
 import Language.PureScript.CoreFn.TypeLike
     ( TypeLike(splitFunTyParts, instantiates) )
 import Language.PureScript.CoreFn.Convert.Monomorphize.Utils
+    ( mkFieldMap,
+      findDeclBody,
+      decodeModuleIO,
+      MonoError(..),
+      IR_Decl,
+      extractAndFlattenAlts,
+      findInlineDeclGroup,
+      foldMScopeViaExp,
+      freshBVar,
+      freshen,
+      gLet,
+      getModBinds,
+      note,
+      qualifyNull,
+      transverseScopeViaExp,
+      transverseScopeViaExp',
+      unsafeApply,
+      updateFreeVars,
+      updateVarTyS,
+      MonoState(MonoState),
+      Monomorphizer )
 
 import Data.Text (Text)
 import GHC.IO (throwIO)
-import Control.Lens.Combinators (folding)
 import Control.Lens.Getter (to)
-import qualified Data.Set as S
+import Data.Set qualified as S
 import Data.Foldable (traverse_)
+
 {- Function for quickly testing/debugging monomorphization -}
 
 testMono :: FilePath -> Text -> IO ()

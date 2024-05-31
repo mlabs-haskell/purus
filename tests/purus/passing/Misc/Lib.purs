@@ -167,6 +167,8 @@ testBuiltin = Builtin.addInteger 1 2
 
 main = aFunction4 {a: 101, b: "hello"} -- recF1 "hello"
 
+main2 = ConBoolean true
+
 plus :: Int -> Int -> Int
 plus a b = Builtin.addInteger a b
 
