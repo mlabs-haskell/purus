@@ -620,6 +620,7 @@ toPat = \case
 
 -- Data declaration / Constructor things
 
+
 mkFakeCName :: Int -> Qualified (ProperName 'ConstructorName)
 mkFakeCName x =
   Qualified
@@ -629,20 +630,3 @@ mkFakeCName x =
 mkFakeTName :: Int -> Qualified (ProperName 'TypeName)
 mkFakeTName x = coerceProperName @_ @'TypeName <$> mkFakeCName x
 
-data DataDeclIR k t = DataDeclIR {
-    irDeclType :: !DataDeclType,
-    irDataTyName :: !(Qualified (ProperName 'TypeName)),
-    irDataArgs :: ![(Text,k)],
-    irDataCtors :: ![CtorDeclIR t]
-  } deriving (Show, Eq, Ord)
-
-data CtorDeclIR t  = CtorDeclIR {
-    irCtorName :: !(Qualified (ProperName 'ConstructorName)),
-    irCtorFields :: ![(Ident,t)]
-  } deriving (Show, Eq, Ord)
-
-data DatatypesIR k t = DatatypesIRIR {
-    tyDict :: M.Map (Qualified (ProperName 'TypeName)) (DataDeclIR k t),
-    -- primarily for Olog(n) "is this a constructor?" which we'll need in the monomorphizer
-    ctorDict :: M.Map (Qualified (ProperName 'ConstructorName)) (Qualified (ProperName 'TypeName))
-  } deriving (Show, Eq, Ord)

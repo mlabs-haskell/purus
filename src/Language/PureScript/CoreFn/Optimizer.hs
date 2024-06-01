@@ -13,7 +13,7 @@ import Language.PureScript.Constants.Libs qualified as C
 -- |
 -- CoreFn optimization pass.
 --
-optimizeCoreFn :: Module (Bind Ann) Ann -> Supply (Module (Bind Ann) Ann)
+optimizeCoreFn :: Module (Bind Ann) k t Ann -> Supply (Module (Bind Ann) k t Ann)
 optimizeCoreFn m = fmap (\md -> m {moduleDecls = md}) . optimizeCommonSubexpressions (moduleName m) . optimizeModuleDecls $ moduleDecls m
 
 optimizeModuleDecls :: [Bind Ann] -> [Bind Ann]

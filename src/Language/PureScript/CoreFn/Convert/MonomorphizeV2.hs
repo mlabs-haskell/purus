@@ -85,7 +85,7 @@ testMono path decl = do
   myModCoreFn <- decodeModuleIO path
   myMod <- either (throwIO . userError) pure $ desugarCoreModule myModCoreFn
   Just myDecl <- pure $ findDeclBody decl myMod
-  case runMonomorphize myMod myDecl of
+  case runMonomorphize myMod [] myDecl of
     Left (MonoError msg ) -> throwIO $ userError $ "Couldn't monomorphize " <> T.unpack decl <> "\nReason:\n" <> msg
     Right body -> do
       let allSubExpressionTypes = S.toList . S.fromList $  body ^.. cosmos . to (expTy F) . cosmos
@@ -99,10 +99,11 @@ testMono path decl = do
    body as the Exp argument.
 -}
 runMonomorphize ::
-  Module IR_Decl Ann ->
+  Module IR_Decl PurusType PurusType Ann ->
+  [Module IR_Decl PurusType PurusType Ann] -> -- | Modules in scope, for declarations
   Exp WithObjects PurusType (FVar PurusType) ->
   Either MonoError (Exp WithObjects PurusType (FVar PurusType))
-runMonomorphize Module{..} expr =
+runMonomorphize Module{..} modulesInScope expr =
   runRWST (monomorphize  expr) (moduleName,moduleDecls) (MonoState 0) & \case
     Left err -> Left err
     Right (a,_,_) -> Right a
@@ -129,6 +130,7 @@ monomorphize  xpr = trace ("monomorphize " <>  "\n  " <> ppExp xpr)  $ case xpr 
     let types = concatMap (splitFunTyParts . expTy F)  args
     traceM $ "ARG TYPES:" <> show (prettyTypeStr <$> types)
 
+    -- FIXME: Check for constructors as well as builtins
     if isBuiltin f
       then pure app
       else handleFunction  f args

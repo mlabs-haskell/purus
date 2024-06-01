@@ -100,7 +100,7 @@ lookupIdent name = do
 -- identifiers in the top-level scope, so that they can be renamed in the
 -- externs files as well.
 --
-renameInModule :: Module (Bind Ann) Ann -> (M.Map Ident Ident, Module (Bind Ann) Ann)
+renameInModule :: Module (Bind Ann) k t Ann -> (M.Map Ident Ident, Module (Bind Ann) k t Ann)
 renameInModule m@(Module _ _ _ _ _ exports _ foreigns decls _) = (rsBoundNames, m { moduleExports, moduleDecls })
   where
   ((moduleDecls, moduleExports), RenameState{..}) = runRename foreigns $

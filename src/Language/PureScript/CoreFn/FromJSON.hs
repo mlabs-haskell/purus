@@ -26,12 +26,12 @@ import Language.PureScript.CoreFn (Bind(..), Binder(..), CaseAlternative(..), Co
 import Language.PureScript.Names (Ident(..), ModuleName(..), ProperName(..), Qualified(..), QualifiedBy(..), unusedIdent)
 import Language.PureScript.PSString (PSString)
 
-import Language.PureScript.Types ()
+import Language.PureScript.Types (SourceType)
 
 import Text.ParserCombinators.ReadP (readP_to_S)
 
 -- dunno how to work around the orphan
-instance FromJSON (Module (Bind Ann) Ann) where
+instance FromJSON (Module (Bind Ann) SourceType SourceType Ann) where
   parseJSON = fmap snd .  moduleFromJSON
 
 parseVersion' :: String -> Maybe Version
@@ -133,7 +133,7 @@ qualifiedFromJSON f = withObject "Qualified" qualifiedFromObj
 moduleNameFromJSON :: Value -> Parser ModuleName
 moduleNameFromJSON v = ModuleName . T.intercalate "." <$> listParser parseJSON v
 
-moduleFromJSON :: Value -> Parser (Version, Module (Bind Ann) Ann)
+moduleFromJSON :: Value -> Parser (Version, Module (Bind Ann) SourceType SourceType Ann)
 moduleFromJSON = withObject "Module" moduleFromObj
   where
   moduleFromObj o = do

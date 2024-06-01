@@ -1,3 +1,5 @@
+-- TODO: Remove this module
+
 {-# OPTIONS_GHC -Wno-redundant-constraints #-}
 {-# LANGUAGE TypeApplications #-}
 module Language.PureScript.CodeGen.UPLC  where
@@ -55,7 +57,7 @@ meta (_,_,x) = x
 
 moduleToUPLC :: forall m
               . (MonadReader Options m, MonadSupply m, MonadError MultipleErrors m)
-             => Module (Bind Ann) Ann -> m PIRProgram
+             => Module (Bind Ann) SourceType SourceType Ann -> m PIRProgram
 moduleToUPLC = error "Error: UPLC Backend not yet implemented!"
 
 

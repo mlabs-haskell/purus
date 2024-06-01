@@ -26,6 +26,7 @@ import Language.PureScript.AST.SourcePos (SourceSpan(..))
 import Language.PureScript.CoreFn (Ann, Bind(..), Binder(..), CaseAlternative(..), ConstructorType(..), Expr(..), Meta(..), Module(..))
 import Language.PureScript.Names (Ident, ModuleName(..), ProperName(..), Qualified(..), QualifiedBy(..), runIdent)
 import Language.PureScript.PSString (PSString)
+import Language.PureScript.Types (SourceType)
 
 constructorTypeToJSON :: ConstructorType -> Value
 constructorTypeToJSON ProductType = toJSON "ProductType"
@@ -117,7 +118,7 @@ qualifiedToJSON f (Qualified qb a) =
 moduleNameToJSON :: ModuleName -> Value
 moduleNameToJSON (ModuleName name) = toJSON (T.splitOn (T.pack ".") name)
 
-moduleToJSON :: Version -> Module (Bind Ann) Ann -> Value
+moduleToJSON :: Version -> Module (Bind Ann) SourceType SourceType Ann -> Value
 moduleToJSON v m = object
   [ "sourceSpan" .= sourceSpanToJSON (moduleSourceSpan m)
   , "moduleName" .= moduleNameToJSON (moduleName m)
@@ -142,7 +143,7 @@ moduleToJSON v m = object
   reExportsToJSON = toJSON . M.map (map runIdent)
 
 
-moduleToJSON' ::  Module (Bind Ann) Ann -> Value
+moduleToJSON' ::  Module (Bind Ann) SourceType SourceType Ann -> Value
 moduleToJSON' m = object
   [ "sourceSpan" .= sourceSpanToJSON (moduleSourceSpan m)
   , "moduleName" .= moduleNameToJSON (moduleName m)

@@ -70,14 +70,14 @@ import Prettyprinter
     ( defaultLayoutOptions, layoutPretty, Pretty(pretty) )
 import Prettyprinter.Render.Text (renderStrict)
 import Language.PureScript.CoreFn.TypeLike (TypeLike(..))
-import Language.PureScript.CoreFn.Module (Module(..))
+import Language.PureScript.CoreFn.Module (Module(..), Datatypes, bitraverseDatatypes)
 import GHC.IO (throwIO)
 import Language.PureScript.CoreFn.Desugar.Utils (properToIdent)
 
 prettyStr :: Pretty a => a -> String
 prettyStr = T.unpack . renderStrict . layoutPretty defaultLayoutOptions . pretty
 
-decodeModuleIR :: FilePath -> IO (Module IR_Decl Ann)
+decodeModuleIR :: FilePath -> IO (Module IR_Decl SourceType SourceType Ann)
 decodeModuleIR path = do
   myMod <- decodeModuleIO path
   case desugarCoreModule myMod of
@@ -88,8 +88,8 @@ test :: FilePath -> Text -> IO (Exp WithoutObjects Ty (FVar Ty))
 test path decl = do
   myMod <- decodeModuleIR path
   Just myDecl <- pure $ findDeclBody decl myMod
-  case runMonomorphize myMod myDecl of
-    Left (MonoError msg ) -> throwIO $ userError $ "Couldn't monomorphize " <> T.unpack decl <> "\nReason:\n" <> msg
+  case runMonomorphize myMod [] myDecl of
+    Left (MonoError msg) -> throwIO $ userError $ "Couldn't monomorphize " <> T.unpack decl <> "\nReason:\n" <> msg
     Right body -> case tryConvertExpr body of
       Left convertErr -> throwIO $ userError convertErr
       Right e -> do
@@ -98,14 +98,14 @@ test path decl = do
 
 prepPIR :: FilePath
         -> Text
-        -> IO (Exp WithoutObjects Ty (FVar Ty), Map (ProperName 'TypeName) (DataDeclType, [(Text, SourceType)], [DataConstructorDeclaration]))
+        -> IO (Exp WithoutObjects Ty (FVar Ty), Datatypes Kind Ty)
 prepPIR path  decl = do
   myMod@Module{..} <- decodeModuleIR path
 
   desugaredExpr <- case findDeclBody decl myMod of
-    Nothing -> throwIO $ userError  "findDeclBody"
+    Nothing -> throwIO $ userError "findDeclBody"
     Just expr -> pure expr
-  case runMonomorphize myMod desugaredExpr of
+  case runMonomorphize myMod [] desugaredExpr of
     Left (MonoError msg ) ->
       throwIO
       $ userError
@@ -116,8 +116,13 @@ prepPIR path  decl = do
       case tryConvertExpr body of
          Left convertErr -> throwIO $ userError convertErr
          Right e -> do
+           moduleDataTypes' <- either (throwIO . userError . prettyErrorT) pure
+                               $ bitraverseDatatypes
+                                   tryConvertKind
+                                   tryConvertType
+                                   moduleDataTypes
            putStrLn (ppExp e)
-           pure (e,moduleDataTypes)
+           pure (e,moduleDataTypes')
 
 -- This gives us a way to report the exact location of the error (which may no longer correspond *at all* to
 -- the location given in the SourcePos annotations due to inlining and monomorphization)
@@ -155,7 +160,7 @@ tryConvertType = go id
                 ctorType = foldl' srcTypeApp (srcTypeConstructor fakeTName) types
             go f ctorType
           else Left $ TypeConvertError f t $ prettyTypeStr fs <> " is not a closed row. Last: " <> prettyTypeStr (rowLast fs)
-      TypeVar _ txt k -> TyVar txt <$> tryConvertKind f t k
+      TypeVar _ txt k -> TyVar txt <$> tryConvertKind' f t k
       TypeConstructor _ tn -> Right $ TyCon tn
       TypeApp ann t1 t2 -> do
         t2' <- go (f . TypeApp ann t1) t2
@@ -168,7 +173,7 @@ tryConvertType = go id
       ForAll ann vis var mbk inner skol -> do
         let khole = f . (\x -> ForAll ann vis var x inner skol)
             ihole = f . (\x -> ForAll ann vis var mbk x skol)
-        k <- tryConvertKind khole t mbk
+        k <- tryConvertKind' khole t mbk
         inner' <- go ihole inner
         pure $ Forall vis var k inner' skol
       KindedType ann t1 t2 -> do
@@ -178,12 +183,16 @@ tryConvertType = go id
 
       other -> Left $ TypeConvertError f other $ "Unsupported type: " <> prettyTypeStr other
 
-tryConvertKind :: (SourceType -> SourceType) -> SourceType -> SourceType -> Either TypeConvertError Kind
-tryConvertKind f t = \case
+
+tryConvertKind :: SourceType -> Either TypeConvertError Kind
+tryConvertKind t = tryConvertKind' id t t
+
+tryConvertKind' :: (SourceType -> SourceType) -> SourceType -> SourceType -> Either TypeConvertError Kind
+tryConvertKind' f t = \case
   TypeConstructor _ C.Type -> pure KindType
   k1 :-> k2 -> do
-    k1' <- tryConvertKind f t k1
-    k2' <- tryConvertKind f t k2
+    k1' <- tryConvertKind' f t k1
+    k2' <- tryConvertKind' f t k2
     pure $ KindArrow k1' k2'
   other -> Left $ TypeConvertError f t
            $ "Couldn't convert type: "
@@ -390,7 +399,6 @@ tryConvertExpr' = go id
          handleObjectLiteral fs' = do
            let fs = sortOn fst fs'
                len = length fs
-               fakeCName = mkFakeCName len
                fakeTName = mkFakeTName len
                bareFields = snd <$> fs
            bareFields' <- traverse (go cb) bareFields

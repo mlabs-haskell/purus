@@ -1,5 +1,6 @@
 {-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving, DerivingVia #-}
+{-# LANGUAGE StandaloneDeriving #-}
 -- |
 -- Data types for names
 --
@@ -96,6 +97,8 @@ data Ident
   --
   | InternalIdent !InternalIdentData
   deriving (Show, Eq, Ord, Generic)
+
+
 
 instance NFData Ident
 instance Serialise Ident
@@ -207,6 +210,9 @@ data QualifiedBy
   = BySourcePos SourcePos
   | ByModuleName ModuleName
   deriving (Show, Eq, Ord, Generic)
+
+instance ToJSON QualifiedBy
+instance FromJSON QualifiedBy
 
 pattern ByNullSourcePos :: QualifiedBy
 pattern ByNullSourcePos = BySourcePos (SourcePos 0 0)
@@ -322,5 +328,13 @@ instance ToJSONKey ModuleName where
 instance FromJSONKey ModuleName where
   fromJSONKey = fmap moduleNameFromString fromJSONKey
 
+
 $(deriveJSON (defaultOptions { sumEncoding = ObjectWithSingleField }) ''InternalIdentData)
 $(deriveJSON (defaultOptions { sumEncoding = ObjectWithSingleField }) ''Ident)
+
+instance ToJSONKey (Qualified (ProperName 'TypeName))
+instance ToJSONKey (Qualified (ProperName 'ConstructorName))
+instance ToJSONKey (Qualified Ident)
+instance FromJSONKey (Qualified Ident)
+instance FromJSONKey (Qualified (ProperName 'TypeName))
+instance FromJSONKey (Qualified (ProperName 'ConstructorName))

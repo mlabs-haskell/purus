@@ -49,7 +49,7 @@ type instance XObjectLiteral WithoutObjects = Void
 
 type IR_Decl = BindE PurusType (Exp WithObjects PurusType) (FVar PurusType)
 
-desugarCoreModule :: Module (Bind Ann) Ann -> DS (Module IR_Decl Ann)
+desugarCoreModule :: Module (Bind Ann) PurusType PurusType Ann -> DS (Module IR_Decl PurusType PurusType Ann)
 desugarCoreModule Module{..} = do
   decls <- traverse desugarCoreDecl moduleDecls
   pure $ Module {moduleDecls = decls,..}

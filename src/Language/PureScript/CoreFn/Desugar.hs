@@ -8,6 +8,7 @@ import Protolude (ordNub, orEmpty, zipWithM, MonadError (..), sortOn, Bifunctor 
 
 import Data.Maybe (mapMaybe)
 import Data.List (partition)
+import Data.Foldable (foldl')
 import Data.List.NonEmpty qualified as NEL
 import Data.Map qualified as M
 
@@ -18,7 +19,7 @@ import Language.PureScript.CoreFn.Binders (Binder(..))
 import Language.PureScript.CoreFn.Expr (Bind(..), CaseAlternative(..), Expr(..), Guard)
 import Language.PureScript.CoreFn.Utils (exprType, stripQuantifiers)
 import Language.PureScript.CoreFn.Meta (Meta(..))
-import Language.PureScript.CoreFn.Module (Module(..))
+import Language.PureScript.CoreFn.Module
 import Language.PureScript.Crash (internalError)
 import Language.PureScript.Environment (
   pattern (:->),
@@ -118,7 +119,7 @@ import Prettyprinter (Pretty(pretty))
 -}
 
 -- | Desugars a module from AST to CoreFn representation.
-moduleToCoreFn :: forall m. M m => A.Module -> m (Module (Bind Ann) Ann)
+moduleToCoreFn :: forall m. M m => A.Module -> m (Module (Bind Ann) SourceType SourceType Ann)
 moduleToCoreFn  (A.Module _ _ _ _ Nothing) =
   internalError "Module exports were not elaborated before moduleToCoreFn"
 moduleToCoreFn (A.Module modSS coms mn _decls (Just exps)) = do
@@ -131,32 +132,33 @@ moduleToCoreFn (A.Module modSS coms mn _decls (Just exps)) = do
       reExps = M.map ordNub $ M.unionsWith (++) (mapMaybe (fmap reExportsToCoreFn . toReExportRef) exps)
       externs = ordNub $ mapMaybe externToCoreFn decls
   decls' <- concat <$> traverse (declToCoreFn mn) decls
-  let dataDecls' = mkDataDecls dataDecls
+  let dataDecls' = mkDataDecls mn dataDecls
   pure $ Module modSS coms mn (spanName modSS) imports exps' reExps externs decls' dataDecls'
  where
    setModuleName = modify $ \cs ->
      cs {checkCurrentModule = Just mn}
 
-{- Turns out we need the data type declarations in order to reconstruct the SOP in PIR
+mkDataDecls :: ModuleName -> [A.Declaration] -> Datatypes SourceType SourceType
+mkDataDecls mn decls = foldl' go mempty decls
+  where
+   go :: Datatypes SourceType SourceType -> A.Declaration -> Datatypes SourceType SourceType
+   go (Datatypes tyDecls ctorMap) = \case
+     A.DataDeclaration _ ddTy nm args ctors ->
+       let qNm = Qualified (ByModuleName mn) nm
+           ctorDecls = goCtor <$> ctors
+           thisDecl  = DataDecl ddTy qNm args ctorDecls
 
-   TODO/REVIEW/FIXME: This won't pull in data declarations from imports, we'll have to handle that in the linker.
+           tyDecls' = M.insert qNm thisDecl tyDecls
+           ctorMap' = foldl' (\acc A.DataConstructorDeclaration{..} ->
+                                M.insert (Qualified (ByModuleName mn) dataCtorName) qNm acc
+                        ) ctorMap ctors
+       in Datatypes tyDecls' ctorMap'
 
--}
+   goCtor :: A.DataConstructorDeclaration -> CtorDecl SourceType
+   goCtor  A.DataConstructorDeclaration{..} =
+    let qCtorNm = Qualified (ByModuleName mn) dataCtorName
+    in CtorDecl qCtorNm dataCtorFields
 
-type DeclMapElem =  (DataDeclType,[(T.Text, SourceType)], [A.DataConstructorDeclaration])
-
-
-
-mkDataDecls :: [A.Declaration] -> M.Map (ProperName 'TypeName) DeclMapElem
-mkDataDecls [] = M.empty
-mkDataDecls (d:ds) = case go d of
-  Nothing -> mkDataDecls ds
-  Just kv -> uncurry M.insert kv $ mkDataDecls ds
- where
- go :: A.Declaration -> Maybe (ProperName 'TypeName,DeclMapElem)
- go = \case
-   A.DataDeclaration _ ddTy nm args ctors -> Just (nm,(ddTy,args,ctors))
-   _ -> Nothing
 
 {- | Given a SourcePos and Identifier, look up the type of that identifier, also returning its NameVisiblity.
 

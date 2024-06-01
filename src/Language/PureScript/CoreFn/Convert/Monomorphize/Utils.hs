@@ -177,7 +177,7 @@ findInlineDeclGroup ident (Recursive xs:rest) = case  find (\x -> fst x == ident
 {- Find the body of a declaration with the given name in the given module.
 -}
 findDeclBody :: Text
-             -> Module IR_Decl Ann
+             -> Module IR_Decl k t Ann
              -> Maybe (Exp WithObjects PurusType (FVar PurusType))
 findDeclBody nm Module{..} = findDeclBody' (Ident nm) moduleDecls
 
@@ -222,7 +222,7 @@ updateFreeVars dict = transform updateFreeVar
 {- IO utility. Reads a CoreFn module from a source file. Probably this should be somewhere else?
 
 -}
-decodeModuleIO :: FilePath -> IO (Module (Bind Ann) Ann)
+decodeModuleIO :: FilePath -> IO (Module (Bind Ann) PurusType PurusType Ann)
 decodeModuleIO path = Aeson.eitherDecodeFileStrict' path >>= \case
   Left err -> throwIO $ userError err
   Right modx -> pure modx
