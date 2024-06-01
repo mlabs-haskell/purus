@@ -30,11 +30,6 @@ data Expr a
   -- A literal value
   --
   = Literal a PurusType (Literal (Expr a))
-  -- |
-  -- A data constructor (type name, constructor name, field names)
-  --
-  | Constructor a PurusType (ProperName 'TypeName) (ProperName 'ConstructorName) [Ident]
-  -- |
   -- A record property accessor
   --
   | Accessor a PurusType PSString (Expr a)
@@ -116,7 +111,6 @@ instance Functor CaseAlternative where
 --
 extractAnn :: Expr a -> a
 extractAnn (Literal a _ _) = a
-extractAnn (Constructor a _ _   _ _) = a
 extractAnn (Accessor a _ _ _) = a
 extractAnn (ObjectUpdate a _ _ _ _) = a
 extractAnn (Abs a _ _ _) = a
@@ -131,7 +125,6 @@ extractAnn (Let a _ _) = a
 --
 modifyAnn :: (a -> a) -> Expr a -> Expr a
 modifyAnn f (Literal a b c)          = Literal (f a) b c
-modifyAnn f (Constructor a b c d e)  = Constructor (f a) b c d e
 modifyAnn f (Accessor a b c d)       = Accessor (f a) b c d
 modifyAnn f (ObjectUpdate a b c d e) = ObjectUpdate (f a) b c d e
 modifyAnn f (Abs a b c d)            = Abs (f a) b c d

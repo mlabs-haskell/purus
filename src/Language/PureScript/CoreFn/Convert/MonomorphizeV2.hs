@@ -309,7 +309,6 @@ inlineAs ty = \case
            pure $ visited <> innerBinds
          _ -> throwError $ MonoError ("Failed to collect recursive binds: " <> prettyTypeStr t <> " is not a Record type")
      LitE _ _  -> trace "crbLIT" $ pure visited
-     CtorE _ _ _ _ -> trace "crbCTOR" $ pure visited
      ObjectUpdateE _ _ _ _ updateFields -> trace "crbOBJUPDATE" $ case t of
         RecordT fields -> do
           let fieldMap = mkFieldMap fields
@@ -417,8 +416,6 @@ monomorphizeWithType ty expr
         _ -> throwError $ MonoError ("Failed to collect recursive binds: " <> prettyTypeStr ty <> " is not a Record type")
 
       LitE _ lit -> pure $ LitE ty lit
-
-      CtorE _ tName cName fs -> pure $ CtorE ty tName cName fs
 
       ObjectUpdateE ext _ orig copyFields updateFields -> case ty of
         RecordT fields -> do

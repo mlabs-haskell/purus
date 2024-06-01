@@ -8,6 +8,7 @@
 {-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE UndecidableInstances #-}
 {-# LANGUAGE StandaloneKindSignatures #-}
+{-# LANGUAGE QuantifiedConstraints #-}
 
 module Language.PureScript.CoreFn.Convert.IR where
 
@@ -41,6 +42,7 @@ import Language.PureScript.CoreFn.TypeLike
 import Data.Void (Void)
 import Control.Lens.Plated
 import Language.PureScript.CoreFn.Pretty ((<::>))
+import Language.PureScript.Environment (DataDeclType)
 -- The final representation of types and terms, where all constructions that
 -- *should* have been eliminated in previous steps are impossible
 -- TODO: Make sure we error on exotic kinds
@@ -221,7 +223,6 @@ type family XObjectLiteral x
 data Exp x ty a
  = V a -- let's see if this works
  | LitE ty (Lit x (Exp x ty a))
- | CtorE ty (ProperName 'TypeName) (ProperName 'ConstructorName) [Ident]
  | LamE ty (BVar ty) (Scope (BVar ty) (Exp x ty) a)
  | AppE (Exp x ty a) (Exp x ty a)
  | CaseE ty [Exp x ty a] [Alt x ty (Exp x ty) a]
@@ -235,7 +236,6 @@ deriving instance (Eq ty, Eq a, Eq (XAccessor x), Eq (XObjectUpdate x), Eq (XObj
 instance Eq ty => Eq1 (Exp x ty) where
   liftEq eq (V a) (V b) = eq a b
   liftEq eq (LitE t1 l1) (LitE t2 l2) = t1 == t2 && liftEq (liftEq eq) l1 l2
-  liftEq _ (CtorE t1 tn1 cn1 fs1) (CtorE t2 tn2 cn2 fs2)  = t1 == t2 && tn1 == tn2 && cn1 == cn2 && fs1 == fs2
   liftEq eq (LamE t1 n1 e1) (LamE t2 n2 e2) = t1 == t2 && n1 == n2 && liftEq eq e1 e2
   liftEq eq (AppE l1 l2) (AppE r1 r2) = liftEq eq l1 r1 && liftEq eq l2 r2
   liftEq eq (CaseE t1 es1 as1) (CaseE t2 es2 as2) = t1 == t2 && liftEq (liftEq eq) es1 es2 && liftEq (liftEq eq) as1 as2
@@ -279,7 +279,6 @@ instance Applicative (Exp x ty) where
 instance Monad (Exp x ty) where
   return = pure
   V a           >>= f     = f a
-  CtorE t tn cn fs >>= _  = CtorE t tn cn fs
   AppE e1 e2    >>=   f = AppE (e1 >>= f) (e2 >>= f)
   LamE t i e   >>=    f = LamE t i (e >>>= f)
   LetE n bs e >>=     f = LetE n (map (>>>= f) bs) (e >>>= f)
@@ -380,7 +379,6 @@ instance (Pretty a, Pretty ty, FuncType ty) => Pretty (Exp x ty a) where
   pretty = \case
     V x -> pretty x
     LitE ty lit -> parens $ pretty lit <+> "::" <+> pretty ty
-    CtorE _ _ cname _ -> pretty $ runProperName cname
     LamE ty bv body' ->
       let unscoped = fromScope body'
       in "\\" <> parens (align $ pretty bv <+> "::" <+> pretty (headArg ty))
@@ -478,7 +476,6 @@ expTy f = \case
     B (BVar _ t _) -> t
     F (FVar t _) -> t
   LitE t _ -> t
-  CtorE t _ _ _  -> t
   LamE t _ _ -> t
   AppE e1 e2 -> appType f e1 e2
   CaseE t _ _  -> t
@@ -492,7 +489,6 @@ expTy' f scoped = case instantiateEither (either (V . B) (V . F)) scoped of
     B (BVar _ t _) -> t
     F (FVar t _) -> t
   LitE t _ -> t
-  CtorE t _ _ _  -> t
   LamE t _ _ -> t
   AppE  e1 e2 -> appType (>>= f) e1 e2
   CaseE t _ _  -> t
@@ -622,11 +618,31 @@ toPat = \case
           inner = map (toPat . snd) fs
         in ConP fakeTName fakeCName inner
 
+-- Data declaration / Constructor things
+
 mkFakeCName :: Int -> Qualified (ProperName 'ConstructorName)
 mkFakeCName x =
   Qualified
     (ByModuleName $ moduleNameFromString "$GEN")
-    (ProperName $ "~TUPLE_" <> T.pack (show x))
+    (ProperName $ "TUPLE#" <> T.pack (show x))
 
 mkFakeTName :: Int -> Qualified (ProperName 'TypeName)
 mkFakeTName x = coerceProperName @_ @'TypeName <$> mkFakeCName x
+
+data DataDeclIR k t = DataDeclIR {
+    irDeclType :: !DataDeclType,
+    irDataTyName :: !(Qualified (ProperName 'TypeName)),
+    irDataArgs :: ![(Text,k)],
+    irDataCtors :: ![CtorDeclIR t]
+  } deriving (Show, Eq, Ord)
+
+data CtorDeclIR t  = CtorDeclIR {
+    irCtorName :: !(Qualified (ProperName 'ConstructorName)),
+    irCtorFields :: ![(Ident,t)]
+  } deriving (Show, Eq, Ord)
+
+data DatatypesIR k t = DatatypesIRIR {
+    tyDict :: M.Map (Qualified (ProperName 'TypeName)) (DataDeclIR k t),
+    -- primarily for Olog(n) "is this a constructor?" which we'll need in the monomorphizer
+    ctorDict :: M.Map (Qualified (ProperName 'ConstructorName)) (Qualified (ProperName 'TypeName))
+  } deriving (Show, Eq, Ord)

@@ -72,6 +72,7 @@ import Prettyprinter.Render.Text (renderStrict)
 import Language.PureScript.CoreFn.TypeLike (TypeLike(..))
 import Language.PureScript.CoreFn.Module (Module(..))
 import GHC.IO (throwIO)
+import Language.PureScript.CoreFn.Desugar.Utils (properToIdent)
 
 prettyStr :: Pretty a => a -> String
 prettyStr = T.unpack . renderStrict . layoutPretty defaultLayoutOptions . pretty
@@ -251,9 +252,6 @@ tryConvertExpr' = go id
         tryConvertLit  lhole lit >>= \case
           Left desObj -> pure desObj
           Right lit' -> pure $ LitE ty' lit'
-      CtorE ty tn cn fs -> do
-        ty' <- goType ty
-        pure $ CtorE ty' tn cn fs
       LamE  ty bv  e -> do
         ty' <- goType ty
         bv' <- updateBV bv
@@ -401,7 +399,7 @@ tryConvertExpr' = go id
                ctorType = foldr1 funTy types
 
                ctorExp :: ExpWithoutObjects
-               ctorExp = CtorE  ctorType (disqualify fakeTName) (disqualify fakeCName) []
+               ctorExp = V $ FVar ctorType $ properToIdent <$> fakeTName
            assembleDesugaredObjectLit ctorExp ctorType bareFields'
 
 
@@ -458,7 +456,7 @@ tryConvertExpr' = go id
                  in V . B  $ BVar (M.findIndex lbl origTypes) (origTypes M.! lbl) nm
                Just expr -> F <$> expr
 
-             ctorExp = CtorE ctorType (disqualify fakeTName) (disqualify fakeCName) []
+             ctorExp = V . F $  FVar ctorType $ properToIdent <$> fakeTName
 
              ctorBndr = ConP fakeTName fakeCName argBndrTemplate
 

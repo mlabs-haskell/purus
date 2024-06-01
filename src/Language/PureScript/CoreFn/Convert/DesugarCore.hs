@@ -75,7 +75,6 @@ desugarCore' e = do
 
 desugarCore :: Expr Ann -> DS (Exp WithObjects PurusType (FVar PurusType))
 desugarCore (Literal _ann ty lit) = LitE ty <$> desugarLit lit
-desugarCore (Constructor _ann ty tn cn fs) = pure $ CtorE ty tn cn fs
 desugarCore (Abs _ann ty ident expr) = do
   expr' <- desugarCore expr
   let !ty' = functionArgumentIfFunction ty

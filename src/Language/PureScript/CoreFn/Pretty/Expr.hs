@@ -160,13 +160,11 @@ prettyValue (Literal _ ty l)  = ask >>= \case {OneLine ->  oneLine; MultiLine ->
     oneLine =  pure . parens $ asOneLine prettyLiteralValue l <:> asOneLine prettyType ty
     multiLine =  pure . parens $ asDynamic prettyLiteralValue l <:> asDynamic prettyType ty
 
-prettyValue expr@Constructor{}  = prettyValueAtom  expr
 prettyValue expr@Var{}  = prettyValueAtom expr
 
 -- | Pretty-print an atomic expression, adding parentheses if necessary.
 prettyValueAtom :: Expr a -> Printer ann
 prettyValueAtom lit@(Literal _  _ l)  = prettyValue lit  -- prettyLiteralValue l
-prettyValueAtom (Constructor _ _ _ name _) = pure . pretty $ T.unpack $ runProperName name
 prettyValueAtom (Var _ ty ident)  =  prettyType ty >>= \ty' ->
   pure . parens $ pretty  (showIdent (disqualify ident)) <:> ty'
 prettyValueAtom expr = do -- TODO change this back (need more anns for testing)

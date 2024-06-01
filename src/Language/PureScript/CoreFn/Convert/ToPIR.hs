@@ -24,7 +24,7 @@ import Control.Monad ( (>=>), foldM )
 import Language.PureScript.Constants.Prim qualified as C
  -- mainly for the module (we might need it for constructors? idk)
 import Language.PureScript.CoreFn.Convert.IR
-    ( Exp(CaseE, V, LitE, CtorE, LamE, AppE, LetE),
+    ( Exp(CaseE, V, LitE, LamE, AppE, LetE),
       BindE(..),
       Lit(NumL, ArrayL, ConstArrayL, BoolL, CharL, IntL, StringL),
       FVar(..),
@@ -101,7 +101,6 @@ firstPass f = \case
          $ T.unpack nm <> " isn't a builtin, and it shouldn't be possible to have a free variable that's anything but a builtin"
     B (BVar bvix _ (runIdent -> nm)) -> pure $ PIR.Var () (Name nm $ Unique bvix)
   LitE litTy lit -> firstPassLit litTy lit
-  CtorE a b c d -> error "I need to look at the output of the previous steps to figure out what to do here. The old thing doesn't work."
   LamE _ (BVar bvIx bvTy bvNm) body -> do
     ty' <- toPIRType bvTy
     let nm = Name (runIdent bvNm) $ Unique bvIx

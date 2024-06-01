@@ -200,7 +200,6 @@ exprFromJSON modulePath = withObject "Expr" exprFromObj
     case kind_ of
       "Var"           -> varFromObj o
       "Literal"       -> literalExprFromObj o
-      "Constructor"   -> constructorFromObj o
       "Accessor"      -> accessorFromObj o
       "ObjectUpdate"  -> objectUpdateFromObj o
       "Abs"           -> absFromObj o
@@ -223,13 +222,6 @@ exprFromJSON modulePath = withObject "Expr" exprFromObj
     lit <- o .: "value" >>= literalFromJSON (exprFromJSON modulePath)
     return $ Literal ann ty lit
 
-  constructorFromObj o = do
-    ann <- o .: "annotation" >>= annFromJSON modulePath
-    tyn <- o .: "typeName" >>= properNameFromJSON
-    ty  <- tyFromObj o
-    con <- o .: "constructorName" >>= properNameFromJSON
-    is  <- o .: "fieldNames" >>= listParser identFromJSON
-    return $ Constructor ann ty tyn con is
 
   accessorFromObj o = do
     ann <- o .: "annotation" >>= annFromJSON modulePath

@@ -198,13 +198,6 @@ exprToJSON (Literal ann ty l)       = object [ "kind"        .= "Literal"
                                              , "annotation"  .= annToJSON ann
                                              , "value"       .=  literalToJSON exprToJSON l
                                              ]
-exprToJSON (Constructor ann ty d c is) = object [ "kind"        .= "Constructor"
-                                             , "type"        .= toJSON ty
-                                             , "annotation"  .= annToJSON ann
-                                             , "typeName"    .= properNameToJSON d
-                                             , "constructorName" .= properNameToJSON c
-                                             , "fieldNames"  .= map identToJSON is
-                                             ]
 exprToJSON (Accessor ann ty f r)    = object [ "kind"        .= "Accessor"
                                              , "type"        .= toJSON ty
                                              , "annotation"  .= annToJSON ann

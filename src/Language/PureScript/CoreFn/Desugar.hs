@@ -7,6 +7,7 @@ import Prelude
 import Protolude (ordNub, orEmpty, zipWithM, MonadError (..), sortOn, Bifunctor (bimap))
 
 import Data.Maybe (mapMaybe)
+import Data.List (partition)
 import Data.List.NonEmpty qualified as NEL
 import Data.Map qualified as M
 
@@ -101,6 +102,7 @@ import Text.Pretty.Simple (pShow)
 import Data.Text.Lazy qualified as LT
 import Data.Set qualified as S
 import Data.Either (lefts)
+import Prettyprinter (Pretty(pretty))
 
 {-
     CONVERSION MACHINERY
@@ -122,15 +124,15 @@ moduleToCoreFn  (A.Module _ _ _ _ Nothing) =
 moduleToCoreFn (A.Module modSS coms mn _decls (Just exps)) = do
   setModuleName
   desugarConstraintTypes
-  decls <- traverse desugarCasesEverywhere $ desugarConstraintsInDecl <$> _decls
+  (dataDecls,decls)<- fmap (partition A.isDataDecl) (traverse (desugarCasesEverywhere . desugarConstraintsInDecl) _decls)
   let importHelper ds = fmap (ssAnn modSS,) (findQualModules ds)
       imports = dedupeImports $ mapMaybe importToCoreFn decls ++ importHelper decls
       exps' = ordNub $ concatMap exportToCoreFn exps
       reExps = M.map ordNub $ M.unionsWith (++) (mapMaybe (fmap reExportsToCoreFn . toReExportRef) exps)
       externs = ordNub $ mapMaybe externToCoreFn decls
   decls' <- concat <$> traverse (declToCoreFn mn) decls
-  let dataDecls = mkDataDecls decls
-  pure $ Module modSS coms mn (spanName modSS) imports exps' reExps externs decls' dataDecls
+  let dataDecls' = mkDataDecls dataDecls
+  pure $ Module modSS coms mn (spanName modSS) imports exps' reExps externs decls' dataDecls'
  where
    setModuleName = modify $ \cs ->
      cs {checkCurrentModule = Just mn}
@@ -142,6 +144,8 @@ moduleToCoreFn (A.Module modSS coms mn _decls (Just exps)) = do
 -}
 
 type DeclMapElem =  (DataDeclType,[(T.Text, SourceType)], [A.DataConstructorDeclaration])
+
+
 
 mkDataDecls :: [A.Declaration] -> M.Map (ProperName 'TypeName) DeclMapElem
 mkDataDecls [] = M.empty
@@ -225,14 +229,10 @@ declToCoreFn _ (A.DataDeclaration (ss, com) Newtype name _ [ctor]) = wrapTrace (
 -- Reject newtypes w/ multiple constructors
 declToCoreFn _ d@(A.DataDeclaration _ Newtype _ _ _) =
   error $ "Found newtype with multiple constructors: " ++ show d
--- Data declarations get turned into value declarations for the constructor(s)
-declToCoreFn  mn (A.DataDeclaration (ss, com) Data tyName _ ctors) = wrapTrace ("declToCoreFn DATADEC " <>  T.unpack (runProperName tyName)) $ traverse go ctors
- where
-  go ctorDecl = do
-    env <- gets checkEnv
-    let ctor = A.dataCtorName ctorDecl
-        (_, _, ctorTy, fields) = lookupConstructor  env (Qualified (ByModuleName mn) ctor)
-    pure $ NonRec (ssA ss) (properToIdent ctor) $ Constructor (ss, com, Nothing) (purusTy ctorTy) tyName ctor fields
+-- Data declarations shouldn't exist here
+declToCoreFn  mn (A.DataDeclaration (ss, com) Data tyName _ ctors) = error
+  $ "declToCoreFn: INTERNAL ERROR. Encountered a data declaration in module " <> show (pretty mn) <>  " for datatype: " <> T.unpack (runProperName tyName)
+    <> "\n  but datatype declarations should have been removed in a previous step"
 -- NOTE: This should be OK because you can data declarations can only appear at the top-level.
 declToCoreFn mn (A.DataBindingGroupDeclaration ds) = wrapTrace  "declToCoreFn DATA GROUP DECL" $ concat <$> traverse (declToCoreFn  mn) ds
 -- Essentially a wrapper over `exprToCoreFn`. Not 100% sure if binding the type of the declaration is necessary here?

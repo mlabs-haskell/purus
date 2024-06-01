@@ -163,7 +163,6 @@ renameInDecls =
 renameInValue :: Expr Ann -> Rename (Expr Ann)
 renameInValue (Literal ann t l) =
   Literal ann t <$> renameInLiteral renameInValue l
-renameInValue c@Constructor{} = return c
 renameInValue (Accessor ann t prop v) =
   Accessor ann t prop <$> renameInValue v
 renameInValue (ObjectUpdate ann t obj copy vs) =

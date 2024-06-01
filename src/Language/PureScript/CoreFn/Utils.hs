@@ -186,7 +186,6 @@ funArgTypes = init . splitFunTyParts
 exprType :: Expr a -> PurusType
 exprType = \case
   Literal _ ty _ -> ty
-  Constructor _ ty _ _ _ -> ty
   Accessor _ ty _ _ -> ty
   ObjectUpdate _ ty _ _ _ -> ty
   Abs _ ty _ _ -> ty
