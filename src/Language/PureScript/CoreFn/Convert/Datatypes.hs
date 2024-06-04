@@ -5,18 +5,37 @@ module Language.PureScript.CoreFn.Convert.Datatypes where
 import Prelude
 
 import Language.PureScript.CoreFn.Convert.IR
+    ( ppTy,
+      _TyCon,
+      expTy,
+      Alt(..),
+      BVar(BVar),
+      Exp(CaseE, LamE, LetE),
+      FVar,
+      Ty(Forall, TyCon) )
 import Language.PureScript.CoreFn.Convert.IR qualified as IR
-import Language.PureScript.CoreFn.Convert.DesugarObjects
 import PlutusIR
+    ( Type(TyBuiltin, TyForall),
+      VarDecl(VarDecl),
+      TyVarDecl(TyVarDecl),
+      TyName,
+      Name(Name) )
 import PlutusIR qualified as PIR
 import PlutusCore qualified as PLC
 
-import Language.PureScript.CoreFn.Convert.Monomorphize.Utils
-import Control.Lens hiding (locally)
+import Control.Lens
+    ( (^.), to, cosmos, (^..), over, view, makeLenses )
 import Language.PureScript.Names
-import Bound.Var
+    ( ProperNameType(TypeName),
+      Qualified(..),
+      ProperName(..),
+      Ident,
+      pattern ByThisModuleName,
+      showQualified,
+      showIdent,
+      disqualify )
+import Bound.Var ( Var(F) )
 
-import Control.Monad (foldM)
 
 import Data.Text (Text)
 import Data.Text qualified as T
@@ -25,23 +44,29 @@ import Data.Map qualified as M
 import Data.Set qualified as S
 
 import Language.PureScript.CoreFn.Module
-import Language.PureScript.Environment
+    ( cdCtorName,
+      cdCtorFields,
+      dDataCtors,
+      dDataArgs,
+      lookupDataDecl,
+      CtorDecl,
+      Datatypes )
+import Language.PureScript.Environment ( pattern (:->) )
 import Language.PureScript.Types
-import Language.PureScript.AST.Declarations (DataConstructorDeclaration(..))
+    ( Type(TypeConstructor), SourceType )
 import Language.PureScript.Constants.Prim qualified as C
 import Language.PureScript.Constants.Purus qualified as C
-import Language.PureScript.CoreFn.Desugar.Utils (properToIdent, showIdent')
-import Language.PureScript.CoreFn.Convert.DesugarObjects (tryConvertType, prettyErrorT)
-import Language.PureScript.CoreFn.Expr (PurusType)
 import Language.PureScript.CoreFn.Convert.DesugarCore
+    ( WithoutObjects )
+import Language.PureScript.CoreFn.Convert.Monomorphize.Utils ()
 import Language.PureScript.CoreFn.Pretty (prettyTypeStr)
 import Data.Kind qualified as GHC
-import Type.Reflection (Typeable)
 import Bound.Scope (bindings)
-import Control.Monad.State
+import Control.Monad.State ( gets, runState, modify, State )
 import Control.Monad.Except
-import Data.Foldable (traverse_)
-import Language.PureScript.CoreFn.TypeLike
+    ( MonadError(throwError), runExceptT, ExceptT )
+import Data.Foldable (traverse_, foldl')
+import Language.PureScript.CoreFn.TypeLike ( TypeLike(funTy) )
 
 type PIRDatatype = PIR.Datatype
                      PIR.TyName
@@ -58,9 +83,10 @@ type PIRTerm = PIR.Term PIR.TyName PIR.Name PLC.DefaultUni PLC.DefaultFun ()
 --             correct Unique assignments (& kinds) for locally-scoped TyVars
 --             in datatype declarations
 data DatatypeDictionary = DatatypeDictionary {
-    _pirDatatypes :: [PIRDatatype],
+    _pirDatatypes :: [PIRDatatype], -- This should be a set but their AST doesn't have ord instances -_-
     _constrNames  :: Map (Qualified Ident) PIR.Name,
     _tyNames      :: Map (Qualified (ProperName 'TypeName)) PIR.TyName,
+    _tyVars       :: Map Text PIR.TyName,
     _counter      :: Int
 }
 
@@ -71,12 +97,12 @@ type DatatypeM  = ExceptT String (State DatatypeDictionary)
 
 next :: DatatypeM Int
 next = do
-  n <- view counter
+  n <- gets (view counter)
   modify $ over counter (+ 1)
   pure n
 
 mkTyName :: Qualified (ProperName 'TypeName) -> DatatypeM PIR.TyName
-mkTyName qn = view tyNames >>= \tnames -> case M.lookup qn tnames of
+mkTyName qn = gets (view tyNames) >>= \tnames -> case M.lookup qn tnames of
   Just tyname -> pure tyname
   Nothing     -> do
     uniq <- next
@@ -85,7 +111,7 @@ mkTyName qn = view tyNames >>= \tnames -> case M.lookup qn tnames of
     pure tyname
 
 mkConstrName :: Qualified Ident -> DatatypeM PIR.Name
-mkConstrName qi = view constrNames >>= \cnames -> case M.lookup qi cnames of
+mkConstrName qi = gets (view constrNames) >>= \cnames -> case M.lookup qi cnames of
   Just cname -> pure cname
   Nothing -> do
     uniq <- next
@@ -93,23 +119,38 @@ mkConstrName qi = view constrNames >>= \cnames -> case M.lookup qi cnames of
     modify $ over constrNames (M.insert qi nm)
     pure nm
 
-addDatatype :: PIRDatatype -> ConvertM ()
+mkNewTyVar :: Text -> DatatypeM TyName
+mkNewTyVar nm = do
+  uniq <- next
+  pure .  PIR.TyName $ PIR.Name nm $ PLC.Unique uniq
+
+
+mkBoundTyVarName :: Text -> DatatypeM PIR.TyName
+mkBoundTyVarName nm = do
+  boundTyVars <- gets _tyVars
+  case M.lookup nm boundTyVars of
+    Just tyName -> pure  tyName
+    Nothing -> error $ "Free type variable in IR: " <> T.unpack nm
+
+addDatatype :: PIRDatatype -> DatatypeM ()
 addDatatype = modify . over pirDatatypes . (:)
 
--- "local" but preserves the counter so we don't reuse uniques across scopes (b/c i can't figure out
--- how uniques work in the PIR compiler -_-)
-locally :: DatatypeM a -> DatatypeM a
-locally act = do
-  s <- get
-  case runState (runExceptT act) s of
-    (Left err,_) -> throwError err
-    (Right a,s') -> do
-      modify $ set counter (s' ^. counter)
-      pure a
+withLocalTyVars :: [Text] ->  DatatypeM a -> DatatypeM a
+withLocalTyVars nms act = do
+  tNames <- traverse (\x -> (x,) <$> mkNewTyVar x) nms
+  modify $ over tyVars (insertMany tNames)
+  res <- act
+  modify $ over tyVars (deleteMany tNames)
+  pure res
+ where
+   insertMany :: forall k v. Ord k => [(k,v)] -> Map k v -> Map k v
+   insertMany new acc = foldl' (flip $ uncurry M.insert) acc new
+
+   deleteMany :: forall k v. Ord k => [(k,v)] -> Map k v -> Map k v
+   deleteMany xs acc = foldl' (flip M.delete) acc (fst <$> xs)
 
 note :: String -> Maybe a -> DatatypeM a
 note msg = maybe (throwError msg) pure
-
 
 mkTypeBindDict :: Datatypes IR.Kind Ty
                -> Exp WithoutObjects Ty (FVar Ty)
@@ -119,7 +160,7 @@ mkTypeBindDict datatypes main = case runState act initState of
    (Right _,res) -> pure res
   where
     act = runExceptT $ mkPIRDatatypes datatypes (allTypeConstructors main)
-    initState = DatatypeDictionary [] M.empty M.empty maxIx
+    initState = DatatypeDictionary [] M.empty M.empty M.empty maxIx
     maxIx = maxBV main
 
     allTypeConstructors :: Exp WithoutObjects Ty (FVar Ty) -> S.Set (Qualified (ProperName 'TypeName))
@@ -139,9 +180,8 @@ mkTypeBindDict datatypes main = case runState act initState of
            maxAlt :: Int -> [Alt WithoutObjects t (Exp WithoutObjects t) (FVar t)] -> Int
            maxAlt n [] = n
            maxAlt n (UnguardedAlt _ _ scope:rest) =
-             let thisMax = foldr (max . bvIx) n (bindings scope )
+             let thisMax = foldr (max . bvIx) n (bindings scope)
              in maxAlt thisMax rest
-
 
 mkPIRDatatypes :: Datatypes IR.Kind Ty
                -> S.Set (Qualified (ProperName 'TypeName))
@@ -150,7 +190,7 @@ mkPIRDatatypes datatypes tyConsInExp = traverse_ go tyConsInExp
   where
     go :: Qualified (ProperName 'TypeName)
        -> DatatypeM ()
-    go acc qn@(Qualified qb (ProperName tnm)) = case lookupDataDecl qn datatypes of
+    go qn@(Qualified _ (ProperName tnm)) = case lookupDataDecl qn datatypes of
       Nothing -> throwError $ "Error when translating data types to PIR: "
                         <> "Couldn't find a data type declaration for "
                         <> T.unpack (showQualified runProperName qn)
@@ -158,17 +198,19 @@ mkPIRDatatypes datatypes tyConsInExp = traverse_ go tyConsInExp
         let declKind = mkDeclKind $ mkKind . snd <$> (dDecl ^. dDataArgs)
         tyName <- mkTyName qn
         let typeNameDecl = TyVarDecl () tyName declKind
-        argDecls <-  traverse (mkArgDecl) (dDecl ^. dDataArgs)
-        let deconstructorName = Ident $ "match_" <> tnm
-        ctors <- traverse (mkCtorDecl qn) $ dDecl ^. dDataCtors
-        let this = PIR.Datatype () typeNameDecl argDecls deconstructorName ctors
-        pure $ M.insert qn this acc
+        withLocalTyVars (fst <$> dDecl ^. dDataArgs) $ do
+          argDecls <-  traverse mkArgDecl (dDecl ^. dDataArgs)
+          uniq <- next
+          let deconstructorName = PIR.Name ("match_" <> tnm) $ PLC.Unique uniq
+          ctors <- traverse (mkCtorDecl qn) $ dDecl ^. dDataCtors
+          let this = PIR.Datatype () typeNameDecl argDecls deconstructorName ctors
+          modify $ over pirDatatypes (this:)
 
     mkCtorDecl :: Qualified (ProperName 'TypeName)
                -> CtorDecl Ty
                -> DatatypeM (PIR.VarDecl PIR.TyName PIR.Name PLC.DefaultUni ())
     mkCtorDecl qTyName ctorDecl =  do
-        let ctorFields = ctorDecl ^. cdCtorFields . _2
+        let ctorFields = snd <$> ctorDecl ^. cdCtorFields
             ctorFunTy :: Ty
             ctorFunTy = foldr1 funTy (ctorFields <> [TyCon qTyName])
         ctorName <- mkConstrName (ctorDecl ^. cdCtorName)
@@ -184,27 +226,26 @@ mkPIRDatatypes datatypes tyConsInExp = traverse_ go tyConsInExp
     -- NOTE: We should really make changes such that `Maybe SourceType` is `SourceType`
     mkArgDecl :: (Text, IR.Kind) -> DatatypeM (PIR.TyVarDecl PIR.TyName ())
     mkArgDecl (varNm,ki) = do
-      -- Here, as elsewhere, a sourcePos qualified ident represents a bound var
-      let qVarNm = qualifyNull (ProperName varNm)
-      tyVarNm <- mkTyName
-      pure $ TyVarDecl () qVarNm (mkKind ki)
+      tyVarNm <- mkBoundTyVarName varNm
+      pure $ TyVarDecl () tyVarNm (mkKind ki)
 
 
 
 toPIRType :: Ty -> DatatypeM PIRType
 toPIRType = \case
-  IR.TyVar txt k ->  pure $ PIR.TyVar () $ qualifyNull (ProperName txt)
+  IR.TyVar txt _ -> PIR.TyVar () <$> mkBoundTyVarName txt
   TyCon qtn@(Qualified qb _) -> case qb of
     ByThisModuleName "Builtin" -> either throwError pure $  handleBuiltinTy qtn
     ByThisModuleName "Prim" ->  either throwError pure $ handlePrimTy qtn
     _ -> do
       tyName <- mkTyName qtn
       pure $ PIR.TyVar () tyName
-  -- TODO: Special handling for function types (-> is a TyCon in PS but a Ctor of the Type ADT in plc )
   IR.TyApp t1 t2 -> goTypeApp t1 t2
   Forall _ v k ty _ -> do
-    ty' <- toPIRType ty
-    pure $ TyForall () (qualifyNull $ ProperName v) (mkKind k) ty'
+    vTyName <- mkNewTyVar v
+    withLocalTyVars [v] $ do
+      ty' <- toPIRType ty
+      pure $ TyForall () vTyName (mkKind k) ty'
   other -> error $ "Upon reflection, other types like " <> ppTy other <> " shouldn't be allowed in the Ty ast"
  where
    goTypeApp (IR.TyApp (TyCon C.Function) a) b = do

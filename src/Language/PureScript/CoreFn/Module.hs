@@ -45,9 +45,9 @@ bitraverseDataDecl :: forall f k k' t t'
                    -> DataDecl k t
                    -> f (DataDecl k' t')
 bitraverseDataDecl fk ft DataDecl{..} = do
-  dataArgs' <- traverse (traverse fk) dDataArgs
-  dataCtors' <- traverse (traverseCtorDecl ft) dDataCtors
-  pure $ DataDecl dDeclType dDataTyName dataArgs' dataCtors'
+  dataArgs' <- traverse (traverse fk) _dDataArgs
+  dataCtors' <- traverse (traverseCtorDecl ft) _dDataCtors
+  pure $ DataDecl _dDeclType _dDataTyName dataArgs' dataCtors'
 
 data CtorDecl t  = CtorDecl {
     _cdCtorName :: !(Qualified Ident),

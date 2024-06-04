@@ -150,13 +150,13 @@ mkDataDecls mn decls = foldl' go mempty decls
 
            tyDecls' = M.insert qNm thisDecl tyDecls
            ctorMap' = foldl' (\acc A.DataConstructorDeclaration{..} ->
-                                M.insert (Qualified (ByModuleName mn) dataCtorName) qNm acc
+                                M.insert (Qualified (ByModuleName mn) $ properToIdent dataCtorName) qNm acc
                         ) ctorMap ctors
        in Datatypes tyDecls' ctorMap'
 
    goCtor :: A.DataConstructorDeclaration -> CtorDecl SourceType
    goCtor  A.DataConstructorDeclaration{..} =
-    let qCtorNm = Qualified (ByModuleName mn) dataCtorName
+    let qCtorNm = Qualified (ByModuleName mn) $ properToIdent dataCtorName
     in CtorDecl qCtorNm dataCtorFields
 
 

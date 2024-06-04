@@ -42,7 +42,6 @@ import Language.PureScript.CoreFn.TypeLike
 import Data.Void (Void)
 import Control.Lens.Plated
 import Language.PureScript.CoreFn.Pretty ((<::>))
-import Language.PureScript.Environment (DataDeclType)
 -- The final representation of types and terms, where all constructions that
 -- *should* have been eliminated in previous steps are impossible
 -- TODO: Make sure we error on exotic kinds
@@ -423,7 +422,7 @@ instance Pretty a => Pretty (Lit x a) where
     ConstArrayL xs -> list $ pretty <$> xs
     ArrayL xs -> list $ pretty <$> xs
     ObjectL _ obj -> encloseSep "{" "}" ", "
-      (map (\(field, expr) -> (pretty $ T.pack $ decodeStringWithReplacement field) <> ":" <+> pretty expr) obj)
+      (map (\(field, expr) -> pretty (T.pack $ decodeStringWithReplacement field) <> ":" <+> pretty expr) obj)
 
 instance Pretty a => Pretty (Pat x (Exp x ty) a) where
   pretty = \case
