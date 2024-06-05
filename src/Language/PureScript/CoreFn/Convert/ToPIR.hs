@@ -56,14 +56,16 @@ import PlutusIR.Compiler.Provenance ( Provenance )
 import PlutusCore qualified as PLC
 import Language.PureScript.CoreFn.Convert.DesugarCore
     ( WithoutObjects )
-import Language.PureScript.CoreFn.Convert.Datatypes
-    ( SomeUni(SomeUni), ModuleDataTypes, toPIRType, extractUni )
+
 import Data.Void ( Void )
 import Data.Kind qualified as GHC
 import Type.Reflection ( Typeable, TypeRep, typeRep )
 import Bound.Scope (instantiateEither)
 import Data.List.NonEmpty qualified as NE
 import Language.PureScript.CoreFn.Desugar.Utils (showIdent')
+import Language.PureScript.CoreFn.Convert.Datatypes
+import Control.Monad.Except (MonadError(..))
+import Language.PureScript.CoreFn.Module (Datatypes)
 
 
 showType :: forall a. Typeable a => String
@@ -71,15 +73,10 @@ showType = show (typeRep :: TypeRep a)
 
 type PLCProgram uni fun a = PLC.Program PLC.TyName PLC.Name uni fun (Provenance a)
 
-type PIRTerm tyName = PIR.Term tyName PLC.Name DefaultUni DefaultFun ()
 
-type PIRType tyName = Type tyName DefaultUni ()
 
-type PIRTermBind tyName = Binding tyName  Name DefaultUni DefaultFun ()
+type PIRTermBind  = Binding PLC.TyName  Name DefaultUni DefaultFun ()
 
-data FirstPass = FirstPass {
-    dataTypes :: ModuleDataTypes
-  }
 
 -- this will change
 type PIRConvertM a = Either String a
@@ -88,45 +85,49 @@ type PIRConvertM a = Either String a
    but do not convert PS type names into PIR type names
 -}
 firstPass :: forall a
-           . (a -> Var (BVar Ty) (FVar Ty))
+           . Datatypes IR.Kind Ty
+          -> (a -> Var (BVar Ty) (FVar Ty))
           -> Exp WithoutObjects Ty a
-          -> PIRConvertM (PIRTerm (Qualified (ProperName 'TypeName)))
-firstPass f = \case
+          -> DatatypeM PIRTerm
+firstPass datatypes f = \case
   V x -> case f x of
     F (FVar _ ident) ->
       let nm = runIdent $ disqualify ident
       in case M.lookup (T.unpack nm) defaultFunMap of
         Just aBuiltinFun ->  pure $ Builtin () aBuiltinFun
-        Nothing -> error
-         $ T.unpack nm <> " isn't a builtin, and it shouldn't be possible to have a free variable that's anything but a builtin"
+        Nothing -> getConstructorName ident >>= \case
+          Just aCtorNm -> pure $ PIR.Var () aCtorNm
+          Nothing -> throwError
+                     $ T.unpack nm
+                     <> " isn't a builtin, and it shouldn't be possible to have a free variable that's anything but a builtin"
     B (BVar bvix _ (runIdent -> nm)) -> pure $ PIR.Var () (Name nm $ Unique bvix)
   LitE litTy lit -> firstPassLit litTy lit
   LamE _ (BVar bvIx bvTy bvNm) body -> do
     ty' <- toPIRType bvTy
     let nm = Name (runIdent bvNm) $ Unique bvIx
         body' = instantiateEither (either (IR.V . B) (IR.V . F)) body
-    body'' <- firstPass (>>= f) body'
+    body'' <- firstPass datatypes (>>= f) body'
     pure $ PIR.LamAbs () nm ty' body''
   AppE e1 e2 -> do
-    e1' <- firstPass f e1
-    e2' <- firstPass f e2
+    e1' <- firstPass datatypes f e1
+    e2' <- firstPass datatypes f e2
     pure $ PIR.Apply () e1' e2'
   LetE varMap binds body -> do
     boundTerms <- foldM (convertBind (mkDict varMap)) [] binds
-    body' <- firstPass (>>= f) $ instantiateEither (either (IR.V . B) (IR.V . F)) body
+    body' <- firstPass datatypes (>>= f) $ instantiateEither (either (IR.V . B) (IR.V . F)) body
     case NE.nonEmpty boundTerms of
       -- NOTE: For simplcity we assume here that all let bindings are mutually recursive.
       --       This might not be great for performance (depends on what the PIR compiler does)
       Just boundTerms' -> pure $ PIR.Let () PIR.Rec boundTerms' body'
-      Nothing -> error "non empty bindings"
+      Nothing -> error "empty bindings"
   CaseE{} -> error "TODO @klntsky"
  where
    mkDict = M.fromList . fmap (\(a,FVar _ ident) -> (disqualify ident,a)) . M.toList
 
    convertBind :: Map Ident Int
-               -> [PIRTermBind (Qualified (ProperName 'TypeName))]
+               -> [PIRTermBind]
                -> BindE Ty (Exp WithoutObjects Ty) a
-               -> PIRConvertM [PIRTermBind (Qualified (ProperName 'TypeName))]
+               -> DatatypeM [PIRTermBind]
    convertBind dict acc = \case
      NonRecursive ident expr -> do
        nonRec <- goBind ident expr
@@ -139,14 +140,14 @@ firstPass f = \case
        Just i -> do
          let nm = Name (runIdent ident) $ Unique i
          ty <- toPIRType (expTy f expr)
-         expr' <- firstPass f expr
+         expr' <- firstPass datatypes f expr
          -- NOTE: Not sure if this should always be strict?
          pure $ TermBind () Strict (VarDecl () nm ty) expr'
-       Nothing -> Left $ "convertBind: Could not determine variable index for let-bound identifier " <> showIdent' ident
+       Nothing -> throwError $ "convertBind: Could not determine variable index for let-bound identifier " <> showIdent' ident
 
    firstPassLit :: Ty
                 -> Lit WithoutObjects (Exp WithoutObjects Ty a)
-                -> PIRConvertM (PIRTerm (Qualified (ProperName 'TypeName)))
+                -> DatatypeM PIRTerm
    firstPassLit litTy = \case
     IntL i -> pure $ mkConstant () i
     NumL _ -> error "TODO: Doubles? (We could actually represent them as a builtin pair of integers so there is some sense to keeping them)"
@@ -162,7 +163,7 @@ firstPass f = \case
     ArrayL arr -> error "We need a SOP list data type defined somewhere to codegen array literals that have non-PLC-constant expressions in them"
     ConstArrayL constArr -> firstPassConstArray litTy constArr
 
-   firstPassConstArray :: Ty -> [Lit WithoutObjects Void] -> PIRConvertM (PIRTerm (Qualified (ProperName 'TypeName)))
+   firstPassConstArray :: Ty -> [Lit WithoutObjects Void] -> DatatypeM PIRTerm
    firstPassConstArray (IR.TyApp (TyCon C.Array) litTy) ls = case ls of
      [] -> do
        SomeUni uni <- (toPIRType >=> extractUni) litTy
@@ -172,29 +173,29 @@ firstPass f = \case
        lits' <- traverse (convertTrueLit uni) lits
        pure $ Constant () (Some $ ValueOf (DefaultUniList uni) lits')
    firstPassConstArray ty lits =
-     Left $ "firstPassConstArray: Expected an array type for the constant array:\n  "
+     throwError $ "firstPassConstArray: Expected an array type for the constant array:\n  "
             <> prettyStr lits
             <> "But received type: " <> prettyStr ty
 
-convertTrueLit :: forall (x :: GHC.Type). DefaultUni (Esc x) -> Lit WithoutObjects Void -> PIRConvertM x
+convertTrueLit :: forall (x :: GHC.Type). DefaultUni (Esc x) -> Lit WithoutObjects Void -> DatatypeM x
 convertTrueLit uni lit = case uni of
-  PLC.DefaultUniData -> Left "convertTrueLit: Data literals not supported at this time"
-  PLC.DefaultUniByteString -> Left "convertTrueLit: ByteString literals are not supported at this time (though I guess they could be?)"
-  PLC.DefaultUniPair _ _ -> Left "convertTrueLit: Tuple literals are not supported at this time"
+  PLC.DefaultUniData -> throwError  "convertTrueLit: Data literals not supported at this time"
+  PLC.DefaultUniByteString -> throwError  "convertTrueLit: ByteString literals are not supported at this time (though I guess they could be?)"
+  PLC.DefaultUniPair _ _ -> throwError  "convertTrueLit: Tuple literals are not supported at this time"
   PLC.DefaultUniBool -> case lit of
     BoolL b -> pure b
-    other -> Left (mkError other)
+    other -> throwError (mkError other)
   PLC.DefaultUniInteger -> case lit of
     CharL c -> pure . toInteger . fromEnum $ c
     IntL i  -> pure i
-    other   -> Left (mkError other)
+    other   -> throwError (mkError other)
   PLC.DefaultUniString -> case lit of
     StringL str -> pure . prettyPrintString $ str
-    other -> Left (mkError other)
+    other -> throwError (mkError other)
   PLC.DefaultUniList uni' -> case lit of
     ConstArrayL xs -> traverse (convertTrueLit uni') xs
-    other -> Left (mkError other)
-  other -> Left $ "Unsupported PLC Constant type " <> show other <> " for literal value: " <> prettyStr lit
+    other -> throwError (mkError other)
+  other -> throwError $ "Unsupported PLC Constant type " <> show other <> " for literal value: " <> prettyStr lit
  where
    mkError :: Lit WithoutObjects Void -> String
    mkError wrong = "convertTrueLit: Type mismatch. Expected a literal value of PLC DefaultUni type " <> show uni <> " but found: " <> prettyStr wrong

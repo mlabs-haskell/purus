@@ -77,6 +77,7 @@ import GHC.IO (throwIO)
 import Control.Lens.Getter (to)
 import Data.Set qualified as S
 import Data.Foldable (traverse_)
+import Data.Char (isUpper)
 
 {- Function for quickly testing/debugging monomorphization -}
 
@@ -131,7 +132,7 @@ monomorphize  xpr = trace ("monomorphize " <>  "\n  " <> ppExp xpr)  $ case xpr 
     traceM $ "ARG TYPES:" <> show (prettyTypeStr <$> types)
 
     -- FIXME: Check for constructors as well as builtins
-    if isBuiltin f
+    if isBuiltin f || isConstructor f
       then pure app
       else handleFunction  f args
   other -> trace ("monomorphize: other: " <> ppExp other) $ pure other
@@ -141,6 +142,11 @@ monomorphize  xpr = trace ("monomorphize " <>  "\n  " <> ppExp xpr)  $ case xpr 
    --              polymorphic builtins. (Trivial to implement if needed)
    isBuiltin = \case
      V (FVar _ (Qualified (ByModuleName (ModuleName "Builtin")) _ )) -> True
+     _ -> False
+   -- After the recent changes, constructors *can't* be inlined, i.e., they remain
+   -- free until the final PIR compilation stage
+   isConstructor = \case
+     V (FVar _ (Qualified _ (Ident nm))) -> isUpper (T.head nm)
      _ -> False
 
 {- "Control flow" for the inlining monomorphizer.

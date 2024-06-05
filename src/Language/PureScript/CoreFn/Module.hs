@@ -5,21 +5,16 @@ module Language.PureScript.CoreFn.Module where
 import Prelude
 
 import Data.Map.Strict (Map)
-import Data.List (sort)
 
 import Data.Text (Text)
 import Language.PureScript.AST.SourcePos (SourceSpan)
-import Language.PureScript.AST.Literals (Literal(..))
 import Language.PureScript.Comments (Comment)
-import Language.PureScript.CoreFn.Expr (Bind(..), Expr(..), CaseAlternative)
-import Language.PureScript.CoreFn.Ann
-import Language.PureScript.Names (Ident, ModuleName, ProperNameType (..), ProperName(..), Qualified, runIdent)
-import Data.Bifunctor (second)
-import Language.PureScript.AST.Declarations (DataConstructorDeclaration)
+import Language.PureScript.CoreFn.Expr (Bind(..))
+import Language.PureScript.Names (Ident, ModuleName, ProperNameType (..), ProperName(..), Qualified)
 import Language.PureScript.Environment (DataDeclType)
-import Language.PureScript.Types (SourceType)
 
-import Control.Lens -- fuck it
+import Control.Lens
+    ( (^?), filtered, folded, view, makeLenses, Ixed(ix) )
 
 import GHC.Generics (Generic)
 import Data.Aeson
@@ -77,8 +72,6 @@ lookupCtorType qi (Datatypes _ ctors) = M.lookup qi ctors
 lookupDataDecl :: Qualified (ProperName 'TypeName) -> Datatypes k t -> Maybe (DataDecl k t)
 lookupDataDecl qtn (Datatypes tys _) = M.lookup qtn tys
 
-unsafeQualifiedToCtor :: Qualified Ident -> Qualified (ProperName 'ConstructorName)
-unsafeQualifiedToCtor qi = ProperName . runIdent <$> qi
 
 lookupCtorDecl :: Qualified Ident -> Datatypes k t -> Maybe (CtorDecl t)
 lookupCtorDecl qi datatypes = do

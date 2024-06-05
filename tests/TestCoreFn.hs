@@ -18,15 +18,16 @@ import Language.PureScript.CoreFn.ToJSON (moduleToJSON)
 import Language.PureScript.Names (pattern ByNullSourcePos, Ident(..), ModuleName(..), ProperName(..), Qualified(..), QualifiedBy(..))
 import Language.PureScript.PSString (mkString)
 import Language.PureScript.Environment
+import Language.PureScript.Types
 
 import Test.Hspec (Spec, context, shouldBe, shouldSatisfy, specify)
 import Language.PureScript.CoreFn.Desugar.Utils (purusTy)
 
-parseModule :: Value -> Result (Version, Module (Bind Ann) Ann)
+parseModule :: Value -> Result (Version, Module (Bind Ann) SourceType SourceType Ann)
 parseModule = parse moduleFromJSON
 
 -- convert a module to its json CoreFn representation and back
-parseMod :: Module (Bind Ann) Ann -> Result (Module (Bind Ann) Ann)
+parseMod :: Module (Bind Ann) SourceType SourceType Ann -> Result (Module (Bind Ann) SourceType SourceType Ann)
 parseMod m =
   let v = Version [0] []
   in snd <$> parseModule (moduleToJSON v m)

@@ -10,7 +10,7 @@ import Language.PureScript.CoreFn.Convert.IR
       expTy,
       Alt(..),
       BVar(BVar),
-      Exp(CaseE, LamE, LetE),
+      Exp(CaseE, LamE, LetE, AppE),
       FVar,
       Ty(Forall, TyCon) )
 import Language.PureScript.CoreFn.Convert.IR qualified as IR
@@ -24,7 +24,7 @@ import PlutusIR qualified as PIR
 import PlutusCore qualified as PLC
 
 import Control.Lens
-    ( (^.), to, cosmos, (^..), over, view, makeLenses )
+    ( (^.), (^?), ix, to, cosmos, (^..), over, view, makeLenses, _1, _2)
 import Language.PureScript.Names
     ( ProperNameType(TypeName),
       Qualified(..),
@@ -33,7 +33,7 @@ import Language.PureScript.Names
       pattern ByThisModuleName,
       showQualified,
       showIdent,
-      disqualify )
+      disqualify, runIdent )
 import Bound.Var ( Var(F) )
 
 
@@ -64,9 +64,16 @@ import Data.Kind qualified as GHC
 import Bound.Scope (bindings)
 import Control.Monad.State ( gets, runState, modify, State )
 import Control.Monad.Except
-    ( MonadError(throwError), runExceptT, ExceptT )
+    ( MonadError(throwError), runExceptT, ExceptT, liftEither )
 import Data.Foldable (traverse_, foldl')
 import Language.PureScript.CoreFn.TypeLike ( TypeLike(funTy) )
+import Language.PureScript.CoreFn.Convert.DesugarObjects (prettyStr)
+
+{- Monad for performing operations with datatypes. Supports limited TyVar binding
+   operations for operating on type variables in scoped datatype declarations or
+   types.
+-}
+type DatatypeM  = ExceptT String (State DatatypeDictionary)
 
 type PIRDatatype = PIR.Datatype
                      PIR.TyName
@@ -83,17 +90,22 @@ type PIRTerm = PIR.Term PIR.TyName PIR.Name PLC.DefaultUni PLC.DefaultFun ()
 --             correct Unique assignments (& kinds) for locally-scoped TyVars
 --             in datatype declarations
 data DatatypeDictionary = DatatypeDictionary {
-    _pirDatatypes :: [PIRDatatype], -- This should be a set but their AST doesn't have ord instances -_-
-    _constrNames  :: Map (Qualified Ident) PIR.Name,
+    -- | The datatype declarations & their corresponding PS type name
+    _pirDatatypes :: Map (Qualified (ProperName 'TypeName)) PIRDatatype,
+    -- | Map from PS Constructors (free variables) to PLC Names (w/ a unique) & constructor indices
+    _constrNames  :: Map (Qualified Ident) (PIR.Name,Int),
+    -- | Map from PS Type names to PLC Type Names (w/ a unique)
     _tyNames      :: Map (Qualified (ProperName 'TypeName)) PIR.TyName,
+    -- | Locally bound type variables, to be used with `withLocalTyVars`
     _tyVars       :: Map Text PIR.TyName,
+    -- | Map from a PS type name to the name of the case destructor
+    _destructors  :: Map (Qualified (ProperName 'TypeName)) PIR.Name,
+    -- | A counter. We have to assign uniques to PS names and this lets us ensure we do so correctly & w/o clashes
     _counter      :: Int
 }
 
 -- jfc why didn't i makeLenses everywhere
 makeLenses ''DatatypeDictionary
-
-type DatatypeM  = ExceptT String (State DatatypeDictionary)
 
 next :: DatatypeM Int
 next = do
@@ -110,20 +122,19 @@ mkTyName qn = gets (view tyNames) >>= \tnames -> case M.lookup qn tnames of
     modify $ over tyNames (M.insert qn tyname)
     pure tyname
 
-mkConstrName :: Qualified Ident -> DatatypeM PIR.Name
-mkConstrName qi = gets (view constrNames) >>= \cnames -> case M.lookup qi cnames of
-  Just cname -> pure cname
+mkConstrName :: Qualified Ident -> Int -> DatatypeM PIR.Name
+mkConstrName qi cix = gets (view constrNames) >>= \cnames -> case M.lookup qi cnames of
+  Just cname -> pure $ fst cname
   Nothing -> do
     uniq <- next
     let nm = Name (showIdent . disqualify $ qi) $ PLC.Unique uniq
-    modify $ over constrNames (M.insert qi nm)
+    modify $ over constrNames (M.insert qi (nm,cix))
     pure nm
 
 mkNewTyVar :: Text -> DatatypeM TyName
 mkNewTyVar nm = do
   uniq <- next
   pure .  PIR.TyName $ PIR.Name nm $ PLC.Unique uniq
-
 
 mkBoundTyVarName :: Text -> DatatypeM PIR.TyName
 mkBoundTyVarName nm = do
@@ -132,8 +143,8 @@ mkBoundTyVarName nm = do
     Just tyName -> pure  tyName
     Nothing -> error $ "Free type variable in IR: " <> T.unpack nm
 
-addDatatype :: PIRDatatype -> DatatypeM ()
-addDatatype = modify . over pirDatatypes . (:)
+addDatatype :: Qualified (ProperName 'TypeName) -> PIRDatatype -> DatatypeM ()
+addDatatype qn = modify . over pirDatatypes . M.insert qn
 
 withLocalTyVars :: [Text] ->  DatatypeM a -> DatatypeM a
 withLocalTyVars nms act = do
@@ -160,7 +171,7 @@ mkTypeBindDict datatypes main = case runState act initState of
    (Right _,res) -> pure res
   where
     act = runExceptT $ mkPIRDatatypes datatypes (allTypeConstructors main)
-    initState = DatatypeDictionary [] M.empty M.empty M.empty maxIx
+    initState = DatatypeDictionary M.empty M.empty M.empty M.empty M.empty maxIx
     maxIx = maxBV main
 
     allTypeConstructors :: Exp WithoutObjects Ty (FVar Ty) -> S.Set (Qualified (ProperName 'TypeName))
@@ -175,6 +186,7 @@ mkTypeBindDict datatypes main = case runState act initState of
           LamE _ (BVar n _ _) _ -> max n acc
           LetE _ _ scope ->  foldr (max . bvIx) acc (bindings scope)
           CaseE _ _ alts -> maxAlt acc alts
+          AppE e1 e2     -> max (go e1 acc) (go e2 acc)
           _ -> acc
          where
            maxAlt :: Int -> [Alt WithoutObjects t (Exp WithoutObjects t) (FVar t)] -> Int
@@ -201,19 +213,20 @@ mkPIRDatatypes datatypes tyConsInExp = traverse_ go tyConsInExp
         withLocalTyVars (fst <$> dDecl ^. dDataArgs) $ do
           argDecls <-  traverse mkArgDecl (dDecl ^. dDataArgs)
           uniq <- next
-          let deconstructorName = PIR.Name ("match_" <> tnm) $ PLC.Unique uniq
-          ctors <- traverse (mkCtorDecl qn) $ dDecl ^. dDataCtors
-          let this = PIR.Datatype () typeNameDecl argDecls deconstructorName ctors
-          modify $ over pirDatatypes (this:)
+          let destructorName = PIR.Name ("match_" <> tnm) $ PLC.Unique uniq
+          modify $ over destructors (M.insert qn destructorName)
+          ctors <- traverse (mkCtorDecl qn) $ zip [0..] (dDecl ^. dDataCtors)
+          let this = PIR.Datatype () typeNameDecl argDecls destructorName ctors
+          modify $ over pirDatatypes (M.insert qn this)
 
     mkCtorDecl :: Qualified (ProperName 'TypeName)
-               -> CtorDecl Ty
+               -> (Int,CtorDecl Ty)
                -> DatatypeM (PIR.VarDecl PIR.TyName PIR.Name PLC.DefaultUni ())
-    mkCtorDecl qTyName ctorDecl =  do
+    mkCtorDecl qTyName (cix,ctorDecl) =  do
         let ctorFields = snd <$> ctorDecl ^. cdCtorFields
             ctorFunTy :: Ty
             ctorFunTy = foldr1 funTy (ctorFields <> [TyCon qTyName])
-        ctorName <- mkConstrName (ctorDecl ^. cdCtorName)
+        ctorName <- mkConstrName (ctorDecl ^. cdCtorName) cix
         ctorFunTyPIR <- toPIRType  ctorFunTy
         pure $ VarDecl () ctorName ctorFunTyPIR
 
@@ -228,8 +241,6 @@ mkPIRDatatypes datatypes tyConsInExp = traverse_ go tyConsInExp
     mkArgDecl (varNm,ki) = do
       tyVarNm <- mkBoundTyVarName varNm
       pure $ TyVarDecl () tyVarNm (mkKind ki)
-
-
 
 toPIRType :: Ty -> DatatypeM PIRType
 toPIRType = \case
@@ -286,8 +297,28 @@ sourceTypeToKind = \case
       pure $ PIR.KindArrow () t1' t2'
     other -> Left $ "Error: PureScript type '" <> prettyTypeStr other <> " is not a valid Plutus Kind"
 
--- Utilities for PIR conversion (move somewhere else)
+getDestructorTy :: Qualified (ProperName 'TypeName) -> DatatypeM PLC.Name
+getDestructorTy qn = do
+  dctors <- gets (view destructors)
+  case M.lookup qn dctors of
+    Nothing -> throwError $ "No destructor defined for datatype "
+                          <> T.unpack (showQualified runProperName qn)
+                          <> ". This indicates a compiler bug (datatype declaration not generated)"
+    Just dctor -> pure dctor
 
+getConstructorName :: Qualified Ident -> DatatypeM (Maybe PLC.Name)
+getConstructorName qi = do
+  ctors <- gets (view constrNames)
+  pure $ ctors ^? ix qi . _1
+
+
+prettyQPN :: Qualified (ProperName 'TypeName) -> String
+prettyQPN = T.unpack . showQualified runProperName
+
+prettyQI :: Qualified Ident -> String
+prettyQI = T.unpack . showQualified runIdent
+
+-- Utilities for PIR conversion (move somewhere else)
 pattern (:@) :: PIR.Type tyName PLC.DefaultUni () -> PIR.Type tyName PLC.DefaultUni () -> PIR.Type tyName PLC.DefaultUni ()
 pattern f :@ e = PIR.TyApp () f e
 
@@ -318,17 +349,20 @@ pattern PlcByteString = TyBuiltin () (PLC.SomeTypeIn PLC.DefaultUniByteString)
 data SomeUni :: GHC.Type where
   SomeUni :: forall (a :: GHC.Type).  PLC.DefaultUni (PLC.Esc a) -> SomeUni
 
-extractUni :: Show tyName => PIR.Type tyName PLC.DefaultUni () -> Either String SomeUni
-extractUni = \case
+extractUni :: Show tyName => PIR.Type tyName PLC.DefaultUni () -> DatatypeM SomeUni
+extractUni = liftEither . extractUni'
+
+extractUni' :: Show tyName => PIR.Type tyName PLC.DefaultUni () -> Either String SomeUni
+extractUni' = \case
   PlcInt -> pure $ SomeUni PLC.DefaultUniInteger
   PlcBool -> pure $ SomeUni PLC.DefaultUniBool
   PlcString -> pure $ SomeUni PLC.DefaultUniString
   PlcByteString -> pure $ SomeUni PLC.DefaultUniByteString
   PlcPair a b -> do
-    SomeUni a' <- extractUni a
-    SomeUni b' <- extractUni b
+    SomeUni a' <- extractUni' a
+    SomeUni b' <- extractUni' b
     pure . SomeUni $ PLC.DefaultUniPair a' b'
   PlcList a -> do
-    SomeUni a' <- extractUni a
+    SomeUni a' <- extractUni' a
     pure . SomeUni $ PLC.DefaultUniList a'
   other -> Left $ "Not a PLC constant-able type:\n " <> show other
