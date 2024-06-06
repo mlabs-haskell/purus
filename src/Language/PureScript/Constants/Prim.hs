@@ -3,6 +3,9 @@
 -- | Various constants which refer to things in Prim
 module Language.PureScript.Constants.Prim where
 
+import Prelude
+import Data.Foldable (traverse_)
+
 import Language.PureScript.Names (ModuleName)
 import Language.PureScript.Constants.TH qualified as TH
 
@@ -11,6 +14,7 @@ $(TH.declare do
     TH.cls "Partial"
     TH.dty "Array" ["Nil","Cons"]
     TH.dty "Boolean" ["False","True"]
+    traverse_ (\x -> TH.dty ("Tuple" <> show x) ["Tuple" <> show x]) [1..100] -- tuples
     TH.ty "Char"
     TH.ty "Constraint"
     TH.ty "Function"

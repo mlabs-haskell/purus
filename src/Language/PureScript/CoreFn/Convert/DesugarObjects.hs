@@ -8,7 +8,7 @@ module Language.PureScript.CoreFn.Convert.DesugarObjects where
 import Prelude
 import Language.PureScript.CoreFn.Expr
     ( Expr(..) )
-import Language.PureScript.Names (Ident(..), Qualified (..), QualifiedBy (..), pattern ByNullSourcePos, ProperNameType (..), ProperName(..), disqualify, ModuleName (..), runModuleName, runIdent)
+import Language.PureScript.Names (Ident(..), Qualified (..), QualifiedBy (..), pattern ByNullSourcePos, ProperNameType (..), ProperName(..), disqualify, ModuleName (..), runModuleName, runIdent, coerceProperName)
 import Language.PureScript.Types
     ( SourceType, Type(..), srcTypeConstructor, srcTypeApp, RowListItem (rowListType), rowToList, eqType )
 import Language.PureScript.Environment (pattern (:->), pattern RecordT, kindType, DataDeclType (Data))
@@ -544,6 +544,34 @@ primData = Datatypes tDict cDict
         (properToIdent <$> C.True,C.Boolean),
         (properToIdent <$> C.False,C.Boolean)
       ]
+
+tupleDatatypes :: Datatypes Kind Ty
+tupleDatatypes = Datatypes (M.fromList tupleTypes) (M.fromList tupleCtors)
+  where
+    mkTupleTyName :: Int -> Qualified (ProperName 'TypeName)
+    mkTupleTyName x =
+      Qualified (ByModuleName C.M_Prim) (ProperName $ "Tuple" <> T.pack (show x))
+
+    tupleTypes = flip map [1..100] $ \(n :: Int) ->
+      let tyNm = mkTupleTyName n
+          ctorNm = mkTupleCtorNm n
+          argKinds = mkTupleArgKinds n
+          ctorTvArgs = mkTupleCtorTvArgs n
+      in (tyNm,DataDecl Data tyNm argKinds [CtorDecl ctorNm ctorTvArgs])
+
+    tupleCtors = [1..100] <&> \x -> (mkTupleCtorNm x, mkTupleTyName x)
+
+    mkTupleCtorNm :: Int -> Qualified Ident
+    mkTupleCtorNm n = properToIdent  <$> mkTupleTyName n
+
+    vars :: Int -> [Text]
+    vars n = map (\x ->  "t" <> T.pack (show x)) [1..n]
+
+    mkTupleArgKinds = fmap (,KindType) .  vars
+
+    mkTupleCtorTvArgs = mkProdFields . map (flip TyVar KindType) . vars
+
+
 
 
 mkTupleCtorData :: Int -> (ProperName 'ConstructorName,(ProperName 'TypeName,Int,[Ty]))

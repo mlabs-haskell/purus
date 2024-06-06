@@ -3,7 +3,7 @@ module Lib where
 import Prim
 
 testCons :: Array Int
-testCons = Cons 1 Nil
+testCons = Prim.Cons 1 Nil
 
 {- Type Classes -}
 -- Single Param
@@ -18,6 +18,9 @@ instance Eq Int where
 
 testEq :: Boolean
 testEq = eq 1 2
+
+testTuple :: Tuple3 Int Int Boolean
+testTuple = Tuple3 1 2 True
 
 {- Tomasz's Counterexample -}
 workingEven :: Int -> Int

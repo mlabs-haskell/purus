@@ -65,6 +65,7 @@ module Language.PureScript.Constants.TH
   , asIdent
   , asPair
   , asString
+  , type ModDecs
   ) where
 
 import Protolude hiding (Type, mod)

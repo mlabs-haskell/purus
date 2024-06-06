@@ -14,6 +14,7 @@ Exports:
   testCons,
   minus,
   testEq,
+  testTuple,
   workingEven,
   brokenEven,
   testEq2,
@@ -160,6 +161,18 @@ testasum =
     case (x: Lib.ASum) of 
        Constr1 y -> (1: Prim.Int)
        Constr2 z -> (2: Prim.Int)
+
+testTuple :: ((Prim.Tuple3 Prim.Int Prim.Int) Prim.Boolean)
+testTuple = 
+  (Tuple3: forall (t1 :: Prim.Type)
+  (t2 :: Prim.Type)
+  (t3 :: Prim.Type). (t1 :: Prim.Type) ->
+  (t2 :: Prim.Type) ->
+  (t3 :: Prim.Type) ->
+  ((Prim.Tuple3 (t1 :: Prim.Type) (t2 :: Prim.Type)) (t3 :: Prim.Type)))
+  (1: Prim.Int)
+  (2: Prim.Int)
+  (True: Prim.Boolean)
 
 testCons :: Array (Prim.Int)
 testCons = 
@@ -381,8 +394,8 @@ workingEven =
        true -> (1: Prim.Int)
        _ -> (42: Prim.Int)
 
-emptyList :: forall (t93 :: Prim.Type). Array ((t93 :: Prim.Type))
-emptyList = ([]: forall (t93 :: Prim.Type). Array ((t93 :: Prim.Type)))
+emptyList :: forall (t96 :: Prim.Type). Array ((t96 :: Prim.Type))
+emptyList = ([]: forall (t96 :: Prim.Type). Array ((t96 :: Prim.Type)))
 
 cons :: forall (a :: Prim.Type). (a :: Prim.Type) -> Array ((a :: Prim.Type)) -> Array ((a :: Prim.Type))
 cons = 
@@ -395,14 +408,14 @@ consEmptyList1 =
   (cons: forall (a :: Prim.Type). (a :: Prim.Type) ->
   Array ((a :: Prim.Type)) -> Array ((a :: Prim.Type)))
   (1: Prim.Int)
-  (emptyList: forall (t93 :: Prim.Type). Array ((t93 :: Prim.Type)))
+  (emptyList: forall (t96 :: Prim.Type). Array ((t96 :: Prim.Type)))
 
 consEmptyList2 :: Array (Prim.String)
 consEmptyList2 = 
   (cons: forall (a :: Prim.Type). (a :: Prim.Type) ->
   Array ((a :: Prim.Type)) -> Array ((a :: Prim.Type)))
   ("hello": Prim.String)
-  (emptyList: forall (t93 :: Prim.Type). Array ((t93 :: Prim.Type)))
+  (emptyList: forall (t96 :: Prim.Type). Array ((t96 :: Prim.Type)))
 
 compare :: forall (@a :: Prim.Type). Lib.Ord$Dict (a :: Prim.Type) -> (a :: Prim.Type) -> (a :: Prim.Type) -> Prim.Int
 compare = 
@@ -570,7 +583,7 @@ aFunction6 =
     go = \(v: (z :: Prim.Type)) -> (10: Prim.Int)
   in (aFunction: forall (x :: Prim.Type). (x :: Prim.Type) ->
      forall (y :: Prim.Type). (y :: Prim.Type) -> Prim.Int -> Prim.Int)
-     ([]: Array (t122))
+     ([]: Array (t125))
      (go: forall (z :: Prim.Type). (z :: Prim.Type) -> Prim.Int)
 
 aBool :: Prim.Boolean

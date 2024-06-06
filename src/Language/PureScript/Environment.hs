@@ -1,5 +1,7 @@
 {-# OPTIONS_GHC -Wno-unrecognised-pragmas #-}
 {-# HLINT ignore "Redundant bracket" #-}
+{-# HLINT ignore "Use tuple-section" #-} -- anyone who thinks this is *always* clearer is drunk
+{-# LANGUAGE TypeApplications #-}
 module Language.PureScript.Environment where
 
 import Prelude
@@ -27,10 +29,11 @@ import Language.PureScript.Crash (internalError)
 import Language.PureScript.Names (Ident, ProperName(..), ProperNameType(..), Qualified(..), QualifiedBy (..), coerceProperName, disqualify)
 import Language.PureScript.Roles (Role(..))
 import Language.PureScript.TypeClassDictionaries (NamedDict)
-import Language.PureScript.Types (SourceConstraint, SourceType, Type(..), TypeVarVisibility(..), eqType, srcTypeConstructor, freeTypeVariables)
+import Language.PureScript.Types (SourceConstraint, SourceType, Type(..), TypeVarVisibility(..), eqType, srcTypeConstructor, freeTypeVariables, srcTypeApp, quantify)
 import Language.PureScript.Constants.Prim qualified as C
 import Language.PureScript.Constants.Purus qualified as PLC
 import Codec.CBOR.Write (toLazyByteString)
+import Data.Foldable (Foldable(foldl'))
 
 -- | The @Environment@ defines all values and types which are currently in scope:
 data Environment = Environment
@@ -413,7 +416,7 @@ primClass name mkKind =
   ]
 
 primCtors :: M.Map (Qualified (ProperName 'ConstructorName)) (DataDeclType, ProperName 'TypeName, SourceType, [Ident])
-primCtors = M.fromList [
+primCtors = M.fromList tupleCtors <> M.fromList [
     (mkCtor "True",(Data,disqualify C.Boolean,srcTypeConstructor C.Boolean,[])),
     (mkCtor "False",(Data,disqualify C.Boolean,srcTypeConstructor C.Boolean,[])),
     (mkCtor "Nil",(Data,disqualify C.Array, forallT "x" $ \x -> arrayT x, [])),
@@ -422,11 +425,28 @@ primCtors = M.fromList [
   where
    mkCtor :: Text -> Qualified (ProperName 'ConstructorName)
    mkCtor nm = Qualified (ByModuleName C.M_Prim) (ProperName nm)
+
+   vars :: Int -> [Text]
+   vars n = map (\x ->  "t" <> T.pack (show x)) [1..n]
+
+   mkCtorTy :: Qualified (ProperName 'TypeName) -> Int -> SourceType
+   mkCtorTy tNm n =
+     let nVars = (\x -> TypeVar NullSourceAnn x kindType) <$> vars n
+         nTyCon = TypeConstructor NullSourceAnn tNm
+         resTy = foldl' srcTypeApp nTyCon nVars
+     in quantify $ foldr (-:>) resTy nVars
+
+   tupleCtors = [1..100] <&> \n ->
+     let ctorNm = mkCtor ("Tuple" <> T.pack (show n))
+         ctorTyNm = coerceProperName @_ @'TypeName $ disqualify ctorNm
+         ctorTy = mkCtorTy (coerceProperName <$> ctorNm) n
+     in (ctorNm,(Data,ctorTyNm,ctorTy,[]))
+
 -- | The primitive types in the external environment with their
 -- associated kinds. There are also pseudo `Fail`, `Warn`, and `Partial` types
 -- that correspond to the classes with the same names.
 primTypes :: M.Map (Qualified (ProperName 'TypeName)) (SourceType, TypeKind)
-primTypes =
+primTypes = tupleTypes <>
   M.fromList
     [ (C.Type,                         (kindType, ExternData []))
     , (C.Constraint,                   (kindType, ExternData []))
@@ -467,6 +487,37 @@ allPrimTypes = M.unions
   -- For the sake of simplicity I'm putting the builtins here as well
   , builtinTypes
   ]
+
+tupleTypes :: M.Map (Qualified (ProperName 'TypeName)) (SourceType, TypeKind)
+tupleTypes = M.fromList $ go <$> [1..100]
+  where
+
+    mkTupleTyName :: Int -> Qualified (ProperName 'TypeName)
+    mkTupleTyName x =
+      Qualified (ByModuleName C.M_Prim) (ProperName $ "Tuple" <> T.pack (show x))
+
+    mkTupleKind :: Int -> SourceType
+    mkTupleKind n = foldr (-:>) kindType (replicate n kindType)
+
+    mkTupleArgVars n = vars n <&> \v -> (v,kindType,Representational)
+
+    mkCtorTVArgs n = vars n <&> \v -> TypeVar NullSourceAnn v kindType
+
+    vars :: Int -> [Text]
+    vars n = map (\x ->  "t" <> T.pack (show x)) [1..n]
+
+    go :: Int -> (Qualified (ProperName 'TypeName),(SourceType, TypeKind))
+    go n =
+      let tName = mkTupleTyName n
+          tKind = mkTupleKind n
+          tArgs = mkTupleArgVars n
+
+          ctorNm = coerceProperName . disqualify $ tName
+          ctorArgs = mkCtorTVArgs n
+
+          datType = DataType Data tArgs [(ctorNm,ctorArgs)]
+
+      in (tName,(tKind,datType))
 
 primBooleanTypes :: M.Map (Qualified (ProperName 'TypeName)) (SourceType, TypeKind)
 primBooleanTypes =
