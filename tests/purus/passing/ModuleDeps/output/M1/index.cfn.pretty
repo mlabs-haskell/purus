@@ -1,14 +1,29 @@
 M1 (tests/purus/passing/ModuleDeps/M1.purs)
+
 Imported Modules: 
+------------------------------
   Builtin,
   M2,
   Prim
+
 Exports: 
+------------------------------
   foo
+
 Re-Exports: 
+------------------------------
   
+
 Foreign: 
+------------------------------
   
+
+Datatypes: 
+------------------------------
+
+
+
 Declarations: 
+------------------------------
 foo :: Prim.Int
 foo = (bar: Prim.Int)

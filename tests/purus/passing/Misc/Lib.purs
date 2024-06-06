@@ -2,6 +2,9 @@ module Lib where
 
 import Prim
 
+testCons :: Array Int
+testCons = Cons 1 Nil
+
 {- Type Classes -}
 -- Single Param
 class Eq (a :: Type) where

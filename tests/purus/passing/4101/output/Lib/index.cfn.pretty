@@ -1,17 +1,31 @@
 Lib (tests/purus/passing/4101/Lib.purs)
+
 Imported Modules: 
+------------------------------
   Builtin,
   Prim
+
 Exports: 
+------------------------------
   Const,
   Unit
-Re-Exports: 
-  
-Foreign: 
-  
-Declarations: 
-Unit :: Lib.Unit
-Unit = Unit
 
-Const :: forall (a :: Prim.Type). (a :: Prim.Type) -> (a :: Prim.Type)
-Const = \(x: (a :: Prim.Type)) -> (x: (a :: Prim.Type))
+Re-Exports: 
+------------------------------
+  
+
+Foreign: 
+------------------------------
+  
+
+Datatypes: 
+------------------------------
+newtype Const (a :: Prim.Type) (b :: Prim.Type) = 
+  Const (a :: Prim.Type)
+
+data Unit  = 
+  Unit 
+
+
+Declarations: 
+------------------------------

@@ -1,16 +1,31 @@
 Main (tests/purus/passing/PendingConflictingImports2/PendingConflictingImports2.purs)
+
 Imported Modules: 
+------------------------------
   A,
   Builtin,
   Prim
+
 Exports: 
+------------------------------
   thing,
   main
+
 Re-Exports: 
+------------------------------
   
+
 Foreign: 
+------------------------------
   
+
+Datatypes: 
+------------------------------
+
+
+
 Declarations: 
+------------------------------
 thing :: Prim.Int
 thing = (2: Prim.Int)
 

@@ -39,6 +39,7 @@ import Language.PureScript.Environment
 import Language.PureScript.Errors (MultipleErrors, SimpleErrorMessage(..), errorMessage, errorMessage')
 import Language.PureScript.Names (Ident, ModuleName, Name(..), OpName, OpNameType(..), ProperName, ProperNameType(..), Qualified(..), QualifiedBy(..), coerceProperName, disqualify, getQual)
 import Language.PureScript.Constants.Purus qualified as PLC
+import Language.PureScript.Types (SourceType)
 
 -- |
 -- The details for an import: the name of the thing that is being imported
@@ -227,12 +228,12 @@ primTypeErrorExports = mkPrimExports primTypeErrorTypes primTypeErrorClasses
 -- Create a set of exports for a Purus Builtins module
 --
 mkBuiltinExports
-  :: M.Map (Qualified (ProperName 'TypeName)) a
+  :: M.Map (Qualified (ProperName 'TypeName)) (SourceType,TypeKind)
   -> M.Map (Qualified Ident) b
   -> Exports
 mkBuiltinExports ts vs =
   nullExports
-    { exportedTypes = M.fromList $ mkTypeEntry <$> M.keys ts,
+    { exportedTypes = M.fromList $ uncurry mkTypeEntry <$> M.toList ts,
       exportedValues = M.fromList $ mkValueEntry <$> M.keys vs
     }
 
@@ -240,17 +241,18 @@ mkBuiltinExports ts vs =
 -- Create a set of exports for a Prim module.
 --
 mkPrimExports
-  :: M.Map (Qualified (ProperName 'TypeName)) a
+  :: M.Map (Qualified (ProperName 'TypeName)) (SourceType,TypeKind)
   -> M.Map (Qualified (ProperName 'ClassName)) b
   -> Exports
 mkPrimExports ts cs =
   nullExports
-    { exportedTypes = M.fromList $ mkTypeEntry `map` M.keys ts
+    { exportedTypes = M.fromList $ uncurry mkTypeEntry `map` M.toList ts
     , exportedTypeClasses = M.fromList $ mkClassEntry `map` M.keys cs
     }
 
-mkTypeEntry (Qualified (ByModuleName mn) name) = (name, ([], primExportSource mn))
-mkTypeEntry _ = internalError
+mkTypeEntry (Qualified (ByModuleName mn) name) (_,DataType _ _ (map fst -> ctors))= (name, (ctors, primExportSource mn))
+mkTypeEntry (Qualified (ByModuleName mn) name) _ = (name, ([], primExportSource mn))
+mkTypeEntry _ _ = internalError
   "mkPrimExports.mkTypeEntry: a name is qualified BySourcePos instead of ByModuleName"
 
 mkClassEntry (Qualified (ByModuleName mn) name) = (name, primExportSource mn)

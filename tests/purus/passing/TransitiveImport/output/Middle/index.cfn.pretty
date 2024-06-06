@@ -1,17 +1,32 @@
 Middle (tests/purus/passing/TransitiveImport/Middle.purs)
+
 Imported Modules: 
+------------------------------
   Builtin,
   Prim,
   Test
+
 Exports: 
+------------------------------
   unit,
   middle
+
 Re-Exports: 
+------------------------------
   Test.Unit
   Test.test
+
 Foreign: 
+------------------------------
   
+
+Datatypes: 
+------------------------------
+
+
+
 Declarations: 
+------------------------------
 unit :: Test.Unit
 unit = (Unit: Test.Unit)
 

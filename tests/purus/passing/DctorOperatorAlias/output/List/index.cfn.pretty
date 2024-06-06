@@ -1,18 +1,30 @@
 List (tests/purus/passing/DctorOperatorAlias/List.purs)
+
 Imported Modules: 
+------------------------------
   Builtin,
   List,
   Prim
+
 Exports: 
+------------------------------
   Cons,
   Nil
-Re-Exports: 
-  
-Foreign: 
-  
-Declarations: 
-Cons :: forall (@a :: Prim.Type). (a :: Prim.Type) -> List.List (a :: Prim.Type) -> List.List (a :: Prim.Type)
-Cons = Cons
 
-Nil :: forall (@a :: Prim.Type). List.List (a :: Prim.Type)
-Nil = Nil
+Re-Exports: 
+------------------------------
+  
+
+Foreign: 
+------------------------------
+  
+
+Datatypes: 
+------------------------------
+data List (a :: Prim.Type) = 
+  Cons (a :: Prim.Type) List.List (a :: Prim.Type)
+  | Nil 
+
+
+Declarations: 
+------------------------------

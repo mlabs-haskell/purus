@@ -1,17 +1,32 @@
 Main (tests/purus/passing/ResolvableScopeConflict/ResolvableScopeConflict.purs)
+
 Imported Modules: 
+------------------------------
   A,
   B,
   Builtin,
   Prim
+
 Exports: 
+------------------------------
   what,
   main
+
 Re-Exports: 
+------------------------------
   
+
 Foreign: 
+------------------------------
   
+
+Datatypes: 
+------------------------------
+
+
+
 Declarations: 
+------------------------------
 what :: Prim.Boolean -> Prim.Int
 what = 
   \(v: Prim.Boolean) -> 

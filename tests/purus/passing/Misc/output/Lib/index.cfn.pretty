@@ -1,12 +1,17 @@
 Lib (tests/purus/passing/Misc/Lib.purs)
+
 Imported Modules: 
+------------------------------
   Builtin,
   Lib,
   Prim
+
 Exports: 
+------------------------------
   compare,
   eq,
   eq2,
+  testCons,
   minus,
   testEq,
   workingEven,
@@ -66,74 +71,51 @@ Exports:
   eqInt,
   eq2IntBoolean,
   ordInt
+
 Re-Exports: 
+------------------------------
   
+
 Foreign: 
+------------------------------
   
+
+Datatypes: 
+------------------------------
+data ADataRec  = 
+  ADataRec { hello :: Prim.Int, world :: Prim.Boolean }
+
+newtype ANewtypeRec  = 
+  ANewTypeRec { foo :: Prim.Int }
+
+data ASum  = 
+  Constr1 Prim.Int
+  | Constr2 Prim.Boolean
+
+newtype Eq$Dict (a :: Prim.Type) = 
+  Eq$Dict { eq :: (a :: Prim.Type) -> (a :: Prim.Type) -> Prim.Boolean }
+
+newtype Eq2$Dict (a :: Prim.Type) (b :: Prim.Type) = 
+  Eq2$Dict { eq2 :: (a :: Prim.Type) -> (b :: Prim.Type) -> Prim.Boolean }
+
+newtype Ord$Dict (a :: Prim.Type) = 
+  Ord$Dict { compare :: (a :: Prim.Type) -> (a :: Prim.Type) -> Prim.Int, Eq0 :: Prim.Record {} -> Lib.Eq$Dict (a :: Prim.Type) }
+
+data TestBinderSum  = 
+  ConInt Prim.Int
+  | ConInts Array (Prim.Int)
+  | ConBoolean Prim.Boolean
+  | ConString Prim.String
+  | ConChar Prim.Char
+  | ConNested Lib.TestBinderSum
+  | ConQuantified forall (x :: Prim.Type). (x :: Prim.Type) -> Prim.Int
+  | ConConstrained forall (x :: Prim.Type). Lib.Eq (x :: Prim.Type) => (x :: Prim.Type) -> Prim.Int
+  | ConObject { objField :: Prim.Int }
+  | ConObjectQuantified { objFieldQ :: forall (x :: Prim.Type). (x :: Prim.Type) -> Prim.Int }
+
+
 Declarations: 
-Eq2$Dict :: forall (a :: Prim.Type) (b :: Prim.Type). { eq2 :: (a :: Prim.Type) -> (b :: Prim.Type) -> Prim.Boolean } -> { eq2 :: (a :: Prim.Type) -> (b :: Prim.Type) -> Prim.Boolean }
-Eq2$Dict = 
-  \(x: {   eq2 :: (a :: Prim.Type) -> (b :: Prim.Type) -> Prim.Boolean }) -> 
-    (x: {   eq2 :: (a :: Prim.Type) -> (b :: Prim.Type) -> Prim.Boolean })
-
-Eq$Dict :: forall (a :: Prim.Type). { eq :: (a :: Prim.Type) -> (a :: Prim.Type) -> Prim.Boolean } -> { eq :: (a :: Prim.Type) -> (a :: Prim.Type) -> Prim.Boolean }
-Eq$Dict = 
-  \(x: {   eq :: (a :: Prim.Type) -> (a :: Prim.Type) -> Prim.Boolean }) -> 
-    (x: {   eq :: (a :: Prim.Type) -> (a :: Prim.Type) -> Prim.Boolean })
-
-Ord$Dict :: forall (a :: Prim.Type). { compare :: (a :: Prim.Type) -> (a :: Prim.Type) -> Prim.Int, Eq0 :: Prim.Record {} -> Lib.Eq$Dict (a :: Prim.Type) } -> { compare :: (a :: Prim.Type) -> (a :: Prim.Type) -> Prim.Int, Eq0 :: Prim.Record {} -> Lib.Eq$Dict (a :: Prim.Type) }
-Ord$Dict = 
-  \(x: {
-         compare :: (a :: Prim.Type) -> (a :: Prim.Type) -> Prim.Int,
-         Eq0 :: Prim.Record {} -> Lib.Eq$Dict (a :: Prim.Type)
-       }) -> 
-    (x: {
-          compare :: (a :: Prim.Type) -> (a :: Prim.Type) -> Prim.Int,
-          Eq0 :: Prim.Record {} -> Lib.Eq$Dict (a :: Prim.Type)
-        })
-
-ConInt :: Prim.Int -> Lib.TestBinderSum
-ConInt = ConInt
-
-ConInts :: Array (Prim.Int) -> Lib.TestBinderSum
-ConInts = ConInts
-
-ConBoolean :: Prim.Boolean -> Lib.TestBinderSum
-ConBoolean = ConBoolean
-
-ConString :: Prim.String -> Lib.TestBinderSum
-ConString = ConString
-
-ConChar :: Prim.Char -> Lib.TestBinderSum
-ConChar = ConChar
-
-ConNested :: Lib.TestBinderSum -> Lib.TestBinderSum
-ConNested = ConNested
-
-ConQuantified :: forall (x :: Prim.Type). (x :: Prim.Type) -> Prim.Int -> Lib.TestBinderSum
-ConQuantified = ConQuantified
-
-ConConstrained :: forall (x :: Prim.Type). Lib.Eq$Dict (x :: Prim.Type) -> (x :: Prim.Type) -> Prim.Int -> Lib.TestBinderSum
-ConConstrained = ConConstrained
-
-ConObject :: { objField :: Prim.Int } -> Lib.TestBinderSum
-ConObject = ConObject
-
-ConObjectQuantified :: { objFieldQ :: forall (x :: Prim.Type). (x :: Prim.Type) -> Prim.Int } -> Lib.TestBinderSum
-ConObjectQuantified = ConObjectQuantified
-
-Constr1 :: Prim.Int -> Lib.ASum
-Constr1 = Constr1
-
-Constr2 :: Prim.Boolean -> Lib.ASum
-Constr2 = Constr2
-
-ANewTypeRec :: { foo :: Prim.Int } -> { foo :: Prim.Int }
-ANewTypeRec = \(x: { foo :: Prim.Int }) -> (x: { foo :: Prim.Int })
-
-ADataRec :: { hello :: Prim.Int, world :: Prim.Boolean } -> Lib.ADataRec
-ADataRec = ADataRec
-
+------------------------------
 eqInt :: Lib.Eq$Dict Prim.Int
 eqInt = 
   (Eq$Dict: {   eq :: Prim.Int -> Prim.Int -> Prim.Boolean } ->
@@ -178,6 +160,13 @@ testasum =
     case (x: Lib.ASum) of 
        Constr1 y -> (1: Prim.Int)
        Constr2 z -> (2: Prim.Int)
+
+testCons :: Array (Prim.Int)
+testCons = 
+  (Cons: forall (x :: Prim.Type). (x :: Prim.Type) ->
+  Array ((x :: Prim.Type)) -> Array ((x :: Prim.Type)))
+  (1: Prim.Int)
+  (Nil: Array (Prim.Int))
 
 testBuiltin :: Prim.Int
 testBuiltin = 
@@ -392,8 +381,8 @@ workingEven =
        true -> (1: Prim.Int)
        _ -> (42: Prim.Int)
 
-emptyList :: forall (t91 :: Prim.Type). Array ((t91 :: Prim.Type))
-emptyList = ([]: forall (t91 :: Prim.Type). Array ((t91 :: Prim.Type)))
+emptyList :: forall (t93 :: Prim.Type). Array ((t93 :: Prim.Type))
+emptyList = ([]: forall (t93 :: Prim.Type). Array ((t93 :: Prim.Type)))
 
 cons :: forall (a :: Prim.Type). (a :: Prim.Type) -> Array ((a :: Prim.Type)) -> Array ((a :: Prim.Type))
 cons = 
@@ -406,14 +395,14 @@ consEmptyList1 =
   (cons: forall (a :: Prim.Type). (a :: Prim.Type) ->
   Array ((a :: Prim.Type)) -> Array ((a :: Prim.Type)))
   (1: Prim.Int)
-  (emptyList: forall (t91 :: Prim.Type). Array ((t91 :: Prim.Type)))
+  (emptyList: forall (t93 :: Prim.Type). Array ((t93 :: Prim.Type)))
 
 consEmptyList2 :: Array (Prim.String)
 consEmptyList2 = 
   (cons: forall (a :: Prim.Type). (a :: Prim.Type) ->
   Array ((a :: Prim.Type)) -> Array ((a :: Prim.Type)))
   ("hello": Prim.String)
-  (emptyList: forall (t91 :: Prim.Type). Array ((t91 :: Prim.Type)))
+  (emptyList: forall (t93 :: Prim.Type). Array ((t93 :: Prim.Type)))
 
 compare :: forall (@a :: Prim.Type). Lib.Ord$Dict (a :: Prim.Type) -> (a :: Prim.Type) -> (a :: Prim.Type) -> Prim.Int
 compare = 
@@ -581,7 +570,7 @@ aFunction6 =
     go = \(v: (z :: Prim.Type)) -> (10: Prim.Int)
   in (aFunction: forall (x :: Prim.Type). (x :: Prim.Type) ->
      forall (y :: Prim.Type). (y :: Prim.Type) -> Prim.Int -> Prim.Int)
-     ([]: Array (t120))
+     ([]: Array (t122))
      (go: forall (z :: Prim.Type). (z :: Prim.Type) -> Prim.Int)
 
 aBool :: Prim.Boolean

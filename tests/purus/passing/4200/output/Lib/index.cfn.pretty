@@ -1,13 +1,27 @@
 Lib (tests/purus/passing/4200/Lib.purs)
+
 Imported Modules: 
+------------------------------
   Builtin,
   Prim
+
 Exports: 
+------------------------------
   E
+
 Re-Exports: 
+------------------------------
   
+
 Foreign: 
+------------------------------
   
+
+Datatypes: 
+------------------------------
+data T (msg :: Prim.Type) = 
+  E 
+
+
 Declarations: 
-E :: forall (@msg :: Prim.Type). Lib.T (msg :: Prim.Type)
-E = E
+------------------------------

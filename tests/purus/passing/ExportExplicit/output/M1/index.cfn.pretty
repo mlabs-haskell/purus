@@ -1,26 +1,37 @@
 M1 (tests/purus/passing/ExportExplicit/M1.purs)
+
 Imported Modules: 
+------------------------------
   Builtin,
   Prim
+
 Exports: 
+------------------------------
   X,
   Y,
   Z,
   foo
+
 Re-Exports: 
+------------------------------
   
+
 Foreign: 
+------------------------------
   
+
+Datatypes: 
+------------------------------
+data X  = 
+  X 
+  | Y 
+
+data Z  = 
+  Z 
+
+
 Declarations: 
-Z :: M1.Z
-Z = Z
-
-X :: M1.X
-X = X
-
-Y :: M1.X
-Y = Y
-
+------------------------------
 foo :: Prim.Int
 foo = (0: Prim.Int)
 

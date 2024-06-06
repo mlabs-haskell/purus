@@ -1,27 +1,38 @@
 Lib (tests/purus/passing/4310/Lib.purs)
+
 Imported Modules: 
+------------------------------
   Builtin,
   Lib,
   Prim
+
 Exports: 
+------------------------------
   runTest,
   Tuple,
   mappend,
   testInt,
   test/\
+
 Re-Exports: 
+------------------------------
   
+
 Foreign: 
+------------------------------
   
+
+Datatypes: 
+------------------------------
+newtype Test$Dict (a :: Prim.Type) = 
+  Test$Dict { runTest :: (a :: Prim.Type) -> Prim.String }
+
+data Tuple (a :: Prim.Type) (b :: Prim.Type) = 
+  Tuple (a :: Prim.Type) (b :: Prim.Type)
+
+
 Declarations: 
-Tuple :: forall (@a :: Prim.Type) (@b :: Prim.Type). (a :: Prim.Type) -> (b :: Prim.Type) -> (Lib.Tuple (a :: Prim.Type) (b :: Prim.Type))
-Tuple = Tuple
-
-Test$Dict :: forall (a :: Prim.Type). { runTest :: (a :: Prim.Type) -> Prim.String } -> { runTest :: (a :: Prim.Type) -> Prim.String }
-Test$Dict = 
-  \(x: {   runTest :: (a :: Prim.Type) -> Prim.String }) -> 
-    (x: {   runTest :: (a :: Prim.Type) -> Prim.String })
-
+------------------------------
 testInt :: Lib.Test$Dict Prim.Int
 testInt = 
   (Test$Dict: {   runTest :: Prim.Int -> Prim.String } ->

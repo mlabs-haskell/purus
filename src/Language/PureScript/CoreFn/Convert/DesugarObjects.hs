@@ -8,7 +8,7 @@ module Language.PureScript.CoreFn.Convert.DesugarObjects where
 import Prelude
 import Language.PureScript.CoreFn.Expr
     ( Expr(..) )
-import Language.PureScript.Names (Ident(..), Qualified (..), QualifiedBy (..), pattern ByNullSourcePos, ProperNameType (..), ProperName(..), disqualify, ModuleName (..), runModuleName)
+import Language.PureScript.Names (Ident(..), Qualified (..), QualifiedBy (..), pattern ByNullSourcePos, ProperNameType (..), ProperName(..), disqualify, ModuleName (..), runModuleName, runIdent)
 import Language.PureScript.Types
     ( SourceType, Type(..), srcTypeConstructor, srcTypeApp, RowListItem (rowListType), rowToList, eqType )
 import Language.PureScript.Environment (pattern (:->), pattern RecordT, kindType, DataDeclType (Data))
@@ -38,7 +38,7 @@ import Bound ( toScope, Var(..) )
 import Data.Bifunctor (Bifunctor(first, second))
 import Control.Lens.Combinators (to)
 import Data.Maybe (fromJust)
-import Control.Lens.Operators ( (<&>), (.~), (&), (^..) )
+import Control.Lens.Operators ( (<&>), (.~), (&), (^..), (^.) )
 import Control.Lens.Tuple ( Field2(_2), Field3(_3) )
 import Language.PureScript.CoreFn.Convert.IR
     ( pattern (:~>),
@@ -70,7 +70,7 @@ import Prettyprinter
     ( defaultLayoutOptions, layoutPretty, Pretty(pretty) )
 import Prettyprinter.Render.Text (renderStrict)
 import Language.PureScript.CoreFn.TypeLike (TypeLike(..))
-import Language.PureScript.CoreFn.Module (Module(..), Datatypes, bitraverseDatatypes)
+import Language.PureScript.CoreFn.Module
 import GHC.IO (throwIO)
 import Language.PureScript.CoreFn.Desugar.Utils (properToIdent)
 
@@ -509,7 +509,42 @@ assembleDesugaredObjectLit expr (_ :~> b) (arg:args) = assembleDesugaredObjectLi
 assembleDesugaredObjectLit expr _ [] = pure expr -- TODO better error
 assembleDesugaredObjectLit _ _ _ = error "something went wrong in assembleDesugaredObjectLit"
 
+
+
 -- TODO/FIXME: Adapt this for use w/ the PIR Data declaration machinery (i.e. don't manually construct SOPs)
+
+pattern ArrayCons :: Qualified Ident
+pattern ArrayCons = Qualified (ByModuleName C.M_Prim) (Ident "Cons")
+
+pattern ArrayNil :: Qualified Ident
+pattern ArrayNil = Qualified (ByModuleName C.M_Prim) (Ident "Nil")
+
+mkProdFields :: [t] -> [(Ident,t)]
+mkProdFields = map (UnusedIdent,)
+
+primData :: Datatypes Kind Ty
+primData = Datatypes tDict cDict
+  where
+    tDict = M.fromList $ map (\x -> (x ^. dDataTyName,x))
+        [ DataDecl Data C.Array [("a", KindType)] [
+            CtorDecl ArrayNil [],
+            CtorDecl ArrayCons $ mkProdFields [TyVar "a" KindType]
+          ],
+
+          DataDecl Data C.Boolean [] [
+            CtorDecl (properToIdent <$> C.False) [],
+            CtorDecl (properToIdent <$> C.True) []
+          ]
+        ]
+
+    cDict :: Map (Qualified Ident) (Qualified (ProperName 'TypeName))
+    cDict = M.fromList $ [
+        (ArrayCons, C.Array),
+        (ArrayNil, C.Array),
+        (properToIdent <$> C.True,C.Boolean),
+        (properToIdent <$> C.False,C.Boolean)
+      ]
+
 
 mkTupleCtorData :: Int -> (ProperName 'ConstructorName,(ProperName 'TypeName,Int,[Ty]))
 mkTupleCtorData n | n <= 0 = error "Don't try to make a 0-tuple"

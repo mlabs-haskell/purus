@@ -125,24 +125,28 @@ moduleToCoreFn  (A.Module _ _ _ _ Nothing) =
 moduleToCoreFn (A.Module modSS coms mn _decls (Just exps)) = do
   setModuleName
   desugarConstraintTypes
-  (dataDecls,decls)<- fmap (partition A.isDataDecl) (traverse (desugarCasesEverywhere . desugarConstraintsInDecl) _decls)
+  (dataDecls,decls)<- fmap (partition isDataDecl) (traverse (desugarCasesEverywhere . desugarConstraintsInDecl) _decls)
   let importHelper ds = fmap (ssAnn modSS,) (findQualModules ds)
-      imports = dedupeImports $ mapMaybe importToCoreFn decls ++ importHelper decls
+      imports = dedupeImports $ mapMaybe importToCoreFn _decls ++ importHelper _decls
       exps' = ordNub $ concatMap exportToCoreFn exps
       reExps = M.map ordNub $ M.unionsWith (++) (mapMaybe (fmap reExportsToCoreFn . toReExportRef) exps)
-      externs = ordNub $ mapMaybe externToCoreFn decls
+      externs = ordNub $ mapMaybe externToCoreFn _decls
   decls' <- concat <$> traverse (declToCoreFn mn) decls
   let dataDecls' = mkDataDecls mn dataDecls
   pure $ Module modSS coms mn (spanName modSS) imports exps' reExps externs decls' dataDecls'
  where
    setModuleName = modify $ \cs ->
      cs {checkCurrentModule = Just mn}
+   isDataDecl = \case
+     A.DataDeclaration{} -> True
+     A.DataBindingGroupDeclaration{} -> True
+     _ -> False
 
 mkDataDecls :: ModuleName -> [A.Declaration] -> Datatypes SourceType SourceType
 mkDataDecls mn decls = foldl' go mempty decls
   where
    go :: Datatypes SourceType SourceType -> A.Declaration -> Datatypes SourceType SourceType
-   go (Datatypes tyDecls ctorMap) = \case
+   go datatypes@(Datatypes tyDecls ctorMap) = \case
      A.DataDeclaration _ ddTy nm args ctors ->
        let qNm = Qualified (ByModuleName mn) nm
            ctorDecls = goCtor <$> ctors
@@ -153,6 +157,8 @@ mkDataDecls mn decls = foldl' go mempty decls
                                 M.insert (Qualified (ByModuleName mn) $ properToIdent dataCtorName) qNm acc
                         ) ctorMap ctors
        in Datatypes tyDecls' ctorMap'
+     A.DataBindingGroupDeclaration neDecls -> foldl' go datatypes neDecls
+     _ -> datatypes
 
    goCtor :: A.DataConstructorDeclaration -> CtorDecl SourceType
    goCtor  A.DataConstructorDeclaration{..} =
@@ -236,6 +242,7 @@ declToCoreFn  mn (A.DataDeclaration (ss, com) Data tyName _ ctors) = error
   $ "declToCoreFn: INTERNAL ERROR. Encountered a data declaration in module " <> show (pretty mn) <>  " for datatype: " <> T.unpack (runProperName tyName)
     <> "\n  but datatype declarations should have been removed in a previous step"
 -- NOTE: This should be OK because you can data declarations can only appear at the top-level.
+-- TODO: Prettier error
 declToCoreFn mn (A.DataBindingGroupDeclaration ds) = wrapTrace  "declToCoreFn DATA GROUP DECL" $ concat <$> traverse (declToCoreFn  mn) ds
 -- Essentially a wrapper over `exprToCoreFn`. Not 100% sure if binding the type of the declaration is necessary here?
 -- NOTE: Should be impossible to have a guarded expr here, make it an error

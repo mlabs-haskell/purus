@@ -1,19 +1,34 @@
 Main (tests/purus/passing/ReExportQualified/ReExportQualified.purs)
+
 Imported Modules: 
+------------------------------
   A,
   B,
   Builtin,
   C,
   Main,
   Prim
+
 Exports: 
+------------------------------
   concat,
   main
+
 Re-Exports: 
+------------------------------
   
+
 Foreign: 
+------------------------------
   
+
+Datatypes: 
+------------------------------
+
+
+
 Declarations: 
+------------------------------
 concat :: Prim.String -> Prim.String -> Prim.String
 concat = \(v: Prim.String) -> \(v1: Prim.String) -> ("concat": Prim.String)
 

@@ -24,7 +24,7 @@ import Data.List.NonEmpty qualified as NEL
 
 import Language.PureScript.AST.SourcePos (nullSourceAnn, pattern NullSourceAnn)
 import Language.PureScript.Crash (internalError)
-import Language.PureScript.Names (Ident, ProperName(..), ProperNameType(..), Qualified, QualifiedBy, coerceProperName)
+import Language.PureScript.Names (Ident, ProperName(..), ProperNameType(..), Qualified(..), QualifiedBy (..), coerceProperName, disqualify)
 import Language.PureScript.Roles (Role(..))
 import Language.PureScript.TypeClassDictionaries (NamedDict)
 import Language.PureScript.Types (SourceConstraint, SourceType, Type(..), TypeVarVisibility(..), eqType, srcTypeConstructor, freeTypeVariables)
@@ -105,7 +105,7 @@ instance A.ToJSON FunctionalDependency where
 
 -- | The initial environment with only builtin PLC functions and Prim PureScript types defined
 initEnvironment :: Environment
-initEnvironment = Environment builtinFunctions allPrimTypes M.empty M.empty M.empty allPrimClasses
+initEnvironment = Environment builtinFunctions allPrimTypes primCtors M.empty M.empty allPrimClasses
 
 -- | A constructor for TypeClassData that computes which type class arguments are fully determined
 -- and argument covering sets.
@@ -412,6 +412,16 @@ primClass name mkKind =
     in (dictTypeName . coerceProperName <$> name, (k, TypeSynonym))
   ]
 
+primCtors :: M.Map (Qualified (ProperName 'ConstructorName)) (DataDeclType, ProperName 'TypeName, SourceType, [Ident])
+primCtors = M.fromList [
+    (mkCtor "True",(Data,disqualify C.Boolean,srcTypeConstructor C.Boolean,[])),
+    (mkCtor "False",(Data,disqualify C.Boolean,srcTypeConstructor C.Boolean,[])),
+    (mkCtor "Nil",(Data,disqualify C.Array, forallT "x" $ \x -> arrayT x, [])),
+    (mkCtor "Cons",(Data,disqualify C.Array, forallT "x" $ \x -> x -:> arrayT x -:> arrayT x, []))
+  ]
+  where
+   mkCtor :: Text -> Qualified (ProperName 'ConstructorName)
+   mkCtor nm = Qualified (ByModuleName C.M_Prim) (ProperName nm)
 -- | The primitive types in the external environment with their
 -- associated kinds. There are also pseudo `Fail`, `Warn`, and `Partial` types
 -- that correspond to the classes with the same names.
@@ -423,15 +433,24 @@ primTypes =
     , (C.Symbol,                       (kindType, ExternData []))
     , (C.Row,                          (kindType -:> kindType, ExternData [Phantom]))
     , (C.Function,                     (kindType -:> kindType -:> kindType, ExternData [Representational, Representational]))
-    , (C.Array,                        (kindType -:> kindType, ExternData [Representational]))
+    , (C.Array,                        (kindType -:> kindType,listData))
     , (C.Record,                       (kindRow kindType -:> kindType, ExternData [Representational]))
     , (C.String,                       (kindType, ExternData []))
     , (C.Char,                         (kindType, ExternData []))
     , (C.Number,                       (kindType, ExternData []))
     , (C.Int,                          (kindType, ExternData []))
-    , (C.Boolean,                      (kindType, ExternData []))
+    , (C.Boolean,                      (kindType, boolData))
     , (C.Partial <&> coerceProperName, (kindConstraint, ExternData []))
     ]
+  where
+    boolData = DataType Data [] [
+      (disqualify C.C_True,[]),
+      (disqualify C.C_False,[])
+      ]
+    listData = DataType Data [("a",kindType,Representational)] [
+      (disqualify C.C_Nil,[]),
+      (disqualify C.C_Cons,[TypeVar NullSourceAnn "a" kindType,arrayT (TypeVar NullSourceAnn "a" kindType)])
+     ]
 
 -- | This 'Map' contains all of the prim types from all Prim modules.
 allPrimTypes :: M.Map (Qualified (ProperName 'TypeName)) (SourceType, TypeKind)

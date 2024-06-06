@@ -9,8 +9,8 @@ import Language.PureScript.Constants.TH qualified as TH
 $(TH.declare do
   TH.mod "Prim" do
     TH.cls "Partial"
-    TH.ty "Array"
-    TH.ty "Boolean"
+    TH.dty "Array" ["Nil","Cons"]
+    TH.dty "Boolean" ["False","True"]
     TH.ty "Char"
     TH.ty "Constraint"
     TH.ty "Function"
@@ -38,7 +38,7 @@ $(TH.declare do
 
   TH.mod "Prim.Row" do
     TH.prefixWith "Row" do TH.clss ["Cons", "Lacks", "Nub", "Union"]
-  
+
   TH.mod "Prim.RowList" do
     TH.ty "RowList"
     TH.cls "RowToList"

@@ -1,0 +1,79 @@
+Prelude (tests/purus/passing/Misc/Prelude.purs)
+
+Imported Modules: 
+------------------------------
+  Builtin,
+  Prelude,
+  Prim
+
+Exports: 
+------------------------------
+  True,
+  False,
+  and,
+  or,
+  not,
+  Nil,
+  Cons,
+  appendList
+
+Re-Exports: 
+------------------------------
+  
+
+Foreign: 
+------------------------------
+  
+
+Datatypes: 
+------------------------------
+data Bool  = 
+  True 
+  | False 
+
+data List (a :: Prim.Type) = 
+  Nil 
+  | Cons (a :: Prim.Type) Prelude.List (a :: Prim.Type)
+
+
+Declarations: 
+------------------------------
+or :: Prelude.Bool -> Prelude.Bool -> Prelude.Bool
+or = 
+  \(v: Prelude.Bool) -> 
+    \(v1: Prelude.Bool) -> 
+      case (v: Prelude.Bool) (v1: Prelude.Bool) of 
+         True _ -> (True: Prelude.Bool)
+         _ True -> (True: Prelude.Bool)
+         _ _ -> (False: Prelude.Bool)
+
+not :: Prelude.Bool -> Prelude.Bool
+not = 
+  \(v: Prelude.Bool) -> 
+    case (v: Prelude.Bool) of 
+       True -> (False: Prelude.Bool)
+       False -> (True: Prelude.Bool)
+
+appendList :: forall (a :: Prim.Type). Prelude.List (a :: Prim.Type) -> Prelude.List (a :: Prim.Type) -> Prelude.List (a :: Prim.Type)
+appendList = 
+  \(v: Prelude.List (a :: Prim.Type)) -> 
+    \(v1: Prelude.List (a :: Prim.Type)) -> 
+      case (v: Prelude.List (a :: Prim.Type)) (v1: Prelude.List (a :: Prim.Type)) of 
+         Nil ys -> (ys: Prelude.List (a :: Prim.Type))
+         Cons x xs ys -> 
+           (Cons: forall (@a :: Prim.Type). (a :: Prim.Type) ->
+           Prelude.List (a :: Prim.Type) -> Prelude.List (a :: Prim.Type))
+           (x: (a :: Prim.Type))
+           ((appendList: forall (a :: Prim.Type). Prelude.List
+            (a :: Prim.Type) ->
+            Prelude.List (a :: Prim.Type) -> Prelude.List (a :: Prim.Type))
+            (xs: Prelude.List (a :: Prim.Type))
+            (ys: Prelude.List (a :: Prim.Type)))
+
+and :: Prelude.Bool -> Prelude.Bool -> Prelude.Bool
+and = 
+  \(v: Prelude.Bool) -> 
+    \(v1: Prelude.Bool) -> 
+      case (v: Prelude.Bool) (v1: Prelude.Bool) of 
+         True True -> (True: Prelude.Bool)
+         _ _ -> (False: Prelude.Bool)

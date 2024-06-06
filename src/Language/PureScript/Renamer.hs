@@ -15,8 +15,11 @@ import Data.Set qualified as S
 import Data.Text qualified as T
 
 import Language.PureScript.CoreFn (Ann, Bind(..), Binder(..), CaseAlternative(..), Expr(..), Literal(..), Module(..))
-import Language.PureScript.Names (Ident(..), Qualified(..), isBySourcePos, isPlainIdent, runIdent, showIdent)
+import Language.PureScript.Names (Ident(..), Qualified(..), isBySourcePos, isPlainIdent, runIdent, showIdent, disqualify)
 import Language.PureScript.Traversals (eitherM, pairM, sndM)
+import Data.Char (isUpper)
+import Control.Lens
+import Language.PureScript.CoreFn.Module
 
 -- |
 -- The state object used in this module
@@ -101,9 +104,10 @@ lookupIdent name = do
 -- externs files as well.
 --
 renameInModule :: Module (Bind Ann) k t Ann -> (M.Map Ident Ident, Module (Bind Ann) k t Ann)
-renameInModule m@(Module _ _ _ _ _ exports _ foreigns decls _) = (rsBoundNames, m { moduleExports, moduleDecls })
+renameInModule m@(Module mn _ _ _ _ exports _ foreigns decls datatypes) = (rsBoundNames, m { moduleExports, moduleDecls })
   where
-  ((moduleDecls, moduleExports), RenameState{..}) = runRename foreigns $
+  ctorIdents = datatypes ^. ctorDict . to M.keys . to (map disqualify)
+  ((moduleDecls, moduleExports), RenameState{..}) = runRename (foreigns <> ctorIdents)  $
     (,) <$> renameInDecls decls <*> traverse lookupIdent exports
 
 -- |
@@ -171,12 +175,16 @@ renameInValue (Abs ann t name v) =
   newScope $ Abs ann t <$> updateScope name <*> renameInValue v
 renameInValue (App ann v1 v2) =
   App ann <$> renameInValue v1 <*> renameInValue v2
-renameInValue (Var ann t (Qualified qb name)) | isBySourcePos qb || not (isPlainIdent name) =
-  -- This should only rename identifiers local to the current module: either
-  -- they aren't qualified, or they are but they have a name that should not
-  -- have appeared in a module's externs, so they must be from this module's
-  -- top-level scope.
-  Var ann t . Qualified qb <$> lookupIdent name
+renameInValue (Var ann t (Qualified qb name))
+  | (isBySourcePos qb || not (isPlainIdent name)) && not (isConstructor name) =
+    -- This should only rename identifiers local to the current module: either
+    -- they aren't qualified, or they are but they have a name that should not
+    -- have appeared in a module's externs, so they must be from this module's
+    -- top-level scope.
+    Var ann t . Qualified qb <$> lookupIdent name
+  where
+    isConstructor (Ident idTxt) = isUpper (T.head idTxt)
+    isConstructor _ = False
 renameInValue v@Var{} = return v
 renameInValue (Case ann t vs alts) =
   newScope $ Case ann t <$> traverse renameInValue vs <*> traverse renameInCaseAlternative alts

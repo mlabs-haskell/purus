@@ -1,16 +1,31 @@
 Main (tests/purus/passing/TransitiveImport/TransitiveImport.purs)
+
 Imported Modules: 
+------------------------------
   Builtin,
   Middle,
   Prim,
   Test
+
 Exports: 
+------------------------------
   main
+
 Re-Exports: 
+------------------------------
   
+
 Foreign: 
+------------------------------
   
+
+Datatypes: 
+------------------------------
+
+
+
 Declarations: 
+------------------------------
 main :: Test.Unit
 main = 
   (middle: forall (a :: Prim.Type). Test.TestCls$Dict (a :: Prim.Type) ->

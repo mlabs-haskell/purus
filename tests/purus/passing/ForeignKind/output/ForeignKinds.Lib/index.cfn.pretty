@@ -1,9 +1,13 @@
 ForeignKinds.Lib (tests/purus/passing/ForeignKind/Lib.purs)
+
 Imported Modules: 
+------------------------------
   Builtin,
   ForeignKinds.Lib,
   Prim
+
 Exports: 
+------------------------------
   NatProxy,
   succProxy,
   proxy0,
@@ -13,17 +17,29 @@ Exports:
   addNat,
   addNatZero,
   addNatSuccSucc
+
 Re-Exports: 
+------------------------------
   
+
 Foreign: 
+------------------------------
   
+
+Datatypes: 
+------------------------------
+newtype AddNat$Dict (l :: ForeignKinds.Lib.Nat) (r :: ForeignKinds.Lib.Nat) (o :: ForeignKinds.Lib.Nat) = 
+  AddNat$Dict Prim.Record {}
+
+data Nat  = 
+  
+
+data NatProxy (t :: ForeignKinds.Lib.Nat) = 
+  NatProxy 
+
+
 Declarations: 
-NatProxy :: forall (@t :: ForeignKinds.Lib.Nat). ForeignKinds.Lib.NatProxy (t :: ForeignKinds.Lib.Nat)
-NatProxy = NatProxy
-
-AddNat$Dict :: Prim.Record {} -> Prim.Record {}
-AddNat$Dict = \(x: Prim.Record {}) -> (x: Prim.Record {})
-
+------------------------------
 addNatZero :: ((ForeignKinds.Lib.AddNat$Dict ForeignKinds.Lib.Zero (r :: ForeignKinds.Lib.Nat)) (r :: ForeignKinds.Lib.Nat))
 addNatZero = 
   (AddNat$Dict: Prim.Record {}@Prim.Type ->

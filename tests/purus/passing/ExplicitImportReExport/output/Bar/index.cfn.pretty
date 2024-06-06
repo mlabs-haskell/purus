@@ -1,12 +1,27 @@
 Bar (tests/purus/passing/ExplicitImportReExport/Bar.purs)
+
 Imported Modules: 
+------------------------------
   Builtin,
   Foo,
   Prim
+
 Exports: 
+------------------------------
   
+
 Re-Exports: 
+------------------------------
   Foo.foo
+
 Foreign: 
+------------------------------
   
+
+Datatypes: 
+------------------------------
+
+
+
 Declarations: 
+------------------------------

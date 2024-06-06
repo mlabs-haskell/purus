@@ -11,17 +11,17 @@ import Data.Bifunctor (Bifunctor (..))
 import Control.Monad.Reader ( MonadReader(ask), runReader )
 
 import Language.PureScript.Environment
-    ( getFunArgTy )
+    ( getFunArgTy, DataDeclType(..) )
 import Language.PureScript.CoreFn.Expr
     ( Guard,
       Bind(..),
       CaseAlternative(CaseAlternative),
       Expr(..) )
-import Language.PureScript.CoreFn.Module ( Module(Module) )
+import Language.PureScript.CoreFn.Module
 import Language.PureScript.CoreFn.Utils
 import Language.PureScript.AST.Literals ( Literal(..) )
 import Language.PureScript.CoreFn.Binders ( Binder(..) )
-import Language.PureScript.Names (ProperName(..), disqualify, showIdent, Ident, ModuleName)
+import Language.PureScript.Names (ProperName(..), disqualify, showIdent, Ident, ModuleName, showQualified, runIdent)
 import Language.PureScript.PSString (PSString, prettyPrintString, decodeStringWithReplacement)
 
 import Prettyprinter
@@ -69,24 +69,57 @@ import Language.PureScript.CoreFn.Pretty.Common
 import Language.PureScript.CoreFn.Pretty.Types ( prettyType )
 
 -- TODO: Pretty print the datatypes too
-prettyModule :: Module (Bind a) k t a -> Doc ann
-prettyModule (Module _ _ modName modPath modImports modExports modReExports modForeign modDecls _) =
+prettyModule :: (Pretty k, Pretty t) => Module (Bind a) k t a -> Doc ann
+prettyModule (Module _ _ modName modPath modImports modExports modReExports modForeign modDecls modDatatypes) =
   vsep
     [ pretty modName <+>  parens (pretty modPath)
-    , "Imported Modules: "
+    , line <> "Imported Modules: " <> spacer
     , indent 2 . commaSep $ pretty . snd  <$>  modImports
-    ,"Exports: "
+    , line <> "Exports: " <> spacer
     , indent 2 . commaSep $ pretty <$> modExports -- hang 2?
-    , "Re-Exports: "
+    , line <> "Re-Exports: " <> spacer
     , indent 2 . commaSep $ goReExport <$> M.toList modReExports
-    , "Foreign: "
+    , line <> "Foreign: " <> spacer
     , indent 2 . commaSep . map pretty $  modForeign
-    , "Declarations: "
+    , line <> "Datatypes: " <> spacer
+    , prettyDatatypes modDatatypes <> line
+    , line <> "Declarations: " <> spacer
     , vcat . punctuate line $  asDynamic prettyDeclaration  <$> modDecls
     ]
  where
+   spacer = line <> pretty (T.pack $ replicate 30  '-')
    goReExport :: (ModuleName,[Ident]) -> Doc ann
    goReExport (mn',idents) = vcat $ flip map idents $ \i -> pretty mn' <> "." <> pretty i
+
+prettyDatatypes :: forall k t ann. (Pretty k, Pretty t) => Datatypes k t -> Doc ann
+prettyDatatypes (Datatypes tDict _) = vcat . punctuate line $ map go (M.elems tDict)
+  where
+    prettyDeclType :: DataDeclType -> Doc ann
+    prettyDeclType = \case
+      Data -> "data"
+      Newtype -> "newtype"
+
+    prefix :: Doc ann -> [Doc ann] -> [Doc ann]
+    prefix sep [] = []
+    prefix sep [x] = [x]
+    prefix sep (x:xs) = x: goPrefix xs
+      where
+        goPrefix [] = []
+        goPrefix (y:ys) = (sep <> y) : goPrefix ys
+
+    go :: DataDecl k t -> Doc ann
+    go (DataDecl newtypeOrData qName args ctors ) =
+      let dType =  prettyDeclType newtypeOrData
+          tName = pretty $ runProperName (disqualify qName)
+          mkArg :: (Text,k) -> Doc ann
+          mkArg (txt,k) = parens (pretty txt <::> pretty k)
+          dArgs = hsep $ mkArg <$> args
+          dCtors = indent 2 . vcat $ prefix "| " $ prettyCtorDecl <$> ctors
+      in dType <+> tName <+> dArgs <=> line <> dCtors
+
+    prettyCtorDecl :: CtorDecl t -> Doc ann
+    prettyCtorDecl (CtorDecl nm fs) =
+      pretty (runIdent $ disqualify nm) <+> hsep (pretty . snd <$> fs)
 
 -- Is a printer for consistency mainly
 prettyObjectKey :: PSString -> Printer ann

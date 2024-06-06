@@ -1,19 +1,32 @@
 Main (tests/purus/passing/ShadowedModuleName/ShadowedModuleName.purs)
+
 Imported Modules: 
+------------------------------
   Builtin,
   Prim,
   Test
+
 Exports: 
+------------------------------
   Test,
   main
-Re-Exports: 
-  
-Foreign: 
-  
-Declarations: 
-Test :: Main.Test
-Test = Test
 
+Re-Exports: 
+------------------------------
+  
+
+Foreign: 
+------------------------------
+  
+
+Datatypes: 
+------------------------------
+data Test  = 
+  Test 
+
+
+Declarations: 
+------------------------------
 main :: Prim.String
 main = 
   (runZ: Test.Z -> Prim.String)

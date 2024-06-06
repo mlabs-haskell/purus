@@ -54,15 +54,15 @@ ppType _ t = prettyTypeStr t
 smartRender ::  Doc ann -> Text
 smartRender = renderStrict . layoutPretty defaultLayoutOptions
 
-writeModule :: Handle -> Module (Bind a) k t a -> IO ()
+writeModule :: (Pretty k, Pretty t) => Handle -> Module (Bind a) k t a -> IO ()
 writeModule h m = renderIO h
                 . layoutSmart defaultLayoutOptions
                 $ prettyModule m
 
-prettyModuleTxt :: Module (Bind a) k t a -> Text
+prettyModuleTxt :: (Pretty k, Pretty t) => Module (Bind a) k t a -> Text
 prettyModuleTxt = renderStrict  . layoutPretty defaultLayoutOptions .  prettyModule
 
-prettyModuleStr :: Module (Bind a) k t a -> String
+prettyModuleStr :: (Pretty k, Pretty t) => Module (Bind a) k t a -> String
 prettyModuleStr = T.unpack . prettyModuleTxt
 
 renderExpr :: Expr a -> Text

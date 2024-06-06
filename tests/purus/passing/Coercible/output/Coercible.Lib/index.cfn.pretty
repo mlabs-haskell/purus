@@ -1,18 +1,32 @@
 Coercible.Lib (tests/purus/passing/Coercible/Lib.purs)
+
 Imported Modules: 
+------------------------------
   Builtin,
   Coercible.Lib2,
   Prim
+
 Exports: 
+------------------------------
   NTLib1,
   NTLib3
-Re-Exports: 
-  Coercible.Lib2.NTLib2
-Foreign: 
-  
-Declarations: 
-NTLib3 :: forall (a :: Prim.Type). (a :: Prim.Type) -> (a :: Prim.Type)
-NTLib3 = \(x: (a :: Prim.Type)) -> (x: (a :: Prim.Type))
 
-NTLib1 :: forall (a :: Prim.Type). (a :: Prim.Type) -> (a :: Prim.Type)
-NTLib1 = \(x: (a :: Prim.Type)) -> (x: (a :: Prim.Type))
+Re-Exports: 
+------------------------------
+  Coercible.Lib2.NTLib2
+
+Foreign: 
+------------------------------
+  
+
+Datatypes: 
+------------------------------
+newtype NTLib1 (a :: Prim.Type) = 
+  NTLib1 (a :: Prim.Type)
+
+newtype NTLib3 (a :: Prim.Type) (b :: Prim.Type) = 
+  NTLib3 (a :: Prim.Type)
+
+
+Declarations: 
+------------------------------
