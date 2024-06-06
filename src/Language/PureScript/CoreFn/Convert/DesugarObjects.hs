@@ -31,7 +31,7 @@ import Language.PureScript.CoreFn.Convert.Monomorphize.Utils
       decodeModuleIO,
       MonoError(MonoError),
       IR_Decl )
-import Language.PureScript.CoreFn.Convert.MonomorphizeV2
+import Language.PureScript.CoreFn.Convert.Monomorphize
     ( runMonomorphize )
 import Data.Text (Text)
 import Bound ( toScope, Var(..) )
@@ -570,75 +570,3 @@ tupleDatatypes = Datatypes (M.fromList tupleTypes) (M.fromList tupleCtors)
     mkTupleArgKinds = fmap (,KindType) .  vars
 
     mkTupleCtorTvArgs = mkProdFields . map (flip TyVar KindType) . vars
-
-
-
-
-mkTupleCtorData :: Int -> (ProperName 'ConstructorName,(ProperName 'TypeName,Int,[Ty]))
-mkTupleCtorData n | n <= 0 = error "Don't try to make a 0-tuple"
-mkTupleCtorData n = (cn,(tn,n,tys))
-  where
-    cn = disqualify . mkFakeCName $ n
-    tn = disqualify . mkFakeTName $ n
-    mkTV nx = TyVar ("~TUPLE_ARG_" <>  T.pack (show nx)) KindType
-    tys = mkTV <$> [1..n]
-
-_100TupleCtors :: CtorDict
-_100TupleCtors = M.fromList $ mkTupleCtorData <$> [1..100]
-
--- Don't normally like type syns in contexts like this but hlint will probably make this unreadable w/o them
-type CtorDict = Map (ProperName 'ConstructorName) (ProperName 'TypeName,Int,[Ty])
-
-mkConstructorMap :: Map (ProperName 'TypeName) (DataDeclType,[(Text, Maybe SourceType)],[DataConstructorDeclaration])
-                 -> TyConvertM CtorDict
-mkConstructorMap decls = M.union _100TupleCtors <$>  foldM go M.empty (M.toList decls)
-  where
-    go :: Map (ProperName 'ConstructorName) (ProperName 'TypeName, Int, [Ty])
-          -> (ProperName 'TypeName, (DataDeclType, [(Text, Maybe SourceType)],[DataConstructorDeclaration]))
-          -> TyConvertM (Map (ProperName 'ConstructorName) (ProperName 'TypeName, Int, [Ty]))
-    go acc (tyNm,(_declTy, _tyArgs, ctorDatas)) = do
-      ctors <- traverse extractCTorData ctorDatas
-      let indexedCTors = mkIndex <$> ctors
-      pure $ foldl' (\acc' (a,b,c,d) -> M.insert a (b,c,d) acc') acc indexedCTors
-     where
-       extractCTorData :: DataConstructorDeclaration -> TyConvertM (ProperName 'ConstructorName,ProperName 'TypeName,[Ty])
-       extractCTorData (DataConstructorDeclaration _ ctorNm ctorFields) = do
-         fields' <- traverse (tryConvertType . snd) ctorFields
-         pure (ctorNm,tyNm,fields')
-       mkIndex :: (ProperName 'ConstructorName, ProperName 'TypeName, [Ty])
-               -> (ProperName 'ConstructorName, ProperName 'TypeName, Int,[Ty])
-       mkIndex (cn,tn,fs) = case findIndex (\DataConstructorDeclaration{..} -> dataCtorName == cn) ctorDatas of
-         Nothing -> error "couldn't find ctor name (impossible)"
-         Just i  ->  (cn,tn,i,fs)
-
-lookupSOP :: ProperName 'TypeName -> TyConDict -> Maybe [(Int,[Ty])]
-lookupSOP nm dict = view _3 <$> M.lookup nm dict
-
-lookupArgs :: ProperName 'TypeName -> TyConDict -> Maybe [(Text,Maybe Ty)]
-lookupArgs nm dict = view _2 <$> M.lookup nm dict
-
-mkTupleTyConData :: Int -> (ProperName 'TypeName,(DataDeclType,[(Text,Maybe Ty)],[(Int,[Ty])]))
-mkTupleTyConData n = (tn,(Data,args,indices))
-  where
-    tn = disqualify $ mkFakeTName n
-    vars = [1..n] <&> \x -> "~TUPLE_ARG_" <> T.pack (show x)
-    args = zip vars (replicate n (Just (TyCon C.Type)))
-    qualifier = Qualified (ByModuleName $ ModuleName "$GEN") . ProperName
-    indices = [(0,TyCon . qualifier  <$> vars)]
-
-_100TupleTyCons :: TyConDict
-_100TupleTyCons = M.fromList $ mkTupleTyConData <$> [1..100]
-
-type TyConDict = (Map (ProperName 'TypeName) (DataDeclType,[(Text,Maybe Ty)],[(Int,[Ty])]))
-
-mkTyConMap :: Map (ProperName 'TypeName) (DataDeclType,[(Text, Maybe SourceType)],[DataConstructorDeclaration])
-           -> TyConvertM (Map (ProperName 'TypeName) (DataDeclType,[(Text,Maybe Ty)],[(Int,[Ty])]))
-mkTyConMap decls = M.union _100TupleTyCons <$> foldM go M.empty (M.toList decls)
-  where
-    go :: Map (ProperName 'TypeName) (DataDeclType,[(Text,Maybe Ty)],[(Int,[Ty])])
-       -> (ProperName 'TypeName, (DataDeclType, [(Text, Maybe SourceType)],[DataConstructorDeclaration]))
-       -> TyConvertM (Map (ProperName 'TypeName) (DataDeclType,[(Text,Maybe Ty)],[(Int,[Ty])]))
-    go acc (tn,(declTy,tyArgs,ctorDatas)) = do
-      tyArgs' <- (traverse . traverse . traverse) tryConvertType tyArgs
-      indexedProducts <- zip [0..] <$> traverse (traverse (tryConvertType . snd) . dataCtorFields) ctorDatas
-      pure $ M.insert tn (declTy,tyArgs',indexedProducts) acc
