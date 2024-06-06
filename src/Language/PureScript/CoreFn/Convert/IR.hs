@@ -13,7 +13,7 @@
 module Language.PureScript.CoreFn.Convert.IR where
 
 import Prelude
-import Language.PureScript.Names (Ident(..), Qualified (..), QualifiedBy (..), ProperNameType (..), ProperName(..), disqualify, runModuleName, showIdent, runIdent, moduleNameFromString, coerceProperName, showQualified)
+import Language.PureScript.Names (Ident(..), Qualified (..), QualifiedBy (..), ProperNameType (..), ProperName(..), disqualify, runModuleName, showIdent, runIdent, coerceProperName, showQualified)
 import Language.PureScript.Types
     ( SkolemScope, TypeVarVisibility (..), genPureName )
 import Language.PureScript.CoreFn (Binder(..), Literal (..))
@@ -42,6 +42,8 @@ import Language.PureScript.CoreFn.TypeLike
 import Data.Void (Void)
 import Control.Lens.Plated
 import Language.PureScript.CoreFn.Pretty ((<::>))
+import Language.PureScript.Environment (mkTupleTyName)
+
 -- The final representation of types and terms, where all constructions that
 -- *should* have been eliminated in previous steps are impossible
 -- TODO: Make sure we error on exotic kinds
@@ -193,14 +195,14 @@ deriving instance (Eq a, Eq (XObjectLiteral x)) => Eq (Pat x f a)
 deriving instance (Ord a, Ord (XObjectLiteral x)) => Ord (Pat x f a)
 
 data Alt x ty f a
-  = UnguardedAlt (Bindings ty) [Pat x f a] (Scope (BVar ty) f a)
+  = UnguardedAlt (Bindings ty) (Pat x f a) (Scope (BVar ty) f a)
   deriving (Functor, Foldable, Traversable)
 
 deriving instance (Monad f, Show1 f, Show a, Show ty, Show (XObjectLiteral x)) => Show (Alt x ty f a)
 deriving instance (Monad f, Eq1 f, Eq a, Eq ty, Eq (XObjectLiteral x)) => Eq (Alt x ty f a)
 deriving instance (Monad f, Ord1 f, Ord a, Ord ty, Ord (XObjectLiteral x)) => Ord (Alt x ty f a)
 
-getPat :: Alt x ty f a -> [Pat x f a]
+getPat :: Alt x ty f a -> Pat x f a
 getPat = \case
   UnguardedAlt _ ps _ -> ps
 
@@ -224,7 +226,7 @@ data Exp x ty a
  | LitE ty (Lit x (Exp x ty a))
  | LamE ty (BVar ty) (Scope (BVar ty) (Exp x ty) a)
  | AppE (Exp x ty a) (Exp x ty a)
- | CaseE ty [Exp x ty a] [Alt x ty (Exp x ty) a]
+ | CaseE ty (Exp x ty a) [Alt x ty (Exp x ty) a]
  | LetE (Bindings ty) [BindE ty (Exp x ty) a] (Scope (BVar ty) (Exp x ty) a)
  | AccessorE !(XAccessor x) ty PSString (Exp x ty a)
  | ObjectUpdateE !(XObjectUpdate x) ty (Exp x ty a) (Maybe [PSString]) [(PSString, Exp x ty a)]
@@ -237,7 +239,7 @@ instance Eq ty => Eq1 (Exp x ty) where
   liftEq eq (LitE t1 l1) (LitE t2 l2) = t1 == t2 && liftEq (liftEq eq) l1 l2
   liftEq eq (LamE t1 n1 e1) (LamE t2 n2 e2) = t1 == t2 && n1 == n2 && liftEq eq e1 e2
   liftEq eq (AppE l1 l2) (AppE r1 r2) = liftEq eq l1 r1 && liftEq eq l2 r2
-  liftEq eq (CaseE t1 es1 as1) (CaseE t2 es2 as2) = t1 == t2 && liftEq (liftEq eq) es1 es2 && liftEq (liftEq eq) as1 as2
+  liftEq eq (CaseE t1 es1 as1) (CaseE t2 es2 as2) = t1 == t2 && liftEq eq es1 es2 && liftEq (liftEq eq) as1 as2
   liftEq eq (LetE n1 bs1 e1) (LetE n2 bs2 e2) = n1 == n2 && liftEq (liftEq eq) bs1 bs2 && liftEq eq e1 e2
   liftEq _ _ _ = False
 
@@ -269,7 +271,7 @@ instance (Eq1 f) => Eq1 (BindE ty f) where
   liftEq _ _ _ = False
 
 instance (Eq1 f, Monad f, Eq ty) => Eq1 (Alt x ty f) where
-  liftEq eq (UnguardedAlt n1 ps1 e1) (UnguardedAlt n2 ps2 e2) = n1 == n2 && liftEq (liftEq eq) ps1 ps2 && liftEq eq e1 e2
+  liftEq eq (UnguardedAlt n1 ps1 e1) (UnguardedAlt n2 ps2 e2) = n1 == n2 && liftEq eq ps1 ps2 && liftEq eq e1 e2
 
 instance Applicative (Exp x ty) where
   pure = V
@@ -281,7 +283,7 @@ instance Monad (Exp x ty) where
   AppE e1 e2    >>=   f = AppE (e1 >>= f) (e2 >>= f)
   LamE t i e   >>=    f = LamE t i (e >>>= f)
   LetE n bs e >>=     f = LetE n (map (>>>= f) bs) (e >>>= f)
-  CaseE t es alts >>=   f = CaseE t (map (\x -> x >>= f) es) (map (>>>= f) alts)
+  CaseE t es alts >>=   f = CaseE t (es >>= f) (map (>>>= f) alts)
   LitE t lit        >>= f = LitE t $ goLit lit
     where
       goLit = \case
@@ -315,7 +317,7 @@ instance Bound (Pat x) where
         ObjectL ext obj -> ObjectL ext $ map (\(field, x) -> (field, x >>>= f)) obj
 
 instance Bound (Alt x ty) where
-  UnguardedAlt i ps e >>>= f = UnguardedAlt i (map (>>>= f) ps) (e >>>= f)
+  UnguardedAlt i ps e >>>= f = UnguardedAlt i (ps >>>= f) (e >>>= f)
 
 instance Bound (BindE ty) where
   NonRecursive i e >>>= f = NonRecursive i $ e >>= f
@@ -388,7 +390,7 @@ instance (Pretty a, Pretty ty, FuncType ty) => Pretty (Exp x ty a) where
         let applied = group . align . hsep $ parens . pretty <$> (fun:args)
         in group . align $ parens applied
     CaseE _ es alts ->
-      let scrutinees = group $ hsep (pretty <$> es)
+      let scrutinees = pretty es
           branches = group . pretty <$> alts
       in "case" <+> scrutinees <+> "of"
            <+> hardline <+> indent 2 (vcat branches)
@@ -404,7 +406,7 @@ instance (Pretty a, Pretty ty, FuncType ty) => Pretty (Exp x ty a) where
 
 instance (Pretty a, Pretty ty, FuncType ty) => Pretty (Alt x ty (Exp x ty) a) where
   pretty = \case
-    UnguardedAlt _ ps body -> hcat (pretty <$> ps) <+> "->" <>
+    UnguardedAlt _ ps body -> pretty ps <+> "->" <>
                               hardline <> indent 2 (pretty $ fromScope body)
 
 instance (Pretty b, Pretty a) => Pretty (Var b a) where
@@ -555,7 +557,7 @@ instance (Show ty, Show (XAccessor x), Show (XObjectUpdate x), Show (XObjectLite
     = showString "UnGuardedAlt "
       . showsPrec d i
       . showString " "
-      . showsPrec d (fmap (\x -> liftShowsPrec sp sl d x "") ps)
+      . showsPrec d (liftShowsPrec sp sl d ps "")
       . showString " "
       . liftShowsPrec sp sl d e
 
@@ -608,24 +610,12 @@ toPat = \case
     BooleanLiteral b -> LitP $ BoolL b
     ArrayLiteral as -> LitP $ ArrayL $ map toPat as
     ObjectLiteral fs' -> do
+      -- REVIEW/FIXME:
       -- this isn't right, we need to make sure the positions of the binders are correct,
       -- since (I think?) you can use an Obj binder w/o using all of the fields
-      let fs = sortOn fst fs'
-          len = length fs
-          fakeCName = mkFakeCName len
-          fakeTName = mkFakeTName len
+      let fs          = sortOn fst fs'
+          len         = length fs
+          tupTyName   = mkTupleTyName len
+          tupCtorName = coerceProperName <$> tupTyName
           inner = map (toPat . snd) fs
-        in ConP fakeTName fakeCName inner
-
--- Data declaration / Constructor things
-
-
-mkFakeCName :: Int -> Qualified (ProperName 'ConstructorName)
-mkFakeCName x =
-  Qualified
-    (ByModuleName $ moduleNameFromString "$GEN")
-    (ProperName $ "TUPLE#" <> T.pack (show x))
-
-mkFakeTName :: Int -> Qualified (ProperName 'TypeName)
-mkFakeTName x = coerceProperName @_ @'TypeName <$> mkFakeCName x
-
+        in ConP tupTyName tupCtorName inner

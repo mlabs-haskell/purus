@@ -426,21 +426,22 @@ primCtors = M.fromList tupleCtors <> M.fromList [
    mkCtor :: Text -> Qualified (ProperName 'ConstructorName)
    mkCtor nm = Qualified (ByModuleName C.M_Prim) (ProperName nm)
 
-   vars :: Int -> [Text]
-   vars n = map (\x ->  "t" <> T.pack (show x)) [1..n]
-
-   mkCtorTy :: Qualified (ProperName 'TypeName) -> Int -> SourceType
-   mkCtorTy tNm n =
-     let nVars = (\x -> TypeVar NullSourceAnn x kindType) <$> vars n
-         nTyCon = TypeConstructor NullSourceAnn tNm
-         resTy = foldl' srcTypeApp nTyCon nVars
-     in quantify $ foldr (-:>) resTy nVars
-
    tupleCtors = [1..100] <&> \n ->
      let ctorNm = mkCtor ("Tuple" <> T.pack (show n))
          ctorTyNm = coerceProperName @_ @'TypeName $ disqualify ctorNm
          ctorTy = mkCtorTy (coerceProperName <$> ctorNm) n
      in (ctorNm,(Data,ctorTyNm,ctorTy,[]))
+
+-- These need to be exported b/c we need them in CoreFn -> IR desugaring
+vars :: Int -> [Text]
+vars n = map (\x ->  "t" <> T.pack (show x)) [1..n]
+
+mkCtorTy :: Qualified (ProperName 'TypeName) -> Int -> SourceType
+mkCtorTy tNm n =
+     let nVars = (\x -> TypeVar NullSourceAnn x kindType) <$> vars n
+         nTyCon = TypeConstructor NullSourceAnn tNm
+         resTy = foldl' srcTypeApp nTyCon nVars
+     in quantify $ foldr (-:>) resTy nVars
 
 -- | The primitive types in the external environment with their
 -- associated kinds. There are also pseudo `Fail`, `Warn`, and `Partial` types
@@ -491,11 +492,6 @@ allPrimTypes = M.unions
 tupleTypes :: M.Map (Qualified (ProperName 'TypeName)) (SourceType, TypeKind)
 tupleTypes = M.fromList $ go <$> [1..100]
   where
-
-    mkTupleTyName :: Int -> Qualified (ProperName 'TypeName)
-    mkTupleTyName x =
-      Qualified (ByModuleName C.M_Prim) (ProperName $ "Tuple" <> T.pack (show x))
-
     mkTupleKind :: Int -> SourceType
     mkTupleKind n = foldr (-:>) kindType (replicate n kindType)
 
@@ -518,6 +514,12 @@ tupleTypes = M.fromList $ go <$> [1..100]
           datType = DataType Data tArgs [(ctorNm,ctorArgs)]
 
       in (tName,(tKind,datType))
+
+-- needs exported for DesugarCore
+mkTupleTyName :: Int -> Qualified (ProperName 'TypeName)
+mkTupleTyName x =
+      Qualified (ByModuleName C.M_Prim) (ProperName $ "Tuple" <> T.pack (show x))
+
 
 primBooleanTypes :: M.Map (Qualified (ProperName 'TypeName)) (SourceType, TypeKind)
 primBooleanTypes =

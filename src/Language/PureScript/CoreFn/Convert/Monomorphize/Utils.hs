@@ -307,7 +307,7 @@ instance Plated (Exp x t a) where
       CaseE t es alts ->
         let goAlt ::  Alt x t (Exp x t) a -> f (Alt x t (Exp x t) a)
             goAlt (UnguardedAlt bs pats scoped) = UnguardedAlt bs pats <$> helper scoped
-        in CaseE t <$> traverse tfun es <*>  traverse goAlt alts
+        in CaseE t <$>  tfun es <*>  traverse goAlt alts
       LetE binds decls scoped ->
         let goDecls :: BindE t (Exp x t) a -> f (BindE t (Exp x t) a)
             goDecls = \case

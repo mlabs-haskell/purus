@@ -8,22 +8,22 @@ module Language.PureScript.CoreFn.Convert.DesugarObjects where
 import Prelude
 import Language.PureScript.CoreFn.Expr
     ( Expr(..) )
-import Language.PureScript.Names (Ident(..), Qualified (..), QualifiedBy (..), pattern ByNullSourcePos, ProperNameType (..), ProperName(..), disqualify, ModuleName (..), runModuleName, runIdent, coerceProperName)
+import Language.PureScript.Names (Ident(..), Qualified (..), QualifiedBy (..), pattern ByNullSourcePos, ProperNameType (..), ProperName(..), runModuleName, coerceProperName)
 import Language.PureScript.Types
     ( SourceType, Type(..), srcTypeConstructor, srcTypeApp, RowListItem (rowListType), rowToList, eqType )
-import Language.PureScript.Environment (pattern (:->), pattern RecordT, kindType, DataDeclType (Data))
+import Language.PureScript.Environment (pattern (:->), pattern RecordT, kindType, DataDeclType (Data), mkTupleTyName)
 import Language.PureScript.CoreFn.Pretty
     ( prettyTypeStr )
 import Language.PureScript.CoreFn.Ann (Ann)
 import Language.PureScript.CoreFn.FromJSON ()
 import Data.Text qualified as T
-import Data.List ( elemIndex, sortOn, foldl', findIndex )
+import Data.List ( elemIndex, sortOn, foldl' )
 import Data.Map qualified as M
 import Language.PureScript.PSString (PSString)
 import Language.PureScript.AST.SourcePos
-    ( pattern NullSourceAnn, pattern NullSourceSpan )
+    ( pattern NullSourceAnn )
 import Control.Lens.IndexedPlated ( icosmos )
-import Control.Lens ( ix, view )
+import Control.Lens ( ix )
 import Language.PureScript.CoreFn.Convert.Monomorphize.Utils
     ( transverseScopeViaExpX,
       mkFieldMap,
@@ -39,12 +39,9 @@ import Data.Bifunctor (Bifunctor(first, second))
 import Control.Lens.Combinators (to)
 import Data.Maybe (fromJust)
 import Control.Lens.Operators ( (<&>), (.~), (&), (^..), (^.) )
-import Control.Lens.Tuple ( Field2(_2), Field3(_3) )
 import Language.PureScript.CoreFn.Convert.IR
     ( pattern (:~>),
       expTy,
-      mkFakeCName,
-      mkFakeTName,
       ppExp,
       BindE(..),
       Alt(..),
@@ -57,8 +54,6 @@ import Language.PureScript.CoreFn.Convert.IR
       Ty(..) )
 import Language.PureScript.CoreFn.Utils ( exprType, Context )
 import Debug.Trace ( traceM )
-import Control.Monad (foldM)
-import Language.PureScript.AST.Declarations (DataConstructorDeclaration (..))
 import Data.Map (Map)
 import Language.PureScript.Constants.Prim qualified as C
 import Language.PureScript.CoreFn.Convert.DesugarCore (WithoutObjects, WithObjects, desugarCoreModule)
@@ -71,6 +66,12 @@ import Prettyprinter
 import Prettyprinter.Render.Text (renderStrict)
 import Language.PureScript.CoreFn.TypeLike (TypeLike(..))
 import Language.PureScript.CoreFn.Module
+    ( Datatypes(Datatypes),
+      CtorDecl(CtorDecl),
+      DataDecl(DataDecl),
+      dDataTyName,
+      Module(..),
+      bitraverseDatatypes )
 import GHC.IO (throwIO)
 import Language.PureScript.CoreFn.Desugar.Utils (properToIdent)
 
@@ -138,8 +139,6 @@ data TypeConvertError
 
 type TyConvertM = Either TypeConvertError
 
-nullAnn :: Ann
-nullAnn = (NullSourceSpan, [] , Nothing)
 
 -- unsafeCoerce would probably be safe here?
 forgetConstantLiteral :: Lit x Void -> Lit x a
@@ -155,7 +154,7 @@ tryConvertType = go id
           then do
             let fields = rowListType <$> mkFieldMap fs
                 arity  = M.size fields
-                fakeTName = mkFakeTName arity
+                fakeTName = mkTupleTyName arity
                 types = M.elems fields
                 ctorType = foldl' srcTypeApp (srcTypeConstructor fakeTName) types
             go f ctorType
@@ -271,10 +270,10 @@ tryConvertExpr' = go id
         e2' <- go (f . AppE e1) e2
         e1' <- go (f . (\x -> AppE x e2)) e1
         pure $ AppE  e1' e2'
-      CaseE ty scrutinees alts -> do
+      CaseE ty scrutinee alts -> do
         ty' <- goType ty
-        scrutinees' <- goList (f . (\x -> CaseE ty [x] alts)) scrutinees
-        alts' <- traverse (goAlt (f . CaseE  ty scrutinees . pure)) alts
+        scrutinees' <- go (f . (\x -> CaseE ty x alts)) scrutinee
+        alts' <- traverse (goAlt (f . CaseE  ty scrutinee . pure)) alts
         pure $ CaseE ty' scrutinees' alts'
       LetE bindings bound e -> do
         bindings' <- traverse (traverse goType) bindings
@@ -291,7 +290,7 @@ tryConvertExpr' = go id
              -> Either ExprConvertError (Alt WithoutObjects Ty (Exp WithoutObjects Ty) (FVar Ty))
        goAlt _ (UnguardedAlt binders pat e) = do
          binders' <- fmap M.fromList . catchTE $ traverse (traverse (traverse tryConvertType)) (M.toList binders)
-         pat' <- traverse goPat pat
+         pat' <- goPat pat
          e' <- transverseScopeViaExpX (go f) updateBV e
          pure $ UnguardedAlt binders' pat' e'
 
@@ -320,13 +319,13 @@ tryConvertExpr' = go id
          ArrayL ps -> pure . ArrayL <$> traverse goPat ps
          ConstArrayL lits -> pure . ConstArrayL <$> traverse tryConvertConstLitP lits
          ObjectL _ fs' -> do
-           let fs = sortOn fst fs'
-               len = length fs
-               fakeCName = mkFakeCName len
-               fakeTName = mkFakeTName len
+           let fs          = sortOn fst fs'
+               len         = length fs
+               tupTyName   = mkTupleTyName len
+               tupCtorName = coerceProperName <$> tupTyName
                bareFields = snd <$> fs
            bareFields' <- traverse goPat bareFields
-           pure . Left $ ConP fakeTName fakeCName bareFields'
+           pure . Left $ ConP tupTyName tupCtorName  bareFields'
 
        -- FIXME: We can have empty objects here, so this function is partial, but I'm not sure what to do w/
        --        an empty Object in a pattern.
@@ -357,13 +356,6 @@ tryConvertExpr' = go id
            xs' <- traverse (traverse (go g')) xs
            rest <- goBinds g bs
            pure $ Recursive xs' : rest
-
-       goList :: (ExpWithObjects -> ExpWithObjects) -> [ExpWithObjects] -> Either ExprConvertError [ExpWithoutObjects]
-       goList _ [] = pure []
-       goList g (ex:exs) = do
-         e' <- go g ex
-         es' <- goList g exs
-         pure $ e' : es'
 
        tryConvertLit :: (ExpWithObjects -> ExpWithObjects)
                      -> Lit WithObjects ExpWithObjects
@@ -399,15 +391,15 @@ tryConvertExpr' = go id
          handleObjectLiteral fs' = do
            let fs = sortOn fst fs'
                len = length fs
-               fakeTName = mkFakeTName len
+               tupTyName = mkTupleTyName len
                bareFields = snd <$> fs
            bareFields' <- traverse (go cb) bareFields
            let types' = expTy F <$> bareFields'
-               types = types' <> [foldl' applyType (TyCon fakeTName) types']
+               types = types' <> [foldl' applyType (TyCon tupTyName) types']
                ctorType = foldr1 funTy types
 
                ctorExp :: ExpWithoutObjects
-               ctorExp = V $ FVar ctorType $ properToIdent <$> fakeTName
+               ctorExp = V $ FVar ctorType $ properToIdent <$> tupTyName
            assembleDesugaredObjectLit ctorExp ctorType bareFields'
 
 
@@ -443,10 +435,10 @@ tryConvertExpr' = go id
          origTypes <- traverse (goType . rowListType) (mkFieldMap _fs)
          let ts = updateTypes  `M.union` origTypes
              len = M.size ts
-             fakeCName = mkFakeCName len
-             fakeTName = mkFakeTName len
+             tupTyName = mkTupleTyName len
+             tupCtorName = coerceProperName <$> tupTyName
              types' = M.elems ts
-             types = types' <> [foldl' applyType (TyCon fakeTName) types']
+             types = types' <> [foldl' applyType (TyCon tupTyName) types']
              ctorType = foldr1 funTy types
 
              positioned = zip (M.keys ts) [0..]
@@ -464,17 +456,17 @@ tryConvertExpr' = go id
                  in V . B  $ BVar (M.findIndex lbl origTypes) (origTypes M.! lbl) nm
                Just expr -> F <$> expr
 
-             ctorExp = V . F $  FVar ctorType $ properToIdent <$> fakeTName
+             ctorExp = V . F $  FVar ctorType $ properToIdent <$> tupTyName
 
-             ctorBndr = ConP fakeTName fakeCName argBndrTemplate
+             ctorBndr = ConP tupTyName tupCtorName argBndrTemplate
 
          resultExpr <- assembleDesugaredObjectLit ctorExp ctorType resultTemplate
          e' <- go f e
          let scoped = toScope resultExpr
              -- TODO/FIXME/REVIEW/HACK: Either remove the bindings Map from UnguardedAlt or actually construct a real one
              --                         (I think we never use it so it should be OK to remove?)
-             altBranch = UnguardedAlt M.empty [ctorBndr] scoped
-         pure $ CaseE ctorType [e'] [altBranch]
+             altBranch = UnguardedAlt M.empty ctorBndr scoped
+         pure $ CaseE ctorType e' [altBranch]
 
        desugarObjectAccessor :: SourceType -> PSString -> ExpWithObjects -> Either ExprConvertError ExpWithoutObjects
        desugarObjectAccessor _ lbl e = do
@@ -487,8 +479,8 @@ tryConvertExpr' = go id
                                             <> prettyStr other
          fs <- traverse (traverse goType) $  M.toList (rowListType <$> mkFieldMap _fs)
          let len = length fs
-             fakeCName = mkFakeCName len
-             fakeTName = mkFakeTName len
+             tupTyName = mkTupleTyName len
+             tupCtorName = coerceProperName <$> tupTyName
              types' = snd <$> fs
              dummyNm =  Ident "<ACCESSOR>"
              lblIx = fromJust $ elemIndex lbl (fst <$> fs) -- FIXME: fromJust
@@ -496,13 +488,13 @@ tryConvertExpr' = go id
 
          let fieldTy = types' !! lblIx -- if it's not there *something* should have caught it by now
              argBndrTemplate = replicate len WildP & ix lblIx .~ VarP dummyNm
-             ctorBndr = ConP fakeTName fakeCName argBndrTemplate
+             ctorBndr = ConP tupTyName tupCtorName argBndrTemplate
              -- NOTE: `lblIx` is a placeholder for a better var ix
              rhs :: Exp WithoutObjects Ty (Var (BVar Ty) (FVar Ty))
              rhs = V . B $ BVar lblIx  fieldTy  dummyNm
-             altBranch = UnguardedAlt M.empty [ctorBndr] (toScope rhs)
+             altBranch = UnguardedAlt M.empty ctorBndr (toScope rhs)
          e' <- go f e
-         pure $ CaseE fieldTy [e'] [altBranch]
+         pure $ CaseE fieldTy e' [altBranch]
 
 assembleDesugaredObjectLit :: forall x a. Exp x Ty a  -> Ty -> [Exp x Ty a] -> Either ExprConvertError (Exp x Ty a)
 assembleDesugaredObjectLit expr (_ :~> b) (arg:args) = assembleDesugaredObjectLit (AppE  expr arg) b args
@@ -538,7 +530,7 @@ primData = Datatypes tDict cDict
         ]
 
     cDict :: Map (Qualified Ident) (Qualified (ProperName 'TypeName))
-    cDict = M.fromList $ [
+    cDict = M.fromList  [
         (ArrayCons, C.Array),
         (ArrayNil, C.Array),
         (properToIdent <$> C.True,C.Boolean),
@@ -548,21 +540,17 @@ primData = Datatypes tDict cDict
 tupleDatatypes :: Datatypes Kind Ty
 tupleDatatypes = Datatypes (M.fromList tupleTypes) (M.fromList tupleCtors)
   where
-    mkTupleTyName :: Int -> Qualified (ProperName 'TypeName)
-    mkTupleTyName x =
-      Qualified (ByModuleName C.M_Prim) (ProperName $ "Tuple" <> T.pack (show x))
-
     tupleTypes = flip map [1..100] $ \(n :: Int) ->
-      let tyNm = mkTupleTyName n
-          ctorNm = mkTupleCtorNm n
-          argKinds = mkTupleArgKinds n
+      let tyNm       = mkTupleTyName n
+          ctorNm     = mkTupleCtorIdent n
+          argKinds   = mkTupleArgKinds n
           ctorTvArgs = mkTupleCtorTvArgs n
       in (tyNm,DataDecl Data tyNm argKinds [CtorDecl ctorNm ctorTvArgs])
 
-    tupleCtors = [1..100] <&> \x -> (mkTupleCtorNm x, mkTupleTyName x)
+    tupleCtors = [1..100] <&> \x -> (mkTupleCtorIdent x, mkTupleTyName x)
 
-    mkTupleCtorNm :: Int -> Qualified Ident
-    mkTupleCtorNm n = properToIdent  <$> mkTupleTyName n
+    mkTupleCtorIdent :: Int -> Qualified Ident
+    mkTupleCtorIdent n = properToIdent  <$> mkTupleTyName n
 
     vars :: Int -> [Text]
     vars n = map (\x ->  "t" <> T.pack (show x)) [1..n]
