@@ -67,7 +67,8 @@ import Control.Monad.Except
     ( MonadError(throwError), runExceptT, ExceptT, liftEither )
 import Data.Foldable (traverse_, foldl')
 import Language.PureScript.CoreFn.TypeLike ( TypeLike(funTy) )
-import Language.PureScript.CoreFn.Convert.DesugarObjects (prettyStr)
+import Language.PureScript.CoreFn.Convert.DesugarObjects
+import Data.Maybe (mapMaybe)
 
 {- Monad for performing operations with datatypes. Supports limited TyVar binding
    operations for operating on type variables in scoped datatype declarations or
@@ -89,6 +90,8 @@ type PIRTerm = PIR.Term PIR.TyName PIR.Name PLC.DefaultUni PLC.DefaultFun ()
 --             which is distinct from tyNames in order to ensure
 --             correct Unique assignments (& kinds) for locally-scoped TyVars
 --             in datatype declarations
+--
+-- TODO: Rename this since we use it in PIR conversion too
 data DatatypeDictionary = DatatypeDictionary {
     -- | The datatype declarations & their corresponding PS type name
     _pirDatatypes :: Map (Qualified (ProperName 'TypeName)) PIRDatatype,
@@ -98,6 +101,8 @@ data DatatypeDictionary = DatatypeDictionary {
     _tyNames      :: Map (Qualified (ProperName 'TypeName)) PIR.TyName,
     -- | Locally bound type variables, to be used with `withLocalTyVars`
     _tyVars       :: Map Text PIR.TyName,
+    -- | Locally bound variables. This is only used when we need to introduce new variables during conversion
+    _vars         :: Map Text PIR.Name,
     -- | Map from a PS type name to the name of the case destructor
     _destructors  :: Map (Qualified (ProperName 'TypeName)) PIR.Name,
     -- | A counter. We have to assign uniques to PS names and this lets us ensure we do so correctly & w/o clashes
@@ -131,10 +136,29 @@ mkConstrName qi cix = gets (view constrNames) >>= \cnames -> case M.lookup qi cn
     modify $ over constrNames (M.insert qi (nm,cix))
     pure nm
 
+-- | Only gives you a TyName, doesn't insert anything into the context
 mkNewTyVar :: Text -> DatatypeM TyName
 mkNewTyVar nm = do
   uniq <- next
   pure .  PIR.TyName $ PIR.Name nm $ PLC.Unique uniq
+
+-- | Only gives you a Name, doesn't insert anything into the context
+mkNewVar :: Text -> DatatypeM PIR.Name
+mkNewVar nm = PIR.Name nm . PLC.Unique <$> next
+
+freshName :: DatatypeM PIR.Name
+freshName = do
+  uniq <- next
+  let nm = "a" <> T.pack (show uniq)
+  pure $ PIR.Name nm (PLC.Unique uniq)
+
+mkVar :: Text -> DatatypeM PIR.Name
+mkVar nm = gets (view vars) >>= \names -> case M.lookup nm names of
+  Nothing -> do
+     var <- mkNewVar nm
+     modify $ over vars (M.insert nm var)
+     pure var
+  Just var -> pure var
 
 mkBoundTyVarName :: Text -> DatatypeM PIR.TyName
 mkBoundTyVarName nm = do
@@ -146,19 +170,32 @@ mkBoundTyVarName nm = do
 addDatatype :: Qualified (ProperName 'TypeName) -> PIRDatatype -> DatatypeM ()
 addDatatype qn = modify . over pirDatatypes . M.insert qn
 
+withLocalVars :: [Text] -> DatatypeM a -> DatatypeM a
+withLocalVars names act = do
+  oldVars <- gets (view vars)
+  let shadowed = mapMaybe (\x -> sequence (x,M.lookup x oldVars)) names
+  pirNames <- traverse (\x -> (x,) <$> mkNewVar x) names
+  modify $ over vars (insertMany pirNames)
+  res <- act
+  modify $ over vars (insertMany shadowed . deleteMany names)
+  pure res
+
+-- | This overwrites
 withLocalTyVars :: [Text] ->  DatatypeM a -> DatatypeM a
 withLocalTyVars nms act = do
+  oldTVs <- gets (view tyVars)
+  let shadowed = mapMaybe (\x -> sequence (x,M.lookup x oldTVs)) nms
   tNames <- traverse (\x -> (x,) <$> mkNewTyVar x) nms
   modify $ over tyVars (insertMany tNames)
   res <- act
-  modify $ over tyVars (deleteMany tNames)
+  modify $ over tyVars (insertMany shadowed . deleteMany nms)
   pure res
- where
-   insertMany :: forall k v. Ord k => [(k,v)] -> Map k v -> Map k v
-   insertMany new acc = foldl' (flip $ uncurry M.insert) acc new
 
-   deleteMany :: forall k v. Ord k => [(k,v)] -> Map k v -> Map k v
-   deleteMany xs acc = foldl' (flip M.delete) acc (fst <$> xs)
+insertMany :: forall k v. Ord k => [(k,v)] -> Map k v -> Map k v
+insertMany new acc = foldl' (flip $ uncurry M.insert) acc new
+
+deleteMany :: forall k v. Ord k => [k] -> Map k v -> Map k v
+deleteMany xs acc = foldl' (flip M.delete) acc xs
 
 note :: String -> Maybe a -> DatatypeM a
 note msg = maybe (throwError msg) pure
@@ -166,12 +203,13 @@ note msg = maybe (throwError msg) pure
 mkTypeBindDict :: Datatypes IR.Kind Ty
                -> Exp WithoutObjects Ty (FVar Ty)
                -> Either String DatatypeDictionary
-mkTypeBindDict datatypes main = case runState act initState of
+mkTypeBindDict _datatypes main = case runState act initState of
    (Left err,_) -> Left err
    (Right _,res) -> pure res
   where
+    datatypes = primData <> _datatypes
     act = runExceptT $ mkPIRDatatypes datatypes (allTypeConstructors main)
-    initState = DatatypeDictionary M.empty M.empty M.empty M.empty M.empty maxIx
+    initState = DatatypeDictionary M.empty M.empty M.empty M.empty M.empty M.empty maxIx
     maxIx = maxBV main
 
     allTypeConstructors :: Exp WithoutObjects Ty (FVar Ty) -> S.Set (Qualified (ProperName 'TypeName))

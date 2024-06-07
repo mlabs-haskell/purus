@@ -9,6 +9,8 @@ import Language.PureScript.Environment qualified as E
 import Data.Bifunctor (Bifunctor(..))
 
 import Data.Kind qualified as GHC
+import Control.Lens.Operators ((<&>))
+import Data.Maybe (catMaybes)
 
 class TypeLike t where
   type KindOf t :: GHC.Type
@@ -66,6 +68,18 @@ class TypeLike t where
        type if the argument is not a function.
   -}
   resultTy :: t -> t
+
+-- TODO: Just define it this way in the instances -_-
+safeFunArgTypes :: forall t. TypeLike t => t -> [t]
+safeFunArgTypes t = case splitFunTyParts t of
+  [] -> []
+  _  -> funArgTypes t
+
+getInstantiations :: forall t. TypeLike t => t -> t -> [(Text,t)]
+getInstantiations mono poly = catMaybes mInstantiations
+  where
+    freeInPoly = fst <$> freeTypeVariables poly
+    mInstantiations = freeInPoly <&> \nm -> (nm,) <$> instantiates nm mono poly
 
 instance TypeLike T.SourceType where
   type KindOf T.SourceType = T.SourceType

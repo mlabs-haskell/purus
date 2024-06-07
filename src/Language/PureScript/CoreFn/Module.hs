@@ -14,13 +14,16 @@ import Language.PureScript.Names (Ident, ModuleName, ProperNameType (..), Proper
 import Language.PureScript.Environment (DataDeclType)
 
 import Control.Lens
-    ( (^?), filtered, folded, view, makeLenses, Ixed(ix) )
+    ( (^?), filtered, folded, view, makeLenses, Ixed(ix), (^.), (^?!) )
 
 import GHC.Generics (Generic)
-import Data.Aeson
+import Data.Aeson ( FromJSON, ToJSON )
 
 import Data.Kind qualified as GHC
 import Data.Map qualified as M
+import Data.List (findIndex,find)
+import Data.Maybe (fromJust)
+import Language.PureScript.CoreFn.Desugar.Utils (properToIdent)
 
 data DataDecl k t = DataDecl {
     _dDeclType :: !DataDeclType,
@@ -69,9 +72,28 @@ makeLenses ''Datatypes
 lookupCtorType :: Qualified Ident -> Datatypes k t -> Maybe (Qualified (ProperName 'TypeName))
 lookupCtorType qi (Datatypes _ ctors) = M.lookup qi ctors
 
+-- | Unsafe (we only use this in contexts where failure is fatal) TODO: Throw a useful error
+getConstructorIndexAndDecl :: Qualified (ProperName 'ConstructorName)
+                    -> Datatypes k t
+                    -> (Int,CtorDecl t)
+getConstructorIndexAndDecl qn dts = fromJust $ do
+  let ctorIdent = properToIdent <$> qn
+  ctorTyNm <- lookupCtorType ctorIdent dts
+  dDecl <- lookupDataDecl ctorTyNm dts
+  let allTheCtors = dDecl ^. dDataCtors
+  decl <- find ((== ctorIdent) . view cdCtorName) allTheCtors
+  indX   <- findIndex ((== ctorIdent) . view cdCtorName) allTheCtors
+  pure (indX,decl)
+
+-- | Unsafe (we only use this in contexts where failure is fatal) TODO: Throw a useful error
+getAllConstructorDecls :: Qualified (ProperName 'TypeName)
+                       -> Datatypes k t
+                       -> [CtorDecl t]
+getAllConstructorDecls qn dts = dts ^?! tyDict . ix qn . dDataCtors
+
+
 lookupDataDecl :: Qualified (ProperName 'TypeName) -> Datatypes k t -> Maybe (DataDecl k t)
 lookupDataDecl qtn (Datatypes tys _) = M.lookup qtn tys
-
 
 lookupCtorDecl :: Qualified Ident -> Datatypes k t -> Maybe (CtorDecl t)
 lookupCtorDecl qi datatypes = do
