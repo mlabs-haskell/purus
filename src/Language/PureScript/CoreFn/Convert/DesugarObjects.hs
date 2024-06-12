@@ -315,7 +315,6 @@ tryConvertExpr' = go id
          NumL d -> pure . pure $ NumL d
          StringL s -> pure . pure $ StringL s
          CharL c -> pure . pure $ CharL c
-         BoolL b -> pure . pure $ BoolL b
          ArrayL ps -> pure . ArrayL <$> traverse goPat ps
          ConstArrayL lits -> pure . ConstArrayL <$> traverse tryConvertConstLitP lits
          ObjectL _ fs' -> do
@@ -335,7 +334,6 @@ tryConvertExpr' = go id
          NumL d -> pure $ NumL d
          StringL s -> pure $ StringL s
          CharL c -> pure $ CharL c
-         BoolL b -> pure $ BoolL b
          ArrayL [] -> pure $ ConstArrayL []
          ConstArrayL lits ->  ConstArrayL <$> traverse tryConvertConstLitP lits
          ObjectL _ [] -> undefined
@@ -365,7 +363,6 @@ tryConvertExpr' = go id
          NumL d -> pure . pure $ NumL d
          StringL psstr -> pure . pure $ StringL psstr
          CharL c       -> pure . pure $ CharL c
-         BoolL b       -> pure . pure $ BoolL b
          ArrayL nonLitArr ->  Right . ArrayL <$> traverse (go cb)  nonLitArr
          ConstArrayL lits -> Right . ConstArrayL <$> traverse constArrHelper lits
          ObjectL _ fs'  ->  Left <$> handleObjectLiteral fs'
@@ -377,7 +374,6 @@ tryConvertExpr' = go id
               NumL d -> pure $ NumL d
               StringL s -> pure $ StringL s
               CharL c   -> pure $ CharL c
-              BoolL b   -> pure $ BoolL b
               ArrayL [] -> pure $ ConstArrayL []
               ArrayL (x:_) -> absurd x
               ObjectL _ [] -> error "Empty record inside ConstArrayL. We should forbid this somehow."
@@ -500,8 +496,6 @@ assembleDesugaredObjectLit :: forall x a. Exp x Ty a  -> Ty -> [Exp x Ty a] -> E
 assembleDesugaredObjectLit expr (_ :~> b) (arg:args) = assembleDesugaredObjectLit (AppE  expr arg) b args
 assembleDesugaredObjectLit expr _ [] = pure expr -- TODO better error
 assembleDesugaredObjectLit _ _ _ = error "something went wrong in assembleDesugaredObjectLit"
-
-
 
 -- TODO/FIXME: Adapt this for use w/ the PIR Data declaration machinery (i.e. don't manually construct SOPs)
 

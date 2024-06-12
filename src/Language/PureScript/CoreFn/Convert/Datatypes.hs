@@ -24,7 +24,7 @@ import PlutusIR qualified as PIR
 import PlutusCore qualified as PLC
 
 import Control.Lens
-    ( (^.), (^?), ix, to, cosmos, (^..), over, view, makeLenses, _1, _2)
+    ( (^.), (^?), ix, to, cosmos, (^..), over, view, makeLenses, _1 )
 import Language.PureScript.Names
     ( ProperNameType(TypeName),
       Qualified(..),

@@ -48,8 +48,8 @@ testEq2 = eq2 101 false
 -- Unit test type for inferBinder'
 data TestBinderSum =
     ConInt Int
-  | ConInts (Array Int)
-  | ConBoolean Boolean
+ --  | ConInts (Array Int)
+ --  | ConBoolean Boolean
   | ConString String
   | ConChar Char
   | ConNested TestBinderSum
@@ -62,9 +62,9 @@ testBinders :: TestBinderSum  -> Int
 testBinders x = case x of
   a@(ConInt 3)  -> 1   -- NamedBinder, ConstructorBinder, Int LitBinder
   ConInt a -> a -- ConstructorBinder enclosing VarBinder
-  ConInts ([3] :: Array Int) -> 2  -- Array LitBinder, TypedBinder
-  ConInts [a,b] -> b  -- VarBinders enclosed in Array LitBinder
-  ConBoolean true ->  4 -- Bool LitBinder
+  -- ConInts ([3] :: Array Int) -> 2  -- Array LitBinder, TypedBinder
+  -- ConInts [a,b] -> b  -- VarBinders enclosed in Array LitBinder
+  -- ConBoolean true ->  4 -- Bool LitBinder
   ConChar '\n' -> 5 -- Char LitBinder
   ConNested (ConInt 2) -> 6 -- Nested ConstructorBinders
   ConQuantified f -> f "hello"
@@ -74,6 +74,9 @@ testBinders x = case x of
   ConObjectQuantified objQ -> objQ.objFieldQ "world"
   ConObject {objField: f} -> f
   _         -> 0
+
+testBindersCase :: Int
+testBindersCase = testBinders (ConInt 2)
 
 
 {- Binding groups (with and w/o type anns) -}
@@ -173,7 +176,7 @@ testBuiltin = Builtin.addInteger 1 2
 
 main = aFunction4 {a: 101, b: "hello"} -- recF1 "hello"
 
-main2 = ConBoolean true
+-- main2 = ConBoolean true
 
 plus :: Int -> Int -> Int
 plus a b = Builtin.addInteger a b

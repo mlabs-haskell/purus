@@ -20,7 +20,7 @@ import Language.PureScript.CoreFn.Convert.IR
       BindE(..),
       Alt(..),
       Pat(ConP),
-      Lit(ObjectL, IntL, NumL, StringL, CharL, BoolL, ArrayL),
+      Lit(ObjectL, IntL, NumL, StringL, CharL,  ArrayL),
       FVar(..),
       BVar(..),
       FuncType(..),
@@ -224,7 +224,7 @@ desugarLit (NumericLiteral (Left int)) = pure $ IntL int
 desugarLit (NumericLiteral (Right number)) = pure $ NumL number
 desugarLit (StringLiteral string) = pure $ StringL string
 desugarLit (CharLiteral char) = pure $ CharL char
-desugarLit (BooleanLiteral bool) = pure $ BoolL bool
+desugarLit (BooleanLiteral b) = error "TODO: Remove BooleanLiteral from all ASTs"
 desugarLit (ArrayLiteral arr) = ArrayL <$> traverse desugarCore arr
 desugarLit (ObjectLiteral object) = ObjectL () <$> desugarObjectMembers object
 

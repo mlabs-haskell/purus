@@ -331,7 +331,6 @@ instance Plated (Exp x t a) where
           NumL d -> pure $ NumL d
           StringL str -> pure $ StringL str
           CharL char -> pure $ CharL char
-          BoolL b -> pure $ BoolL b
           ArrayL xs -> ArrayL <$> traverse tfun  xs
           ConstArrayL xs -> ConstArrayL <$> pure xs
           ObjectL x fs -> ObjectL x <$> traverse (\(str,e) -> (str,) <$> tfun e) fs

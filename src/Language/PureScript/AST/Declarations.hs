@@ -864,7 +864,6 @@ $(deriveJSON (defaultOptions { sumEncoding = ObjectWithSingleField }) ''Declarat
 $(deriveJSON (defaultOptions { sumEncoding = ObjectWithSingleField }) ''ImportDeclarationType)
 
 isTrueExpr :: Expr -> Bool
-isTrueExpr (Literal _ (BooleanLiteral True)) = True
 isTrueExpr (Var _ (Qualified (ByModuleName (ModuleName "Prelude")) (Ident "otherwise"))) = True
 isTrueExpr (Var _ (Qualified (ByModuleName (ModuleName "Data.Boolean")) (Ident "otherwise"))) = True
 isTrueExpr (TypedValue _ e _) = isTrueExpr e

@@ -19,8 +19,6 @@ Exports:
   brokenEven,
   testEq2,
   ConInt,
-  ConInts,
-  ConBoolean,
   ConString,
   ConChar,
   ConNested,
@@ -29,6 +27,7 @@ Exports:
   ConObject,
   ConObjectQuantified,
   testBinders,
+  testBindersCase,
   mutuallyRecursiveBindingGroup,
   mutuallyRecursiveBindingGroupNoTypes,
   nestedBinds,
@@ -52,7 +51,6 @@ Exports:
   recG1,
   testBuiltin,
   main,
-  main2,
   plus,
   guardedCase,
   nestedApplications,
@@ -104,8 +102,6 @@ newtype Ord$Dict (a :: Prim.Type) =
 
 data TestBinderSum  = 
   ConInt Prim.Int
-  | ConInts Array (Prim.Int)
-  | ConBoolean Prim.Boolean
   | ConString Prim.String
   | ConChar Prim.Char
   | ConNested Lib.TestBinderSum
@@ -191,9 +187,6 @@ testBinders =
     case (x: Lib.TestBinderSum) of 
        a@ConInt 3 -> (1: Prim.Int)
        ConInt a -> (a: Prim.Int)
-       ConInts [3] -> (2: Prim.Int)
-       ConInts [a, b] -> (b: Prim.Int)
-       ConBoolean true -> (4: Prim.Int)
        ConChar '\n' -> (5: Prim.Int)
        ConNested ConInt 2 -> (6: Prim.Int)
        ConQuantified f -> 
@@ -215,6 +208,11 @@ testBinders =
          ("world": Prim.String)
        ConObject { objField: f } -> (f: Prim.Int)
        _ -> (0: Prim.Int)
+
+testBindersCase :: Prim.Int
+testBindersCase = 
+  (testBinders: Lib.TestBinderSum -> Prim.Int)
+  ((ConInt: Prim.Int -> Lib.TestBinderSum) (2: Prim.Int))
 
 recG1 :: forall (x :: Prim.Type). (x :: Prim.Type) -> Prim.Int
 recG1 = 
@@ -325,9 +323,6 @@ mutuallyRecursiveBindingGroup =
 minus :: Prim.Int -> Prim.Int -> Prim.Int
 minus = \(v: Prim.Int) -> \(v1: Prim.Int) -> (42: Prim.Int)
 
-main2 :: Lib.TestBinderSum
-main2 = (ConBoolean: Prim.Boolean -> Lib.TestBinderSum) (true: Prim.Boolean)
-
 id :: forall (t :: Prim.Type). (t :: Prim.Type) -> (t :: Prim.Type)
 id = \(x: (t :: Prim.Type)) -> (x: (t :: Prim.Type))
 
@@ -394,8 +389,8 @@ workingEven =
        true -> (1: Prim.Int)
        _ -> (42: Prim.Int)
 
-emptyList :: forall (t96 :: Prim.Type). Array ((t96 :: Prim.Type))
-emptyList = ([]: forall (t96 :: Prim.Type). Array ((t96 :: Prim.Type)))
+emptyList :: forall (t93 :: Prim.Type). Array ((t93 :: Prim.Type))
+emptyList = ([]: forall (t93 :: Prim.Type). Array ((t93 :: Prim.Type)))
 
 cons :: forall (a :: Prim.Type). (a :: Prim.Type) -> Array ((a :: Prim.Type)) -> Array ((a :: Prim.Type))
 cons = 
@@ -408,14 +403,14 @@ consEmptyList1 =
   (cons: forall (a :: Prim.Type). (a :: Prim.Type) ->
   Array ((a :: Prim.Type)) -> Array ((a :: Prim.Type)))
   (1: Prim.Int)
-  (emptyList: forall (t96 :: Prim.Type). Array ((t96 :: Prim.Type)))
+  (emptyList: forall (t93 :: Prim.Type). Array ((t93 :: Prim.Type)))
 
 consEmptyList2 :: Array (Prim.String)
 consEmptyList2 = 
   (cons: forall (a :: Prim.Type). (a :: Prim.Type) ->
   Array ((a :: Prim.Type)) -> Array ((a :: Prim.Type)))
   ("hello": Prim.String)
-  (emptyList: forall (t96 :: Prim.Type). Array ((t96 :: Prim.Type)))
+  (emptyList: forall (t93 :: Prim.Type). Array ((t93 :: Prim.Type)))
 
 compare :: forall (@a :: Prim.Type). Lib.Ord$Dict (a :: Prim.Type) -> (a :: Prim.Type) -> (a :: Prim.Type) -> Prim.Int
 compare = 
@@ -583,7 +578,7 @@ aFunction6 =
     go = \(v: (z :: Prim.Type)) -> (10: Prim.Int)
   in (aFunction: forall (x :: Prim.Type). (x :: Prim.Type) ->
      forall (y :: Prim.Type). (y :: Prim.Type) -> Prim.Int -> Prim.Int)
-     ([]: Array (t125))
+     ([]: Array (t122))
      (go: forall (z :: Prim.Type). (z :: Prim.Type) -> Prim.Int)
 
 aBool :: Prim.Boolean

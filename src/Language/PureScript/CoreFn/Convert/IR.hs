@@ -171,7 +171,6 @@ data Lit x a
   | NumL Double
   | StringL PSString
   | CharL Char
-  | BoolL Bool
   | ArrayL [a]
   | ConstArrayL [Lit x Void]
   | ObjectL !(XObjectLiteral x) [(PSString, a)]
@@ -248,7 +247,6 @@ instance Eq1 (Lit x) where
   liftEq _ (NumL i1) (NumL i2) = i1 == i2
   liftEq _ (StringL i1) (StringL i2) = i1 == i2
   liftEq _ (CharL i1) (CharL i2) = i1 == i2
-  liftEq _ (BoolL i1) (BoolL i2) = i1 == i2
   liftEq eq (ArrayL xs) (ArrayL ys) = liftEq eq xs ys
   liftEq _ _ _ = False
 
@@ -291,7 +289,6 @@ instance Monad (Exp x ty) where
         NumL d      -> NumL d
         StringL str -> StringL str
         CharL c     -> CharL c
-        BoolL b     -> BoolL b
         ArrayL xs   -> ArrayL $ map (\x -> x >>= f) xs
         ConstArrayL lits -> ConstArrayL  lits
         ObjectL ext obj -> ObjectL ext $ map (\(field, x) -> (field, x >>= f)) obj
@@ -311,7 +308,6 @@ instance Bound (Pat x) where
         NumL d      -> NumL d
         StringL str -> StringL str
         CharL c     -> CharL c
-        BoolL b     -> BoolL b
         ConstArrayL lits -> ConstArrayL lits
         ArrayL xs   -> ArrayL $ map (\x -> x >>>= f) xs
         ObjectL ext obj -> ObjectL ext $ map (\(field, x) -> (field, x >>>= f)) obj
@@ -420,7 +416,6 @@ instance Pretty a => Pretty (Lit x a) where
     NumL d -> pretty d
     StringL pss -> pretty . T.unpack $ prettyPrintString pss
     CharL c -> viaShow . show $ c
-    BoolL b -> if b then "true" else "false"
     ConstArrayL xs -> list $ pretty <$> xs
     ArrayL xs -> list $ pretty <$> xs
     ObjectL _ obj -> encloseSep "{" "}" ", "
@@ -436,7 +431,6 @@ instance Pretty a => Pretty (Pat x (Exp x ty) a) where
       NumL d -> pretty d
       StringL pss -> pretty . T.unpack $ prettyPrintString pss
       CharL c -> viaShow . show $ c
-      BoolL b -> if b then "true" else "false"
       ConstArrayL xs -> list $ pretty <$> xs
       ArrayL xs -> list $ pretty <$> xs
       ObjectL _ _obj -> "TODO: Implement ObjectL pattern printer"
@@ -607,7 +601,7 @@ toPat = \case
     NumericLiteral (Right d) -> LitP $ NumL d
     StringLiteral pss -> LitP $ StringL pss
     CharLiteral c -> LitP $ CharL c
-    BooleanLiteral b -> LitP $ BoolL b
+    BooleanLiteral _ -> error "boolean literals shouldn't exist anymore"
     ArrayLiteral as -> LitP $ ArrayL $ map toPat as
     ObjectLiteral fs' -> do
       -- REVIEW/FIXME:
