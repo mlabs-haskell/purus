@@ -12,7 +12,7 @@ example = \case
 i.    C0 -> 0
 ii.   three@(C1 x) -> x
 iii.  C1 2 -> 2
-iiv.  C2 C0 True -> 0
+iv.   C2 C0 True -> 0
 v.    C2 (C1 x) _ -> f x
 vi.   C2 x y -> example x + f y
 
@@ -85,7 +85,7 @@ Procedure:
   - Literal patterns don't bind any variables and are just used to construct the `matches` functions.
     -  E.g. a top level `1` pattern ==> \scrut -> if (matches `1` # scrut) (Constr n []) else (fallThrough # scrut)
   - Constructor patterns map the variables bound in their argument patterns to a Constructor in the temporary ADT. Example:
-    iv. C2 (C1 x) _ ==> \scrut -> case scrut [ fallThrough # scrut
+    iv. C2 (C1 x) True  ==> \scrut -> case scrut [ fallThrough # scrut
                                              , \_ -> fallThrough # scrut
                                              , \(arg0 :: ADT) (arg1 :: Bool) ->
                                                  if (matches (C1 x) # arg0) && (matches True # arg1)
@@ -93,5 +93,19 @@ Procedure:
                                                                 , \xInt -> Constr n xInt
                                                                 , error
                                                                 ]
+                                                 else (fallThrough # scrut)
+                                             ]
+    Another example w/ multiple bound vars: 
+    ??. C2 (C2 x y) z ==> \scrut -> case scrut [ fallThrough # scrut
+                                             , \_ -> fallThrough # scrut 
+                                             , \(arg0 :: ADT) (arg1 :: Bool) -> 
+                                                 if (matches (C1 x y) # arg0) && (matches y # arg1)
+                                                 then let res0 = case arg0 [error 
+                                                                           ,\xADT _ -> xInt
+                                                                           ,error]
+                                                          res1 =  case arg0 [error 
+                                                                           ,\_ yADT-> xInt
+                                                                           ,error]
+                                                      in Constr n [res0,res1]
                                                  else (fallThrough # scrut)
                                              ]

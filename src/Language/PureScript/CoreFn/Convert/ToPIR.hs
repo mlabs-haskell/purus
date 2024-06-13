@@ -115,6 +115,7 @@ import PlutusIR.Error ( Error )
 import Control.Exception ( throwIO )
 import PlutusCore.Evaluation.Machine.Ck
     ( EvaluationResult, unsafeEvaluateCk )
+import Prettyprinter (Doc)
 showType :: forall a. Typeable a => String
 showType = show (typeRep :: TypeRep a)
 
@@ -601,7 +602,7 @@ runPLCProgramTest testName expected path decl  = testCase testName $ do
 -}
 declToPIR :: FilePath
            -> Text
-           -> IO PIRTerm
+           -> IO (Doc ann)
 declToPIR path decl = prepPIR path decl >>= \case
   (mainExpr,datatypes) -> do
     case mkTypeBindDict datatypes mainExpr of
@@ -611,8 +612,9 @@ declToPIR path decl = prepPIR path decl >>= \case
         Right e  -> do
           let dtBinds = NE.fromList $  PIR.DatatypeBind () <$> M.elems (dict ^. pirDatatypes)
               result = PIR.Let () Rec dtBinds e
-          print $ prettyPirReadable e
-          pure result
+          putStrLn $ "-------\\/ PIR \\/ --------"
+          pure $ prettyPirReadable e
+
 {-
  where
    aghhhh = either (throwIO . userError) pure

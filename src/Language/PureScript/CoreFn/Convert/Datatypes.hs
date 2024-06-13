@@ -68,7 +68,7 @@ import Control.Monad.Except
 import Data.Foldable (traverse_, foldl')
 import Language.PureScript.CoreFn.TypeLike ( TypeLike(funTy) )
 import Language.PureScript.CoreFn.Convert.DesugarObjects
-import Data.Maybe (mapMaybe)
+import Data.Maybe (mapMaybe, fromJust, isJust)
 
 {- Monad for performing operations with datatypes. Supports limited TyVar binding
    operations for operating on type variables in scoped datatype declarations or
@@ -238,8 +238,12 @@ mkPIRDatatypes :: Datatypes IR.Kind Ty
                -> DatatypeM ()
 mkPIRDatatypes datatypes tyConsInExp = traverse_ go tyConsInExp
   where
+    -- these things don't have datatype definitions anywhere
+    truePrimitives = S.fromList [C.Function, C.Int, C.Char, C.String]
+
     go :: Qualified (ProperName 'TypeName)
        -> DatatypeM ()
+    go qn | qn `S.member` truePrimitives = pure ()
     go qn@(Qualified _ (ProperName tnm)) = case lookupDataDecl qn datatypes of
       Nothing -> throwError $ "Error when translating data types to PIR: "
                         <> "Couldn't find a data type declaration for "
@@ -285,7 +289,7 @@ toPIRType = \case
   IR.TyVar txt _ -> PIR.TyVar () <$> mkBoundTyVarName txt
   TyCon qtn@(Qualified qb _) -> case qb of
     ByThisModuleName "Builtin" -> either throwError pure $  handleBuiltinTy qtn
-    ByThisModuleName "Prim" ->  either throwError pure $ handlePrimTy qtn
+    ByThisModuleName "Prim" | isJust (handlePrimTy qtn)->   pure . fromJust $ handlePrimTy qtn
     _ -> do
       tyName <- mkTyName qtn
       pure $ PIR.TyVar () tyName
@@ -311,15 +315,12 @@ handleBuiltinTy = \case
      C.BuiltinByteString -> pure $ TyBuiltin () (PLC.SomeTypeIn PLC.DefaultUniByteString)
      other -> Left $   "Error when translating to PIR types: unsupported builtin type: " <> show other
 
-handlePrimTy :: Qualified (ProperName 'TypeName) -> Either String (PLC.Type tyname PLC.DefaultUni ())
+handlePrimTy :: Qualified (ProperName 'TypeName) -> Maybe (PLC.Type tyname PLC.DefaultUni ())
 handlePrimTy = \case
-     C.Function -> Left  "function types should be caught in apps"
-     C.Array    -> pure $ TyBuiltin () (PLC.SomeTypeIn PLC.DefaultUniProtoList) -- is this wrong? do we want a SOP list? too tired to know
      C.String   -> pure $ TyBuiltin () (PLC.SomeTypeIn PLC.DefaultUniString)
      C.Char     -> pure $ TyBuiltin () (PLC.SomeTypeIn PLC.DefaultUniInteger)
      C.Int      -> pure $ TyBuiltin () (PLC.SomeTypeIn PLC.DefaultUniInteger)
-     C.Boolean  -> pure $ TyBuiltin () (PLC.SomeTypeIn PLC.DefaultUniBool)
-     other      -> Left  $ "unsupported prim tycon: " <> show other
+     other      -> Nothing
 
 mkKind ::  IR.Kind -> PIR.Kind ()
 mkKind = \case

@@ -35,8 +35,8 @@ what :: Prim.Boolean -> Prim.Int
 what = 
   \(v: Prim.Boolean) -> 
     case (v: Prim.Boolean) of 
-       true -> (thing: Prim.Int)
-       false -> (zing: Prim.Int)
+       True -> (thing: Prim.Int)
+       False -> (zing: Prim.Int)
 
 main :: Prim.String
 main = ("Done": Prim.String)

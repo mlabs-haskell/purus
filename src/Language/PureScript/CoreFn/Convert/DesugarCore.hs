@@ -172,7 +172,7 @@ desugarAlt (CaseAlternative binders result) = do
       let
       pure $ UnguardedAlt (mkBindings boundVars) pat (abstrE re)
 
-getBoundVar :: Either [(Expr ann, Expr ann)] (Expr ann) -> Binder ann -> [FVar PurusType]
+getBoundVar :: forall ann. Show ann => Either [(Expr ann, Expr ann)] (Expr ann) -> Binder ann -> [FVar PurusType]
 getBoundVar body binder = case binder of
   ConstructorBinder _ _ _ binders -> concatMap (getBoundVar body) binders
   LiteralBinder _ (ArrayLiteral arrBinders) -> concatMap (getBoundVar body) arrBinders
@@ -189,7 +189,7 @@ getBoundVar body binder = case binder of
         _ -> []
   _ -> []
 
-findBoundVar :: Ident -> Expr ann -> Maybe (PurusType, Qualified Ident)
+findBoundVar :: forall ann. Show ann => Ident -> Expr ann -> Maybe (PurusType, Qualified Ident)
 findBoundVar nm ex = find (goFind . snd) (allVars ex)
   where
     goFind = \case
@@ -197,7 +197,7 @@ findBoundVar nm ex = find (goFind . snd) (allVars ex)
       Qualified ByNullSourcePos _ -> False -- idk about this actually, guess we'll find out
       Qualified (BySourcePos _) nm' -> nm == nm'
 
-allVars :: forall ann. Expr ann -> [(PurusType, Qualified Ident)]
+allVars :: forall ann. Show ann => Expr ann -> [(PurusType, Qualified Ident)]
 allVars ex = ex ^.. icosmos @Context @(Expr ann) M.empty . _Var . to (\(_,b,c) -> (b,c))
 
 qualifySS :: Ann -> Ident -> Qualified Ident
@@ -224,7 +224,7 @@ desugarLit (NumericLiteral (Left int)) = pure $ IntL int
 desugarLit (NumericLiteral (Right number)) = pure $ NumL number
 desugarLit (StringLiteral string) = pure $ StringL string
 desugarLit (CharLiteral char) = pure $ CharL char
-desugarLit (BooleanLiteral b) = error "TODO: Remove BooleanLiteral from all ASTs"
+desugarLit (BooleanLiteral _) = error "TODO: Remove BooleanLiteral from all preceding ASTs"
 desugarLit (ArrayLiteral arr) = ArrayL <$> traverse desugarCore arr
 desugarLit (ObjectLiteral object) = ObjectL () <$> desugarObjectMembers object
 

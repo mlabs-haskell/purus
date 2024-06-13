@@ -14,7 +14,7 @@ import Language.PureScript.AST qualified as A
 import Language.PureScript.AST.Literals (Literal(..))
 import Language.PureScript.AST.SourcePos (pattern NullSourceSpan, SourceSpan(..))
 import Language.PureScript.AST.Traversals (everythingOnValues, overTypes)
-import Language.PureScript.CoreFn.Ann (Ann)
+import Language.PureScript.CoreFn.Ann (Ann, nullAnn)
 import Language.PureScript.CoreFn.Binders (Binder(..))
 import Language.PureScript.CoreFn.Expr (Expr(..), PurusType)
 import Language.PureScript.CoreFn.Meta (ConstructorType(..), Meta(..))
@@ -31,9 +31,9 @@ import Language.PureScript.Environment (
   TypeClassData (typeClassArguments),
   function,
   pattern (:->),
-  isDictTypeName)
+  isDictTypeName, (-:>))
 import Language.PureScript.Names (Ident(..), ModuleName, ProperName(..), ProperNameType(..), Qualified(..), QualifiedBy(..), getQual, runIdent, coerceProperName)
-import Language.PureScript.Types (SourceType, Type(..), Constraint (..), srcTypeConstructor, srcTypeApp, rowToSortedList, RowListItem(..), replaceTypeVars, everywhereOnTypes)
+import Language.PureScript.Types (SourceType, Type(..), Constraint (..), srcTypeConstructor, srcTypeApp, rowToSortedList, RowListItem(..), replaceTypeVars, everywhereOnTypes, srcTypeVar, quantify)
 import Control.Monad.Supply.Class (MonadSupply)
 import Control.Monad.State.Strict (MonadState, gets, modify')
 import Control.Monad.Writer.Class ( MonadWriter )
@@ -60,6 +60,8 @@ import Language.PureScript.AST.Traversals (litM)
 import Control.Lens.Plated
 import Language.PureScript.Sugar (desugarGuardedExprs)
 import Language.PureScript.AST.Declarations (declSourceSpan)
+import Language.PureScript.Constants.Prim qualified as C
+import Language.PureScript.AST.SourcePos (SourceAnn)
 
 
 {- UTILITIES -}
@@ -367,17 +369,34 @@ desugarConstraintTypes  = do
 
   modify' $ \checkstate -> checkstate {checkEnv = newEnv}
 
+desugarConstraintsInBinder :: A.Binder -> A.Binder
+desugarConstraintsInBinder = \case
+  A.NullBinder -> A.NullBinder
+  A.LiteralBinder ss lb -> A.LiteralBinder ss $ desugarConstraintsInBinder <$> lb
+  A.VarBinder ss ident -> A.VarBinder ss ident
+  A.ConstructorBinder ss qn bs -> A.ConstructorBinder ss qn $ desugarConstraintsInBinder <$> bs
+  A.OpBinder ss qn -> A.OpBinder ss qn
+  A.BinaryNoParensBinder a b c ->
+    let f = desugarConstraintsInBinder
+    in A.BinaryNoParensBinder (f a) (f b) (f c)
+  A.ParensInBinder b -> A.ParensInBinder $ desugarConstraintsInBinder b
+  A.NamedBinder ss ident b -> A.NamedBinder ss ident $ desugarConstraintsInBinder b
+  A.PositionedBinder ss cs b -> A.PositionedBinder ss cs $ desugarConstraintsInBinder b
+  A.TypedBinder ty b -> A.TypedBinder (desugarConstraintType ty) (desugarConstraintsInBinder b)
+
 desugarConstraintsInDecl :: A.Declaration -> A.Declaration
 desugarConstraintsInDecl = \case
   A.BindingGroupDeclaration decls ->
     A.BindingGroupDeclaration
       $ (\(annIdent,nk,expr) -> (annIdent,nk,overTypes desugarConstraintType expr)) <$> decls
   A.ValueDecl ann name nk bs [A.MkUnguarded e] ->
-     A.ValueDecl ann name nk bs [A.MkUnguarded $ overTypes desugarConstraintType e]
+     let bs' = desugarConstraintsInBinder <$> bs
+     in A.ValueDecl ann name nk bs' [A.MkUnguarded $ overTypes desugarConstraintType e]
   A.DataDeclaration ann declTy tName args ctorDecs ->
     let fixCtor (A.DataConstructorDeclaration a nm fields)
           = A.DataConstructorDeclaration a nm (second (everywhereOnTypes desugarConstraintType) <$> fields)
     in A.DataDeclaration ann declTy tName args (fixCtor <$> ctorDecs)
+  A.DataBindingGroupDeclaration ds -> A.DataBindingGroupDeclaration $ desugarConstraintsInDecl <$> ds
   other -> other
 
 -- Gives much more readable output (with colors for brackets/parens!) than plain old `show`
@@ -604,6 +623,14 @@ properToIdent = Ident . runProperName
 
 -- Desugars case binders from AST to CoreFn representation. Doesn't need to be monadic / essentially the same as the old version.
 binderToCoreFn ::  Environment -> ModuleName -> SourceSpan -> A.Binder -> Binder Ann
+binderToCoreFn env mn _ss (A.LiteralBinder ss (ArrayLiteral bs)) = case bs of
+  [] -> nilP
+  (bx:bxs) ->
+    let bx' = binderToCoreFn env mn _ss bx
+        bxs' = binderToCoreFn env mn _ss $ A.LiteralBinder ss (ArrayLiteral bxs)
+    in consP [bx',bxs']
+binderToCoreFn  env mn _ss (A.LiteralBinder ss (BooleanLiteral b)) =
+  if b then truePat else falsePat
 binderToCoreFn  env mn _ss (A.LiteralBinder ss lit) =
   let lit' = binderToCoreFn env mn ss <$> lit
   in  LiteralBinder (ss, [], Nothing) lit'
@@ -655,3 +682,65 @@ exportToCoreFn (A.TypeClassRef _ _) = []
 exportToCoreFn (A.TypeInstanceRef _ name _) = [name]
 exportToCoreFn (A.ModuleRef _ _) = []
 exportToCoreFn (A.ReExportRef _ _ _) = []
+
+-- boolean constants
+
+pattern Boolean :: SourceType
+pattern Boolean = TypeConstructor NoSourceAnn C.Boolean
+
+
+true :: Expr Ann
+true = Var NoAnn Boolean (properToIdent <$> C.C_True)
+
+truePat :: Binder Ann
+truePat = ConstructorBinder NoAnn C.Boolean C.C_True []
+
+falsePat :: Binder Ann
+falsePat = ConstructorBinder NoAnn C.Boolean C.C_False []
+
+isTrue :: Expr Ann -> Bool
+isTrue e = e == true
+
+false :: Expr Ann
+false = Var NoAnn Boolean (properToIdent <$> C.C_False)
+
+isFalse :: Expr Ann -> Bool
+isFalse e = e == false
+
+
+-- "Array" (List) constants
+
+mkConsE :: Expr Ann -> Expr Ann -> Expr Ann
+mkConsE x xs = (consE `appExp` x) `appExp` xs
+ where
+   appExp = App NoAnn
+
+consE :: Expr Ann
+consE = Var NoAnn (quantify $ x -:> srcTypeApp listTyCon x -:> srcTypeApp listTyCon x) (properToIdent <$> C.C_Cons)
+ where
+   x = srcTypeVar "x" kindType
+   listTyCon = srcTypeConstructor C.Array
+
+nilE :: SourceType -> Expr Ann
+nilE ty = Var NoAnn (srcTypeApp listTyCon ty) (properToIdent <$> C.C_Nil)
+  where
+    x = srcTypeVar "x" kindType
+    listTyCon = srcTypeConstructor C.Array
+
+mkArray :: SourceType -> [Expr Ann] -> Expr Ann
+mkArray ty = foldr mkConsE (nilE ty)
+
+consP :: [Binder Ann] -> Binder Ann
+consP bs = ConstructorBinder NoAnn C.Array C.C_Cons bs
+
+nilP :: Binder Ann
+nilP = ConstructorBinder NoAnn C.Array C.C_Nil []
+
+-- misc patterns
+
+pattern NoSourceAnn :: SourceAnn
+pattern NoSourceAnn = (NullSourceSpan, [])
+
+
+pattern NoAnn :: Ann
+pattern NoAnn = (NullSourceSpan, [], Nothing)

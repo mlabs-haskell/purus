@@ -69,7 +69,7 @@ import Language.PureScript.CoreFn.Pretty.Common
 import Language.PureScript.CoreFn.Pretty.Types ( prettyType )
 
 -- TODO: Pretty print the datatypes too
-prettyModule :: (Pretty k, Pretty t) => Module (Bind a) k t a -> Doc ann
+prettyModule :: (Pretty k, Pretty t, Show a) => Module (Bind a) k t a -> Doc ann
 prettyModule (Module _ _ modName modPath modImports modExports modReExports modForeign modDecls modDatatypes) =
   vsep
     [ pretty modName <+>  parens (pretty modPath)
@@ -125,7 +125,7 @@ prettyDatatypes (Datatypes tDict _) = vcat . punctuate line $ map go (M.elems tD
 prettyObjectKey :: PSString -> Printer ann
 prettyObjectKey = pure . pretty . decodeStringWithReplacement
 
-prettyObject ::  [(PSString, Maybe (Expr a))] -> Printer ann
+prettyObject ::  forall a ann. Show a => [(PSString, Maybe (Expr a))] -> Printer ann
 prettyObject fields  = do
   fields' <- traverse prettyProperty fields
   recordLike fields'
@@ -136,14 +136,14 @@ prettyObject fields  = do
       props' <- maybe (pure $ pretty @Text "_") prettyValue value
       pure (key' <:> props')
 
-prettyUpdateEntry :: PSString -> Expr a -> Printer ann
+prettyUpdateEntry :: Show a => PSString -> Expr a -> Printer ann
 prettyUpdateEntry key val  = do
   key' <- prettyObjectKey key
   val' <- prettyValue val
   pure $ key' <=> val'
 
 -- | Pretty-print an expression
-prettyValue :: Expr a -> Printer ann
+prettyValue :: Show a => Expr a -> Printer ann
 prettyValue (Accessor _ _ prop val)  =  do
   prop' <- prettyObjectKey prop
   val' <- prettyValueAtom val
@@ -196,7 +196,7 @@ prettyValue (Literal _ ty l)  = ask >>= \case {OneLine ->  oneLine; MultiLine ->
 prettyValue expr@Var{}  = prettyValueAtom expr
 
 -- | Pretty-print an atomic expression, adding parentheses if necessary.
-prettyValueAtom :: Expr a -> Printer ann
+prettyValueAtom :: forall a ann. Show a => Expr a -> Printer ann
 prettyValueAtom lit@(Literal _  _ l)  = prettyValue lit  -- prettyLiteralValue l
 prettyValueAtom (Var _ ty ident)  =  prettyType ty >>= \ty' ->
   pure . parens $ pretty  (showIdent (disqualify ident)) <:> ty'
@@ -205,7 +205,7 @@ prettyValueAtom expr = do -- TODO change this back (need more anns for testing)
   -- t <- prettyType (exprType expr)
   pure $ parens v -- <:> t)
 
-prettyLiteralValue :: Literal (Expr a) -> Printer ann
+prettyLiteralValue :: forall a ann. Show a => Literal (Expr a) -> Printer ann
 prettyLiteralValue (NumericLiteral n) = ignoreFmt $ pretty $ either show show n
 prettyLiteralValue (StringLiteral s) = ignoreFmt $ pretty . T.unpack $ prettyPrintString s
 prettyLiteralValue (CharLiteral c) = ignoreFmt $ viaShow . show $ c
@@ -218,7 +218,7 @@ prettyLiteralValue (ArrayLiteral xs) = printer oneLine multiLine
     multiLine = list $ asOneLine prettyValue <$> xs
 prettyLiteralValue (ObjectLiteral ps) = prettyObject  $ second Just `map` ps
 
-prettyDeclaration :: forall a ann. Bind a -> Printer ann
+prettyDeclaration :: forall a ann. Show a => Bind a -> Printer ann
 prettyDeclaration b  = case b of
   NonRec _ ident expr -> goBind ident expr
   Rec bindings -> vcat <$> traverse  (\((_,ident),expr) -> goBind ident expr) bindings
@@ -238,7 +238,7 @@ prettyDeclaration b  = case b of
          f g = pretty ident <=> g (asDynamic prettyValue  expr)
      pure $ group $ flatAlt (f ind)  (f id)
 
-prettyCaseAlternative ::  forall a ann. CaseAlternative a -> Printer ann
+prettyCaseAlternative ::  forall a ann. Show a => CaseAlternative a -> Printer ann
 prettyCaseAlternative (CaseAlternative binders result)  = do
   let binders' =  asOneLine prettyBinderAtom <$> binders
   result'  <- prettyResult result

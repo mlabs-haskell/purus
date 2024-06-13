@@ -1,6 +1,7 @@
 module Language.PureScript.CoreFn.Utils where
 
 import Prelude hiding (error)
+import qualified Prelude
 import Data.Bifunctor ( Bifunctor(second, first) )
 import Language.PureScript.CoreFn.Expr
 import Language.PureScript.CoreFn.Desugar.Utils ( traverseLit, showIdent' )
@@ -17,6 +18,12 @@ import Data.Text (Text)
 import Language.PureScript.Environment (pattern (:->), function)
 import Language.PureScript.CoreFn.Ann (Ann)
 import Control.Lens.Type (Lens')
+import Language.PureScript.Pretty.Types (prettyPrintType)
+
+foldl1x :: Foldable t => String -> (a -> a -> a) -> t a -> a
+foldl1x msg f xs
+   | null xs = Prelude.error msg
+   | otherwise = foldl1 f xs
 
 type Context = Map Ident SourceType
 {-
@@ -26,7 +33,7 @@ prettyContext cxt = concatMap go (M.toList cxt)
     go :: (Ident,SourceType) -> String
     go (ident,ty) = showIdent' ident <> " := " <> prettyTypeStr ty <> "\n"
 -}
-instance IndexedPlated Context (Expr a) where
+instance Show a => IndexedPlated Context (Expr a) where
   iplate d f = \case
     Literal ann ty lit -> Literal ann ty <$> traverseLit (indexed f d) lit
     Accessor ann ty field e -> Accessor ann ty field <$>  indexed f d e
@@ -135,17 +142,20 @@ updateVarTy  ident ty = itransform goVar (M.empty :: Context)
       Just (ann,_,Qualified q@(BySourcePos _) varId) | varId == ident -> Var ann ty (Qualified q ident)
       _ -> expr
 
-appType :: Expr a -> Expr a -> SourceType
+appType :: Show a => Expr a -> Expr a -> SourceType
 appType fe ae = case stripQuantifiers funTy of
    ([],ft) ->
      let numArgs = length argTypes
-     in foldl1 function . drop numArgs . splitFunTyParts $ ft
+     in foldl1x "appType first branch (CoreFn.Utils)" function . drop numArgs . splitFunTyParts $ ft
    (xs,ft) ->
-     let funArgs = funArgTypes ft
+     let funArgs = splitFunTyParts ft -- funArgTypes ft
          dict    = mkInstanceMap M.empty xs argTypes funArgs
          numArgs = length argTypes
+         msg     = "FUNTY: " <> prettyPrintType 100 funTy
+                   <> "\nARGTY: " <> prettyPrintType 100 (exprType ae)
+                   <> "\nNUM ARGS:" <> show numArgs
      in quantify
-        . foldl1 function
+        . foldl1x msg  function
         . drop numArgs
         . splitFunTyParts
         . replaceAllTypeVars (M.toList dict)
@@ -183,7 +193,7 @@ splitFunTyParts = \case
 funArgTypes :: Type a -> [Type a]
 funArgTypes = init . splitFunTyParts
 
-exprType :: Expr a -> PurusType
+exprType :: Show a => Expr a -> PurusType
 exprType = \case
   Literal _ ty _ -> ty
   Accessor _ ty _ _ -> ty

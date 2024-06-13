@@ -63,7 +63,7 @@ import Control.Monad.State.Strict (MonadState, gets, modify)
 import Control.Monad.Writer.Class ( MonadWriter )
 import Language.PureScript.TypeChecker.Kinds ( kindOf )
 import Data.List.NonEmpty qualified as NE
-import Control.Monad (forM, (>=>), foldM)
+import Control.Monad (forM, (>=>), (<=<),foldM)
 import Language.PureScript.Errors
     ( MultipleErrors, errorMessage', SimpleErrorMessage(..))
 import Debug.Trace (traceM)
@@ -97,7 +97,9 @@ import Language.PureScript.CoreFn.Desugar.Utils
       toReExportRef,
       wrapTrace,
       desugarConstraintTypes,
-      M, unwrapRecord, withInstantiatedFunType, desugarConstraintsInDecl, analyzeCtor, instantiate, ctorArgs, instantiatePolyType, lookupDictType, desugarCasesEverywhere
+      true,
+      false,
+      M, unwrapRecord, withInstantiatedFunType, desugarConstraintsInDecl, analyzeCtor, instantiate, ctorArgs, instantiatePolyType, lookupDictType, desugarCasesEverywhere, mkArray, truePat
       )
 import Text.Pretty.Simple (pShow)
 import Data.Text.Lazy qualified as LT
@@ -125,13 +127,14 @@ moduleToCoreFn  (A.Module _ _ _ _ Nothing) =
 moduleToCoreFn (A.Module modSS coms mn _decls (Just exps)) = do
   setModuleName
   desugarConstraintTypes
-  (dataDecls,decls)<- fmap (partition isDataDecl) (traverse (desugarCasesEverywhere . desugarConstraintsInDecl) _decls)
+  allDecls <- traverse (fmap desugarConstraintsInDecl . desugarCasesEverywhere) _decls
+  let (dataDecls,nonDataDecls) = partition isDataDecl allDecls
   let importHelper ds = fmap (ssAnn modSS,) (findQualModules ds)
-      imports = dedupeImports $ mapMaybe importToCoreFn _decls ++ importHelper _decls
+      imports = dedupeImports $ mapMaybe importToCoreFn allDecls ++ importHelper allDecls
       exps' = ordNub $ concatMap exportToCoreFn exps
       reExps = M.map ordNub $ M.unionsWith (++) (mapMaybe (fmap reExportsToCoreFn . toReExportRef) exps)
-      externs = ordNub $ mapMaybe externToCoreFn _decls
-  decls' <- concat <$> traverse (declToCoreFn mn) decls
+      externs = ordNub $ mapMaybe externToCoreFn allDecls
+  decls' <- concat <$> traverse (declToCoreFn mn) nonDataDecls
   let dataDecls' = mkDataDecls mn dataDecls
   pure $ Module modSS coms mn (spanName modSS) imports exps' reExps externs decls' dataDecls'
  where
@@ -280,8 +283,7 @@ exprToCoreFn mn ss (Just arrT) astlit@(A.Literal _ (ArrayLiteral ts))
   | Just ty <- getInnerArrayTy arrT
   = wrapTrace ("exprToCoreFn ARRAYLIT " <> renderValue 100 astlit) $ do
       traceM $ ppType 100 arrT
-      arr <- ArrayLiteral <$> traverse (exprToCoreFn mn ss (Just ty)) ts
-      pure $ Literal (ss,[],Nothing) arrT  arr
+      mkArray ty <$> traverse (exprToCoreFn mn ss (Just ty)) ts
 
 exprToCoreFn _ _ Nothing astlit@(A.Literal _ (ArrayLiteral _)) =
   internalError $ "Error while desugaring Array Literal. No type provided for literal:\n" <> renderValue 100 astlit
@@ -304,7 +306,7 @@ exprToCoreFn _ _ _ (A.Literal ss (NumericLiteral (Right number))) =
 exprToCoreFn _ _ _ (A.Literal ss (CharLiteral char)) =
   pure $ Literal (ss,[],Nothing) tyChar (CharLiteral char)
 exprToCoreFn _ _ _ (A.Literal ss (BooleanLiteral boolean)) =
-  pure $ Literal (ss,[],Nothing) tyBoolean (BooleanLiteral boolean)
+  if boolean then pure true else pure false
 exprToCoreFn _ _ _ (A.Literal ss (StringLiteral string)) =
   pure $ Literal (ss,[],Nothing) tyString (StringLiteral string)
 
@@ -467,7 +469,7 @@ exprToCoreFn mn ss (Just resT) (A.IfThenElse cond th el) = wrapTrace "exprToCore
   thE <- exprToCoreFn mn ss (Just resT) th
   elE <- exprToCoreFn mn ss (Just resT) el
   pure $ Case (ss, [], Nothing) resT [condE]
-    [ CaseAlternative [LiteralBinder (ssAnn ss) $ BooleanLiteral True]
+    [ CaseAlternative [truePat]
                       (Right thE)
     , CaseAlternative [NullBinder (ssAnn ss)]
                       (Right elE) ]

@@ -54,21 +54,21 @@ ppType _ t = prettyTypeStr t
 smartRender ::  Doc ann -> Text
 smartRender = renderStrict . layoutPretty defaultLayoutOptions
 
-writeModule :: (Pretty k, Pretty t) => Handle -> Module (Bind a) k t a -> IO ()
+writeModule :: (Pretty k, Pretty t, Show a) => Handle -> Module (Bind a) k t a -> IO ()
 writeModule h m = renderIO h
                 . layoutSmart defaultLayoutOptions
                 $ prettyModule m
 
-prettyModuleTxt :: (Pretty k, Pretty t) => Module (Bind a) k t a -> Text
+prettyModuleTxt :: (Pretty k, Pretty t, Show a) => Module (Bind a) k t a -> Text
 prettyModuleTxt = renderStrict  . layoutPretty defaultLayoutOptions .  prettyModule
 
-prettyModuleStr :: (Pretty k, Pretty t) => Module (Bind a) k t a -> String
+prettyModuleStr :: (Pretty k, Pretty t, Show a) => Module (Bind a) k t a -> String
 prettyModuleStr = T.unpack . prettyModuleTxt
 
-renderExpr :: Expr a -> Text
+renderExpr :: Show a => Expr a -> Text
 renderExpr = smartRender . asDynamic prettyValue
 
-renderExprStr :: Expr a -> String
+renderExprStr :: Show a => Expr a -> String
 renderExprStr = T.unpack . renderExpr
 
 
