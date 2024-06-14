@@ -130,16 +130,16 @@ prettyType t  =  group <$> case t of
    goTypeApp (TypeApp _ f a) b
      | eqType f tyFunction = do
          a' <- prettyType a
-         b' <- prettyType b
-         fmtSep [a' <+> arrow,b']
+         b' <- parens <$> prettyType b
+         parens <$> fmtSep [a' <+> arrow,b']
      | otherwise = do
          f' <- goTypeApp f a
-         b' <- prettyType b
+         b' <- parens <$> prettyType b
          pure $ parens $ f' <+> b'
    goTypeApp o ty@RCons{}
      | eqType o tyRecord =
          either openRecord recordLike =<< rowFields ty
-   goTypeApp a b =  fmtSep =<< traverse prettyType [a,b]
+   goTypeApp a b =  fmap parens $ fmtSep =<< sequence [prettyType a,parens <$> prettyType b]
 
    rowFields :: Type a -> Reader LineFormat (Either ([Doc ann], Doc ann) [Doc ann])
    rowFields = \case

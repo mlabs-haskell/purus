@@ -52,7 +52,7 @@ import Language.PureScript.CoreFn.Convert.Datatypes
       mkTypeBindDict,
       mkVar,
       pirDatatypes,
-      withLocalVars )
+      withLocalVars, doTraceM )
 import Control.Monad.Except (MonadError(..))
 import Language.PureScript.CoreFn.Module (
   Datatypes,
@@ -115,7 +115,7 @@ import PlutusIR.Error ( Error )
 import Control.Exception ( throwIO )
 import PlutusCore.Evaluation.Machine.Ck
     ( EvaluationResult, unsafeEvaluateCk )
-import Prettyprinter (Doc)
+import Prettyprinter (Doc, Pretty)
 showType :: forall a. Typeable a => String
 showType = show (typeRep :: TypeRep a)
 
@@ -197,11 +197,12 @@ runDatatypeM :: DatatypeDictionary -> DatatypeM a -> Either String a
 runDatatypeM dict act = evalState (runExceptT act) dict
 
 firstPass :: forall a
-           . Datatypes IR.Kind Ty
+           . Pretty a
+          => Datatypes IR.Kind Ty
           -> (a -> Var (BVar Ty) (FVar Ty))
           -> Exp WithoutObjects Ty a
           -> DatatypeM PIRTerm
-firstPass datatypes f = \case
+firstPass datatypes f _exp = doTraceM "firstPass" (prettyStr _exp) >> case _exp of
   V x -> case f x of
     F (FVar _ ident) ->
       let nm = runIdent $ disqualify ident

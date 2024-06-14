@@ -91,6 +91,9 @@ prettyModule (Module _ _ modName modPath modImports modExports modReExports modF
    goReExport :: (ModuleName,[Ident]) -> Doc ann
    goReExport (mn',idents) = vcat $ flip map idents $ \i -> pretty mn' <> "." <> pretty i
 
+instance (Pretty k, Pretty t) => Pretty (Datatypes k t) where
+  pretty = prettyDatatypes
+
 prettyDatatypes :: forall k t ann. (Pretty k, Pretty t) => Datatypes k t -> Doc ann
 prettyDatatypes (Datatypes tDict _) = vcat . punctuate line $ map go (M.elems tDict)
   where
@@ -119,7 +122,7 @@ prettyDatatypes (Datatypes tDict _) = vcat . punctuate line $ map go (M.elems tD
 
     prettyCtorDecl :: CtorDecl t -> Doc ann
     prettyCtorDecl (CtorDecl nm fs) =
-      pretty (runIdent $ disqualify nm) <+> hsep (pretty . snd <$> fs)
+      pretty (runIdent $ disqualify nm) <+> (hsep (parens . pretty . snd <$> fs))
 
 -- Is a printer for consistency mainly
 prettyObjectKey :: PSString -> Printer ann

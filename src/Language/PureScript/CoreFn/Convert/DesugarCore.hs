@@ -1,4 +1,4 @@
-{-# OPTIONS_GHC -Werror -Wno-orphans #-}
+{-# OPTIONS_GHC  -Wno-orphans #-}
 {-# LANGUAGE TypeApplications #-}
 module Language.PureScript.CoreFn.Convert.DesugarCore (WithObjects, WithoutObjects, desugarCore, desugarCoreModule) where
 
@@ -33,13 +33,14 @@ import Data.Map qualified as M
 import Language.PureScript.AST.Literals (Literal (..))
 import Bound (abstract)
 import Control.Monad (join)
+import Control.Monad.State ( join, StateT, modify', put, gets, get, evalState, evalStateT )
 import Data.List (find)
 import Language.PureScript.CoreFn.Utils (exprType, Context)
 import Language.PureScript.CoreFn.Binders ( Binder(..) )
 import Data.Maybe (mapMaybe)
 import Control.Lens.Operators ((^..))
 import Control.Lens.IndexedPlated (icosmos)
-import Control.Lens.Combinators (to)
+import Control.Lens.Combinators (to, ix, preview)
 import Control.Monad.Error.Class (MonadError(throwError))
 import Language.PureScript.AST.SourcePos (spanStart)
 import Language.PureScript.CoreFn.Module (Module(..))
@@ -49,11 +50,32 @@ import Language.PureScript.CoreFn.Desugar.Utils (wrapTrace, showIdent', properTo
 import Data.Void (Void)
 import Language.PureScript.Constants.Prim qualified as C
 import Data.Text qualified as T
-import Data.Foldable (Foldable(foldl'))
+import Data.Foldable (Foldable(foldl'), traverse_)
 import Language.PureScript.Environment (mkCtorTy, mkTupleTyName)
 
--- TODO: Something more reasonable
-type DS = Either String
+
+
+-- Need the map to keep track of whether a variable has already been used in the scope (e.g. for shadowing)
+type DS = StateT (M.Map Ident Int) (Either String)
+
+freshly :: DS a -> DS a
+freshly act = put M.empty >> act
+
+bind :: Ident -> DS Int
+bind ident = gets (preview (ix ident)) >>= \case
+  Nothing -> do
+    modify' $  M.insert ident 0
+    pure 0
+  Just indx -> do
+    modify' $ M.insert ident (indx + 1)
+    pure (indx + 1)
+
+getVarIx :: Ident -> DS Int
+getVarIx ident = gets (preview (ix ident)) >>= \case
+  Nothing -> do
+    modify' $ M.insert ident 0
+    pure 0
+  Just indx -> pure indx
 
 data WithObjects
 
@@ -69,13 +91,16 @@ type instance XObjectLiteral WithoutObjects = Void
 
 type IR_Decl = BindE PurusType (Exp WithObjects PurusType) (FVar PurusType)
 
-desugarCoreModule :: Module (Bind Ann) PurusType PurusType Ann -> DS (Module IR_Decl PurusType PurusType Ann)
-desugarCoreModule Module{..} = do
-  decls <- traverse desugarCoreDecl moduleDecls
+desugarCoreModule :: Module (Bind Ann) PurusType PurusType Ann -> Either String (Module IR_Decl PurusType PurusType Ann)
+desugarCoreModule m = evalStateT (desugarCoreModule' m) M.empty
+
+desugarCoreModule' :: Module (Bind Ann) PurusType PurusType Ann -> DS (Module IR_Decl PurusType PurusType Ann)
+desugarCoreModule' Module{..} = do
+  decls <- traverse (freshly . desugarCoreDecl) moduleDecls
   pure $ Module {moduleDecls = decls,..}
 
 desugarCoreDecl :: Bind Ann
-                -> Either String (BindE PurusType (Exp WithObjects PurusType) (FVar PurusType))
+                -> DS (BindE PurusType (Exp WithObjects PurusType) (FVar PurusType))
 desugarCoreDecl = \case
   NonRec _ ident expr -> wrapTrace ("desugarCoreDecl: " <> showIdent' ident) $
     NonRecursive ident  <$> desugarCore' expr
@@ -113,10 +138,11 @@ tuplify es = foldl' (App nullAnn) tupCtor es
 desugarCore :: Expr Ann -> DS (Exp WithObjects PurusType (FVar PurusType))
 desugarCore (Literal _ann ty lit) = LitE ty <$> desugarLit lit
 desugarCore (Abs _ann ty ident expr) = do
+  bvIx  <- bind ident
   expr' <- desugarCore expr
   let !ty' = functionArgumentIfFunction ty
-  let scopedExpr = abstract (matchVarLamAbs ty' ident) expr'
-  pure $ LamE ty (BVar 0 ty' ident) scopedExpr
+  let scopedExpr = abstract (matchVarLamAbs ident bvIx) expr'
+  pure $ LamE ty (BVar bvIx ty' ident) scopedExpr
 desugarCore (App _ann expr1 expr2) = do
   expr1' <- desugarCore expr1
   expr2' <- desugarCore expr2
@@ -124,9 +150,11 @@ desugarCore (App _ann expr1 expr2) = do
 desugarCore (Var _ann ty qi) = pure $ V $ FVar ty qi
 desugarCore (Let _ann binds cont) = do
   binds' <- desugarBinds binds
-  cont' <- desugarCore cont
   let allBoundIdents = fst <$> join binds'
-      abstr = abstract $ abstractMany allBoundIdents
+  traverse_ (bind . (\(FVar _ nm) -> disqualify nm)) allBoundIdents
+  s <- get
+  cont' <- desugarCore cont
+  let abstr = abstract (matchLet s)
       bindEs = assembleBindEs [] binds'
       bindings = mkBindings allBoundIdents
   pure $ LetE bindings bindEs $ abstr cont'
@@ -153,13 +181,17 @@ desugarAlt (CaseAlternative [binder] result) = case result of
   Right ex -> do
     let boundVars = getBoundVar result binder
         pat = toPat binder
-        abstrE = abstract (abstractMany boundVars)
+    traverse_ (bind . (\(FVar _ nm) -> disqualify nm)) boundVars
+    s <- get
+    let abstrE = abstract (matchLet s)
     re <- desugarCore ex
     pure $ UnguardedAlt (mkBindings boundVars) pat (abstrE re)
 desugarAlt (CaseAlternative binders result) = do
   let boundVars = concatMap (getBoundVar result) binders
       pats = map toPat binders
-      abstrE = abstract (abstractMany boundVars)
+  traverse_ (bind . (\(FVar _ nm) -> disqualify nm)) boundVars
+  s <- get
+  let abstrE = abstract (matchLet s)
       n = length binders
       tupTyName = mkTupleTyName n
       tupCtorName = coerceProperName <$> tupTyName
@@ -169,7 +201,6 @@ desugarAlt (CaseAlternative binders result) = do
       throwError $ "internal error: `desugarAlt` guarded alt not expected at this stage: " <> show exs
     Right ex -> do
       re <- desugarCore ex
-      let
       pure $ UnguardedAlt (mkBindings boundVars) pat (abstrE re)
 
 getBoundVar :: forall ann. Show ann => Either [(Expr ann, Expr ann)] (Expr ann) -> Binder ann -> [FVar PurusType]
@@ -194,7 +225,6 @@ findBoundVar nm ex = find (goFind . snd) (allVars ex)
   where
     goFind = \case
       Qualified (ByModuleName _) _ -> False
-      Qualified ByNullSourcePos _ -> False -- idk about this actually, guess we'll find out
       Qualified (BySourcePos _) nm' -> nm == nm'
 
 allVars :: forall ann. Show ann => Expr ann -> [(PurusType, Qualified Ident)]
@@ -244,10 +274,16 @@ functionArgumentIfFunction (arg :~> _) = arg
 functionArgumentIfFunction t = t
 
 -- | For usage with `Bound`, use only with lambda
-matchVarLamAbs :: Eq ty => ty -> Ident -> FVar ty -> Maybe (BVar ty)
-matchVarLamAbs t nm (FVar ty n')
-  | ty == t && nm == disqualify n' =  Just (BVar 0 t nm)
+matchVarLamAbs :: Ident -> Int -> FVar ty -> Maybe (BVar ty)
+matchVarLamAbs nm bvix (FVar ty n')
+  | nm == disqualify n' =  Just (BVar bvix ty nm)
   | otherwise = Nothing
+
+matchLet :: M.Map Ident Int -> FVar ty -> Maybe (BVar ty)
+matchLet binds (FVar ty n') = do
+  let nm = disqualify n'
+  bvix <- M.lookup nm binds
+  pure $ BVar bvix ty nm
 
 -- TODO (t4ccer): Move somehwere, but cycilc imports are annoying
 instance FuncType PurusType where

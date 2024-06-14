@@ -359,9 +359,9 @@ instance Pretty Ty where
            in hsep [a' <+> "->",b']
        | otherwise =
            let f' = goTypeApp f a
-               b' = pretty b
+               b' = parens $ pretty b
            in  f' <+> b'
-     goTypeApp a b = hsep [pretty a, pretty b]
+     goTypeApp a b = hsep [pretty a, parens $ pretty b]
 
      goForall :: [(TypeVarVisibility,Text,Kind)] -> Ty -> Doc ann
      goForall xs inner =
