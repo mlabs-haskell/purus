@@ -25,8 +25,8 @@ Datatypes:
 
 Declarations: 
 ------------------------------
-main :: forall (t1 :: Prim.Type). (t1 :: Prim.Type) -> Prim.Int
+main :: forall (t1 :: Prim.Type). ((t1 :: Prim.Type) -> (Prim.Int))
 main = 
   \(v: (t1 :: Prim.Type)) -> 
-    (foo: forall (a :: Prim.Type). (a :: Prim.Type) -> (a :: Prim.Type))
+    (foo: forall (a :: Prim.Type). ((a :: Prim.Type) -> ((a :: Prim.Type))))
     (42: Prim.Int)

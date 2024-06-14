@@ -210,7 +210,8 @@ firstPass datatypes f _exp = doTraceM "firstPass" (prettyStr _exp) >> case _exp 
         Just aBuiltinFun ->  pure $ Builtin () aBuiltinFun
         Nothing -> getConstructorName ident >>= \case
           Just aCtorNm -> pure $ PIR.Var () aCtorNm
-          Nothing -> throwError
+          Nothing ->
+            throwError
                      $ T.unpack nm
                      <> " isn't a builtin, and it shouldn't be possible to have a free variable that's anything but a builtin"
     B (BVar bvix _ (runIdent -> nm)) -> pure $ PIR.Var () (Name nm $ Unique bvix)
@@ -238,6 +239,7 @@ firstPass datatypes f _exp = doTraceM "firstPass" (prettyStr _exp) >> case _exp 
     ps -> do
       let tmpSOPTyIR =  mkTmpSOP (expTy f scrutinee) <$> ps
       tmpSOPTy <- PIR.TySOP () <$> traverse (traverse toPIRType) tmpSOPTyIR
+      doTraceM "tmpSOPTy" (prettyStr tmpSOPTy)
       -- Make a PIR function that maps the scrutinee to a temporary pattern ADT with one ctor for each case branch
       scrutineeToPatternsTmp <- toPatternsTmp tmpSOPTy 0 ty ps
       -- Make a [PIRTerm] where each PIRTerm is a lambda with args matching its index in the pattern ADT
@@ -247,7 +249,7 @@ firstPass datatypes f _exp = doTraceM "firstPass" (prettyStr _exp) >> case _exp 
       pure $ PIR.Case () ty' (scrutineeToPatternsTmp # scrutinee') branches
  where
    toPIRList :: [Exp WithoutObjects Ty a] -> DatatypeM PIRTerm
-   toPIRList es = firstPass datatypes id $ foldr goCons goNil (fmap f <$> es)
+   toPIRList es = doTraceM "toPIRList" (prettyStr es) >> firstPass datatypes id $ foldr goCons goNil (fmap f <$> es)
      where
        goNil =
          let nilTy = quantify $ applyType (IR.TyCon C.Array) (IR.TyVar "x" IR.KindType)
@@ -261,7 +263,7 @@ firstPass datatypes f _exp = doTraceM "firstPass" (prettyStr _exp) >> case _exp 
    mkTmpSOP :: Ty -> Pat WithoutObjects (Exp WithoutObjects Ty) a -> [Ty]
    mkTmpSOP scrutineeTy = \case
      VarP _ -> pure  scrutineeTy
-     WildP  ->  pure scrutineeTy
+     WildP  ->   []
      AsP _ innerP ->
        scrutineeTy : mkTmpSOP scrutineeTy innerP
      -- T a b c ->
@@ -276,7 +278,7 @@ firstPass datatypes f _exp = doTraceM "firstPass" (prettyStr _exp) >> case _exp 
        _ -> []
 
    collectPatBindings :: Ty -> Pat WithoutObjects (Exp WithoutObjects Ty) a -> [(Text,Ty)]
-   collectPatBindings t p = case p of
+   collectPatBindings t p = doTraceM "collectPatBindings" ("Ty:\n" <> prettyStr t <> "\nPat: " <> prettyStr p) >> case p of
      VarP i -> [(runIdent i,t)]
      WildP  -> []
      AsP asIdent innerP ->
@@ -295,7 +297,8 @@ firstPass datatypes f _exp = doTraceM "firstPass" (prettyStr _exp) >> case _exp 
    mkCaseBranch :: Ty
                 -> Alt WithoutObjects Ty (Exp WithoutObjects Ty) a
                 -> DatatypeM PIRTerm
-   mkCaseBranch ty (UnguardedAlt _ pat scopedBody) = do
+   mkCaseBranch ty alt@(UnguardedAlt _ pat scopedBody) = do
+     doTraceM "mkCaseBranch" ("Ty:\n" <> prettyStr ty <> "\nAlt: " <> prettyStr alt)
      let patBinders = collectPatBindings ty pat
      -- this just binds the names in the monad so the Uniques line up
      withLocalVars (fst <$> patBinders) $ do

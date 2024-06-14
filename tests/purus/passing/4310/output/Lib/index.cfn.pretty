@@ -25,59 +25,60 @@ Foreign:
 Datatypes: 
 ------------------------------
 newtype Test$Dict (a :: Prim.Type) = 
-  Test$Dict { runTest :: (a :: Prim.Type) -> Prim.String }
+  Test$Dict ({ runTest :: ((a :: Prim.Type) -> (Prim.String)) })
 
 data Tuple (a :: Prim.Type) (b :: Prim.Type) = 
-  Tuple (a :: Prim.Type) (b :: Prim.Type)
+  Tuple ((a :: Prim.Type)) ((b :: Prim.Type))
 
 
 Declarations: 
 ------------------------------
-testInt :: Lib.Test$Dict Prim.Int
+testInt :: (Lib.Test$Dict (Prim.Int))
 testInt = 
-  (Test$Dict: {   runTest :: Prim.Int -> Prim.String } ->
-  Lib.Test$Dict Prim.Int)
+  (Test$Dict: ({   runTest :: (Prim.Int -> (Prim.String)) } ->
+  ((Lib.Test$Dict (Prim.Int)))))
   ({ runTest: \(v: Prim.Int) -> ("4": Prim.String) }: {
-                                                        runTest :: Prim.Int ->
-                                                        Prim.String
+                                                        runTest :: (Prim.Int ->
+                                                        (Prim.String))
                                                       })
 
-runTest :: forall (@a :: Prim.Type). Lib.Test$Dict (a :: Prim.Type) -> (a :: Prim.Type) -> Prim.String
+runTest :: forall (@a :: Prim.Type). ((Lib.Test$Dict ((a :: Prim.Type))) -> (((a :: Prim.Type) -> (Prim.String))))
 runTest = 
-  \(dict: Lib.Test$Dict (a :: Prim.Type)) -> 
-    case (dict: Lib.Test$Dict (a :: Prim.Type)) of 
+  \(dict: (Lib.Test$Dict ((a :: Prim.Type)))) -> 
+    case (dict: (Lib.Test$Dict ((a :: Prim.Type)))) of 
        Test$Dict v -> 
-         (v: {   runTest :: (a :: Prim.Type) -> Prim.String })
+         (v: {   runTest :: ((a :: Prim.Type) -> (Prim.String)) })
          .runTest
 
-mappend :: Prim.String -> Prim.String -> Prim.String
+mappend :: (Prim.String -> ((Prim.String -> (Prim.String))))
 mappend = \(v: Prim.String) -> \(v1: Prim.String) -> ("mappend": Prim.String)
 
-test/\ :: forall (a :: Prim.Type) (b :: Prim.Type). Lib.Test$Dict (a :: Prim.Type) -> Lib.Test$Dict (b :: Prim.Type) -> Lib.Test$Dict (Lib.Tuple (a :: Prim.Type) (b :: Prim.Type))
+test/\ :: forall (a :: Prim.Type) (b :: Prim.Type). ((Lib.Test$Dict ((a :: Prim.Type))) -> (((Lib.Test$Dict ((b :: Prim.Type))) -> ((Lib.Test$Dict (((Lib.Tuple ((a :: Prim.Type))) ((b :: Prim.Type)))))))))
 test/\ = 
-  \(dictTest: Lib.Test$Dict (a :: Prim.Type)) -> 
-    \(dictTest1: Lib.Test$Dict (b :: Prim.Type)) -> 
-      (Test$Dict: {
-                    runTest :: (Lib.Tuple (a :: Prim.Type) (b :: Prim.Type)) ->
-                    Prim.String
-                  } ->
-      Lib.Test$Dict (Lib.Tuple (a :: Prim.Type) (b :: Prim.Type)))
+  \(dictTest: (Lib.Test$Dict ((a :: Prim.Type)))) -> 
+    \(dictTest1: (Lib.Test$Dict ((b :: Prim.Type)))) -> 
+      (Test$Dict: ({
+                     runTest :: (((Lib.Tuple
+                     ((a :: Prim.Type))) ((b :: Prim.Type))) ->
+                     (Prim.String))
+                   } ->
+      ((Lib.Test$Dict (((Lib.Tuple ((a :: Prim.Type))) ((b :: Prim.Type))))))))
       ({
-         runTest: \(v: (Lib.Tuple (a :: Prim.Type) (b :: Prim.Type))) -> 
-           case (v: (Lib.Tuple (a :: Prim.Type) (b :: Prim.Type))) of 
+         runTest: \(v: ((Lib.Tuple ((a :: Prim.Type))) ((b :: Prim.Type)))) -> 
+           case (v: ((Lib.Tuple ((a :: Prim.Type))) ((b :: Prim.Type)))) of 
               Tuple a b -> 
-                (mappend: Prim.String -> Prim.String -> Prim.String)
-                ((runTest: forall (@a :: Prim.Type). Lib.Test$Dict
-                 (a :: Prim.Type) ->
-                 (a :: Prim.Type) -> Prim.String)
-                 (dictTest: Lib.Test$Dict (a :: Prim.Type))
+                (mappend: (Prim.String -> ((Prim.String -> (Prim.String)))))
+                ((runTest: forall (@a :: Prim.Type). ((Lib.Test$Dict
+                 ((a :: Prim.Type))) ->
+                 (((a :: Prim.Type) -> (Prim.String)))))
+                 (dictTest: (Lib.Test$Dict ((a :: Prim.Type))))
                  (a: (a :: Prim.Type)))
-                ((runTest: forall (@a :: Prim.Type). Lib.Test$Dict
-                 (a :: Prim.Type) ->
-                 (a :: Prim.Type) -> Prim.String)
-                 (dictTest1: Lib.Test$Dict (b :: Prim.Type))
+                ((runTest: forall (@a :: Prim.Type). ((Lib.Test$Dict
+                 ((a :: Prim.Type))) ->
+                 (((a :: Prim.Type) -> (Prim.String)))))
+                 (dictTest1: (Lib.Test$Dict ((b :: Prim.Type))))
                  (b: (b :: Prim.Type)))
        }: {
-            runTest :: (Lib.Tuple (a :: Prim.Type) (b :: Prim.Type)) ->
-            Prim.String
+            runTest :: (((Lib.Tuple ((a :: Prim.Type))) ((b :: Prim.Type))) ->
+            (Prim.String))
           })

@@ -27,7 +27,7 @@ Datatypes:
 
 Declarations: 
 ------------------------------
-what :: Prim.Boolean -> Prim.Int
+what :: (Prim.Boolean -> (Prim.Int))
 what = 
   \(v: Prim.Boolean) -> 
     case (v: Prim.Boolean) of 

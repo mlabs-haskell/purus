@@ -21,7 +21,7 @@ Foreign:
 Datatypes: 
 ------------------------------
 data Foo'  = 
-  Bar' Prim.Int Prim.Int
+  Bar' (Prim.Int) (Prim.Int)
 
 
 Declarations: 

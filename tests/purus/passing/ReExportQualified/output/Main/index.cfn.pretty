@@ -29,11 +29,11 @@ Datatypes:
 
 Declarations: 
 ------------------------------
-concat :: Prim.String -> Prim.String -> Prim.String
+concat :: (Prim.String -> ((Prim.String -> (Prim.String))))
 concat = \(v: Prim.String) -> \(v1: Prim.String) -> ("concat": Prim.String)
 
 main :: Prim.String
 main = 
-  (concat: Prim.String -> Prim.String -> Prim.String)
+  (concat: (Prim.String -> ((Prim.String -> (Prim.String)))))
   (x: Prim.String)
   (y: Prim.String)

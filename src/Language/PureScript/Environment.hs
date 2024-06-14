@@ -375,6 +375,8 @@ purusFun = f . g
     g = TypeApp () tyFunctionNoAnn . void
     tyFunctionNoAnn = TypeConstructor () C.Function
 
+
+
 -- This is borderline necessary
 pattern (:->) :: Type a -> Type a -> Type a
 pattern a :-> b <-
@@ -422,11 +424,11 @@ primCtors = M.fromList tupleCtors <> M.fromList [
     (mkCtor "Nil",(Data,disqualify C.Array, forallT "x" $ \x -> arrayT x, [])),
     (mkCtor "Cons",(Data,disqualify C.Array, forallT "x" $ \x -> x -:> arrayT x -:> arrayT x, []))
   ]
-  where
-   mkCtor :: Text -> Qualified (ProperName 'ConstructorName)
-   mkCtor nm = Qualified (ByModuleName C.M_Prim) (ProperName nm)
 
-   tupleCtors = [1..100] <&> \n ->
+mkCtor :: Text -> Qualified (ProperName 'ConstructorName)
+mkCtor nm = Qualified (ByModuleName C.M_Prim) (ProperName nm)
+
+tupleCtors = [1..100] <&> \n ->
      let ctorNm = mkCtor ("Tuple" <> T.pack (show n))
          ctorTyNm = coerceProperName @_ @'TypeName $ disqualify ctorNm
          ctorTy = mkCtorTy (coerceProperName <$> ctorNm) n

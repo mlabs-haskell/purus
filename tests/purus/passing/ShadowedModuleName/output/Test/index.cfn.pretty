@@ -22,12 +22,12 @@ Foreign:
 Datatypes: 
 ------------------------------
 data Z  = 
-  Z Prim.String
+  Z (Prim.String)
 
 
 Declarations: 
 ------------------------------
-runZ :: Test.Z -> Prim.String
+runZ :: (Test.Z -> (Prim.String))
 runZ = 
   \(v: Test.Z) -> 
     case (v: Test.Z) of 

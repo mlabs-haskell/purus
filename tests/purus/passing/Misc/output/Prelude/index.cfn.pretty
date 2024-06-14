@@ -33,12 +33,12 @@ data Bool  =
 
 data List (a :: Prim.Type) = 
   Nil 
-  | Cons (a :: Prim.Type) Prelude.List (a :: Prim.Type)
+  | Cons ((a :: Prim.Type)) ((Prelude.List ((a :: Prim.Type))))
 
 
 Declarations: 
 ------------------------------
-or :: Prelude.Bool -> Prelude.Bool -> Prelude.Bool
+or :: (Prelude.Bool -> ((Prelude.Bool -> (Prelude.Bool))))
 or = 
   \(v: Prelude.Bool) -> 
     \(v1: Prelude.Bool) -> 
@@ -47,30 +47,32 @@ or =
          _ True -> (True: Prelude.Bool)
          _ _ -> (False: Prelude.Bool)
 
-not :: Prelude.Bool -> Prelude.Bool
+not :: (Prelude.Bool -> (Prelude.Bool))
 not = 
   \(v: Prelude.Bool) -> 
     case (v: Prelude.Bool) of 
        True -> (False: Prelude.Bool)
        False -> (True: Prelude.Bool)
 
-appendList :: forall (a :: Prim.Type). Prelude.List (a :: Prim.Type) -> Prelude.List (a :: Prim.Type) -> Prelude.List (a :: Prim.Type)
+appendList :: forall (a :: Prim.Type). ((Prelude.List ((a :: Prim.Type))) -> (((Prelude.List ((a :: Prim.Type))) -> ((Prelude.List ((a :: Prim.Type)))))))
 appendList = 
-  \(v: Prelude.List (a :: Prim.Type)) -> 
-    \(v1: Prelude.List (a :: Prim.Type)) -> 
-      case (v: Prelude.List (a :: Prim.Type)) (v1: Prelude.List (a :: Prim.Type)) of 
-         Nil ys -> (ys: Prelude.List (a :: Prim.Type))
+  \(v: (Prelude.List ((a :: Prim.Type)))) -> 
+    \(v1: (Prelude.List ((a :: Prim.Type)))) -> 
+      case (v: (Prelude.List ((a :: Prim.Type)))) (v1: (Prelude.List ((a :: Prim.Type)))) of 
+         Nil ys -> (ys: (Prelude.List ((a :: Prim.Type))))
          Cons x xs ys -> 
-           (Cons: forall (@a :: Prim.Type). (a :: Prim.Type) ->
-           Prelude.List (a :: Prim.Type) -> Prelude.List (a :: Prim.Type))
+           (Cons: forall (@a :: Prim.Type). ((a :: Prim.Type) ->
+           (((Prelude.List ((a :: Prim.Type))) ->
+           ((Prelude.List ((a :: Prim.Type))))))))
            (x: (a :: Prim.Type))
-           ((appendList: forall (a :: Prim.Type). Prelude.List
-            (a :: Prim.Type) ->
-            Prelude.List (a :: Prim.Type) -> Prelude.List (a :: Prim.Type))
-            (xs: Prelude.List (a :: Prim.Type))
-            (ys: Prelude.List (a :: Prim.Type)))
+           ((appendList: forall (a :: Prim.Type). ((Prelude.List
+            ((a :: Prim.Type))) ->
+            (((Prelude.List ((a :: Prim.Type))) ->
+            ((Prelude.List ((a :: Prim.Type))))))))
+            (xs: (Prelude.List ((a :: Prim.Type))))
+            (ys: (Prelude.List ((a :: Prim.Type)))))
 
-and :: Prelude.Bool -> Prelude.Bool -> Prelude.Bool
+and :: (Prelude.Bool -> ((Prelude.Bool -> (Prelude.Bool))))
 and = 
   \(v: Prelude.Bool) -> 
     \(v1: Prelude.Bool) -> 

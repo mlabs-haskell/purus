@@ -22,10 +22,10 @@ Foreign:
 Datatypes: 
 ------------------------------
 newtype NTLib1 (a :: Prim.Type) = 
-  NTLib1 (a :: Prim.Type)
+  NTLib1 ((a :: Prim.Type))
 
 newtype NTLib3 (a :: Prim.Type) (b :: Prim.Type) = 
-  NTLib3 (a :: Prim.Type)
+  NTLib3 ((a :: Prim.Type))
 
 
 Declarations: 

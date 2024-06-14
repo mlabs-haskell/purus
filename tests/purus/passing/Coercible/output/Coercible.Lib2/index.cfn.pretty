@@ -20,7 +20,7 @@ Foreign:
 Datatypes: 
 ------------------------------
 newtype NTLib2 (a :: Prim.Type) = 
-  NTLib2 (a :: Prim.Type)
+  NTLib2 ((a :: Prim.Type))
 
 
 Declarations: 

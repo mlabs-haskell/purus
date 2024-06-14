@@ -23,7 +23,7 @@ Foreign:
 Datatypes: 
 ------------------------------
 newtype TestCls$Dict (a :: Prim.Type) = 
-  TestCls$Dict { test :: (a :: Prim.Type) -> (a :: Prim.Type) }
+  TestCls$Dict ({ test :: ((a :: Prim.Type) -> ((a :: Prim.Type))) })
 
 data Unit  = 
   Unit 
@@ -31,19 +31,19 @@ data Unit  =
 
 Declarations: 
 ------------------------------
-testClsUnit :: Test.TestCls$Dict Test.Unit
+testClsUnit :: (Test.TestCls$Dict (Test.Unit))
 testClsUnit = 
-  (TestCls$Dict: {   test :: Test.Unit -> Test.Unit } ->
-  Test.TestCls$Dict Test.Unit)
+  (TestCls$Dict: ({   test :: (Test.Unit -> (Test.Unit)) } ->
+  ((Test.TestCls$Dict (Test.Unit)))))
   ({ test: \(v: Test.Unit) -> (Unit: Test.Unit) }: {
-                                                     test :: Test.Unit ->
-                                                     Test.Unit
+                                                     test :: (Test.Unit ->
+                                                     (Test.Unit))
                                                    })
 
-test :: forall (@a :: Prim.Type). Test.TestCls$Dict (a :: Prim.Type) -> (a :: Prim.Type) -> (a :: Prim.Type)
+test :: forall (@a :: Prim.Type). ((Test.TestCls$Dict ((a :: Prim.Type))) -> (((a :: Prim.Type) -> ((a :: Prim.Type)))))
 test = 
-  \(dict: Test.TestCls$Dict (a :: Prim.Type)) -> 
-    case (dict: Test.TestCls$Dict (a :: Prim.Type)) of 
+  \(dict: (Test.TestCls$Dict ((a :: Prim.Type)))) -> 
+    case (dict: (Test.TestCls$Dict ((a :: Prim.Type)))) of 
        TestCls$Dict v -> 
-         (v: {   test :: (a :: Prim.Type) -> (a :: Prim.Type) })
+         (v: {   test :: ((a :: Prim.Type) -> ((a :: Prim.Type))) })
          .test

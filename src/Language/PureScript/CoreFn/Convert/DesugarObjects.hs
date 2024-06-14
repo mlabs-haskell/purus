@@ -122,7 +122,7 @@ prepPIR path  decl = do
                                    tryConvertKind
                                    tryConvertType
                                    moduleDataTypes
-           putStrLn (ppExp e)
+           putStrLn $ "tryConvertExpr result:\n" <> (ppExp e) <> "\n" <> replicate 20 '-'
            pure (e,moduleDataTypes')
 
 -- This gives us a way to report the exact location of the error (which may no longer correspond *at all* to
@@ -250,10 +250,14 @@ tryConvertExpr = first prettyError . tryConvertExpr'
 
 tryConvertExpr' :: Exp WithObjects SourceType (FVar SourceType)
                 -> Either ExprConvertError (Exp WithoutObjects Ty (FVar Ty))
-tryConvertExpr' = go id
+tryConvertExpr' __expr =  do
+    result <- go id __expr
+    let spacer = replicate 20 '-'
+    traceM (spacer <> "tryConvertExpr" <> spacer <> "\n  Expr:\n" <> ppExp __expr <> "\n  Result:\n" <> ppExp result <> "\n" <> spacer )
+    pure result
   where
     go :: (ExpWithObjects -> ExpWithObjects) -> ExpWithObjects -> Either ExprConvertError (Exp WithoutObjects Ty (FVar Ty))
-    go f expression = case expression of
+    go f expression =  case expression of
       LitE  ty lit -> do
         let lhole = f . LitE  ty . ArrayL . pure
         ty' <- goType ty
@@ -264,21 +268,21 @@ tryConvertExpr' = go id
         ty' <- goType ty
         bv' <- updateBV bv
         -- TODO: Figure out how to get a better error location ehre
-        ex <- transverseScopeViaExpX (go f) updateBV e
+        ex <- transverseScopeViaExpX tryConvertExpr'  updateBV e
         pure $ LamE ty' bv' ex
       AppE e1 e2 -> do
-        e2' <- go (f . AppE e1) e2
-        e1' <- go (f . (\x -> AppE x e2)) e1
+        e2' <- tryConvertExpr' e2
+        e1' <- tryConvertExpr' e1
         pure $ AppE  e1' e2'
       CaseE ty scrutinee alts -> do
         ty' <- goType ty
-        scrutinees' <- go (f . (\x -> CaseE ty x alts)) scrutinee
+        scrutinees' <- tryConvertExpr' scrutinee
         alts' <- traverse (goAlt (f . CaseE  ty scrutinee . pure)) alts
         pure $ CaseE ty' scrutinees' alts'
       LetE bindings bound e -> do
         bindings' <- traverse (traverse goType) bindings
         bound' <- goBinds (f . (\x -> LetE bindings [x] e)) bound
-        e' <- transverseScopeViaExpX (go f) updateBV  e
+        e' <- transverseScopeViaExpX tryConvertExpr' updateBV  e
         pure $ LetE bindings' bound' e'
       AccessorE _ ty lbl e -> desugarObjectAccessor ty lbl e
       ObjectUpdateE _ ty orig copF updF -> desugarObjectUpdate ty orig copF updF
@@ -291,7 +295,7 @@ tryConvertExpr' = go id
        goAlt _ (UnguardedAlt binders pat e) = do
          binders' <- fmap M.fromList . catchTE $ traverse (traverse (traverse tryConvertType)) (M.toList binders)
          pat' <- goPat pat
-         e' <- transverseScopeViaExpX (go f) updateBV e
+         e' <- transverseScopeViaExpX tryConvertExpr' updateBV e
          pure $ UnguardedAlt binders' pat' e'
 
        goPat :: Pat WithObjects (Exp WithObjects SourceType) (FVar SourceType)
@@ -345,13 +349,13 @@ tryConvertExpr' = go id
        goBinds _ [] = pure []
        goBinds g (b:bs) = case b of
          NonRecursive ident expr -> do
-           e' <- go (g . NonRecursive ident) expr
+           e' <- tryConvertExpr' expr
            rest <- goBinds g bs
            pure $ NonRecursive ident e'  : rest
          Recursive  xs -> do
            -- TODO: Accurate error reporting
            let g' = g . NonRecursive (Ident "HERE")
-           xs' <- traverse (traverse (go g')) xs
+           xs' <- traverse (traverse tryConvertExpr') xs
            rest <- goBinds g bs
            pure $ Recursive xs' : rest
 
@@ -389,7 +393,7 @@ tryConvertExpr' = go id
                len = length fs
                tupTyName = mkTupleTyName len
                bareFields = snd <$> fs
-           bareFields' <- traverse (go cb) bareFields
+           bareFields' <- traverse tryConvertExpr' bareFields
            let types' = expTy F <$> bareFields'
                types = types' <> [foldl' applyType (TyCon tupTyName) types']
                ctorType = foldr1 funTy types
@@ -426,7 +430,7 @@ tryConvertExpr' = go id
                                             <> "\n  should have a Record type, but instead has type:\n  "
                                             <> prettyStr other
 
-         updateMap <- traverse (go f) $ M.fromList updateFields
+         updateMap <- traverse tryConvertExpr' $ M.fromList updateFields
          updateTypes <-  traverse goType $ M.fromList $ second (expTy F) <$> updateFields
          origTypes <- traverse (goType . rowListType) (mkFieldMap _fs)
          let ts = updateTypes  `M.union` origTypes
@@ -489,7 +493,7 @@ tryConvertExpr' = go id
              rhs :: Exp WithoutObjects Ty (Var (BVar Ty) (FVar Ty))
              rhs = V . B $ BVar lblIx  fieldTy  dummyNm
              altBranch = UnguardedAlt M.empty ctorBndr (toScope rhs)
-         e' <- go f e
+         e' <- tryConvertExpr' e
          pure $ CaseE fieldTy e' [altBranch]
 
 assembleDesugaredObjectLit :: forall x a. Exp x Ty a  -> Ty -> [Exp x Ty a] -> Either ExprConvertError (Exp x Ty a)
@@ -509,7 +513,7 @@ mkProdFields :: [t] -> [(Ident,t)]
 mkProdFields = map (UnusedIdent,)
 
 primData :: Datatypes Kind Ty
-primData = Datatypes tDict cDict
+primData = tupleDatatypes <> Datatypes tDict cDict
   where
     tDict = M.fromList $ map (\x -> (x ^. dDataTyName,x))
         [ DataDecl Data C.Array [("a", KindType)] [
@@ -518,8 +522,8 @@ primData = Datatypes tDict cDict
           ],
 
           DataDecl Data C.Boolean [] [
-            CtorDecl (properToIdent <$> C.False) [],
-            CtorDecl (properToIdent <$> C.True) []
+            CtorDecl (properToIdent <$> C.C_False) [],
+            CtorDecl (properToIdent <$> C.C_True) []
           ]
         ]
 
@@ -527,8 +531,8 @@ primData = Datatypes tDict cDict
     cDict = M.fromList  [
         (ArrayCons, C.Array),
         (ArrayNil, C.Array),
-        (properToIdent <$> C.True,C.Boolean),
-        (properToIdent <$> C.False,C.Boolean)
+        (properToIdent <$> C.C_True,C.Boolean),
+        (properToIdent <$> C.C_False,C.Boolean)
       ]
 
 tupleDatatypes :: Datatypes Kind Ty

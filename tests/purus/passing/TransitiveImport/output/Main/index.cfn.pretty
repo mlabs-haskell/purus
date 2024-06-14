@@ -28,7 +28,7 @@ Declarations:
 ------------------------------
 main :: Test.Unit
 main = 
-  (middle: forall (a :: Prim.Type). Test.TestCls$Dict (a :: Prim.Type) ->
-  (a :: Prim.Type) -> (a :: Prim.Type))
-  (testClsUnit: Test.TestCls$Dict Test.Unit)
+  (middle: forall (a :: Prim.Type). ((Test.TestCls$Dict ((a :: Prim.Type))) ->
+  (((a :: Prim.Type) -> ((a :: Prim.Type))))))
+  (testClsUnit: (Test.TestCls$Dict (Test.Unit)))
   (unit: Test.Unit)

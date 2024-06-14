@@ -21,13 +21,13 @@ Foreign:
 Datatypes: 
 ------------------------------
 newtype ClassName$Dict (a :: Prim.Type) = 
-  ClassName$Dict { foo :: (a :: Prim.Type) -> Prim.Int }
+  ClassName$Dict ({ foo :: ((a :: Prim.Type) -> (Prim.Int)) })
 
 
 Declarations: 
 ------------------------------
-foo :: forall (@a :: Prim.Type). ImportedClassName.ClassName$Dict (a :: Prim.Type) -> (a :: Prim.Type) -> Prim.Int
+foo :: forall (@a :: Prim.Type). ((ImportedClassName.ClassName$Dict ((a :: Prim.Type))) -> (((a :: Prim.Type) -> (Prim.Int))))
 foo = 
-  \(dict: ImportedClassName.ClassName$Dict (a :: Prim.Type)) -> 
-    case (dict: ImportedClassName.ClassName$Dict (a :: Prim.Type)) of 
-       ClassName$Dict v -> (v: { foo :: (a :: Prim.Type) -> Prim.Int }).foo
+  \(dict: (ImportedClassName.ClassName$Dict ((a :: Prim.Type)))) -> 
+    case (dict: (ImportedClassName.ClassName$Dict ((a :: Prim.Type)))) of 
+       ClassName$Dict v -> (v: { foo :: ((a :: Prim.Type) -> (Prim.Int)) }).foo

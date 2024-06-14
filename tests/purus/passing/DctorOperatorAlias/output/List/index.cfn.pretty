@@ -22,7 +22,7 @@ Foreign:
 Datatypes: 
 ------------------------------
 data List (a :: Prim.Type) = 
-  Cons (a :: Prim.Type) List.List (a :: Prim.Type)
+  Cons ((a :: Prim.Type)) ((List.List ((a :: Prim.Type))))
   | Nil 
 
 

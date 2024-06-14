@@ -29,5 +29,5 @@ Declarations:
 ------------------------------
 main :: Prim.String
 main = 
-  (runZ: Test.Z -> Prim.String)
-  ((Z: Prim.String -> Test.Z) ("Done": Prim.String))
+  (runZ: (Test.Z -> (Prim.String)))
+  ((Z: (Prim.String -> (Test.Z))) ("Done": Prim.String))

@@ -29,11 +29,11 @@ import Language.PureScript.Names
     ( ProperNameType(TypeName),
       Qualified(..),
       ProperName(..),
-      Ident,
+      Ident (..),
       pattern ByThisModuleName,
       showQualified,
       showIdent,
-      disqualify, runIdent )
+      disqualify, runIdent, QualifiedBy (ByModuleName) )
 import Bound.Var ( Var(F) )
 
 
@@ -228,7 +228,7 @@ note msg = maybe (throwError msg) pure
 mkTypeBindDict :: Datatypes IR.Kind Ty
                -> Exp WithoutObjects Ty (FVar Ty)
                -> Either String DatatypeDictionary
-mkTypeBindDict _datatypes main = doTraceM "mkTypeBindDict" (prettyStr _datatypes) >>  case runState act initState of
+mkTypeBindDict _datatypes main = doTraceM "mkTypeBindDict" (prettyStr main) >>  case runState act initState of
    (Left err,_) -> Left err
    (Right _,res) -> pure res
   where
@@ -238,8 +238,8 @@ mkTypeBindDict _datatypes main = doTraceM "mkTypeBindDict" (prettyStr _datatypes
     maxIx = maxBV main
 
     allTypeConstructors :: Exp WithoutObjects Ty (FVar Ty) -> S.Set (Qualified (ProperName 'TypeName))
-    allTypeConstructors e = S.fromList $  e ^.. cosmos . to (expTy F) . cosmos . _TyCon
-
+    allTypeConstructors e = let res = S.fromList $  e ^.. cosmos . to (expTy F) . cosmos . _TyCon
+                            in doTrace "allTypeConstructors" (show $ S.map prettyQPN res) $ res
     maxBV :: Exp WithoutObjects t (FVar t) -> Int
     maxBV e = foldr go 0 $ e ^.. cosmos
       where
@@ -258,18 +258,24 @@ mkTypeBindDict _datatypes main = doTraceM "mkTypeBindDict" (prettyStr _datatypes
              let thisMax = foldr (max . bvIx) n (bindings scope)
              in maxAlt thisMax rest
 
+isTupleCtor :: Qualified (ProperName a) -> Bool
+isTupleCtor (Qualified (ByModuleName C.M_Prim) (ProperName xs)) = T.isPrefixOf "Tuple" xs
+isTupleCtor _ = False
+
 mkPIRDatatypes :: Datatypes IR.Kind Ty
                -> S.Set (Qualified (ProperName 'TypeName))
                -> DatatypeM ()
-mkPIRDatatypes datatypes tyConsInExp = doTraceM "mkPIRDatatypes" (prettyStr datatypes) >>
+mkPIRDatatypes datatypes tyConsInExp = doTraceM "mkPIRDatatypes" (show $ S.map prettyQPN tyConsInExp ) >>
   traverse_ go tyConsInExp
   where
     -- these things don't have datatype definitions anywhere
     truePrimitives = S.fromList [C.Function, C.Int, C.Char, C.String]
 
+
+
     go :: Qualified (ProperName 'TypeName)
        -> DatatypeM ()
-    go qn | qn `S.member` truePrimitives = pure ()
+    go qn | qn `S.member` truePrimitives  = pure ()
     go qn@(Qualified _ (ProperName tnm)) = doTraceM "mkPIRDatatypes: go" (prettyQPN qn) >> case lookupDataDecl qn datatypes of
       Nothing -> throwError $ "Error when translating data types to PIR: "
                         <> "Couldn't find a data type declaration for "
@@ -277,6 +283,7 @@ mkPIRDatatypes datatypes tyConsInExp = doTraceM "mkPIRDatatypes" (prettyStr data
       Just dDecl -> do -- TODO: newtypes should probably be newtype-ey
         let declArgs = fst <$> dDecl ^. dDataArgs
             declKind = mkDeclKind $ mkKind . snd <$> (dDecl ^. dDataArgs)
+        doTraceM "mkPIRDatatypes: Decl" (prettyStr dDecl)
         doTraceM "mkPIRDatatypes: decl args: " (show declArgs)
         tyName <- mkTyName qn
         let typeNameDecl = TyVarDecl () tyName declKind
@@ -317,7 +324,7 @@ toPIRType _ty = doTraceM "toPIRType" (prettyStr _ty) >> case _ty of
   IR.TyVar txt _ -> PIR.TyVar () <$> getBoundTyVarName txt
   TyCon qtn@(Qualified qb _) -> case qb of
     ByThisModuleName "Builtin" -> either throwError pure $  handleBuiltinTy qtn
-    ByThisModuleName "Prim" | isJust (handlePrimTy qtn)->   pure . fromJust $ handlePrimTy qtn
+    ByThisModuleName "Prim" | isJust (handlePrimTy qtn) ->   pure . fromJust $ handlePrimTy qtn
     _ -> do
       tyName <- mkTyName qtn
       pure $ PIR.TyVar () tyName
@@ -374,7 +381,7 @@ getDestructorTy qn = do
     Just dctor -> pure dctor
 
 getConstructorName :: Qualified Ident -> DatatypeM (Maybe PLC.Name)
-getConstructorName qi = do
+getConstructorName qi = doTraceM "getConstructorName" (show qi) >> do
   ctors <- gets (view constrNames)
   pure $ ctors ^? ix qi . _1
 

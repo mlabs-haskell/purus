@@ -95,33 +95,36 @@ instance (Pretty k, Pretty t) => Pretty (Datatypes k t) where
   pretty = prettyDatatypes
 
 prettyDatatypes :: forall k t ann. (Pretty k, Pretty t) => Datatypes k t -> Doc ann
-prettyDatatypes (Datatypes tDict _) = vcat . punctuate line $ map go (M.elems tDict)
+prettyDatatypes (Datatypes tDict _) = vcat . punctuate line $ map prettyDataDecl (M.elems tDict)
   where
-    prettyDeclType :: DataDeclType -> Doc ann
-    prettyDeclType = \case
+prettyDeclType :: DataDeclType -> Doc ann
+prettyDeclType = \case
       Data -> "data"
       Newtype -> "newtype"
 
-    prefix :: Doc ann -> [Doc ann] -> [Doc ann]
-    prefix sep [] = []
-    prefix sep [x] = [x]
-    prefix sep (x:xs) = x: goPrefix xs
+prefix :: Doc ann -> [Doc ann] -> [Doc ann]
+prefix sep [] = []
+prefix sep [x] = [x]
+prefix sep (x:xs) = x: goPrefix xs
       where
         goPrefix [] = []
         goPrefix (y:ys) = (sep <> y) : goPrefix ys
 
-    go :: DataDecl k t -> Doc ann
-    go (DataDecl newtypeOrData qName args ctors ) =
-      let dType =  prettyDeclType newtypeOrData
-          tName = pretty $ runProperName (disqualify qName)
-          mkArg :: (Text,k) -> Doc ann
-          mkArg (txt,k) = parens (pretty txt <::> pretty k)
-          dArgs = hsep $ mkArg <$> args
-          dCtors = indent 2 . vcat $ prefix "| " $ prettyCtorDecl <$> ctors
-      in dType <+> tName <+> dArgs <=> line <> dCtors
+instance (Pretty k, Pretty t) => Pretty (DataDecl k t) where
+  pretty = prettyDataDecl
 
-    prettyCtorDecl :: CtorDecl t -> Doc ann
-    prettyCtorDecl (CtorDecl nm fs) =
+prettyDataDecl :: forall k t ann. (Pretty k, Pretty t) => DataDecl k t -> Doc ann
+prettyDataDecl (DataDecl newtypeOrData qName args ctors ) =
+  let dType =  prettyDeclType newtypeOrData
+      tName = pretty $ runProperName (disqualify qName)
+      mkArg :: (Text,k) -> Doc ann
+      mkArg (txt,k) = parens (pretty txt <::> pretty k)
+      dArgs = hsep $ mkArg <$> args
+      dCtors = indent 2 . vcat $ prefix "| " $ prettyCtorDecl <$> ctors
+  in dType <+> tName <+> dArgs <=> line <> dCtors
+
+prettyCtorDecl :: Pretty t => CtorDecl t -> Doc ann
+prettyCtorDecl (CtorDecl nm fs) =
       pretty (runIdent $ disqualify nm) <+> (hsep (parens . pretty . snd <$> fs))
 
 -- Is a printer for consistency mainly

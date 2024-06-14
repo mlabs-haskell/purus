@@ -11,7 +11,7 @@ module Language.PureScript.CoreFn.Convert.Monomorphize.Utils  where
 import Prelude
 
 import Language.PureScript.CoreFn.Expr (PurusType, Bind)
-import Language.PureScript.CoreFn.Convert.IR (_V, Exp(..), FVar(..), BindE(..), BVar (..), flattenBind, abstractMany, mkBindings, Alt (..), Lit (..), expTy)
+import Language.PureScript.CoreFn.Convert.IR (_V, Exp(..), FVar(..), BindE(..), BVar (..), flattenBind, abstractMany, mkBindings, Alt (..), Lit (..), expTy, ppExp)
 import Language.PureScript.Names (Ident(..), ModuleName (..), QualifiedBy (..), Qualified (..), pattern ByNullSourcePos)
 import Language.PureScript.Types
     ( SourceType, RowListItem (..), rowToList, Type (..), Constraint(..) )
@@ -157,7 +157,11 @@ unsafeApply ::
   Exp WithObjects PurusType (FVar PurusType)
 unsafeApply e (arg:args)= case expTy F e of
   (_ :-> _) -> unsafeApply (AppE e arg) args
-  other -> Prelude.error $ "Unexpected argument to unsafeApply:" <> prettyTypeStr other
+  other -> Prelude.error $ "Unexpected argument to unsafeApply:\n  "
+                           <> "Fun Expression: " <> ppExp e
+                           <> "\n  Arg: " <> ppExp arg
+                           <> "\n  FunType: " <> prettyTypeStr other
+                           <> "\n  ArgType: " <> prettyTypeStr (expTy F arg)
 unsafeApply e [] = e
 
 {- Find the declaration *group* to which a given identifier belongs.

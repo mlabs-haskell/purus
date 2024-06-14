@@ -25,11 +25,11 @@ Datatypes:
 
 Declarations: 
 ------------------------------
-applyFn :: forall (a :: Prim.Type) (b :: Prim.Type). forall (c :: Prim.Type) (d :: Prim.Type). (c :: Prim.Type) -> (d :: Prim.Type) -> (a :: Prim.Type) -> (b :: Prim.Type)
+applyFn :: forall (a :: Prim.Type) (b :: Prim.Type). (forall (c :: Prim.Type) (d :: Prim.Type). ((c :: Prim.Type) -> ((d :: Prim.Type))) -> (((a :: Prim.Type) -> ((b :: Prim.Type)))))
 applyFn = 
   \(f: forall (c :: Prim.Type)
-    (d :: Prim.Type). (c :: Prim.Type) -> (d :: Prim.Type)) -> 
+    (d :: Prim.Type). ((c :: Prim.Type) -> ((d :: Prim.Type)))) -> 
     \(a: (a :: Prim.Type)) -> 
       (f: forall (c :: Prim.Type)
-      (d :: Prim.Type). (c :: Prim.Type) -> (d :: Prim.Type))
+      (d :: Prim.Type). ((c :: Prim.Type) -> ((d :: Prim.Type))))
       (a: (a :: Prim.Type))

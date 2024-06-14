@@ -26,8 +26,8 @@ Datatypes:
 
 Declarations: 
 ------------------------------
-id :: forall (a :: Prim.Type). (a :: Prim.Type) -> (a :: Prim.Type)
+id :: forall (a :: Prim.Type). ((a :: Prim.Type) -> ((a :: Prim.Type)))
 id = \(x: (a :: Prim.Type)) -> (x: (a :: Prim.Type))
 
-foo :: forall (a :: Prim.Type). (a :: Prim.Type) -> (a :: Prim.Type)
-foo = (id: forall (a :: Prim.Type). (a :: Prim.Type) -> (a :: Prim.Type))
+foo :: forall (a :: Prim.Type). ((a :: Prim.Type) -> ((a :: Prim.Type)))
+foo = (id: forall (a :: Prim.Type). ((a :: Prim.Type) -> ((a :: Prim.Type))))

@@ -30,9 +30,9 @@ Declarations:
 unit :: Test.Unit
 unit = (Unit: Test.Unit)
 
-middle :: forall (a :: Prim.Type). Test.TestCls$Dict (a :: Prim.Type) -> (a :: Prim.Type) -> (a :: Prim.Type)
+middle :: forall (a :: Prim.Type). ((Test.TestCls$Dict ((a :: Prim.Type))) -> (((a :: Prim.Type) -> ((a :: Prim.Type)))))
 middle = 
-  \(dictTestCls: Test.TestCls$Dict (a :: Prim.Type)) -> 
-    (test: forall (@a :: Prim.Type). Test.TestCls$Dict (a :: Prim.Type) ->
-    (a :: Prim.Type) -> (a :: Prim.Type))
-    (dictTestCls: Test.TestCls$Dict (a :: Prim.Type))
+  \(dictTestCls: (Test.TestCls$Dict ((a :: Prim.Type)))) -> 
+    (test: forall (@a :: Prim.Type). ((Test.TestCls$Dict ((a :: Prim.Type))) ->
+    (((a :: Prim.Type) -> ((a :: Prim.Type))))))
+    (dictTestCls: (Test.TestCls$Dict ((a :: Prim.Type))))

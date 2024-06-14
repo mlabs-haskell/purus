@@ -37,7 +37,7 @@ import Data.Map qualified as M
 import Language.PureScript.PSString (PSString, prettyPrintString)
 import Language.PureScript.AST.SourcePos (SourceAnn)
 import Control.Lens
-    ( (&), (^..), cosmos )
+    ( (&), (^..), cosmos, transformM )
 import Control.Monad (foldM)
 import Control.Monad.RWS.Class (MonadReader(ask))
 import Control.Monad.RWS (RWST(..))
@@ -78,6 +78,7 @@ import Control.Lens.Getter (to)
 import Data.Set qualified as S
 import Data.Foldable (traverse_)
 import Data.Char (isUpper)
+import Control.Lens.Plated
 
 {- Function for quickly testing/debugging monomorphization -}
 
@@ -105,9 +106,11 @@ runMonomorphize ::
   Exp WithObjects PurusType (FVar PurusType) ->
   Either MonoError (Exp WithObjects PurusType (FVar PurusType))
 runMonomorphize Module{..} modulesInScope expr =
-  runRWST (monomorphize  expr) (moduleName,moduleDecls) (MonoState 0) & \case
+  runRWST ( monomorphize  expr) (moduleName,moduleDecls) (MonoState 0) & \case
     Left err -> Left err
-    Right (a,_,_) -> Right a
+    Right (a,_,_) -> do
+      traceM ("\nMONOMORPHIZE OUTPUT: \n" <> ppExp a <> "\n" <> replicate 20 '-')
+      pure a
 
 {- Entry point for inlining monomorphization.
 
@@ -122,7 +125,7 @@ runMonomorphize Module{..} modulesInScope expr =
 monomorphize ::
   Exp WithObjects PurusType (FVar PurusType)  ->
   Monomorphizer (Exp WithObjects PurusType (FVar PurusType))
-monomorphize  xpr = trace ("monomorphize " <>  "\n  " <> ppExp xpr)  $ case xpr of
+monomorphize  xpr = trace ("\nmonomorphize " <>  "\n  " <> ppExp xpr)  $ case xpr of
   app@(AppE _ _) ->  do
     -- First, we split the
     let (f,args) = unsafeAnalyzeApp app
@@ -133,19 +136,31 @@ monomorphize  xpr = trace ("monomorphize " <>  "\n  " <> ppExp xpr)  $ case xpr 
 
     -- FIXME: Check for constructors as well as builtins
     if isBuiltin f || isConstructor f
-      then pure app
+      then do
+        traceM ("\nmonomorphize: Is builtin or ctor, skipping:\n" <> ppExp f)
+        pure $ unsafeApply f args
       else handleFunction  f args
-  other -> trace ("monomorphize: other: " <> ppExp other) $ pure other
- where
+  other -> trace ("\nmonomorphize: other: " <> ppExp other) $ pure other
+
+inlineEverything :: Exp WithObjects PurusType (FVar PurusType)
+                 -> Monomorphizer (Exp WithObjects PurusType (FVar PurusType))
+inlineEverything = transformM go
+  where
+    go :: Exp WithObjects PurusType (FVar PurusType)
+       -> Monomorphizer (Exp WithObjects PurusType (FVar PurusType))
+    go = \case
+      expr@(V (FVar ty qi)) | not (isBuiltin expr || isConstructor expr) ->  inlineAs ty qi
+      other -> pure other
+
    -- Builtins shouldn't be inlined because they can't be.
    -- TODO/REVIEW: Figure out whether it's necessary to *monomorphize*
    --              polymorphic builtins. (Trivial to implement if needed)
-   isBuiltin = \case
+isBuiltin = \case
      V (FVar _ (Qualified (ByModuleName (ModuleName "Builtin")) _ )) -> True
      _ -> False
    -- After the recent changes, constructors *can't* be inlined, i.e., they must remain
    -- free until the final PIR compilation stage
-   isConstructor = \case
+isConstructor = \case
      V (FVar _ (Qualified _ (Ident nm))) -> isUpper (T.head nm)
      _ -> False
 
@@ -167,13 +182,13 @@ handleFunction ::  Exp WithObjects PurusType (FVar PurusType)
                -> [Exp WithObjects PurusType (FVar PurusType)] -- TODO: List could be empty?
                -> Monomorphizer (Exp WithObjects PurusType (FVar PurusType))
 -- If we don't have any argument types, the only thing we can do is return the original expression.
-handleFunction  e [] = trace ("handleFunction FIN: " <> ppExp e) $ pure e
+handleFunction  e [] = trace ("\nhandleFunction FIN: " <> ppExp e) $ pure e
 {- If we have an explicit polymorphic lambda & argument types, we look at the argument types one-by-one
    and check whether those types allow us to deduce the type to which the TyVar bound by the Forall in
    the lambda's type ought to be instantiated. (See the `instantiates` function)
 -}
 handleFunction  expr@(LamE (ForAll _ _ var _ inner  _) bv@(BVar bvIx _ bvIdent) body'') (arg:args) = do
-  traceM  ("handleFunction abs:\n  " <> ppExp expr)
+  traceM  ("\nhandleFunction abs:\n  " <> ppExp expr)
   let t = expTy F arg -- get the type of the first expression to which the function is applied
   traceM $ prettyTypeStr t
   let polyArgT = getFunArgTy inner -- get the (possibly polymorphic) type of the first arg in the function's signature
@@ -194,12 +209,12 @@ handleFunction  expr@(LamE (ForAll _ _ var _ inner  _) bv@(BVar bvIx _ bvIdent) 
 {- If we have a free variable, we attempt to inline the variable (without altering the type)
    and then call `handleFunction` on the inlined expression with the same argument types
 -}
-handleFunction  v@(V (FVar ty  qn)) es = trace ("handleFunction VarGo: " <> ppExp v) $ do
+handleFunction  v@(V (FVar ty  qn)) es = trace ("\nhandleFunction VarGo: " <> ppExp v) $ do
   e' <- inlineAs ty qn
   handleFunction e' es
 {- If the function parameter is monomorphic then we rebuild the initial AppE and return it.
 -}
-handleFunction e es | isMonoType (expTy F e)  = trace ("handleFunction isMono: " <> ppExp e) $ pure $ unsafeApply e es
+handleFunction e es | isMonoType (expTy F e)  = traceM ("\nhandleFunction isMono: " <> ppExp e) >> pure $ unsafeApply e es
 -- Anything else is an error.
 handleFunction e es = throwError $ MonoError
                         $ "Error in handleFunction:\n  "
@@ -223,10 +238,10 @@ inlineAs ::
 -- TODO/REVIEW: Check whether this has any purpose here \/
 inlineAs ty = \case
   nm@(Qualified (ByModuleName (ModuleName "Builtin")) _ ) -> do
-    traceM ("inlineAs BUILTIN: " <> T.unpack (showQualified showIdent nm))
+    traceM ("\ninlineAs BUILTIN: " <> T.unpack (showQualified showIdent nm))
     pure $ V (FVar ty nm)
    -- TODO: Linker so we can make this work no matter what the source module is
-  (Qualified (ByModuleName mn') ident) -> trace ("inlineAs: " <> showIdent' ident <> " :: " <>  prettyTypeStr ty) $ ask >>= \(mn,modDict) ->
+  (Qualified (ByModuleName mn') ident) -> trace ("\ninlineAs: " <> showIdent' ident <> " :: " <>  prettyTypeStr ty) $ ask >>= \(mn,modDict) ->
     if mn ==  mn' then do
       let msg = "Couldn't find a declaration with identifier " <> showIdent' ident <> " to inline as " <> prettyTypeStr ty
       note msg  (findInlineDeclGroup ident modDict) >>= \case
@@ -273,7 +288,7 @@ inlineAs ty = \case
             -> SourceType                   -- TypeToAssign
             -> Exp WithObjects PurusType (FVar PurusType) -- Declaration body
             -> Monomorphizer (BindE PurusType (Exp WithObjects PurusType) (FVar PurusType))
-   makeBind renameDict newIdent t e = trace ("makeBind: " <> showIdent' newIdent) $ do
+   makeBind renameDict newIdent t e = trace ("\nmakeBind: " <> showIdent' newIdent) $ do
      e' <- updateFreeVars renameDict <$> monomorphizeWithType t  e
      pure $ NonRecursive newIdent e'
 
@@ -307,7 +322,7 @@ inlineAs ty = \case
      Map Ident (Ident, SourceType, Exp WithObjects PurusType (FVar PurusType)) ->
      Exp WithObjects PurusType (FVar PurusType) ->
      Monomorphizer (Map Ident (Ident, SourceType, Exp WithObjects PurusType (FVar PurusType)))
-   collectRecBinds t visited  e = trace ("collectRecBinds:\n  " <> ppExp  e <> "\n  " <> prettyTypeStr t) $ case  e of
+   collectRecBinds t visited  e = trace ("\ncollectRecBinds:\n  " <> ppExp  e <> "\n  " <> prettyTypeStr t) $ case  e of
      LitE _ (ArrayL arr) -> trace "crbARRAYLIT" $ case t of
        ArrayT inner -> do
          innerBinds <- foldM (collectRecBinds inner) visited arr

@@ -21,7 +21,7 @@ Foreign:
 Datatypes: 
 ------------------------------
 newtype Const (a :: Prim.Type) (b :: Prim.Type) = 
-  Const (a :: Prim.Type)
+  Const ((a :: Prim.Type))
 
 data Unit  = 
   Unit 
