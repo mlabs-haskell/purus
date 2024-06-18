@@ -611,7 +611,7 @@ declToPIR path decl = prepPIR path decl >>= \case
   (mainExpr,datatypes) -> do
     case mkTypeBindDict datatypes mainExpr of
       Left err -> throwIO . userError $ err
-      Right dict -> case runDatatypeM dict $ firstPass datatypes F mainExpr of
+      Right dict -> case runDatatypeM dict $ firstPass datatypes id mainExpr of
         Left err -> throwIO . userError $ err
         Right e  -> do
           let dtBinds = NE.fromList $  PIR.DatatypeBind () <$> M.elems (dict ^. pirDatatypes)

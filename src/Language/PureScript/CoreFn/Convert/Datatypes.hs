@@ -10,7 +10,7 @@ import Language.PureScript.CoreFn.Convert.IR
       expTy,
       Alt(..),
       BVar(BVar),
-      Exp(CaseE, LamE, LetE, AppE),
+      Exp(..),
       FVar,
       Ty(Forall, TyCon) )
 import Language.PureScript.CoreFn.Convert.IR qualified as IR
@@ -71,6 +71,7 @@ import Language.PureScript.CoreFn.Convert.DesugarObjects
 import Data.Maybe (mapMaybe, fromJust, isJust)
 import Debug.Trace
 import Language.PureScript.CoreFn.Pretty.Expr (prettyDatatypes)
+import Bound (Var(..))
 
 
 doTraces :: Bool
@@ -226,7 +227,7 @@ note :: String -> Maybe a -> DatatypeM a
 note msg = maybe (throwError msg) pure
 
 mkTypeBindDict :: Datatypes IR.Kind Ty
-               -> Exp WithoutObjects Ty (FVar Ty)
+               -> Exp WithoutObjects Ty (Var (BVar Ty) (FVar Ty))
                -> Either String DatatypeDictionary
 mkTypeBindDict _datatypes main = doTraceM "mkTypeBindDict" (prettyStr main) >>  case runState act initState of
    (Left err,_) -> Left err
@@ -237,22 +238,23 @@ mkTypeBindDict _datatypes main = doTraceM "mkTypeBindDict" (prettyStr main) >>  
     initState = DatatypeDictionary M.empty M.empty M.empty M.empty M.empty M.empty maxIx
     maxIx = maxBV main
 
-    allTypeConstructors :: Exp WithoutObjects Ty (FVar Ty) -> S.Set (Qualified (ProperName 'TypeName))
-    allTypeConstructors e = let res = S.fromList $  e ^.. cosmos . to (expTy F) . cosmos . _TyCon
+    allTypeConstructors :: Exp WithoutObjects Ty (Var (BVar Ty) (FVar Ty)) -> S.Set (Qualified (ProperName 'TypeName))
+    allTypeConstructors e = let res = S.fromList $  e ^.. cosmos . to (expTy id) . cosmos . _TyCon
                             in doTrace "allTypeConstructors" (show $ S.map prettyQPN res) $ res
-    maxBV :: Exp WithoutObjects t (FVar t) -> Int
+    maxBV :: Exp WithoutObjects t (Var (BVar t) (FVar t)) -> Int
     maxBV e = foldr go 0 $ e ^.. cosmos
       where
         bvIx (BVar n _ _ ) = n
-        go :: Exp WithoutObjects t (FVar t) -> Int -> Int
+        go :: Exp WithoutObjects t (Var (BVar t) (FVar t)) -> Int -> Int
         go x acc = case x of
+          V (B bv) -> max (bvIx bv) acc
           LamE _ (BVar n _ _) _ -> max n acc
           LetE _ _ scope ->  foldr (max . bvIx) acc (bindings scope)
           CaseE _ _ alts -> maxAlt acc alts
           AppE e1 e2     -> max (go e1 acc) (go e2 acc)
           _ -> acc
          where
-           maxAlt :: Int -> [Alt WithoutObjects t (Exp WithoutObjects t) (FVar t)] -> Int
+           maxAlt :: Int -> [Alt WithoutObjects t (Exp WithoutObjects t) (Var (BVar t) (FVar t))] -> Int
            maxAlt n [] = n
            maxAlt n (UnguardedAlt _ _ scope:rest) =
              let thisMax = foldr (max . bvIx) n (bindings scope)

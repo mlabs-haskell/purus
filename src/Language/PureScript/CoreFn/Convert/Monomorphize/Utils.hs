@@ -5,13 +5,14 @@
 {-# LANGUAGE PartialTypeSignatures #-}
 {-# OPTIONS_GHC -Wno-unrecognised-pragmas #-}
 {-# HLINT ignore "Use camelCase" #-}
+{-# LANGUAGE TypeApplications #-}
 
 module Language.PureScript.CoreFn.Convert.Monomorphize.Utils  where
 
 import Prelude
 
 import Language.PureScript.CoreFn.Expr (PurusType, Bind)
-import Language.PureScript.CoreFn.Convert.IR (_V, Exp(..), FVar(..), BindE(..), BVar (..), flattenBind, abstractMany, mkBindings, Alt (..), Lit (..), expTy, ppExp)
+import Language.PureScript.CoreFn.Convert.IR (_V, Exp(..), FVar(..), BindE(..), BVar (..), flattenBind, abstractMany, mkBindings, Alt (..), Lit (..), expTy, ppExp, Pat(..), XAccessor, XObjectUpdate, XObjectLiteral)
 import Language.PureScript.Names (Ident(..), ModuleName (..), QualifiedBy (..), Qualified (..), pattern ByNullSourcePos)
 import Language.PureScript.Types
     ( SourceType, RowListItem (..), rowToList, Type (..), Constraint(..) )
@@ -25,7 +26,7 @@ import Control.Monad.RWS (RWST(..))
 import Control.Monad.Except (throwError)
 import Data.Text (Text)
 import Bound.Var (Var(..))
-import Bound.Scope (Scope (..), abstractEither, toScope, fromScope, mapScope, mapBound, mapMBound)
+import Bound.Scope (Scope (..), abstractEither, toScope, fromScope, mapScope, mapBound, mapMBound, traverseScope)
 import Data.Bifunctor (Bifunctor (..))
 import Data.List (find)
 import Control.Lens.Plated ( transform, Plated(..) )
@@ -40,6 +41,8 @@ import Language.PureScript.CoreFn.Convert.DesugarCore
     ( WithObjects )
 import Data.Aeson qualified as Aeson
 import GHC.IO (throwIO)
+import Control.Monad (join)
+import Data.Void (Void, absurd)
 
 type IR_Decl = BindE PurusType (Exp WithObjects PurusType) (FVar PurusType)
 
@@ -55,12 +58,12 @@ newtype MonoState = MonoState {
 }
 
 -- Reads (ModuleName,ModuleDecls), writes nothing (...yet), State is a newtype over Int for fresh names & etc
-type Monomorphizer a = RWST (ModuleName, [BindE PurusType (Exp WithObjects PurusType) (FVar PurusType)]) () MonoState (Either MonoError)  a
+type Monomorphizer a = RWST (ModuleName, [BindE PurusType (Exp WithObjects PurusType) (Var (BVar PurusType) (FVar PurusType))]) () MonoState (Either MonoError)  a
 
 getModName :: Monomorphizer ModuleName
 getModName = ask <&> fst
 
-getModBinds :: Monomorphizer [BindE PurusType (Exp WithObjects PurusType) (FVar PurusType)]
+getModBinds :: Monomorphizer [BindE PurusType (Exp WithObjects PurusType) (Var (BVar PurusType) (FVar PurusType))]
 getModBinds = ask <&> snd
 
 note ::  String -> Maybe b -> Monomorphizer b
@@ -94,16 +97,17 @@ freshBVar t = do
 qualifyNull :: a -> Qualified a
 qualifyNull = Qualified ByNullSourcePos
 
+-- REVIEW: IDK if this is right? Do we need to abstract here?
 -- Construct a Let expression from a list of BindEs and a scoped body
 gLet ::
-  [BindE PurusType (Exp WithObjects PurusType) (FVar PurusType)] ->
-  Scope (BVar PurusType) (Exp WithObjects PurusType) (FVar PurusType) ->
-  Exp WithObjects PurusType (FVar PurusType)
-gLet binds e =  LetE bindings binds $ abstractEither abstr e'
+  [BindE PurusType (Exp WithObjects PurusType) (Var (BVar PurusType) (FVar PurusType))] ->
+  Scope (BVar PurusType) (Exp WithObjects PurusType) (Var (BVar PurusType) (FVar PurusType)) ->
+  Exp WithObjects PurusType (Var (BVar PurusType) (FVar PurusType))
+gLet binds e =  LetE bindings binds e
   where
     e' = fromScope e
     bindings = mkBindings allBoundIdents
-    allBoundIdents = uncurry (flip FVar . qualifyNull) <$> second (expTy F) <$> concatMap flattenBind binds
+    allBoundIdents = uncurry (flip FVar . qualifyNull) <$> second (expTy id) <$> concatMap flattenBind binds
 
     abstr :: Var (BVar PurusType) (FVar PurusType) -> Either (BVar PurusType) (FVar PurusType)
     abstr = \case
@@ -115,23 +119,17 @@ gLet binds e =  LetE bindings binds $ abstractEither abstr e'
 -- Tools for updating variable types/names
 
 -- REVIEW: Is this right? Do we really want to update bound & free var types at the same time like this?
-updateVarTyS :: forall x t
+updateVarTyS :: forall x t a
               . BVar t
              -> t
-             -> Scope (BVar t) (Exp x t) (FVar t)
-             -> Scope (BVar t) (Exp x t) (FVar t)
-updateVarTyS (BVar ix _ ident) ty scoped = mapScope goBound goFree scoped
+             -> Scope (BVar t) (Exp x t) a
+             -> Scope (BVar t) (Exp x t) a
+updateVarTyS  (BVar ix _ ident) ty scoped = mapBound goBound  scoped
   where
     goBound :: BVar t -> BVar t
     goBound bv@(BVar bvIx _ bvIdent)
       | bvIx == ix && bvIdent == ident = BVar bvIx ty ident
       | otherwise = bv
-
-    goFree :: FVar t -> FVar t
-    goFree fv@(FVar _ (Qualified q@(BySourcePos _) varId))
-      | varId == ident = FVar ty (Qualified q varId)
-      | otherwise = fv
-    goFree other = other
 
 
 -- doesn't change types!
@@ -151,18 +149,19 @@ renameBoundVar old new  = mapBound $ \case
    TODO: Eventually we shouldn't need this but it's useful to throw errors
          while debugging if we get something that's not a function
 -}
-unsafeApply ::
-  Exp WithObjects PurusType (FVar PurusType) ->
-  [Exp WithObjects PurusType (FVar PurusType)] ->
-  Exp WithObjects PurusType (FVar PurusType)
-unsafeApply e (arg:args)= case expTy F e of
-  (_ :-> _) -> unsafeApply (AppE e arg) args
+unsafeApply :: forall a.
+  (a -> Var (BVar PurusType) (FVar PurusType)) ->
+  Exp WithObjects PurusType a ->
+  [Exp WithObjects PurusType a] ->
+  Exp WithObjects PurusType a
+unsafeApply f e (arg:args)= case expTy f e of
+  (_ :-> _) -> unsafeApply f (AppE e arg) args
   other -> Prelude.error $ "Unexpected argument to unsafeApply:\n  "
-                           <> "Fun Expression: " <> ppExp e
-                           <> "\n  Arg: " <> ppExp arg
+                           <> "Fun Expression: " <> ppExp (f <$> e)
+                           <> "\n  Arg: " <> ppExp (f <$> arg)
                            <> "\n  FunType: " <> prettyTypeStr other
-                           <> "\n  ArgType: " <> prettyTypeStr (expTy F arg)
-unsafeApply e [] = e
+                           <> "\n  ArgType: " <> prettyTypeStr (expTy f arg)
+unsafeApply _ e [] = e
 
 {- Find the declaration *group* to which a given identifier belongs.
 -}
@@ -211,15 +210,16 @@ extractAndFlattenAlts (UnguardedAlt _ _ res) = [res]
    accurate or meaningful, e.g. in generated code)
 -}
 updateFreeVars :: Map Ident (Ident, SourceType)
-               -> Exp WithObjects PurusType (FVar PurusType)
-               -> Exp WithObjects PurusType (FVar PurusType)
+               -> Exp WithObjects PurusType (Var (BVar PurusType) (FVar PurusType))
+               -> Exp WithObjects PurusType (Var (BVar PurusType) (FVar PurusType))
 updateFreeVars dict = transform updateFreeVar
   where
-    updateFreeVar :: Exp WithObjects PurusType (FVar PurusType) -> Exp WithObjects PurusType (FVar PurusType)
+    updateFreeVar :: Exp WithObjects PurusType (Var (BVar PurusType) (FVar PurusType))
+                  -> Exp WithObjects PurusType (Var (BVar PurusType) (FVar PurusType))
     updateFreeVar  expr = case expr ^? _V of
-     Just (FVar _ (Qualified (ByModuleName _) varId)) -> case M.lookup varId dict of
+     Just (F (FVar _ (Qualified (ByModuleName _) varId))) -> case M.lookup varId dict of
        Nothing -> expr
-       Just (newId,newType) -> V (FVar newType (Qualified ByNullSourcePos newId))
+       Just (newId,newType) -> V $ F (FVar newType (Qualified ByNullSourcePos newId))
      _ -> expr
 
 
@@ -231,71 +231,30 @@ decodeModuleIO path = Aeson.eitherDecodeFileStrict' path >>= \case
   Left err -> throwIO $ userError err
   Right modx -> pure modx
 
-{-
-   Bound utils
--}
-transverseScopeAndVariables ::
-  (Monad exp, Traversable exp, Applicative f) =>
-  (exp a -> f fvar1) ->
-  (Var bvar1 fvar1 -> exp (Var bvar2 fvar2)) ->
-  Scope bvar1 exp a ->
-  f (Scope bvar2 exp fvar2)
-transverseScopeAndVariables f g expr = toScope . (g =<<) <$> traverse (traverse f) (unscope expr)
 
-{- Like `transverseScope` but not polymorphic in the `a` and allows
-   type changing.
--}
-transverseScopeViaExp :: Applicative f
-                      => (Exp x t a -> f (Exp x t b))
-                      -> Scope (BVar t) (Exp x t) a
-                      -> f (Scope (BVar t) (Exp x t) b)
-transverseScopeViaExp f scope
-  = let fromScoped = fromScope scope
-        sequenced  = sequence fromScoped
-        traversed  = traverse f sequenced
-        hm         = sequence <$> traversed
-    in toScope <$> hm
 
--- Type changing in the Objects / Type / Var "fields",
--- needed for DesugarObjects
-transverseScopeViaExpX :: Monad f
-                      => (Exp x t a -> f (Exp y t' b))
-                      -> (BVar t -> f (BVar t'))
-                      -> Scope (BVar t) (Exp x t) a
-                      -> f (Scope (BVar t') (Exp y t') b)
-transverseScopeViaExpX f bvf scope
-  = let fromScoped = fromScope scope
-        sequenced  = sequence fromScoped
-        traversed  = traverse f sequenced
-        hm         = sequence <$> traversed
-    in mapMBound bvf =<< toScope <$> hm
 
-{- Surprisingly this is useful. We often want to ignore bound variables
-   when traversing the AST (esp during inlining, where they don't
-   matter at all).
--}
-transverseScopeViaExp' :: (Exp x t a -> b)
-                       -> Scope (BVar t) (Exp x t) a
-                       -> Var (BVar t) b
-transverseScopeViaExp' f scope
-  = let fromScoped = fromScope scope
-        sequenced  = sequence fromScoped
-    in f <$> sequenced
+
 
 {- Mashup of `foldM` and `transverseScope`.
 -}
 foldMScopeViaExp :: Monad f
                   => b
-                  -> (b -> Exp x t a -> f b)
-                  -> [Scope (BVar t) (Exp x t) a]
+                  -> (b -> Exp x t (Var (BVar t) a) -> f b)
+                  -> [Scope (BVar t) (Exp x t) (Var (BVar t) a)]
                   -> f b
 foldMScopeViaExp e _ [] = pure e
-foldMScopeViaExp e f (x:xs) = case transverseScopeViaExp' (f e) x of
-  B _ -> foldMScopeViaExp e f xs
-  F act -> do
-    e' <- act
-    foldMScopeViaExp e' f xs
+foldMScopeViaExp e f (x:xs) = do
+  let unscopedX = join <$> fromScope x
+  this <- f e unscopedX
+  foldMScopeViaExp this f xs
 
+-- Exp x t (Var l a) -> Var l (Exp x t a)
+
+distributeExp :: Var l (Exp x t a) -> Exp x t (Var l a)
+distributeExp = \case
+  B bv -> pure (B bv)
+  F fv -> F <$> fv
 
 {- Useful for transform/rewrite/cosmos/etc -}
 instance Plated (Exp x t a) where
@@ -340,8 +299,9 @@ instance Plated (Exp x t a) where
           ObjectL x fs -> ObjectL x <$> traverse (\(str,e) -> (str,) <$> tfun e) fs
 
         helper ::  Scope (BVar t) (Exp x t) a -> f (Scope (BVar t) (Exp x t) a)
-        helper = transverseScopeViaExp tfun
-
+        helper (Scope x) =
+          let ex =   plate (pure @f) $ join $ distributeExp <$> x
+          in toScope <$> ex
 -- put this somewhere else
 
 instance Plated SourceType where
