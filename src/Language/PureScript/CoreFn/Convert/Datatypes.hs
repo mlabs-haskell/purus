@@ -12,7 +12,7 @@ import Language.PureScript.CoreFn.Convert.IR
       BVar(BVar),
       Exp(..),
       FVar,
-      Ty(Forall, TyCon) )
+      Ty(..) )
 import Language.PureScript.CoreFn.Convert.IR qualified as IR
 import PlutusIR
     ( Type(TyBuiltin, TyForall),
@@ -50,8 +50,8 @@ import Language.PureScript.CoreFn.Module
       dDataArgs,
       lookupDataDecl,
       CtorDecl,
-      Datatypes )
-import Language.PureScript.Environment ( pattern (:->) )
+      Datatypes, tyDict )
+import Language.PureScript.Environment ( pattern (:->), mkTupleTyName )
 import Language.PureScript.Types
     ( Type(TypeConstructor), SourceType )
 import Language.PureScript.Constants.Prim qualified as C
@@ -72,10 +72,11 @@ import Data.Maybe (mapMaybe, fromJust, isJust)
 import Debug.Trace
 import Language.PureScript.CoreFn.Pretty.Expr (prettyDatatypes)
 import Bound (Var(..))
+import Prettyprinter (Pretty (..))
 
 
 doTraces :: Bool
-doTraces = True
+doTraces = False
 
 doTrace :: forall a. String -> String -> a -> a
 doTrace hdr msg x
@@ -192,30 +193,10 @@ getBoundTyVarName nm = doTraceM "mkBoundTyVarName" (T.unpack nm) >>  do
     Nothing -> error $ "Free type variable in IR: " <> T.unpack nm
 
 
-withLocalVars :: [Text] -> DatatypeM a -> DatatypeM a
-withLocalVars names act = doTraceM "withLocalVars" (show names) >> do
-  oldVars <- gets (view vars)
-  let shadowed = mapMaybe (\x -> sequence (x,M.lookup x oldVars)) names
-  pirNames <- traverse (\x -> (x,) <$> mkNewVar x) names
-  modify $ over vars (insertMany pirNames)
-  res <- act
-  modify $ over vars (insertMany shadowed . deleteMany names)
-  pure res
-
 
 bindTV :: Text -> PIR.TyName -> DatatypeM ()
 bindTV txt nm = modify $ over tyVars (M.insert txt nm)
 
--- | This overwrites
-withLocalTyVars :: [Text] ->  DatatypeM a -> DatatypeM a
-withLocalTyVars nms act = doTraceM "withLocalTyVars" (show nms) >> do
-  oldTVs <- gets (view tyVars)
-  let shadowed = mapMaybe (\x ->  (x,) <$> M.lookup x oldTVs) nms
-  tNames <- traverse (\x -> (x,) <$> mkNewTyVar x) nms
-  modify $ over tyVars (insertMany tNames)
-  res <- act
-  modify $ over tyVars (insertMany shadowed . deleteMany nms)
-  pure res
 
 insertMany :: forall k v. Ord k => [(k,v)] -> Map k v -> Map k v
 insertMany new acc = foldl' (flip $ uncurry M.insert) acc new
@@ -234,13 +215,17 @@ mkTypeBindDict _datatypes main = doTraceM "mkTypeBindDict" (prettyStr main) >>  
    (Right _,res) -> pure res
   where
     datatypes = primData <> _datatypes
-    act = runExceptT $ mkPIRDatatypes datatypes (allTypeConstructors main)
+    tuples = S.fromList $ map mkTupleTyName [1..10]
+    act = runExceptT $ mkPIRDatatypes datatypes (allTypeConstructors main <> tuples)
     initState = DatatypeDictionary M.empty M.empty M.empty M.empty M.empty M.empty maxIx
     maxIx = maxBV main
 
     allTypeConstructors :: Exp WithoutObjects Ty (Var (BVar Ty) (FVar Ty)) -> S.Set (Qualified (ProperName 'TypeName))
-    allTypeConstructors e = let res = S.fromList $  e ^.. cosmos . to (expTy id) . cosmos . _TyCon
+    allTypeConstructors e = datatypes ^. tyDict . to M.keys . to S.fromList
+                            {- FIXME: Something in the plated instance is broken -_-
+                            let res = S.fromList $  e ^.. cosmos . to (expTy id) . cosmos . _TyCon
                             in doTrace "allTypeConstructors" (show $ S.map prettyQPN res) $ res
+                            -}
     maxBV :: Exp WithoutObjects t (Var (BVar t) (FVar t)) -> Int
     maxBV e = foldr go 0 $ e ^.. cosmos
       where
@@ -289,21 +274,24 @@ mkPIRDatatypes datatypes tyConsInExp = doTraceM "mkPIRDatatypes" (show $ S.map p
         doTraceM "mkPIRDatatypes: decl args: " (show declArgs)
         tyName <- mkTyName qn
         let typeNameDecl = TyVarDecl () tyName declKind
+            dataArgs = dDecl ^. dDataArgs
         argDecls <-  traverse mkArgDecl (dDecl ^. dDataArgs)
         uniq <- next
         let destructorName = PIR.Name ("match_" <> tnm) $ PLC.Unique uniq
         modify $ over destructors (M.insert qn destructorName)
-        ctors <- traverse (mkCtorDecl qn) $ zip [0..] (dDecl ^. dDataCtors)
+        ctors <- traverse (mkCtorDecl qn dataArgs) $ zip [0..] (dDecl ^. dDataCtors)
         let this = PIR.Datatype () typeNameDecl argDecls destructorName ctors
         modify $ over pirDatatypes (M.insert qn this)
 
     mkCtorDecl :: Qualified (ProperName 'TypeName)
+               -> [(Text,IR.Kind)]
                -> (Int,CtorDecl Ty)
                -> DatatypeM (PIR.VarDecl PIR.TyName PIR.Name PLC.DefaultUni ())
-    mkCtorDecl qTyName (cix,ctorDecl) =  doTraceM "mkCtorDecl" (prettyQPN qTyName) >> do
+    mkCtorDecl qTyName dataArgs (cix,ctorDecl) =  doTraceM "mkCtorDecl" (prettyQPN qTyName) >> do
         let ctorFields = snd <$> ctorDecl ^. cdCtorFields
+            resultTy = foldl' TyApp (TyCon qTyName) (uncurry TyVar <$> dataArgs)
             ctorFunTy :: Ty
-            ctorFunTy = foldr1 funTy (ctorFields <> [TyCon qTyName])
+            ctorFunTy = foldr1 funTy (ctorFields <> [resultTy])
         ctorName <- mkConstrName (ctorDecl ^. cdCtorName) cix
         ctorFunTyPIR <- toPIRType  ctorFunTy
         pure $ VarDecl () ctorName ctorFunTyPIR
@@ -333,9 +321,9 @@ toPIRType _ty = doTraceM "toPIRType" (prettyStr _ty) >> case _ty of
   IR.TyApp t1 t2 -> goTypeApp t1 t2
   Forall _ v k ty _ -> do
     vTyName <- mkNewTyVar v
-    withLocalTyVars [v] $ do
-      ty' <- toPIRType ty
-      pure $ TyForall () vTyName (mkKind k) ty'
+    bindTV v vTyName
+    ty' <- toPIRType ty
+    pure $ TyForall () vTyName (mkKind k) ty'
   other -> error $ "Upon reflection, other types like " <> ppTy other <> " shouldn't be allowed in the Ty ast"
  where
    goTypeApp (IR.TyApp (TyCon C.Function) a) b = do
@@ -385,14 +373,21 @@ getDestructorTy qn = do
 getConstructorName :: Qualified Ident -> DatatypeM (Maybe PLC.Name)
 getConstructorName qi = doTraceM "getConstructorName" (show qi) >> do
   ctors <- gets (view constrNames)
+  traceM $ show ctors
   pure $ ctors ^? ix qi . _1
 
 
 prettyQPN :: Qualified (ProperName 'TypeName) -> String
 prettyQPN = T.unpack . showQualified runProperName
 
+instance Pretty (Qualified (ProperName 'TypeName)) where
+  pretty = pretty . prettyQPN
+
 prettyQI :: Qualified Ident -> String
 prettyQI = T.unpack . showQualified runIdent
+
+instance Pretty (Qualified Ident) where
+  pretty = pretty . prettyQI
 
 -- Utilities for PIR conversion (move somewhere else)
 pattern (:@) :: PIR.Type tyName PLC.DefaultUni () -> PIR.Type tyName PLC.DefaultUni () -> PIR.Type tyName PLC.DefaultUni ()

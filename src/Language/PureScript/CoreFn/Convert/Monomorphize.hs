@@ -48,7 +48,7 @@ import Language.PureScript.CoreFn.Convert.DesugarCore
 import Bound.Var (Var(..))
 import Bound.Scope (mapBound, fromScope, toScope)
 import Language.PureScript.CoreFn.TypeLike
-    ( TypeLike(splitFunTyParts, instantiates) )
+    ( TypeLike(splitFunTyParts, instantiates), quantify )
 import Language.PureScript.CoreFn.Convert.Monomorphize.Utils
     ( mkFieldMap,
       findDeclBody,
@@ -67,7 +67,7 @@ import Language.PureScript.CoreFn.Convert.Monomorphize.Utils
       updateFreeVars,
       updateVarTyS,
       MonoState(MonoState),
-      Monomorphizer, foldMScopeViaExp )
+      Monomorphizer, foldMScopeViaExp, distributeExp )
 
 import Data.Text (Text)
 import GHC.IO (throwIO)
@@ -83,7 +83,7 @@ import Prettyprinter (Pretty)
 testMono :: FilePath -> Text -> IO ()
 testMono path decl = do
   myModCoreFn <- decodeModuleIO path
-  myMod <- either (throwIO . userError) pure $ desugarCoreModule myModCoreFn
+  (myMod,_) <- either (throwIO . userError) pure $ desugarCoreModule myModCoreFn
   Just myDecl <- pure $ findDeclBody decl myMod
   case runMonomorphize myMod [] myDecl of
     Left (MonoError msg ) -> throwIO $ userError $ "Couldn't monomorphize " <> T.unpack decl <> "\nReason:\n" <> msg
@@ -104,7 +104,7 @@ runMonomorphize ::
   Exp WithObjects PurusType (FVar PurusType) ->
   Either MonoError (Exp WithObjects PurusType (Var (BVar PurusType) (FVar PurusType)))
 runMonomorphize Module{..} modulesInScope expr =
-  runRWST ( monomorphize  expr) (moduleName,fmap F <$> moduleDecls) (MonoState 0) & \case
+  runRWST (monomorphize (F <$> expr) >>= inlineEverything) (moduleName,fmap F <$> moduleDecls) (MonoState 0) & \case
     Left err -> Left err
     Right (a,_,_) -> do
       traceM ("\nMONOMORPHIZE OUTPUT: \n" <> ppExp a <> "\n" <> replicate 20 '-')
@@ -121,24 +121,25 @@ runMonomorphize Module{..} modulesInScope expr =
 
 -}
 monomorphize ::
-  Exp WithObjects PurusType (FVar PurusType)  ->
+  Exp WithObjects PurusType (Var (BVar PurusType) (FVar PurusType))  ->
   Monomorphizer (Exp WithObjects PurusType (Var (BVar PurusType) (FVar PurusType)))
 monomorphize  xpr = trace ("\nmonomorphize " <>  "\n  " <> ppExp xpr)  $ case xpr of
-  app@(AppE _ _) ->  do
+  app@(AppE _f _arg) ->  do
+    arg <- monomorphize _arg
     -- First, we split the
-    let (f,args) = unsafeAnalyzeApp app
+    let (f,args) = unsafeAnalyzeApp (AppE _f arg)
     traceM $ "FUN: " <> ppExp f
     traceM $ "ARGS: " <> show (ppExp <$> args)
-    let types = concatMap (splitFunTyParts . expTy F)  args
+    let types = concatMap (splitFunTyParts . expTy id)  args
     traceM $ "ARG TYPES:" <> show (prettyTypeStr <$> types)
 
     -- FIXME: Check for constructors as well as builtins
-    if isBuiltinE (F <$> f) || isConstructorE (F <$> f)
+    if isBuiltinE (f) || isConstructorE  (f)
       then do
         traceM ("\nmonomorphize: Is builtin or ctor, skipping:\n" <> ppExp f)
-        pure $ F <$> unsafeApply F  f args
-      else handleFunction  F f args
-  other -> trace ("\nmonomorphize: other: " <> ppExp other) $ pure (F <$> other)
+        pure $ unsafeApply id  f args
+      else handleFunction id f args
+  other -> trace ("\nmonomorphize: other: " <> ppExp other) $ pure (other)
 
 inlineEverything :: Exp WithObjects PurusType (Var (BVar PurusType) (FVar PurusType))
                  -> Monomorphizer (Exp WithObjects PurusType (Var (BVar PurusType) (FVar PurusType)))
@@ -147,8 +148,41 @@ inlineEverything = transformM go
     go :: Exp WithObjects PurusType (Var (BVar PurusType) (FVar PurusType))
        -> Monomorphizer (Exp WithObjects PurusType (Var (BVar PurusType) (FVar PurusType)))
     go = \case
-      expr@(V (F (FVar ty qi))) | not (isBuiltin qi || isConstructor qi) ->  inlineAs ty qi
+      (V (F (FVar ty qi))) | not (isBuiltin qi || isConstructor qi) ->  inlineAs ty qi
+      AppE e1 e2  -> AppE <$> go e1 <*> go e2
+      CaseE t scrut alts -> do
+        scrut' <- go scrut
+        alts' <- traverse goAlt alts
+        pure $ CaseE t scrut' alts'
+      LamE t bv body -> do
+        let scoped' = toScope
+                  <$> join
+                  <$> fmap distributeExp
+                  <$> traverse (traverse (go . pure @(Exp WithObjects PurusType))) (fromScope body)
+        LamE t bv <$> scoped'
+      LetE binds decls body -> do
+        let scoped' = toScope
+                  <$> join
+                  <$> fmap distributeExp
+                  <$> traverse (traverse (go . pure @(Exp WithObjects PurusType))) (fromScope body)
+            goDecl = \case
+              NonRecursive ident expr -> NonRecursive ident <$> go expr
+              Recursive xs -> Recursive <$> traverse (\(i,ex) -> (i,) <$> go ex) xs
+        LetE binds <$> traverse goDecl decls <*> scoped'
+      AccessorE x t pss e -> AccessorE x t pss <$> go e
+      ObjectUpdateE x t e cf fs -> (\e' fs' -> ObjectUpdateE x t e' cf fs')
+                                   <$> go  e
+                                   <*> traverse (\(nm,expr) -> (nm,) <$> go expr) fs
+      LitE t lit -> LitE t <$> traverse go lit
       other -> pure other
+
+    goAlt (UnguardedAlt bs pat body ) = do
+      let body' = toScope
+                  <$> join
+                  <$> fmap distributeExp
+                  <$> traverse (traverse (go . pure @(Exp WithObjects PurusType))) (fromScope body)
+      UnguardedAlt bs pat <$> body'
+
 
    -- Builtins shouldn't be inlined because they can't be.
    -- TODO/REVIEW: Figure out whether it's necessary to *monomorphize*
@@ -182,6 +216,8 @@ isConstructor _  = False
 
    NOTE: The order of the cases matters here! Don't move them around haphazardly.
 -}
+
+
 handleFunction :: forall a
                 . Pretty a
                => (a -> Var (BVar PurusType) (FVar PurusType))
@@ -194,7 +230,7 @@ handleFunction  toVar e [] = trace ("\nhandleFunction FIN: " <> ppExp e) $ pure 
    and check whether those types allow us to deduce the type to which the TyVar bound by the Forall in
    the lambda's type ought to be instantiated. (See the `instantiates` function)
 -}
-handleFunction toVar expr@(LamE (ForAll _ _ var _ inner  _) bv@(BVar bvIx _ bvIdent) body'') (arg:args) = do
+handleFunction toVar expr@(LamE qty@(ForAll _ _ var _ inner  _) bv@(BVar bvIx _ bvIdent) body'') (arg:args) = do
   traceM  ("\nhandleFunction abs:\n  " <> ppExp expr)
   let t = expTy toVar arg -- get the type of the first expression to which the function is applied
   traceM $ prettyTypeStr t
@@ -211,7 +247,7 @@ handleFunction toVar expr@(LamE (ForAll _ _ var _ inner  _) bv@(BVar bvIx _ bvId
       bodyUnscoped  = join <$> fmap toVar <$> fromScope body'
   body <- toScope  <$>  (\b ->  handleFunction id b $ fmap toVar <$> args) (bodyUnscoped) -- recurse on the body, with the rest of the arguments
   let bodyT = expTy' F body
-      funT  = doInstantiate $ function t bodyT
+      funT  = quantify $ doInstantiate $ function t bodyT
       firstArgT = headArg funT
       e' = LamE funT (BVar bvIx firstArgT bvIdent) body
   pure $  AppE  (F <$> e') (toVar <$> arg) -- Put the app back together. (Remember, the params to this function come from a deconstructed AppE)

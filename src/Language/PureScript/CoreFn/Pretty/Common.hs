@@ -1,3 +1,4 @@
+{-# OPTIONS_GHC -Wno-deferred-out-of-scope-variables #-}
 module Language.PureScript.CoreFn.Pretty.Common where
 
 import Prelude hiding ((<>))
@@ -33,7 +34,13 @@ import Prettyprinter
       align,
       group,
       Doc,
-      Pretty(pretty) )
+      Pretty(pretty), defaultLayoutOptions, layoutPretty )
+import Prettyprinter.Render.Text (renderStrict)
+import Data.Text qualified as T
+
+
+prettyAsStr :: Pretty a => a -> String
+prettyAsStr = T.unpack . renderStrict . layoutPretty defaultLayoutOptions . pretty
 
 {- One thing that we often wish to do, but cannot easily do either with
    the Prettyprinter library or the ancient lib PureScript uses, is to

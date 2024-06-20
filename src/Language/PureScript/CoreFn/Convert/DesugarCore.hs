@@ -1,6 +1,6 @@
 {-# OPTIONS_GHC  -Wno-orphans #-}
 {-# LANGUAGE TypeApplications #-}
-module Language.PureScript.CoreFn.Convert.DesugarCore (WithObjects, WithoutObjects, desugarCore, desugarCoreModule) where
+module Language.PureScript.CoreFn.Convert.DesugarCore where
 
 import Prelude
 
@@ -19,7 +19,7 @@ import Language.PureScript.CoreFn.Convert.IR
       XAccessor,
       BindE(..),
       Alt(..),
-      Pat(ConP),
+      Pat(..),
       Lit(ObjectL, IntL, NumL, StringL, CharL,  ArrayL),
       FVar(..),
       BVar(..),
@@ -27,14 +27,13 @@ import Language.PureScript.CoreFn.Convert.IR
       ppExp,
       assembleBindEs,
       mkBindings,
-      abstractMany,
-      toPat )
+      abstractMany )
 import Data.Map qualified as M
 import Language.PureScript.AST.Literals (Literal (..))
 import Bound (abstract)
 import Control.Monad (join)
-import Control.Monad.State ( join, StateT, modify', put, gets, get, evalState, evalStateT )
-import Data.List (find)
+import Control.Monad.State ( join, StateT, modify', put, gets, get, evalState, evalStateT, runStateT )
+import Data.List (find, sortOn)
 import Language.PureScript.CoreFn.Utils (exprType, Context)
 import Language.PureScript.CoreFn.Binders ( Binder(..) )
 import Data.Maybe (mapMaybe)
@@ -44,7 +43,7 @@ import Control.Lens.Combinators (to, ix, preview)
 import Control.Monad.Error.Class (MonadError(throwError))
 import Language.PureScript.AST.SourcePos (spanStart)
 import Language.PureScript.CoreFn.Module (Module(..))
-import Language.PureScript.CoreFn.Pretty (renderExprStr)
+import Language.PureScript.CoreFn.Pretty (renderExprStr, prettyAsStr)
 import Debug.Trace (traceM)
 import Language.PureScript.CoreFn.Desugar.Utils (wrapTrace, showIdent', properToIdent)
 import Data.Void (Void)
@@ -52,29 +51,36 @@ import Language.PureScript.Constants.Prim qualified as C
 import Data.Text qualified as T
 import Data.Foldable (Foldable(foldl'), traverse_)
 import Language.PureScript.Environment (mkCtorTy, mkTupleTyName)
-
+import Control.Lens hiding (Context)
+import Control.Monad.Trans (lift)
 
 
 -- Need the map to keep track of whether a variable has already been used in the scope (e.g. for shadowing)
-type DS = StateT (M.Map Ident Int) (Either String)
+type DS = StateT (Int,M.Map Ident Int) (Either String)
+
+liftErr :: Either String a -> DS a
+liftErr = \case
+  Left err -> lift (Left err)
+  Right x -> pure x
 
 freshly :: DS a -> DS a
-freshly act = put M.empty >> act
+freshly act = modify' (set _2 M.empty) >> act
+
+fresh :: DS Int
+fresh = do
+  i <- gets (view _1)
+  modify' $ over _1 (+ 1)
+  pure i
 
 bind :: Ident -> DS Int
-bind ident = gets (preview (ix ident)) >>= \case
-  Nothing -> do
-    modify' $  M.insert ident 0
-    pure 0
-  Just indx -> do
-    modify' $ M.insert ident (indx + 1)
-    pure (indx + 1)
+bind ident = do
+  i <- fresh
+  modify' $ over _2 (M.insert ident i)
+  pure i
 
 getVarIx :: Ident -> DS Int
-getVarIx ident = gets (preview (ix ident)) >>= \case
-  Nothing -> do
-    modify' $ M.insert ident 0
-    pure 0
+getVarIx ident = gets (preview (_2 . ix ident)) >>= \case
+  Nothing -> error $ "getVarIx: Free variable " <> showIdent' ident
   Just indx -> pure indx
 
 data WithObjects
@@ -91,8 +97,12 @@ type instance XObjectLiteral WithoutObjects = Void
 
 type IR_Decl = BindE PurusType (Exp WithObjects PurusType) (FVar PurusType)
 
-desugarCoreModule :: Module (Bind Ann) PurusType PurusType Ann -> Either String (Module IR_Decl PurusType PurusType Ann)
-desugarCoreModule m = evalStateT (desugarCoreModule' m) M.empty
+desugarCoreModule :: Module (Bind Ann) PurusType PurusType Ann -> Either String (Module IR_Decl PurusType PurusType Ann,(Int,M.Map Ident Int))
+desugarCoreModule m = case runStateT (desugarCoreModule' m) (0,M.empty) of
+  Left err -> Left err
+  Right res -> do
+    traceM ("desugarCoreModule decls OUTPUT:\n" <> prettyAsStr (moduleDecls $ fst res))
+    pure res
 
 desugarCoreModule' :: Module (Bind Ann) PurusType PurusType Ann -> DS (Module IR_Decl PurusType PurusType Ann)
 desugarCoreModule' Module{..} = do
@@ -152,7 +162,7 @@ desugarCore (Let _ann binds cont) = do
   binds' <- desugarBinds binds
   let allBoundIdents = fst <$> join binds'
   traverse_ (bind . (\(FVar _ nm) -> disqualify nm)) allBoundIdents
-  s <- get
+  s <- gets (view _2)
   cont' <- desugarCore cont
   let abstr = abstract (matchLet s)
       bindEs = assembleBindEs [] binds'
@@ -179,18 +189,14 @@ desugarAlt :: CaseAlternative Ann -> DS (Alt WithObjects PurusType (Exp WithObje
 desugarAlt (CaseAlternative [binder] result) = case result of
   Left exs -> throwError $ "internal error: `desugarAlt` guarded alt not expected at this stage: " <> show exs
   Right ex -> do
-    let boundVars = getBoundVar result binder
-        pat = toPat binder
-    traverse_ (bind . (\(FVar _ nm) -> disqualify nm)) boundVars
-    s <- get
+    pat <- toPat binder
+    s <- gets (view _2)
     let abstrE = abstract (matchLet s)
     re <- desugarCore ex
-    pure $ UnguardedAlt (mkBindings boundVars) pat (abstrE re)
+    pure $ UnguardedAlt (M.empty) pat (abstrE re)
 desugarAlt (CaseAlternative binders result) = do
-  let boundVars = concatMap (getBoundVar result) binders
-      pats = map toPat binders
-  traverse_ (bind . (\(FVar _ nm) -> disqualify nm)) boundVars
-  s <- get
+  pats <- traverse toPat binders
+  s <- gets (view _2)
   let abstrE = abstract (matchLet s)
       n = length binders
       tupTyName = mkTupleTyName n
@@ -201,7 +207,38 @@ desugarAlt (CaseAlternative binders result) = do
       throwError $ "internal error: `desugarAlt` guarded alt not expected at this stage: " <> show exs
     Right ex -> do
       re <- desugarCore ex
-      pure $ UnguardedAlt (mkBindings boundVars) pat (abstrE re)
+      pure $ UnguardedAlt (M.empty) pat (abstrE re)
+
+toPat :: Binder ann -> DS (Pat x (Exp x ty) (FVar ty))
+toPat = \case
+  NullBinder _ -> pure WildP
+  VarBinder _ i  ->  do
+    n <- bind i
+    pure $ VarP i n
+  ConstructorBinder _ tn cn bs -> ConP tn cn <$> traverse toPat bs
+  NamedBinder _ nm b ->  do
+    n <- bind nm
+    AsP (nm,n) <$> toPat b
+  LiteralBinder _ lp -> case lp of
+    NumericLiteral (Left i) -> pure . LitP $ IntL i
+    NumericLiteral (Right d) -> pure . LitP $ NumL d
+    StringLiteral pss -> pure . LitP $ StringL pss
+    CharLiteral c -> pure . LitP $ CharL c
+    BooleanLiteral _ -> error "boolean literals shouldn't exist anymore"
+    ArrayLiteral as ->  LitP . ArrayL <$> traverse toPat as
+    ObjectLiteral fs' -> do
+      -- REVIEW/FIXME:
+      -- this isn't right, we need to make sure the positions of the binders are correct,
+      -- since (I think?) you can use an Obj binder w/o using all of the fields
+      let fs          = sortOn fst fs'
+          len         = length fs
+          tupTyName   = mkTupleTyName len
+          tupCtorName = coerceProperName <$> tupTyName
+          inner = map (toPat . snd) fs
+      ConP tupTyName tupCtorName <$> traverse (toPat . snd) fs
+
+
+
 
 getBoundVar :: forall ann. Show ann => Either [(Expr ann, Expr ann)] (Expr ann) -> Binder ann -> [FVar PurusType]
 getBoundVar body binder = case binder of

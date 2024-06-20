@@ -33,6 +33,23 @@ brokenEven n =
     if n `eq` 0 then 1
     else brokenEven (n `minus` 2)
 
+data Option (a :: Type) = Some a | Nada
+
+opt2Int :: Option Int -> Int
+opt2Int = case _ of
+  Some i -> i
+  Nada -> 0
+
+testOpt2Int :: Int
+testOpt2Int = opt2Int (Some 3)
+
+data Identitee (a :: Type) = Identitee a
+
+unIdentitee :: Identitee Int -> Int
+unIdentitee = case _ of
+  Identitee x -> x
+
+testIdentitee = unIdentitee (Identitee 101)
 -- Multi Param
 class Eq2 (a :: Type) (b :: Type) where
   eq2 :: a -> b -> Boolean
@@ -183,6 +200,8 @@ plus a b = Builtin.addInteger a b
 
 infixr 5 plus as +
 
+testPlus = plus 1 1
+
 -- main = plus 1 1
 
 guardedCase :: Int -> Int -> Int
@@ -236,6 +255,8 @@ consEmptyList2 = cons "hello" emptyList
 id :: forall (t :: Type). t -> t
 id x = x
 
+testId = id 2
+
 objForall :: forall (a :: Type) (b :: Type). {getIdA :: a -> a, getIdB :: b -> b}
 objForall = {getIdA: id, getIdB: id}
 
@@ -267,3 +288,10 @@ instance Ord Int where
 
 testEqViaOrd :: forall (a :: Type). Ord a => a -> a -> Boolean
 testEqViaOrd a b = eq a b
+
+testValidator :: forall (a :: Type) (b :: Type) (c :: Type)
+              . a -> b -> c -> Boolean
+testValidator datum redeemer context =  True
+
+testValidatorApplied :: Boolean
+testValidatorApplied = testValidator "datum" "redeemer" "context"

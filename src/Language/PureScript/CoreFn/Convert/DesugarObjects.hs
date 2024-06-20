@@ -55,7 +55,7 @@ import Language.PureScript.CoreFn.Utils ( exprType, Context )
 import Debug.Trace ( traceM )
 import Data.Map (Map)
 import Language.PureScript.Constants.Prim qualified as C
-import Language.PureScript.CoreFn.Convert.DesugarCore (WithoutObjects, WithObjects, desugarCoreModule)
+import Language.PureScript.CoreFn.Convert.DesugarCore (WithoutObjects, WithObjects, desugarCoreModule, DS, liftErr, bind, getVarIx)
 import Data.Void (Void, absurd)
 
 import Unsafe.Coerce qualified as UNSAFE
@@ -75,11 +75,12 @@ import GHC.IO (throwIO)
 import Language.PureScript.CoreFn.Desugar.Utils (properToIdent)
 import Bound.Scope
 import Control.Monad (join)
+import Control.Monad.State (runState, runStateT, evalStateT)
 
 prettyStr :: Pretty a => a -> String
 prettyStr = T.unpack . renderStrict . layoutPretty defaultLayoutOptions . pretty
 
-decodeModuleIR :: FilePath -> IO (Module IR_Decl SourceType SourceType Ann)
+decodeModuleIR :: FilePath -> IO (Module IR_Decl SourceType SourceType Ann,(Int,M.Map Ident Int))
 decodeModuleIR path = do
   myMod <- decodeModuleIO path
   case desugarCoreModule myMod of
@@ -88,11 +89,11 @@ decodeModuleIR path = do
 
 test :: FilePath -> Text -> IO (Exp WithoutObjects Ty (Var (BVar Ty) (FVar Ty)))
 test path decl = do
-  myMod <- decodeModuleIR path
+  (myMod,ds) <- decodeModuleIR path
   Just myDecl <- pure $ findDeclBody decl myMod
   case runMonomorphize myMod [] myDecl of
     Left (MonoError msg) -> throwIO $ userError $ "Couldn't monomorphize " <> T.unpack decl <> "\nReason:\n" <> msg
-    Right body -> case tryConvertExpr body of
+    Right body -> case evalStateT (tryConvertExpr body) ds of
       Left convertErr -> throwIO $ userError convertErr
       Right e -> do
         putStrLn (ppExp e)
@@ -102,7 +103,7 @@ prepPIR :: FilePath
         -> Text
         -> IO (Exp WithoutObjects Ty (Var (BVar Ty) (FVar Ty)), Datatypes Kind Ty)
 prepPIR path  decl = do
-  myMod@Module{..} <- decodeModuleIR path
+  (myMod@Module{..},ds) <- decodeModuleIR path
 
   desugaredExpr <- case findDeclBody decl myMod of
     Nothing -> throwIO $ userError "findDeclBody"
@@ -115,7 +116,7 @@ prepPIR path  decl = do
         <> T.unpack (runModuleName moduleName <> ".main") <> "\nReason:\n" <> msg
     Right body -> do
       putStrLn (ppExp body)
-      case tryConvertExpr body of
+      case evalStateT (tryConvertExpr body) ds  of
          Left convertErr -> throwIO $ userError convertErr
          Right e -> do
            moduleDataTypes' <- either (throwIO . userError) pure
@@ -129,11 +130,6 @@ prepPIR path  decl = do
 -- This gives us a way to report the exact location of the error (which may no longer correspond *at all* to
 -- the location given in the SourcePos annotations due to inlining and monomorphization)
 
-
-
--- unsafeCoerce would probably be safe here?
-forgetConstantLiteral :: Lit x Void -> Lit x a
-forgetConstantLiteral = UNSAFE.unsafeCoerce
 
 tryConvertType :: SourceType -> Either String Ty
 tryConvertType = go id
@@ -204,24 +200,25 @@ allTypes e = e ^.. icosmos @Context @(Expr Ann) M.empty . to exprType
 
 
 
-tryConvertExpr :: Exp WithObjects SourceType (Var (BVar SourceType) (FVar SourceType)) -> Either String (Exp WithoutObjects Ty (Var (BVar Ty) (FVar Ty)))
+tryConvertExpr :: Exp WithObjects SourceType (Var (BVar SourceType) (FVar SourceType))
+               -> DS (Exp WithoutObjects Ty (Var (BVar Ty) (FVar Ty)))
 tryConvertExpr =  tryConvertExpr' id
 
 tryConvertExpr' :: forall a.
                    Pretty a
                 => (a -> Var (BVar SourceType) (FVar SourceType))
                 -> Exp WithObjects SourceType a
-                -> Either String (Exp WithoutObjects Ty (Var (BVar Ty) (FVar Ty)))
+                -> DS (Exp WithoutObjects Ty (Var (BVar Ty) (FVar Ty)))
 tryConvertExpr' toVar  __expr =  do
     result <- go  __expr
     let spacer = replicate 20 '-'
     traceM (spacer <> "tryConvertExpr" <> spacer <> "\n  Expr:\n" <> ppExp __expr <> "\n  Result:\n" <> ppExp result <> "\n" <> spacer )
     pure result
   where
-    go ::  Exp WithObjects SourceType a  -> Either String (Exp WithoutObjects Ty (Var (BVar Ty) (FVar Ty)))
+    go ::  Exp WithObjects SourceType a  -> DS (Exp WithoutObjects Ty (Var (BVar Ty) (FVar Ty)))
     go  expression =  case expression of
       LitE  ty lit -> do
-        ty' <- goType ty
+        ty' <-  goType ty
         tryConvertLit  lit >>= \case
           Left desObj -> pure desObj
           Right lit' -> pure $ LitE ty' lit'
@@ -250,26 +247,26 @@ tryConvertExpr' toVar  __expr =  do
       ObjectUpdateE _ ty orig copF updF -> desugarObjectUpdate ty orig copF updF
       V fvar -> case toVar fvar of
         B (BVar i t nm) -> do
-          t' <- tryConvertType t
+          t' <- goType t
           pure . V . B $ BVar i t' nm
         F (FVar t qi) -> do
-          t' <- tryConvertType t
+          t' <- goType t
           pure . V . F $ FVar t' qi
      where
        -- TODO: Error location w/ scope in alts
        goAlt :: Alt WithObjects SourceType (Exp WithObjects SourceType) a
-             -> Either String (Alt WithoutObjects Ty (Exp WithoutObjects Ty) (Var (BVar Ty) (FVar Ty)))
+             -> DS (Alt WithoutObjects Ty (Exp WithoutObjects Ty) (Var (BVar Ty) (FVar Ty)))
        goAlt  (UnguardedAlt binders pat e) = do
-         binders' <- fmap M.fromList $ traverse (traverse (traverse tryConvertType)) (M.toList binders)
+         binders' <- fmap M.fromList $ traverse (traverse (traverse goType)) (M.toList binders)
          pat' <- goPat pat
          let unscoped  =  join <$> fromScope (toVar <$> e)
          e' <- toScope . fmap F <$> tryConvertExpr' id  unscoped
          pure $ UnguardedAlt binders' pat' e'
 
        goPat :: Pat WithObjects (Exp WithObjects SourceType) a
-                -> Either String (Pat WithoutObjects (Exp WithoutObjects Ty) (Var (BVar Ty) (FVar Ty)))
+                -> DS (Pat WithoutObjects (Exp WithoutObjects Ty) (Var (BVar Ty) (FVar Ty)))
        goPat = \case
-            VarP i -> pure $ VarP i
+            VarP i n -> pure $ VarP i n
             WildP  -> pure WildP
             AsP i px -> AsP i <$> goPat px
             LitP lp -> tryConvertLitP lp >>= \case
@@ -278,7 +275,7 @@ tryConvertExpr' toVar  __expr =  do
             ConP tn cn ps -> ConP tn cn  <$> traverse goPat ps
 
        tryConvertLitP :: Lit WithObjects (Pat WithObjects (Exp WithObjects SourceType) a)
-                      -> Either String
+                      -> DS
                                 (Either
                                  (Pat WithoutObjects (Exp WithoutObjects Ty) (Var (BVar Ty) (FVar Ty)))
                                  (Lit WithoutObjects (Pat WithoutObjects (Exp WithoutObjects Ty) (Var (BVar Ty) (FVar Ty)))))
@@ -300,7 +297,7 @@ tryConvertExpr' toVar  __expr =  do
 
        -- FIXME: We can have empty objects here, so this function is partial, but I'm not sure what to do w/
        --        an empty Object in a pattern.
-       tryConvertConstLitP :: Lit WithObjects Void -> Either String (Lit WithoutObjects Void)
+       tryConvertConstLitP :: Lit WithObjects Void -> DS (Lit WithoutObjects Void)
        tryConvertConstLitP = \case
          IntL i -> pure $ IntL i
          NumL d -> pure $ NumL d
@@ -312,7 +309,7 @@ tryConvertExpr' toVar  __expr =  do
          _ -> error "impossible (?) pattern"
 
        goBinds :: [BindE SourceType (Exp WithObjects SourceType) a]
-               -> Either String [BindE Ty (Exp WithoutObjects Ty) (Var (BVar Ty) (FVar Ty))]
+               -> DS [BindE Ty (Exp WithoutObjects Ty) (Var (BVar Ty) (FVar Ty))]
        goBinds  [] = pure []
        goBinds  (b:bs) = case b of
          NonRecursive ident expr -> do
@@ -326,7 +323,7 @@ tryConvertExpr' toVar  __expr =  do
            pure $ Recursive xs' : rest
 
        tryConvertLit :: Lit WithObjects (Exp WithObjects SourceType a)
-                     -> Either String
+                     -> DS
                         (Either (Exp WithoutObjects Ty (Var (BVar Ty) (FVar Ty)))
                          (Lit WithoutObjects (Exp WithoutObjects Ty (Var (BVar Ty) (FVar Ty)))))
        tryConvertLit   = \case
@@ -339,7 +336,7 @@ tryConvertExpr' toVar  __expr =  do
          ObjectL _ fs'  ->  Left <$> handleObjectLiteral fs'
         where
          constArrHelper ::  Lit WithObjects Void
-                        -> Either String (Lit WithoutObjects Void)
+                        -> DS (Lit WithoutObjects Void)
          constArrHelper = \case
               IntL i -> pure $ IntL i
               NumL d -> pure $ NumL d
@@ -354,7 +351,7 @@ tryConvertExpr' toVar  __expr =  do
                 pure $ ConstArrayL res
 
          handleObjectLiteral :: [(PSString,Exp WithObjects SourceType a)]
-                             -> Either String (Exp WithoutObjects Ty (Var (BVar Ty) (FVar Ty)))
+                             -> DS (Exp WithoutObjects Ty (Var (BVar Ty) (FVar Ty)))
          handleObjectLiteral fs' = do
            let fs = sortOn fst fs'
                len = length fs
@@ -370,12 +367,12 @@ tryConvertExpr' toVar  __expr =  do
            assembleDesugaredObjectLit ctorExp ctorType bareFields'
 
 
-       goType :: SourceType -> Either String Ty
-       goType =  tryConvertType
+       goType :: SourceType -> DS Ty
+       goType =  liftErr . tryConvertType
 
-       updateBV ::  BVar SourceType -> Either String (BVar Ty)
+       updateBV ::  BVar SourceType -> DS (BVar Ty)
        updateBV (BVar bvIx bvTy bvNm) = do
-         bvTy' <-  tryConvertType bvTy
+         bvTy' <-  goType bvTy
          pure $ BVar bvIx bvTy' bvNm
 
        -- TODO/FIXME: We need to ensure that we don't introduce conflicts in the bound variables. Not sure what the best way is ATM
@@ -385,7 +382,7 @@ tryConvertExpr' toVar  __expr =  do
                            -> Exp WithObjects SourceType a
                            -> Maybe [PSString]
                            -> [(PSString,Exp WithObjects SourceType a)]
-                           -> Either String (Exp WithoutObjects Ty (Var (BVar Ty) (FVar Ty)))
+                           -> DS (Exp WithoutObjects Ty (Var (BVar Ty) (FVar Ty)))
        desugarObjectUpdate _ e _ updateFields = do
          _fs <- case expTy toVar e of
                          RecordT fs -> pure fs
@@ -407,24 +404,29 @@ tryConvertExpr' toVar  __expr =  do
 
              positioned = zip (M.keys ts) [0..]
 
-             withPositioned :: forall x. (PSString -> Int -> x) -> [x]
-             withPositioned f' = uncurry f' <$> positioned
+             withPositioned :: forall x. (PSString -> Int -> DS x) -> DS [x]
+             withPositioned f' = traverse (uncurry f')  positioned
 
+             argBndrTemplate :: DS [Pat WithoutObjects (Exp WithoutObjects Ty) (FVar Ty)]
              argBndrTemplate = withPositioned $ \lbl i -> case M.lookup lbl updateMap of
-               Nothing -> VarP . Ident $ "<UPD_" <> T.pack (show i) <> ">"
-               Just _  -> WildP
+               Nothing -> do
+                 let ident = Ident $ "<UPD_" <> T.pack (show i) <> ">"
+                 n <- bind ident
+                 pure @DS $ VarP ident n
+               Just _  -> pure @DS WildP
 
              resultTemplate = withPositioned $ \lbl i -> case M.lookup lbl updateMap of
-               Nothing ->
+               Nothing -> do
                  let nm = Ident $ "<UPD_" <> T.pack (show i) <> ">"
-                 in V . B  $ BVar (M.findIndex lbl origTypes) (origTypes M.! lbl) nm
-               Just expr ->  expr
+                 n <- getVarIx nm
+                 pure $ V . B  $ BVar n  (origTypes M.! lbl) nm
+               Just expr -> pure expr
 
              ctorExp = V . F $  FVar ctorType $ properToIdent <$> tupTyName
 
-             ctorBndr = ConP tupTyName tupCtorName argBndrTemplate
+         ctorBndr <- ConP tupTyName tupCtorName <$> argBndrTemplate
 
-         resultExpr <- assembleDesugaredObjectLit ctorExp ctorType resultTemplate
+         resultExpr <- assembleDesugaredObjectLit ctorExp ctorType =<< resultTemplate
          e' <- go  e
          let scoped = toScope resultExpr
              -- TODO/FIXME/REVIEW/HACK: Either remove the bindings Map from UnguardedAlt or actually construct a real one
@@ -435,7 +437,7 @@ tryConvertExpr' toVar  __expr =  do
        desugarObjectAccessor :: SourceType
                              -> PSString
                              -> Exp WithObjects SourceType a
-                             -> Either String (Exp WithoutObjects Ty (Var (BVar Ty) (FVar Ty)))
+                             -> DS (Exp WithoutObjects Ty (Var (BVar Ty) (FVar Ty)))
        desugarObjectAccessor _ lbl e = do
          traceM "desugarObjectAccesor"
          _fs <- case expTy toVar e of
@@ -454,8 +456,10 @@ tryConvertExpr' toVar  __expr =  do
          traceM $ "TYPES: " <> show (prettyStr <$> types')
 
          let fieldTy = types' !! lblIx -- if it's not there *something* should have caught it by now
-             argBndrTemplate = replicate len WildP & ix lblIx .~ VarP dummyNm
-             ctorBndr = ConP tupTyName tupCtorName argBndrTemplate
+         argBndrTemplate <- do
+           n <- bind dummyNm
+           pure $ replicate len WildP & ix lblIx .~ VarP dummyNm n
+         let ctorBndr = ConP tupTyName tupCtorName argBndrTemplate
              -- NOTE: `lblIx` is a placeholder for a better var ix
              rhs :: Exp WithoutObjects Ty (Var (BVar Ty) (FVar Ty))
              rhs = V . B $ BVar lblIx  fieldTy  dummyNm
@@ -463,7 +467,7 @@ tryConvertExpr' toVar  __expr =  do
          e' <- tryConvertExpr' toVar e
          pure $ CaseE fieldTy e' [altBranch]
 
-assembleDesugaredObjectLit :: forall x a. Exp x Ty a  -> Ty -> [Exp x Ty a] -> Either String (Exp x Ty a)
+assembleDesugaredObjectLit :: forall x a. Exp x Ty a  -> Ty -> [Exp x Ty a] -> DS  (Exp x Ty a)
 assembleDesugaredObjectLit expr (_ :~> b) (arg:args) = assembleDesugaredObjectLit (AppE  expr arg) b args
 assembleDesugaredObjectLit expr _ [] = pure expr -- TODO better error
 assembleDesugaredObjectLit _ _ _ = error "something went wrong in assembleDesugaredObjectLit"
@@ -505,14 +509,14 @@ primData = tupleDatatypes <> Datatypes tDict cDict
 tupleDatatypes :: Datatypes Kind Ty
 tupleDatatypes = Datatypes (M.fromList tupleTypes) (M.fromList tupleCtors)
   where
-    tupleTypes = flip map [1..100] $ \(n :: Int) ->
+    tupleTypes = flip map [0..10] $ \(n :: Int) ->
       let tyNm       = mkTupleTyName n
           ctorNm     = mkTupleCtorIdent n
           argKinds   = mkTupleArgKinds n
           ctorTvArgs = mkTupleCtorTvArgs n
       in (tyNm,DataDecl Data tyNm argKinds [CtorDecl ctorNm ctorTvArgs])
 
-    tupleCtors = [1..100] <&> \x -> (mkTupleCtorIdent x, mkTupleTyName x)
+    tupleCtors = [0..10] <&> \x -> (mkTupleCtorIdent x, mkTupleTyName x)
 
     mkTupleCtorIdent :: Int -> Qualified Ident
     mkTupleCtorIdent n = properToIdent  <$> mkTupleTyName n
@@ -520,6 +524,6 @@ tupleDatatypes = Datatypes (M.fromList tupleTypes) (M.fromList tupleCtors)
     vars :: Int -> [Text]
     vars n = map (\x ->  "t" <> T.pack (show x)) [1..n]
 
-    mkTupleArgKinds = fmap (,KindType) .  vars
+    mkTupleArgKinds = fmap (,KindType) . vars
 
     mkTupleCtorTvArgs = mkProdFields . map (flip TyVar KindType) . vars

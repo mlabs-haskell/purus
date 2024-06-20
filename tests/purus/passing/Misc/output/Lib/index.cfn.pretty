@@ -17,6 +17,13 @@ Exports:
   testTuple,
   workingEven,
   brokenEven,
+  Some,
+  Nada,
+  opt2Int,
+  testOpt2Int,
+  Identitee,
+  unIdentitee,
+  testIdentitee,
   testEq2,
   ConInt,
   ConString,
@@ -52,6 +59,7 @@ Exports:
   testBuiltin,
   main,
   plus,
+  testPlus,
   guardedCase,
   nestedApplications,
   anObj,
@@ -64,9 +72,12 @@ Exports:
   consEmptyList1,
   consEmptyList2,
   id,
+  testId,
   objForall,
   arrForall,
   testEqViaOrd,
+  testValidator,
+  testValidatorApplied,
   eqInt,
   eq2IntBoolean,
   ordInt
@@ -96,6 +107,13 @@ newtype Eq$Dict (a :: Prim.Type) =
 
 newtype Eq2$Dict (a :: Prim.Type) (b :: Prim.Type) = 
   Eq2$Dict ({ eq2 :: ((a :: Prim.Type) -> (((b :: Prim.Type) -> (Prim.Boolean)))) })
+
+data Identitee (a :: Prim.Type) = 
+  Identitee ((a :: Prim.Type))
+
+data Option (a :: Prim.Type) = 
+  Some ((a :: Prim.Type))
+  | Nada 
 
 newtype Ord$Dict (a :: Prim.Type) = 
   Ord$Dict ({ compare :: ((a :: Prim.Type) -> (((a :: Prim.Type) -> (Prim.Int)))), Eq0 :: ((Prim.Record ({})) -> ((Lib.Eq$Dict ((a :: Prim.Type))))) })
@@ -152,12 +170,35 @@ eq2IntBoolean =
          (True: Prim.Boolean)
    }: { eq2 :: (Prim.Int -> ((Prim.Boolean -> (Prim.Boolean)))) })
 
+unIdentitee :: ((Lib.Identitee (Prim.Int)) -> (Prim.Int))
+unIdentitee = 
+  \(v: (Lib.Identitee (Prim.Int))) -> 
+    case (v: (Lib.Identitee (Prim.Int))) of 
+       Identitee x -> (x: Prim.Int)
+
 testasum :: (Lib.ASum -> (Prim.Int))
 testasum = 
   \(x: Lib.ASum) -> 
     case (x: Lib.ASum) of 
        Constr1 y -> (1: Prim.Int)
        Constr2 z -> (2: Prim.Int)
+
+testValidator :: forall (a :: Prim.Type) (b :: Prim.Type) (c :: Prim.Type). ((a :: Prim.Type) -> (((b :: Prim.Type) -> (((c :: Prim.Type) -> (Prim.Boolean))))))
+testValidator = 
+  \(v: (a :: Prim.Type)) -> 
+    \(v1: (b :: Prim.Type)) -> 
+      \(v2: (c :: Prim.Type)) -> 
+        (True: Prim.Boolean)
+
+testValidatorApplied :: Prim.Boolean
+testValidatorApplied = 
+  (testValidator: forall (a :: Prim.Type)
+  (b :: Prim.Type)
+  (c :: Prim.Type). ((a :: Prim.Type) ->
+  (((b :: Prim.Type) -> (((c :: Prim.Type) -> (Prim.Boolean)))))))
+  ("datum": Prim.String)
+  ("redeemer": Prim.String)
+  ("context": Prim.String)
 
 testTuple :: (((Prim.Tuple3 (Prim.Int)) (Prim.Int)) (Prim.Boolean))
 testTuple = 
@@ -171,6 +212,13 @@ testTuple =
   (1: Prim.Int)
   (2: Prim.Int)
   (True: Prim.Boolean)
+
+testIdentitee :: Prim.Int
+testIdentitee = 
+  (unIdentitee: ((Lib.Identitee (Prim.Int)) -> (Prim.Int)))
+  ((Identitee: forall (@a :: Prim.Type). ((a :: Prim.Type) ->
+   ((Lib.Identitee ((a :: Prim.Type))))))
+   (101: Prim.Int))
 
 testCons :: Array (Prim.Int)
 testCons = 
@@ -256,6 +304,24 @@ plus =
       (addInteger: (Prim.Int -> ((Prim.Int -> (Prim.Int)))))
       (a: Prim.Int)
       (b: Prim.Int)
+
+testPlus :: Prim.Int
+testPlus = 
+  (plus: (Prim.Int -> ((Prim.Int -> (Prim.Int))))) (1: Prim.Int) (1: Prim.Int)
+
+opt2Int :: ((Lib.Option (Prim.Int)) -> (Prim.Int))
+opt2Int = 
+  \(v: (Lib.Option (Prim.Int))) -> 
+    case (v: (Lib.Option (Prim.Int))) of 
+       Some i -> (i: Prim.Int)
+       Nada -> (0: Prim.Int)
+
+testOpt2Int :: Prim.Int
+testOpt2Int = 
+  (opt2Int: ((Lib.Option (Prim.Int)) -> (Prim.Int)))
+  ((Some: forall (@a :: Prim.Type). ((a :: Prim.Type) ->
+   ((Lib.Option ((a :: Prim.Type))))))
+   (3: Prim.Int))
 
 nestedBinds :: Prim.Int
 nestedBinds = 
@@ -346,6 +412,11 @@ objForall =
                           getIdB :: ((b :: Prim.Type) -> ((b :: Prim.Type)))
                         })
 
+testId :: Prim.Int
+testId = 
+  (id: forall (t :: Prim.Type). ((t :: Prim.Type) -> ((t :: Prim.Type))))
+  (2: Prim.Int)
+
 eq2 :: forall (@a :: Prim.Type) (@b :: Prim.Type). (((Lib.Eq2$Dict ((a :: Prim.Type))) ((b :: Prim.Type))) -> (((a :: Prim.Type) -> (((b :: Prim.Type) -> (Prim.Boolean))))))
 eq2 = 
   \(dict: ((Lib.Eq2$Dict ((a :: Prim.Type))) ((b :: Prim.Type)))) -> 
@@ -405,8 +476,8 @@ workingEven =
        True -> (1: Prim.Int)
        _ -> (42: Prim.Int)
 
-emptyList :: Array ((t93 :: Prim.Type))
-emptyList = (Nil: Array ((t93 :: Prim.Type)))
+emptyList :: Array ((t111 :: Prim.Type))
+emptyList = (Nil: Array ((t111 :: Prim.Type)))
 
 cons :: forall (a :: Prim.Type). ((a :: Prim.Type) -> ((Array ((a :: Prim.Type)) -> (Array ((a :: Prim.Type))))))
 cons = 
@@ -422,14 +493,14 @@ consEmptyList1 =
   (cons: forall (a :: Prim.Type). ((a :: Prim.Type) ->
   ((Array ((a :: Prim.Type)) -> (Array ((a :: Prim.Type)))))))
   (1: Prim.Int)
-  (emptyList: forall (t93 :: Prim.Type). Array ((t93 :: Prim.Type)))
+  (emptyList: forall (t111 :: Prim.Type). Array ((t111 :: Prim.Type)))
 
 consEmptyList2 :: Array (Prim.String)
 consEmptyList2 = 
   (cons: forall (a :: Prim.Type). ((a :: Prim.Type) ->
   ((Array ((a :: Prim.Type)) -> (Array ((a :: Prim.Type)))))))
   ("hello": Prim.String)
-  (emptyList: forall (t93 :: Prim.Type). Array ((t93 :: Prim.Type)))
+  (emptyList: forall (t111 :: Prim.Type). Array ((t111 :: Prim.Type)))
 
 compare :: forall (@a :: Prim.Type). ((Lib.Ord$Dict ((a :: Prim.Type))) -> (((a :: Prim.Type) -> (((a :: Prim.Type) -> (Prim.Int))))))
 compare = 
@@ -489,8 +560,8 @@ guardedCase =
   \(w: Prim.Int) -> 
     \(x: Prim.Int) -> 
       let
-        v :: forall ($23 :: Prim.Type). (($23 :: Prim.Type) -> (Prim.Int))
-        v = \(v1: ($23 :: Prim.Type)) -> (0: Prim.Int)
+        v :: forall ($28 :: Prim.Type). (($28 :: Prim.Type) -> (Prim.Int))
+        v = \(v1: ($28 :: Prim.Type)) -> (0: Prim.Int)
       in case (w: Prim.Int) (x: Prim.Int) of 
             y z -> 
               let
@@ -536,19 +607,19 @@ guardedCase =
                                       in case (v4: Prim.Boolean) of 
                                             True -> (2: Prim.Int)
                                             _ -> 
-                                              (v: forall ($23 :: Prim.Type). (($23 :: Prim.Type) ->
+                                              (v: forall ($28 :: Prim.Type). (($28 :: Prim.Type) ->
                                               (Prim.Int)))
                                               (True: Prim.Boolean)
                                     _ -> 
-                                      (v: forall ($23 :: Prim.Type). (($23 :: Prim.Type) ->
+                                      (v: forall ($28 :: Prim.Type). (($28 :: Prim.Type) ->
                                       (Prim.Int)))
                                       (True: Prim.Boolean)
                             _ -> 
-                              (v: forall ($23 :: Prim.Type). (($23 :: Prim.Type) ->
+                              (v: forall ($28 :: Prim.Type). (($28 :: Prim.Type) ->
                               (Prim.Int)))
                               (True: Prim.Boolean)
                     _ -> 
-                      (v: forall ($23 :: Prim.Type). (($23 :: Prim.Type) ->
+                      (v: forall ($28 :: Prim.Type). (($28 :: Prim.Type) ->
                       (Prim.Int)))
                       (True: Prim.Boolean)
 
@@ -627,7 +698,7 @@ aFunction6 =
   in (aFunction: forall (x :: Prim.Type). ((x :: Prim.Type) ->
      ((forall (y :: Prim.Type). ((y :: Prim.Type) -> (Prim.Int)) ->
      (Prim.Int)))))
-     (Nil: Array (t122))
+     (Nil: Array (t140))
      (go: forall (z :: Prim.Type). ((z :: Prim.Type) -> (Prim.Int)))
 
 aBool :: Prim.Boolean

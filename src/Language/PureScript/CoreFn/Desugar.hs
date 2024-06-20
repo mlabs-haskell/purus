@@ -67,7 +67,7 @@ import Control.Monad (forM, (>=>), (<=<),foldM)
 import Language.PureScript.Errors
     ( MultipleErrors, errorMessage', SimpleErrorMessage(..))
 import Debug.Trace (traceM)
-import Language.PureScript.CoreFn.Pretty ( ppType, renderExprStr )
+import Language.PureScript.CoreFn.Pretty ( ppType, renderExprStr, prettyDatatypes, prettyAsStr )
 import Data.Text qualified as T
 import Language.PureScript.Pretty.Values (renderValue)
 import Language.PureScript.TypeChecker.Monad
@@ -136,7 +136,9 @@ moduleToCoreFn (A.Module modSS coms mn _decls (Just exps)) = do
       externs = ordNub $ mapMaybe externToCoreFn allDecls
   decls' <- concat <$> traverse (declToCoreFn mn) nonDataDecls
   let dataDecls' = mkDataDecls mn dataDecls
-  pure $ Module modSS coms mn (spanName modSS) imports exps' reExps externs decls' dataDecls'
+      result = Module modSS coms mn (spanName modSS) imports exps' reExps externs decls' dataDecls'
+  traceM $ prettyAsStr dataDecls'
+  pure $ result
  where
    setModuleName = modify $ \cs ->
      cs {checkCurrentModule = Just mn}

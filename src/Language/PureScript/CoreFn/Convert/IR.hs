@@ -1,5 +1,4 @@
 {-# OPTIONS_GHC -Wno-orphans #-} -- has to be here (more or less)
-{-# OPTIONS_GHC -Werror #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TypeApplications #-}
 {-# LANGUAGE DeriveTraversable, DeriveAnyClass  #-}
@@ -182,9 +181,9 @@ deriving instance (Ord a, Ord (XObjectLiteral x)) => Ord (Lit x a)
 
 -- We're switching to a more "Haskell-like" representation (largely to avoid overlapping names)
 data Pat x (f :: GHC.Type -> GHC.Type) a
-  = VarP Ident -- VarBinder
+  = VarP Ident Int  -- VarBinder
   | WildP -- NullBinder
-  | AsP Ident (Pat x f a) -- NamedBinder
+  | AsP (Ident,Int) (Pat x f a) -- NamedBinder
   | LitP (Lit x (Pat x f a)) -- LiteralBinder
   | ConP (Qualified (ProperName 'TypeName)) (Qualified (ProperName 'ConstructorName)) [Pat x f a] -- CTor binder
   deriving (Functor, Foldable, Traversable)
@@ -251,7 +250,7 @@ instance Eq1 (Lit x) where
   liftEq _ _ _ = False
 
 instance (Eq1 f, Monad f) => Eq1 (Pat x f) where
-  liftEq _ (VarP i1) (VarP i2) = i1 == i2
+  liftEq _ (VarP i1 n1) (VarP i2 n2) = i1 == i2 && n1 == n2
   liftEq _ WildP WildP = True
   liftEq eq (AsP i1 p1) (AsP i2 p2) = i1 == i2 && liftEq eq p1 p2
   liftEq eq (ConP tn1 cn1 ps1) (ConP tn2 cn2 ps2) = tn1 == tn2 && cn1 == cn2 && liftEq (liftEq eq) ps1 ps2
@@ -297,7 +296,7 @@ instance Monad (Exp x ty) where
     ObjectUpdateE ext ty (expr >>= f) toCopy (map (\(field, x) -> (field, x >>= f)) toUpdate)
 
 instance Bound (Pat x) where
-  VarP i  >>>= _      = VarP i
+  VarP i n  >>>= _      = VarP i n
   WildP   >>>= _      = WildP
   AsP i p   >>>= f      = AsP i (p >>>= f)
   ConP tn cn p >>>= f = ConP tn cn (map (>>>= f) p)
@@ -423,9 +422,9 @@ instance Pretty a => Pretty (Lit x a) where
 
 instance Pretty a => Pretty (Pat x (Exp x ty) a) where
   pretty = \case
-    VarP i -> pretty (runIdent i)
+    VarP i n -> pretty (runIdent i) <> pretty n
     WildP -> "_"
-    AsP i pat -> pretty (runIdent i) <> pretty pat
+    AsP (i,n) pat -> pretty (runIdent i) <> pretty n <> "@" <> pretty pat
     LitP lit -> case lit of
       IntL i -> pretty i
       NumL d -> pretty d
@@ -590,26 +589,3 @@ mkBindings = M.fromList . zip [0..]
 abstractMany :: Eq ty => [FVar ty] -> FVar ty -> Maybe (BVar ty)
 abstractMany xs v@(FVar t i) = (\index -> BVar index t $ disqualify i) <$> elemIndex v xs
 
-toPat :: Binder ann -> Pat x (Exp x ty) (FVar ty)
-toPat = \case
-  NullBinder _ -> WildP
-  VarBinder _ i  ->  VarP i
-  ConstructorBinder _ tn cn bs -> ConP tn cn $ map toPat bs
-  NamedBinder _ nm b ->  AsP nm $ toPat b
-  LiteralBinder _ lp -> case lp of
-    NumericLiteral (Left i) -> LitP $ IntL i
-    NumericLiteral (Right d) -> LitP $ NumL d
-    StringLiteral pss -> LitP $ StringL pss
-    CharLiteral c -> LitP $ CharL c
-    BooleanLiteral _ -> error "boolean literals shouldn't exist anymore"
-    ArrayLiteral as -> LitP $ ArrayL $ map toPat as
-    ObjectLiteral fs' -> do
-      -- REVIEW/FIXME:
-      -- this isn't right, we need to make sure the positions of the binders are correct,
-      -- since (I think?) you can use an Obj binder w/o using all of the fields
-      let fs          = sortOn fst fs'
-          len         = length fs
-          tupTyName   = mkTupleTyName len
-          tupCtorName = coerceProperName <$> tupTyName
-          inner = map (toPat . snd) fs
-        in ConP tupTyName tupCtorName inner

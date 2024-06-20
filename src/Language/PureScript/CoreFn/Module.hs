@@ -75,15 +75,20 @@ lookupCtorType qi (Datatypes _ ctors) = M.lookup qi ctors
 -- | Unsafe (we only use this in contexts where failure is fatal) TODO: Throw a useful error
 getConstructorIndexAndDecl :: Qualified (ProperName 'ConstructorName)
                     -> Datatypes k t
-                    -> (Int,CtorDecl t)
-getConstructorIndexAndDecl qn dts = fromJust $ do
+                    -> Either String (Int,CtorDecl t)
+getConstructorIndexAndDecl qn dts =  do
   let ctorIdent = properToIdent <$> qn
-  ctorTyNm <- lookupCtorType ctorIdent dts
-  dDecl <- lookupDataDecl ctorTyNm dts
+  ctorTyNm <- note ("No type found for constructor: " <> show ctorIdent) $ lookupCtorType ctorIdent dts
+  dDecl <- note ("No data declaration found for type: " <> show ctorTyNm) $ lookupDataDecl ctorTyNm dts
   let allTheCtors = dDecl ^. dDataCtors
-  decl <- find ((== ctorIdent) . view cdCtorName) allTheCtors
-  indX   <- findIndex ((== ctorIdent) . view cdCtorName) allTheCtors
+  decl <- note ("No constructor declaration found for: " <> show ctorIdent) $ find ((== ctorIdent) . view cdCtorName) allTheCtors
+  indX   <- note ("No constructor index found for: " <> show ctorIdent) $ findIndex ((== ctorIdent) . view cdCtorName) allTheCtors
   pure (indX,decl)
+ where
+   note :: forall x. String -> Maybe x -> Either String x
+   note msg = \case
+     Nothing -> Left msg
+     Just res -> pure res
 
 -- | Unsafe (we only use this in contexts where failure is fatal) TODO: Throw a useful error
 getAllConstructorDecls :: Qualified (ProperName 'TypeName)

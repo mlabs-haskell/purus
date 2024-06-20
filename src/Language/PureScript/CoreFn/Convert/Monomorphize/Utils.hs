@@ -266,10 +266,20 @@ instance Plated (Exp x t a) where
         -> Exp x t a
         -> f (Exp x t  a)
      go  tfun = \case
-      LamE t bv e ->  LamE t bv <$> helper e
+      LamE t bv e ->
+        let e' =  toScope
+                  <$> join
+                  <$> fmap distributeExp
+                  <$> traverse (traverse (go tfun . (pure @(Exp x t)))) (fromScope e)
+        in LamE t bv <$> e'
       CaseE t es alts ->
         let goAlt ::  Alt x t (Exp x t) a -> f (Alt x t (Exp x t) a)
-            goAlt (UnguardedAlt bs pats scoped) = UnguardedAlt bs pats <$> helper scoped
+            goAlt (UnguardedAlt bs pats scoped) =
+              let scoped' = toScope
+                            <$> join
+                            <$> fmap distributeExp
+                            <$> traverse (traverse (go tfun . pure @(Exp x t))) (fromScope scoped)
+              in UnguardedAlt bs pats <$> scoped'
         in CaseE t <$>  tfun es <*>  traverse goAlt alts
       LetE binds decls scoped ->
         let goDecls :: BindE t (Exp x t) a -> f (BindE t (Exp x t) a)
@@ -278,14 +288,18 @@ instance Plated (Exp x t a) where
                 NonRecursive ident <$> tfun expr
               Recursive xs ->
                 Recursive <$> traverse (\(i,x) -> (i,) <$> tfun x) xs
-        in LetE binds <$> traverse goDecls decls <*> helper scoped
+            scoped' = toScope
+                            <$> join
+                            <$> fmap distributeExp
+                            <$> traverse (traverse (go tfun . pure @(Exp x t))) (fromScope scoped)
+        in LetE binds <$> traverse goDecls decls <*> scoped'
       AppE e1 e2 -> AppE <$> tfun e1 <*> tfun e2
       AccessorE x t pss e -> AccessorE x t pss <$> tfun e
       ObjectUpdateE x t e cf fs -> (\e' fs' -> ObjectUpdateE x t e' cf fs')
                                    <$> tfun  e
                                    <*> traverse (\(nm,expr) -> (nm,) <$> tfun expr) fs
       LitE t lit -> LitE t <$> traverseLit lit
-      other -> pure other
+      V a -> pure (V a)
       where
         traverseLit :: Lit x (Exp x t a)
                     -> f (Lit x (Exp x t a))
@@ -298,10 +312,7 @@ instance Plated (Exp x t a) where
           ConstArrayL xs -> ConstArrayL <$> pure xs
           ObjectL x fs -> ObjectL x <$> traverse (\(str,e) -> (str,) <$> tfun e) fs
 
-        helper ::  Scope (BVar t) (Exp x t) a -> f (Scope (BVar t) (Exp x t) a)
-        helper (Scope x) =
-          let ex =   plate (pure @f) $ join $ distributeExp <$> x
-          in toScope <$> ex
+
 -- put this somewhere else
 
 instance Plated SourceType where
