@@ -498,7 +498,7 @@ convertExpr fileName = go
       pure $ positioned ann $ AST.IfThenElse a' b' c'
     expr@(ExprCase _ (CaseOf _ as _ bs)) -> do
       let ann = uncurry (sourceAnnCommented fileName) $ exprRange expr
-      as' <- traverse go $ toList as
+      as' <- go as
       let bss = NE.toList bs
       bs' <- traverse (bitraverse (traverse (convertBinder fileName) . toList) (convertGuarded fileName)) bss
       let bss' = uncurry AST.CaseAlternative <$> bs'

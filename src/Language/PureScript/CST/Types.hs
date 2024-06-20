@@ -289,7 +289,7 @@ data FixityFields = FixityFields
 
 data ValueBindingFields a = ValueBindingFields
   { valName :: Name Ident
-  , valBinders :: [Binder a]
+  , valBinders :: [BinderAtom a]
   , valGuarded :: Guarded a
   } deriving (Show, Eq, Ord, Functor, Foldable, Traversable, Generic)
 
@@ -368,7 +368,7 @@ data RecordAccessor a = RecordAccessor
 
 data Lambda a = Lambda
   { lmbSymbol :: SourceToken
-  , lmbBinders :: NonEmpty (Binder a)
+  , lmbBinders :: NonEmpty (BinderAtom a)
   , lmbArr :: SourceToken
   , lmbBody :: Expr a
   } deriving (Show, Eq, Ord, Functor, Foldable, Traversable, Generic)
@@ -384,7 +384,7 @@ data IfThenElse a = IfThenElse
 
 data CaseOf a = CaseOf
   { caseKeyword :: SourceToken
-  , caseHead :: Separated (Expr a)
+  , caseHead :: Expr a
   , caseOf :: SourceToken
   , caseBranches :: NonEmpty (Separated (Binder a), Guarded a)
   } deriving (Show, Eq, Ord, Functor, Foldable, Traversable, Generic)
@@ -425,18 +425,17 @@ data AdoBlock a = AdoBlock
   , adoResult :: Expr a
   } deriving (Show, Eq, Ord, Functor, Foldable, Traversable, Generic)
 
-data Binder a
+data BinderAtom a
   = BinderWildcard a SourceToken
   | BinderVar a (Name Ident)
-  | BinderNamed a (Name Ident) SourceToken (Binder a)
-  | BinderConstructor a (QualifiedName (N.ProperName 'N.ConstructorName)) [Binder a]
-  | BinderBoolean a SourceToken Bool
-  | BinderChar a SourceToken Char
-  | BinderString a SourceToken PSString
-  | BinderNumber a (Maybe SourceToken) SourceToken (Either Integer Double)
-  | BinderArray a (Delimited (Binder a))
-  | BinderRecord a (Delimited (RecordLabeled (Binder a)))
-  | BinderParens a (Wrapped (Binder a))
+  deriving (Show, Eq, Ord, Functor, Foldable, Traversable, Generic)
+
+data Binder a
+  = BinderConstructor a (Maybe (Name Ident)) (QualifiedName (N.ProperName 'N.ConstructorName)) [BinderAtom a]
+  -- ^ name@(Module.Name.Foo bar baz ...)
+  | BinderAtoms a (NonEmpty (BinderAtom a))
+  | BinderArray a (Delimited (Name Ident))
+  | BinderRecord a (Delimited (RecordLabeled (Name Ident)))
   | BinderTyped a (Binder a) SourceToken (Type a)
-  | BinderOp a (Binder a) (QualifiedName (N.OpName 'N.ValueOpName)) (Binder a)
+  | BinderOp a (BinderAtom a) (QualifiedName (N.OpName 'N.ValueOpName)) (BinderAtom a)
   deriving (Show, Eq, Ord, Functor, Foldable, Traversable, Generic)

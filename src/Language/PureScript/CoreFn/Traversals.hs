@@ -26,7 +26,7 @@ everywhereOnValues f g h = (f', g', h')
   g' (ObjectUpdate ann t obj copy vs) = g (ObjectUpdate ann t (g' obj) copy (map (fmap g') vs))
   g' (Abs ann t name e) = g (Abs ann t name (g' e))
   g' (App ann v1 v2) = g (App ann (g' v1) (g' v2))
-  g' (Case ann t vs alts) = g (Case ann t (map g' vs) (map handleCaseAlternative alts))
+  g' (Case ann t v alts) = g (Case ann t (g' v) (map handleCaseAlternative alts))
   g' (Let ann ds e) = g (Let ann (map f' ds) (g' e))
   g' e = g e
 
@@ -69,7 +69,7 @@ traverseCoreFn f g h i = (f', g', h', i')
   g' (ObjectUpdate ann t obj copy vs) = (\obj' -> ObjectUpdate ann t obj' copy) <$> g obj <*> traverse (traverse g) vs
   g' (Abs ann t name e) = Abs ann t name <$> g e
   g' (App ann v1 v2) = App ann <$> g v1 <*> g v2
-  g' (Case ann t vs alts) = Case ann t <$> traverse g vs <*> traverse i alts
+  g' (Case ann t v alts) = Case ann t <$> g v <*> traverse i alts
   g' (Let ann ds e) = Let ann  <$> traverse f ds <*> g' e
   g' e = pure e
 

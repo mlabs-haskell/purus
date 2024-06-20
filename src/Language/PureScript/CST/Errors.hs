@@ -22,7 +22,6 @@ data ParserErrorType
   = ErrWildcardInType
   | ErrConstraintInKind
   | ErrHoleInType
-  | ErrExprInBinder
   | ErrExprInDeclOrBinder
   | ErrExprInDecl
   | ErrBinderInDecl
@@ -92,8 +91,6 @@ prettyPrintErrorMessage ParserErrorInfo {..} = case errType of
     "Unsupported constraint in kind; constraints are only allowed in value annotations"
   ErrHoleInType ->
     "Unexpected hole in type; type holes are only allowed in value annotations"
-  ErrExprInBinder ->
-    "Expected pattern, saw expression"
   ErrExprInDeclOrBinder ->
     "Expected declaration or pattern, saw expression"
   ErrExprInDecl ->

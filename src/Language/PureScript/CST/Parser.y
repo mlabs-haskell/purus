@@ -417,14 +417,14 @@ expr5 :: { Expr () }
   | adoBlock 'in' expr { ExprAdo () $ uncurry AdoBlock $1 $2 $3 }
   | '\\' many(binderAtom) '->' expr { ExprLambda () (Lambda $1 $2 $3 $4) }
   | 'let' '\{' manySep(letBinding, '\;') '\}' 'in' expr { ExprLet () (LetIn $1 $3 $5 $6) }
-  | 'case' sep(expr, ',') 'of' '\{' manySep(caseBranch, '\;') '\}' { ExprCase () (CaseOf $1 $2 $3 $5) }
+  | 'case' expr 'of' '\{' manySep(caseBranch, '\;') '\}' { ExprCase () (CaseOf $1 $2 $3 $5) }
   -- These special cases handle some idiosynchratic syntax that the current
   -- parser allows. Technically the parser allows the rhs of a case branch to be
   -- at any level, but this is ambiguous. We allow it in the case of a singleton
   -- case, since this is used in the wild.
-  | 'case' sep(expr, ',') 'of' '\{' sep(binder1, ',') '->' '\}' exprWhere
+  | 'case' expr 'of' '\{' sep(binder1, ',') '->' '\}' exprWhere
       {% addWarning (let (a,b) = whereRange $8 in [a, b]) WarnDeprecatedCaseOfOffsideSyntax *> pure (ExprCase () (CaseOf $1 $2 $3 (pure ($5, Unconditional $6 $8)))) }
-  | 'case' sep(expr, ',') 'of' '\{' sep(binder1, ',') '\}' guardedCase
+  | 'case' expr 'of' '\{' sep(binder1, ',') '\}' guardedCase
       {% addWarning (let (a,b) = guardedRange $7 in [a, b]) WarnDeprecatedCaseOfOffsideSyntax *> pure (ExprCase () (CaseOf $1 $2 $3 (pure ($5, $7)))) }
 
 expr6 :: { Expr () }
@@ -580,32 +580,29 @@ binderAndArrow :: { (Binder (), SourceToken) }
 binder :: { Binder () }
   : binder1 { $1 }
   | binder1 '::' type { BinderTyped () $1 $2 $3 }
+  | '(' binder ')' { $2 }
 
 binder1 :: { Binder () }
-  : binder2 { $1 }
-  | binder1 qualOp binder2 { BinderOp () $1 (getQualifiedOpName $2) $3 }
+  : ident '@' qualProperName manyOrEmpty(binderAtom)
+    { BinderConstructor () (Just $1) (getQualifiedProperName $3) $4 }
+  | qualProperName manyOrEmpty(binderAtom)
+    { BinderConstructor () Nothing   (getQualifiedProperName $1) $2 }
+  | binderAtom qualOp binderAtom { BinderOp () $1 (getQualifiedOpName $2) $3 }
+  | many1(binderAtom)
+    { BinderAtoms () $1 }
+  | delim('[', ident, ',', ']')
+    { BinderArray () $1 }
+  | delim('{', recordBinder, ',', '}')
+    { BinderRecord () $1 }
 
-binder2 :: { Binder () }
-  : many(binderAtom) {% toBinderConstructor $1 }
-  | '-' number { uncurry (BinderNumber () (Just $1)) $2 }
-
-binderAtom :: { Binder () }
+binderAtom :: { BinderAtom () }
   : '_' { BinderWildcard () $1 }
   | ident %shift { BinderVar () $1 }
-  | ident '@' binderAtom { BinderNamed () $1 $2 $3 }
-  | qualProperName { BinderConstructor () (getQualifiedProperName $1) [] }
-  | boolean { uncurry (BinderBoolean ()) $1 }
-  | char { uncurry (BinderChar ()) $1 }
-  | string { uncurry (BinderString ()) $1 }
-  | number { uncurry (BinderNumber () Nothing) $1 }
-  | delim('[', binder, ',', ']') { BinderArray () $1 }
-  | delim('{', recordBinder, ',', '}') { BinderRecord () $1 }
-  | '(' binder ')' { BinderParens () (Wrapped $1 $2 $3) }
 
-recordBinder :: { RecordLabeled (Binder ()) }
+recordBinder :: { RecordLabeled (Name Ident) }
   : label {% fmap RecordPun . toName Ident $ lblTok $1 }
   | label '=' binder {% addFailure [$2] ErrRecordUpdateInCtr *> pure (RecordPun $ unexpectedName $ lblTok $1) }
-  | label ':' binder { RecordField $1 $2 $3 }
+  | label ':' ident { RecordField $1 $2 $3 }
 
 -- By splitting up the module header from the body, we can incrementally parse
 -- just the header, and then continue parsing the body while still sharing work.

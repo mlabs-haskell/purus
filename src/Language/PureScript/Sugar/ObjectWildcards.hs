@@ -37,10 +37,10 @@ desugarDecl d = rethrowWithPosition (declSourceSpan d) $ fn d
     | Just props <- peelAnonAccessorChain u = do
       arg <- freshIdent'
       return $ Abs (VarBinder nullSourceSpan arg) $ foldr Accessor (argToExpr arg) (prop:props)
-  desugarExpr (Case args cas) | any isAnonymousArgument args = do
-    argIdents <- forM args freshIfAnon
-    let args' = zipWith (`maybe` argToExpr) args argIdents
-    return $ foldr (Abs . VarBinder nullSourceSpan) (Case args' cas) (catMaybes argIdents)
+  desugarExpr (Case arg cas) | isAnonymousArgument arg = do
+    argIdent <- freshIfAnon arg
+    let arg' = maybe arg argToExpr argIdent
+    return $ foldr (Abs . VarBinder nullSourceSpan) (Case arg' cas) (catMaybes [argIdent])
   desugarExpr (IfThenElse u t f) | any isAnonymousArgument [u, t, f] = do
     u' <- freshIfAnon u
     t' <- freshIfAnon t

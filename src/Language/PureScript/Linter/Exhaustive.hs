@@ -83,12 +83,6 @@ getConstructors env defmn n = extractConstructors lnte
   getConsInfo con = M.lookup con (dataConstructors env)
 
 -- |
--- Replicates a wildcard binder
---
-initialize :: Int -> [Binder]
-initialize l = replicate l NullBinder
-
--- |
 -- Applies a function over two lists of tuples that may lack elements
 --
 genericMerge :: Ord a =>
@@ -116,7 +110,7 @@ missingCasesSingle env mn br (NamedBinder _ _ bl) = missingCasesSingle env mn br
 missingCasesSingle env mn NullBinder cb@(ConstructorBinder ss con _) =
   (concatMap (\cp -> fst $ missingCasesSingle env mn cp cb) allPatterns, return True)
   where
-  allPatterns = map (\(p, t) -> ConstructorBinder ss (qualifyName p mn con) (initialize $ length t))
+  allPatterns = map (\(p, t) -> ConstructorBinder ss (qualifyName p mn con) NullBinder)
                   $ getConstructors env mn con
 missingCasesSingle env mn cb@(ConstructorBinder ss con bs) (ConstructorBinder _ con' bs')
   | con == con' = let (bs'', pr) = missingCasesMultiple env mn bs bs' in (map (ConstructorBinder ss con) bs'', pr)
@@ -304,6 +298,6 @@ checkExhaustiveExpr ss env mn = onExpr'
   onExpr :: Expr -> m Expr
   onExpr e = case e of
     Case es cas ->
-      checkExhaustive ss env mn (length es) cas e
+      checkExhaustive ss env mn 1 cas e
     _ ->
       pure e

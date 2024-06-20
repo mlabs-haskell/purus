@@ -78,7 +78,7 @@ everywhereOnValues f g h = (f', g', h')
   g' (VisibleTypeApp v ty) = g (VisibleTypeApp (g' v) ty)
   g' (Unused v) = g (Unused (g' v))
   g' (IfThenElse v1 v2 v3) = g (IfThenElse (g' v1) (g' v2) (g' v3))
-  g' (Case vs alts) = g (Case (fmap g' vs) (fmap handleCaseAlternative alts))
+  g' (Case v alts) = g (Case (g' v) (fmap handleCaseAlternative alts))
   g' (TypedValue check v ty) = g (TypedValue check (g' v) ty)
   g' (Let w ds v) = g (Let w (fmap f' ds) (g' v))
   g' (Do m es) = g (Do m (fmap handleDoNotationElement es))
@@ -87,7 +87,6 @@ everywhereOnValues f g h = (f', g', h')
   g' other = g other
 
   h' :: Binder -> Binder
-  h' (ConstructorBinder ss ctor bs) = h (ConstructorBinder ss ctor (fmap h' bs))
   h' (BinaryNoParensBinder b1 b2 b3) = h (BinaryNoParensBinder (h' b1) (h' b2) (h' b3))
   h' (ParensInBinder b) = h (ParensInBinder (h' b))
   h' (LiteralBinder ss l) = h (LiteralBinder ss (lit h' l))
@@ -153,7 +152,7 @@ everywhereOnValuesTopDownM f g h = (f' <=< f, g' <=< g, h' <=< h)
   g' (VisibleTypeApp v ty) = VisibleTypeApp <$> (g v >>= g') <*> pure ty
   g' (Unused v) = Unused <$> (g v >>= g')
   g' (IfThenElse v1 v2 v3) = IfThenElse <$> (g v1 >>= g') <*> (g v2 >>= g') <*> (g v3 >>= g')
-  g' (Case vs alts) = Case <$> traverse (g' <=< g) vs <*> traverse handleCaseAlternative alts
+  g' (Case v alts) = Case <$> (g' =<< g v) <*> traverse handleCaseAlternative alts
   g' (TypedValue check v ty) = TypedValue check <$> (g v >>= g') <*> pure ty
   g' (Let w ds v) = Let w <$> traverse (f' <=< f) ds <*> (g v >>= g')
   g' (Do m es) = Do m <$> traverse handleDoNotationElement es
@@ -163,7 +162,6 @@ everywhereOnValuesTopDownM f g h = (f' <=< f, g' <=< g, h' <=< h)
 
   h' :: Binder -> m Binder
   h' (LiteralBinder ss l) = LiteralBinder ss <$> litM (h >=> h') l
-  h' (ConstructorBinder ss ctor bs) = ConstructorBinder ss ctor <$> traverse (h' <=< h) bs
   h' (BinaryNoParensBinder b1 b2 b3) = BinaryNoParensBinder <$> (h b1 >>= h') <*> (h b2 >>= h') <*> (h b3 >>= h')
   h' (ParensInBinder b) = ParensInBinder <$> (h b >>= h')
   h' (NamedBinder ss name b) = NamedBinder ss name <$> (h b >>= h')
@@ -223,7 +221,7 @@ everywhereOnValuesM f g h = (f', g', h')
   g' (VisibleTypeApp v ty) = (VisibleTypeApp <$> g' v <*> pure ty) >>= g
   g' (Unused v) = (Unused <$> g' v) >>= g
   g' (IfThenElse v1 v2 v3) = (IfThenElse <$> g' v1 <*> g' v2 <*> g' v3) >>= g
-  g' (Case vs alts) = (Case <$> traverse g' vs <*> traverse handleCaseAlternative alts) >>= g
+  g' (Case v alts) = (Case <$> g' v <*> traverse handleCaseAlternative alts) >>= g
   g' (TypedValue check v ty) = (TypedValue check <$> g' v <*> pure ty) >>= g
   g' (Let w ds v) = (Let w <$> traverse f' ds <*> g' v) >>= g
   g' (Do m es) = (Do m <$> traverse handleDoNotationElement es) >>= g
@@ -233,7 +231,6 @@ everywhereOnValuesM f g h = (f', g', h')
 
   h' :: Binder -> m Binder
   h' (LiteralBinder ss l) = (LiteralBinder ss <$> litM h' l) >>= h
-  h' (ConstructorBinder ss ctor bs) = (ConstructorBinder ss ctor <$> traverse h' bs) >>= h
   h' (BinaryNoParensBinder b1 b2 b3) = (BinaryNoParensBinder <$> h' b1 <*> h' b2 <*> h' b3) >>= h
   h' (ParensInBinder b) = (ParensInBinder <$> h' b) >>= h
   h' (NamedBinder ss name b) = (NamedBinder ss name <$> h' b) >>= h
@@ -296,7 +293,7 @@ everythingOnValues (<>.) f g h i j = (f', g', h', i', j')
   g' v@(VisibleTypeApp v' _) = g v <>. g' v'
   g' v@(Unused v1) = g v <>. g' v1
   g' v@(IfThenElse v1 v2 v3) = g v <>. g' v1 <>. g' v2 <>. g' v3
-  g' v@(Case vs alts) = foldl (<>.) (foldl (<>.) (g v) (fmap g' vs)) (fmap i' alts)
+  g' v@(Case vs alts) = foldl (<>.) (foldl (<>.) (g v) [ g' vs ]) (fmap i' alts)
   g' v@(TypedValue _ v1 _) = g v <>. g' v1
   g' v@(Let _ ds v1) = foldl (<>.) (g v) (fmap f' ds) <>. g' v1
   g' v@(Do _ es) = foldl (<>.) (g v) (fmap j' es)
@@ -306,7 +303,6 @@ everythingOnValues (<>.) f g h i j = (f', g', h', i', j')
 
   h' :: Binder -> r
   h' b@(LiteralBinder _ l) = lit (h b) h' l
-  h' b@(ConstructorBinder _ _ bs) = foldl (<>.) (h b) (fmap h' bs)
   h' b@(BinaryNoParensBinder b1 b2 b3) = h b <>. h' b1 <>. h' b2 <>. h' b3
   h' b@(ParensInBinder b1) = h b <>. h' b1
   h' b@(NamedBinder _ _ b1) = h b <>. h' b1
@@ -378,7 +374,7 @@ everythingWithContextOnValues s0 r0 (<>.) f g h i j = (f'' s0, g'' s0, h'' s0, i
   g' s (VisibleTypeApp v _) = g'' s v
   g' s (Unused v) = g'' s v
   g' s (IfThenElse v1 v2 v3) = g'' s v1 <>. g'' s v2 <>. g'' s v3
-  g' s (Case vs alts) = foldl (<>.) (foldl (<>.) r0 (fmap (g'' s) vs)) (fmap (i'' s) alts)
+  g' s (Case v alts) = foldl (<>.) (foldl (<>.) r0 [ g'' s v ]) (fmap (i'' s) alts)
   g' s (TypedValue _ v1 _) = g'' s v1
   g' s (Let _ ds v1) = foldl (<>.) r0 (fmap (f'' s) ds) <>. g'' s v1
   g' s (Do _ es) = foldl (<>.) r0 (fmap (j'' s) es)
@@ -391,7 +387,6 @@ everythingWithContextOnValues s0 r0 (<>.) f g h i j = (f'' s0, g'' s0, h'' s0, i
 
   h' :: s -> Binder -> r
   h' s (LiteralBinder _ l) = lit h'' s l
-  h' s (ConstructorBinder _ _ bs) = foldl (<>.) r0 (fmap (h'' s) bs)
   h' s (BinaryNoParensBinder b1 b2 b3) = h'' s b1 <>. h'' s b2 <>. h'' s b3
   h' s (ParensInBinder b) = h'' s b
   h' s (NamedBinder _ _ b1) = h'' s b1
@@ -487,7 +482,7 @@ everywhereWithContextOnValuesM s0 f g h i j k = (f'' s0, g'' s0, h'' s0, i'' s0,
   g' s (VisibleTypeApp v ty) = VisibleTypeApp <$> g'' s v <*> pure ty
   g' s (Unused v) = Unused <$> g'' s v
   g' s (IfThenElse v1 v2 v3) = IfThenElse <$> g'' s v1 <*> g'' s v2 <*> g'' s v3
-  g' s (Case vs alts) = Case <$> traverse (g'' s) vs <*> traverse (i'' s) alts
+  g' s (Case v alts) = Case <$> g'' s v <*> traverse (i'' s) alts
   g' s (TypedValue check v ty) = TypedValue check <$> g'' s v <*> pure ty
   g' s (Let w ds v) = Let w <$> traverse (f'' s) ds <*> g'' s v
   g' s (Do m es) = Do m <$> traverse (j'' s) es
@@ -498,7 +493,6 @@ everywhereWithContextOnValuesM s0 f g h i j k = (f'' s0, g'' s0, h'' s0, i'' s0,
   h'' s = uncurry h' <=< h s
 
   h' s (LiteralBinder ss l) = LiteralBinder ss <$> lit h'' s l
-  h' s (ConstructorBinder ss ctor bs) = ConstructorBinder ss ctor <$> traverse (h'' s) bs
   h' s (BinaryNoParensBinder b1 b2 b3) = BinaryNoParensBinder <$> h'' s b1 <*> h'' s b2 <*> h'' s b3
   h' s (ParensInBinder b) = ParensInBinder <$> h'' s b
   h' s (NamedBinder ss name b) = NamedBinder ss name <$> h'' s b
@@ -596,7 +590,7 @@ everythingWithScope f g h i j = (f'', g'', h'', i'', \s -> snd . j'' s)
   g' s (VisibleTypeApp v _) = g'' s v
   g' s (Unused v) = g'' s v
   g' s (IfThenElse v1 v2 v3) = g'' s v1 <> g'' s v2 <> g'' s v3
-  g' s (Case vs alts) = foldMap (g'' s) vs <> foldMap (i'' s) alts
+  g' s (Case v alts) = g'' s v <> foldMap (i'' s) alts
   g' s (TypedValue _ v1 _) = g'' s v1
   g' s (Let _ ds v1) =
     let s' = S.union s (S.fromList (map LocalIdent (mapMaybe getDeclIdent ds)))
@@ -613,7 +607,6 @@ everythingWithScope f g h i j = (f'', g'', h'', i'', \s -> snd . j'' s)
 
   h' :: S.Set ScopedIdent -> Binder -> r
   h' s (LiteralBinder _ l) = lit h'' s l
-  h' s (ConstructorBinder _ _ bs) = foldMap (h'' s) bs
   h' s (BinaryNoParensBinder b1 b2 b3) = foldMap (h'' s) [b1, b2, b3]
   h' s (ParensInBinder b) = h'' s b
   h' s (NamedBinder _ name b1) = h'' (S.insert (LocalIdent name) s) b1

@@ -88,9 +88,6 @@ unexpectedLabel tok = Label tok "<unexpected>"
 unexpectedExpr :: Monoid a => [SourceToken] -> Expr a
 unexpectedExpr toks = ExprIdent mempty (unexpectedQual (head toks))
 
-unexpectedBinder :: Monoid a => [SourceToken] -> Binder a
-unexpectedBinder toks = BinderVar mempty (unexpectedName (head toks))
-
 unexpectedRecordUpdate :: Monoid a => [SourceToken] -> RecordUpdate a
 unexpectedRecordUpdate toks = RecordUpdateLeaf (unexpectedLabel (head toks)) (head toks) (unexpectedExpr toks)
 
@@ -214,13 +211,6 @@ isConstrained :: Type a -> Bool
 isConstrained = everythingOnTypes (||) $ \case
   TypeConstrained{} -> True
   _ -> False
-
-toBinderConstructor :: Monoid a => NE.NonEmpty (Binder a) -> Parser (Binder a)
-toBinderConstructor = \case
-  BinderConstructor a name [] NE.:| bs ->
-    pure $ BinderConstructor a name bs
-  a NE.:| [] -> pure a
-  a NE.:| _ -> unexpectedToks binderRange unexpectedBinder ErrExprInBinder a
 
 toRecordFields
   :: Monoid a

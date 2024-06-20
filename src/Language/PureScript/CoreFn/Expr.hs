@@ -52,7 +52,7 @@ data Expr a
   -- |
   -- A case expression
   --
-  | Case a PurusType [Expr a] [CaseAlternative a]
+  | Case a PurusType (Expr a) [CaseAlternative a]
   -- |
   -- A let binding
   --
@@ -94,7 +94,7 @@ data CaseAlternative a = CaseAlternative
     -- |
     -- The result expression or a collect of guarded expressions
     --
-  , caseAlternativeResult :: Either [(Guard a, Expr a)] (Expr a)
+  , caseAlternativeResult  :: Either [(Guard a, Expr a)] (Expr a)
   } deriving (Eq, Ord, Show, Generic)
 
 instance FromJSON a => FromJSON (CaseAlternative a)
@@ -110,14 +110,14 @@ instance Functor CaseAlternative where
 -- Extract the annotation from a term
 --
 extractAnn :: Expr a -> a
-extractAnn (Literal a _ _) = a
-extractAnn (Accessor a _ _ _) = a
+extractAnn (Literal a _ _)          = a
+extractAnn (Accessor a _ _ _)       = a
 extractAnn (ObjectUpdate a _ _ _ _) = a
-extractAnn (Abs a _ _ _) = a
-extractAnn (App a  _ _) = a
-extractAnn (Var a _ _) = a
-extractAnn (Case a _ _ _) = a
-extractAnn (Let a _ _) = a
+extractAnn (Abs a _ _ _)            = a
+extractAnn (App a  _ _)             = a
+extractAnn (Var a _ _)              = a
+extractAnn (Case a _ _ _)           = a
+extractAnn (Let a _ _)              = a
 
 
 -- |

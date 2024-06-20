@@ -160,7 +160,7 @@ rebracketFiltered !caller pred_ externs m = do
 
     goBinder :: SourceSpan -> Binder -> m (SourceSpan, Binder)
     goBinder _ b@(PositionedBinder pos _ _) = return (pos, b)
-    goBinder _ (BinaryNoParensBinder (OpBinder pos op) lhs rhs) =
+    goBinder _ (BinaryNoParensBinder (OpBinder pos op) (VarBinder lhs) (VarBinder rhs)) =
       case op `M.lookup` valueAliased of
         Just (Qualified mn' (Left alias)) ->
           throwError . errorMessage' pos $ InvalidOperatorInBinder op (Qualified mn' alias)

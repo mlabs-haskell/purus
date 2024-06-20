@@ -61,17 +61,16 @@ desugarGuardedExprs
   -> Expr
   -> m Expr
 desugarGuardedExprs ss (Case scrut alternatives)
-  | not $ all isTrivialExpr scrut = do
+  | not $ isTrivialExpr scrut = do
     -- in case the scrutinee is non trivial (e.g. not a Var or Literal)
     -- we may evaluate the scrutinee more than once when a guard occurs.
     -- We bind the scrutinee to Vars here to mitigate this case.
-    (scrut', scrut_decls) <- unzip <$> forM scrut (\e -> do
-      let mkTyped ex = TypedValue False ex (unsafeExprType e)
+    (scrut', scrut_decls) <- unzip <$> do
+      let mkTyped ex = TypedValue False ex (unsafeExprType scrut)
       scrut_id <- freshIdent'
       pure ( mkTyped $ Var ss (Qualified ByNullSourcePos scrut_id)
-           , ValueDecl (ss, []) scrut_id Private [] [MkUnguarded e]
+           , ValueDecl (ss, []) scrut_id Private [] [MkUnguarded scrut]
            )
-      )
     Let FromLet scrut_decls <$> desugarGuardedExprs ss (Case scrut' alternatives)
   where
     isTrivialExpr (Var _ _) = True
@@ -200,19 +199,19 @@ desugarGuardedExprs ss (Case scrut alternatives) =
             (CaseAlternative vb [MkUnguarded (desugarGuard gs e alt_fail)]
               : alt_fail' (length scrut))
 
-      return [ CaseAlternative scrut_nullbinder [MkUnguarded rhs]]
+      return [ CaseAlternative NullBinder [MkUnguarded rhs]]
 
     desugarGuard :: [Guard] -> Expr -> (Int ->[CaseAlternative]) -> Expr
     desugarGuard [] e _ = e
     desugarGuard (ConditionGuard c : gs) e match_failed
       | isTrueExpr c = desugarGuard gs e match_failed
       | otherwise =
-        Case [c]
+        Case c
           (CaseAlternative [LiteralBinder ss (BooleanLiteral True)]
             [MkUnguarded (desugarGuard gs e match_failed)] : match_failed 1)
 
     desugarGuard (PatternGuard vb g : gs) e match_failed =
-      Case [g]
+      Case g
         (CaseAlternative [vb] [MkUnguarded (desugarGuard gs e match_failed)]
           : match_failed')
       where
@@ -266,9 +265,6 @@ desugarGuardedExprs ss (Case scrut alternatives) =
           | otherwise
           = Nothing
 
-    scrut_nullbinder :: [Binder]
-    scrut_nullbinder = replicate (length scrut) NullBinder
-
     -- case expressions with a single alternative which have
     -- a NullBinder occur frequently after desugaring
     -- complex guards. This function removes these superfluous
@@ -303,16 +299,15 @@ validateCases = flip parU f
   (f, _, _) = everywhereOnValuesM return validate return
 
   validate :: Expr -> m Expr
-  validate c@(Case vs alts) = do
-    let l = length vs
-        alts' = filter ((l /=) . length . caseAlternativeBinders) alts
+  validate c@(Case v alts) = do
+    let alts' = filter ((1 /=) . length . caseAlternativeBinders) alts
     unless (null alts') $
-      throwError . MultipleErrors $ fmap (altError l) (caseAlternativeBinders <$> alts')
+      throwError . MultipleErrors $ fmap altError (caseAlternativeBinders <$> alts')
     return c
   validate other = return other
 
-  altError :: Int -> [Binder] -> ErrorMessage
-  altError l bs = withPosition pos $ ErrorMessage [] $ CaseBinderLengthDiffers l bs
+  altError :: [Binder] -> ErrorMessage
+  altError bs = withPosition pos $ ErrorMessage [] $ CaseBinderLengthDiffers 1 bs
     where
     pos = foldl1' widenSpan (mapMaybe positionedBinder bs)
 
@@ -332,7 +327,7 @@ desugarAbs = flip parU f
     pure (Abs (VarBinder ss i) val)
   replace (Abs binder val) = do
     ident <- freshIdent'
-    return $ Abs (VarBinder nullSourceSpan ident) $ Case [Var nullSourceSpan (Qualified ByNullSourcePos ident)] [CaseAlternative [binder] [MkUnguarded val]]
+    return $ Abs (VarBinder nullSourceSpan ident) $ Case (Var nullSourceSpan (Qualified ByNullSourcePos ident)) [CaseAlternative [binder] [MkUnguarded val]]
   replace other = return other
 
 stripPositioned :: Binder -> Binder

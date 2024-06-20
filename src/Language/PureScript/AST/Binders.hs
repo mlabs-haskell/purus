@@ -30,7 +30,7 @@ data Binder
   -- |
   -- A binder which matches a data constructor
   --
-  | ConstructorBinder SourceSpan (Qualified (ProperName 'ConstructorName)) [Binder]
+  | ConstructorBinder SourceSpan (Qualified (ProperName 'ConstructorName)) [(SourceSpan, Ident)]
   -- |
   -- A operator alias binder. During the rebracketing phase of desugaring,
   -- this data constructor will be removed.
@@ -117,16 +117,16 @@ instance Ord Binder where
     compare (orderOf binder) (orderOf binder')
       where
         orderOf :: Binder -> Int
-        orderOf NullBinder = 0
-        orderOf LiteralBinder{} = 1
-        orderOf VarBinder{} = 2
-        orderOf ConstructorBinder{} = 3
-        orderOf OpBinder{} = 4
+        orderOf NullBinder             = 0
+        orderOf LiteralBinder{}        = 1
+        orderOf VarBinder{}            = 2
+        orderOf ConstructorBinder{}    = 3
+        orderOf OpBinder{}             = 4
         orderOf BinaryNoParensBinder{} = 5
-        orderOf ParensInBinder{} = 6
-        orderOf NamedBinder{} = 7
-        orderOf PositionedBinder{} = 8
-        orderOf TypedBinder{} = 9
+        orderOf ParensInBinder{}       = 6
+        orderOf NamedBinder{}          = 7
+        orderOf PositionedBinder{}     = 8
+        orderOf TypedBinder{}          = 9
 
 -- |
 -- Collect all names introduced in binders in an expression
@@ -137,23 +137,23 @@ binderNames = map snd . binderNamesWithSpans
 binderNamesWithSpans :: Binder -> [(SourceSpan, Ident)]
 binderNamesWithSpans = go []
   where
-  go ns (LiteralBinder _ b) = lit ns b
-  go ns (VarBinder ss name) = (ss, name) : ns
-  go ns (ConstructorBinder _ _ bs) = foldl go ns bs
+  go ns (LiteralBinder _ b)             = lit ns b
+  go ns (VarBinder ss name)             = (ss, name) : ns
+  go ns (ConstructorBinder _ _ bs)      = foldl go ns $ uncurry VarBinder <$> bs
   go ns (BinaryNoParensBinder b1 b2 b3) = foldl go ns [b1, b2, b3]
-  go ns (ParensInBinder b) = go ns b
-  go ns (NamedBinder ss name b) = go ((ss, name) : ns) b
-  go ns (PositionedBinder _ _ b) = go ns b
-  go ns (TypedBinder _ b) = go ns b
-  go ns _ = ns
+  go ns (ParensInBinder b)              = go ns b
+  go ns (NamedBinder ss name b)         = go ((ss, name) : ns) b
+  go ns (PositionedBinder _ _ b)        = go ns b
+  go ns (TypedBinder _ b)               = go ns b
+  go ns _                               = ns
   lit ns (ObjectLiteral bs) = foldl go ns (map snd bs)
-  lit ns (ArrayLiteral bs) = foldl go ns bs
-  lit ns _ = ns
+  lit ns (ArrayLiteral bs)  = foldl go ns bs
+  lit ns _                  = ns
 
 
 isIrrefutable :: Binder -> Bool
-isIrrefutable NullBinder = True
-isIrrefutable (VarBinder _ _) = True
+isIrrefutable NullBinder               = True
+isIrrefutable (VarBinder _ _)          = True
 isIrrefutable (PositionedBinder _ _ b) = isIrrefutable b
-isIrrefutable (TypedBinder _ b) = isIrrefutable b
-isIrrefutable _ = False
+isIrrefutable (TypedBinder _ b)        = isIrrefutable b
+isIrrefutable _                        = False

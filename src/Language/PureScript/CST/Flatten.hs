@@ -62,25 +62,23 @@ flattenInstanceBinding = \case
 flattenValueBindingFields :: ValueBindingFields a -> DList SourceToken
 flattenValueBindingFields (ValueBindingFields a b c) =
   flattenName a <>
-  foldMap flattenBinder b <>
+  foldMap flattenBinderAtom b <>
   flattenGuarded c
+
+flattenBinderAtom :: BinderAtom a -> DList SourceToken
+flattenBinderAtom = \case
+  BinderWildcard _ a -> pure a
+  BinderVar _ a -> flattenName a
 
 flattenBinder :: Binder a -> DList SourceToken
 flattenBinder = \case
-  BinderWildcard _ a -> pure a
-  BinderVar _ a -> flattenName a
-  BinderNamed _ a b c -> flattenName a <> pure b <> flattenBinder c
-  BinderConstructor _ a b -> flattenQualifiedName a <> foldMap flattenBinder b
-  BinderBoolean _ a _ -> pure a
-  BinderChar _ a _ -> pure a
-  BinderString _ a _ -> pure a
-  BinderNumber _ a b _ -> foldMap pure a <> pure b
-  BinderArray _ a -> flattenWrapped (foldMap (flattenSeparated flattenBinder)) a
+  BinderConstructor _ as a b ->
+    foldMap flattenName as <> flattenQualifiedName a <> foldMap flattenBinderAtom b
+  BinderArray _ a -> flattenWrapped (foldMap (flattenSeparated flattenName)) a
   BinderRecord _ a ->
-    flattenWrapped (foldMap (flattenSeparated (flattenRecordLabeled flattenBinder))) a
-  BinderParens _ a -> flattenWrapped flattenBinder a
+    flattenWrapped (foldMap (flattenSeparated (flattenRecordLabeled flattenName))) a
   BinderTyped _ a b c -> flattenBinder a <> pure b <> flattenType c
-  BinderOp _ a b c -> flattenBinder a <> flattenQualifiedName b <> flattenBinder c
+  BinderOp _ a b c -> flattenBinderAtom a <> flattenQualifiedName b <> flattenBinderAtom c
 
 flattenRecordLabeled :: (a -> DList SourceToken) -> RecordLabeled a -> DList SourceToken
 flattenRecordLabeled f = \case
@@ -99,7 +97,7 @@ flattenRecordUpdate = \case
 
 flattenLambda :: Lambda a -> DList SourceToken
 flattenLambda (Lambda a b c d) =
-  pure a <> foldMap flattenBinder b <> pure c <> flattenExpr d
+  pure a <> foldMap flattenBinderAtom b <> pure c <> flattenExpr d
 
 flattenIfThenElse :: IfThenElse a -> DList SourceToken
 flattenIfThenElse (IfThenElse a b c d e f) =
@@ -108,7 +106,7 @@ flattenIfThenElse (IfThenElse a b c d e f) =
 flattenCaseOf :: CaseOf a -> DList SourceToken
 flattenCaseOf (CaseOf a b c d) =
   pure a <>
-  flattenSeparated flattenExpr b <>
+  flattenExpr b <>
   pure c <>
   foldMap (\(e, f) -> flattenSeparated flattenBinder e <> flattenGuarded f) d
 

@@ -108,7 +108,7 @@ data HintCategory
 
 -- |
 -- In constraint solving, indicates whether there were `TypeUnknown`s that prevented
--- an instance from being found, and whether VTAs are required 
+-- an instance from being found, and whether VTAs are required
 -- due to type class members not referencing all the type class
 -- head's type variables.
 data UnknownsHint
@@ -726,7 +726,7 @@ data Expr
   -- A case expression. During the case expansion phase of desugaring, top-level binders will get
   -- desugared into case expressions, hence the need for guards and multiple binders per branch here.
   --
-  | Case [Expr] [CaseAlternative]
+  | Case Expr [CaseAlternative]
   -- |
   -- A value with a type annotation
   --
@@ -796,11 +796,11 @@ data CaseAlternative = CaseAlternative
   { -- |
     -- A collection of binders with which to match the inputs
     --
-    caseAlternativeBinders :: [Binder]
+    caseAlternativeBinders :: Binder
     -- |
     -- The result expression or a collect of guarded expressions
     --
-  , caseAlternativeResult :: [GuardedExpr]
+  , caseAlternativeResult :: GuardedExpr
   } deriving (Show)
 
 -- |

@@ -74,8 +74,8 @@ prettyPrintValue d (App val arg) = prettyPrintValueAtom (d - 1) val `beforeWithS
 prettyPrintValue d (VisibleTypeApp val _) = prettyPrintValueAtom (d - 1) val
 prettyPrintValue d (Unused val) = prettyPrintValue d val
 prettyPrintValue d (Abs arg val) = text ('\\' : T.unpack (prettyPrintBinder arg) ++ " -> ") // moveRight 2 (prettyPrintValue (d - 1) val)
-prettyPrintValue d (Case values binders) =
-  (text "case " <> foldr beforeWithSpace (text "of") (map (prettyPrintValueAtom (d - 1)) values)) //
+prettyPrintValue d (Case value binders) =
+  (text "case " <> prettyPrintValueAtom (d - 1) value `beforeWithSpace` text "of") //
     moveRight 2 (vcat left (map (prettyPrintCaseAlternative (d - 1)) binders))
 prettyPrintValue d (Let FromWhere ds val) =
   prettyPrintValue (d - 1) val //
@@ -229,7 +229,9 @@ prettyPrintLiteralBinder (ArrayLiteral bs) =
 --
 prettyPrintBinder :: Binder -> Text
 prettyPrintBinder (ConstructorBinder _ ctor []) = runProperName (disqualify ctor)
-prettyPrintBinder (ConstructorBinder _ ctor args) = runProperName (disqualify ctor) Monoid.<> " " Monoid.<> T.unwords (map prettyPrintBinderAtom args)
+prettyPrintBinder (ConstructorBinder _ ctor args) =
+  runProperName (disqualify ctor) Monoid.<> " " Monoid.<>
+  T.unwords (map (showIdent . snd) args)
 prettyPrintBinder (PositionedBinder _ _ binder) = prettyPrintBinder binder
 prettyPrintBinder (TypedBinder _ binder) = prettyPrintBinder binder
 prettyPrintBinder b = prettyPrintBinderAtom b

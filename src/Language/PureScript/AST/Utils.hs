@@ -10,7 +10,7 @@ lam :: Ident -> Expr -> Expr
 lam = Abs . mkBinder
 
 lamCase :: Ident -> [CaseAlternative] -> Expr
-lamCase s = lam s . Case [mkVar s]
+lamCase s = lam s . Case (mkVar s)
 
 lamCase2 :: Ident -> Ident -> [CaseAlternative] -> Expr
 lamCase2 s t = lam s . lam t . Case [mkVar s, mkVar t]

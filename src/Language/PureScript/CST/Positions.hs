@@ -314,25 +314,22 @@ doStatementRange = \case
   DoDiscard a -> exprRange a
   DoBind a _ b -> (fst $ binderRange a, snd $ exprRange b)
 
-binderRange :: Binder a -> TokenRange
-binderRange = \case
+binderAtomRange :: BinderAtom a -> TokenRange
+binderAtomRange = \case
   BinderWildcard _ a -> (a, a)
   BinderVar _ a -> nameRange a
-  BinderNamed _ a _ b -> (nameTok a, snd $ binderRange b)
-  BinderConstructor _ a bs
+
+binderRange :: Binder a -> TokenRange
+binderRange = \case
+  BinderConstructor _ _ a bs
     | [] <- bs -> qualRange a
-    | otherwise -> (qualTok a, snd . binderRange $ last bs)
-  BinderBoolean _ a _ -> (a, a)
-  BinderChar _ a _ -> (a, a)
-  BinderString _ a _ -> (a, a)
-  BinderNumber _ a b _
-    | Just a' <- a -> (a', b)
-    | otherwise -> (b, b)
+    | otherwise -> (qualTok a, snd . binderAtomRange $ last bs)
+  BinderAtoms _ a ->
+    (fst $ binderAtomRange $ NE.head a, snd $ binderAtomRange $ NE.last a)
   BinderArray _ a -> wrappedRange a
   BinderRecord _ a -> wrappedRange a
-  BinderParens _ a -> wrappedRange a
   BinderTyped _ a _ b -> (fst $ binderRange a, snd $ typeRange b)
-  BinderOp _ a _ b -> (fst $ binderRange a, snd $ binderRange b)
+  BinderOp _ a _ b -> (fst $ binderAtomRange a, snd $ binderAtomRange b)
 
 recordUpdateRange :: RecordUpdate a -> TokenRange
 recordUpdateRange = \case
