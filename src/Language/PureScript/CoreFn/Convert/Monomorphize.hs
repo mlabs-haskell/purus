@@ -3,7 +3,8 @@
 {-# LANGUAGE ScopedTypeVariables, TypeApplications  #-}
 {-# OPTIONS_GHC -Wno-unrecognised-pragmas #-}
 {-# HLINT ignore "Use if" #-}
-module Language.PureScript.CoreFn.Convert.Monomorphize (runMonomorphize, testMono) where
+{-# LANGUAGE MultiWayIf #-}
+module Language.PureScript.CoreFn.Convert.Monomorphize (runMonomorphize, testMono, isConstructorE) where
 
 import Prelude
 
@@ -48,7 +49,7 @@ import Language.PureScript.CoreFn.Convert.DesugarCore
 import Bound.Var (Var(..))
 import Bound.Scope (mapBound, fromScope, toScope)
 import Language.PureScript.CoreFn.TypeLike
-    ( TypeLike(splitFunTyParts, instantiates), quantify )
+    ( TypeLike(..), quantify )
 import Language.PureScript.CoreFn.Convert.Monomorphize.Utils
     ( mkFieldMap,
       findDeclBody,
@@ -77,6 +78,7 @@ import Data.Foldable (traverse_)
 import Data.Char (isUpper)
 import Control.Lens.Plated
 import Prettyprinter (Pretty)
+import Language.PureScript.CoreFn.Pretty.Common (prettyAsStr)
 
 {- Function for quickly testing/debugging monomorphization -}
 
@@ -133,12 +135,17 @@ monomorphize  xpr = trace ("\nmonomorphize " <>  "\n  " <> ppExp xpr)  $ case xp
     let types = concatMap (splitFunTyParts . expTy id)  args
     traceM $ "ARG TYPES:" <> show (prettyTypeStr <$> types)
 
+
     -- FIXME: Check for constructors as well as builtins
-    if isBuiltinE (f) || isConstructorE  (f)
-      then do
-        traceM ("\nmonomorphize: Is builtin or ctor, skipping:\n" <> ppExp f)
-        pure $ unsafeApply id  f args
-      else handleFunction id f args
+    if | isBuiltinE (f) ->  do
+           traceM ("\nmonomorphize: Is builtin or ctor, skipping:\n" <> ppExp f)
+           pure $ unsafeApply id  f args
+       | isConstructorE f -> do
+           monoArgs <- traverse monomorphize args
+           let fTy' = instantiateWithArgs (expTy id f) (expTy id <$> monoArgs)
+           f' <- monomorphizeWithType fTy' f
+           pure $ unsafeApply id f' monoArgs
+       | otherwise -> handleFunction id f args
   other -> trace ("\nmonomorphize: other: " <> ppExp other) $ pure (other)
 
 inlineEverything :: Exp WithObjects PurusType (Var (BVar PurusType) (FVar PurusType))
@@ -230,7 +237,7 @@ handleFunction  toVar e [] = trace ("\nhandleFunction FIN: " <> ppExp e) $ pure 
    and check whether those types allow us to deduce the type to which the TyVar bound by the Forall in
    the lambda's type ought to be instantiated. (See the `instantiates` function)
 -}
-handleFunction toVar expr@(LamE qty@(ForAll _ _ var _ inner  _) bv@(BVar bvIx _ bvIdent) body'') (arg:args) = do
+handleFunction toVar expr@(LamE (quantify -> (ForAll _ _ var _ inner  _)) bv@(BVar bvIx _ bvIdent) body'') (arg:args) = do
   traceM  ("\nhandleFunction abs:\n  " <> ppExp expr)
   let t = expTy toVar arg -- get the type of the first expression to which the function is applied
   traceM $ prettyTypeStr t
@@ -246,6 +253,7 @@ handleFunction toVar expr@(LamE qty@(ForAll _ _ var _ inner  _) bv@(BVar bvIx _ 
       -- NOTE/REVIEW: Not 100% sure that this doesn't involve a problematic join
       bodyUnscoped  = join <$> fmap toVar <$> fromScope body'
   body <- toScope  <$>  (\b ->  handleFunction id b $ fmap toVar <$> args) (bodyUnscoped) -- recurse on the body, with the rest of the arguments
+  traceM ("bodyUnscoped:\n" <> prettyAsStr bodyUnscoped)
   let bodyT = expTy' F body
       funT  = quantify $ doInstantiate $ function t bodyT
       firstArgT = headArg funT
@@ -258,7 +266,8 @@ handleFunction  toVar v@(V (FVar ty  qn)) es = trace ("\nhandleFunction VarGo: "
   e' <- inlineAs ty qn
   handleFunction toVar e' es
 -}
-handleFunction toVar v@(V (toVar -> F (FVar ty qn))) es = trace ("\nhandleFunction VarGo: " <> ppExp v) $ do
+handleFunction toVar v@(V (toVar -> F (FVar ty qn))) es
+  | not (isBuiltin qn) = trace ("\nhandleFunction VarGo: " <> ppExp v) $ do
     e' <- inlineAs ty qn
     handleFunction id e' (fmap toVar <$> es)
 
@@ -319,12 +328,12 @@ inlineAs ty = \case
                          <> show renameMap
      -- TODO: This is a temporary hack to get builtins working w/o a real linker.
      else  throwError $ MonoError "Imports aren't supported yet!"
-  wrong@(Qualified (BySourcePos _) _) ->
+  wrong@(Qualified (BySourcePos _) _) -> pure . V . F $ FVar ty wrong {-
     throwError
     $ MonoError
     $ "Cannot inline variable qualified by SourcePos. Such a variable should be bound (and ergo not exist at this stage of compilation)"
       <> "\n Variable: "
-      <> show wrong
+      <> show wrong -}
  where
    {- Arguments:
         1. A renaming dictionary,
@@ -515,7 +524,9 @@ monomorphizeWithType ty expr
         e1' <-  handleFunction id f args
         pure $ AppE e1' e2
 
-      V a -> pure $ V a -- idk
+      V a -> case a of
+        F (FVar _ b) -> pure . V . F $ FVar ty b -- idk
+        other -> pure $ V other
 
       CaseE _ scrut alts -> do
         let f = monomorphizeWithType ty
@@ -540,3 +551,21 @@ monomorphizeWithType ty expr
       rest' <- monomorphizeFieldsWithTypes cxt rest
       e' <- monomorphizeWithType rowListType e
       pure $ (lbl,e') : rest'
+
+
+-- unsafe/partial
+
+instantiateWithArgs :: PurusType -> [PurusType] -> PurusType
+instantiateWithArgs f args = replaceAllTypeVars instantiations f
+  where
+    instantiations = getAllInstantiations f args
+
+getAllInstantiations :: PurusType
+                    -> [PurusType]
+                    -> [(Text,PurusType)]
+getAllInstantiations (quantify -> ForAll _ _ var _ inner _) (arg:args) = case instantiates var arg polyArg of
+   Nothing -> getAllInstantiations inner args
+   Just t  -> (var,t) : getAllInstantiations inner args
+  where
+    polyArg = getFunArgTy inner
+getAllInstantiations _ _ = []

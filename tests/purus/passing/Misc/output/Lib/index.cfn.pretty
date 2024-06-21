@@ -185,9 +185,9 @@ testasum =
 
 testValidator :: forall (a :: Prim.Type) (b :: Prim.Type) (c :: Prim.Type). ((a :: Prim.Type) -> (((b :: Prim.Type) -> (((c :: Prim.Type) -> (Prim.Boolean))))))
 testValidator = 
-  \(v: (a :: Prim.Type)) -> 
-    \(v1: (b :: Prim.Type)) -> 
-      \(v2: (c :: Prim.Type)) -> 
+  \(datum: (a :: Prim.Type)) -> 
+    \(redeemer: (b :: Prim.Type)) -> 
+      \(context: (c :: Prim.Type)) -> 
         (True: Prim.Boolean)
 
 testValidatorApplied :: Prim.Boolean
@@ -560,8 +560,8 @@ guardedCase =
   \(w: Prim.Int) -> 
     \(x: Prim.Int) -> 
       let
-        v :: forall ($28 :: Prim.Type). (($28 :: Prim.Type) -> (Prim.Int))
-        v = \(v1: ($28 :: Prim.Type)) -> (0: Prim.Int)
+        v :: forall ($25 :: Prim.Type). (($25 :: Prim.Type) -> (Prim.Int))
+        v = \(v1: ($25 :: Prim.Type)) -> (0: Prim.Int)
       in case (w: Prim.Int) (x: Prim.Int) of 
             y z -> 
               let
@@ -607,19 +607,19 @@ guardedCase =
                                       in case (v4: Prim.Boolean) of 
                                             True -> (2: Prim.Int)
                                             _ -> 
-                                              (v: forall ($28 :: Prim.Type). (($28 :: Prim.Type) ->
+                                              (v: forall ($25 :: Prim.Type). (($25 :: Prim.Type) ->
                                               (Prim.Int)))
                                               (True: Prim.Boolean)
                                     _ -> 
-                                      (v: forall ($28 :: Prim.Type). (($28 :: Prim.Type) ->
+                                      (v: forall ($25 :: Prim.Type). (($25 :: Prim.Type) ->
                                       (Prim.Int)))
                                       (True: Prim.Boolean)
                             _ -> 
-                              (v: forall ($28 :: Prim.Type). (($28 :: Prim.Type) ->
+                              (v: forall ($25 :: Prim.Type). (($25 :: Prim.Type) ->
                               (Prim.Int)))
                               (True: Prim.Boolean)
                     _ -> 
-                      (v: forall ($28 :: Prim.Type). (($28 :: Prim.Type) ->
+                      (v: forall ($25 :: Prim.Type). (($25 :: Prim.Type) ->
                       (Prim.Int)))
                       (True: Prim.Boolean)
 

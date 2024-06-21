@@ -76,7 +76,7 @@ import Prettyprinter (Pretty (..))
 
 
 doTraces :: Bool
-doTraces = False
+doTraces = True
 
 doTrace :: forall a. String -> String -> a -> a
 doTrace hdr msg x

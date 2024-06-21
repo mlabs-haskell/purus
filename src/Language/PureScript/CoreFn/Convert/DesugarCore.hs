@@ -30,8 +30,8 @@ import Language.PureScript.CoreFn.Convert.IR
       abstractMany )
 import Data.Map qualified as M
 import Language.PureScript.AST.Literals (Literal (..))
-import Bound (abstract)
-import Control.Monad (join)
+import Bound (abstract, Var (..))
+import Control.Monad (join, forM)
 import Control.Monad.State ( join, StateT, modify', put, gets, get, evalState, evalStateT, runStateT )
 import Data.List (find, sortOn)
 import Language.PureScript.CoreFn.Utils (exprType, Context)

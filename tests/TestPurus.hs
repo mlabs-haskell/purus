@@ -91,6 +91,7 @@ shouldPass = map (prefix </>) paths
         "ClassRefSyntax",
         "Coercible",
         "DctorOperatorAlias",
+        "Demo",
         "ExplicitImportReExport",
         "ExportExplicit",
         "ExportExplicit2",

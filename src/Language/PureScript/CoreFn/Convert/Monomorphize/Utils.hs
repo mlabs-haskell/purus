@@ -43,6 +43,7 @@ import Data.Aeson qualified as Aeson
 import GHC.IO (throwIO)
 import Control.Monad (join)
 import Data.Void (Void, absurd)
+import Language.PureScript.CoreFn.TypeLike (TypeLike(stripQuantifiers))
 
 type IR_Decl = BindE PurusType (Exp WithObjects PurusType) (FVar PurusType)
 
@@ -154,7 +155,7 @@ unsafeApply :: forall a.
   Exp WithObjects PurusType a ->
   [Exp WithObjects PurusType a] ->
   Exp WithObjects PurusType a
-unsafeApply f e (arg:args)= case expTy f e of
+unsafeApply f e (arg:args)= case snd . stripQuantifiers . expTy f $ e of
   (_ :-> _) -> unsafeApply f (AppE e arg) args
   other -> Prelude.error $ "Unexpected argument to unsafeApply:\n  "
                            <> "Fun Expression: " <> ppExp (f <$> e)

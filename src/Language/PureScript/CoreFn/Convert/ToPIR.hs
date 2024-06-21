@@ -52,7 +52,7 @@ import Language.PureScript.CoreFn.Convert.Datatypes
       mkTypeBindDict,
       mkVar,
       pirDatatypes,
-      doTraceM, mkNewTyVar, bindTV, mkKind )
+      doTraceM, mkNewTyVar, bindTV, mkKind, getDestructorTy )
 import Control.Monad.Except (MonadError(..))
 import Language.PureScript.CoreFn.Module (
   Datatypes,
@@ -91,12 +91,12 @@ import Language.PureScript.CoreFn.Convert.IR
       Exp(CaseE, V, LitE, LamE, AppE, LetE),
       FVar(..),
       BVar(..),
-      Ty(TyCon), expTy' )
+      Ty(TyCon, TyApp), expTy' )
 import PlutusIR
     ( Name(Name),
       VarDecl(VarDecl),
       Recursivity(Rec, NonRec),
-      Strictness(Strict),
+      Strictness(..),
       Binding(TermBind),
       Term(Builtin, Constant) )
 import PlutusCore.Default
@@ -119,9 +119,14 @@ import Prettyprinter ( Pretty)
 import PlutusIR (Program(Program))
 import PlutusCore.Pretty (prettyPlcReadableDef)
 import Control.Monad (forM)
+import Language.PureScript.CoreFn.Convert.Monomorphize (isConstructorE)
+
+
 showType :: forall a. Typeable a => String
 showType = show (typeRep :: TypeRep a)
 
+tyBuiltinBool :: PIRType
+tyBuiltinBool  = PLC.TyBuiltin () (PLC.SomeTypeIn PLC.DefaultUniBool)
 
 (#) :: PIRTerm -> PIRTerm -> PIRTerm
 e1 # e2 = PIR.Apply () e1 e2
@@ -131,6 +136,9 @@ infixl 9 #
 
 sopUnit :: PIRType
 sopUnit = PIR.TySOP () [[]]
+
+pirTyInst :: PIRType -> PIRTerm -> PIRTerm
+pirTyInst ty term = PIR.TyInst () term ty
 
 sopUnitTerm :: PIRTerm
 sopUnitTerm = PIR.Constr () sopUnit 0 []
@@ -160,8 +168,8 @@ pirError t = pirForce <$> pirDelay (PIR.Error () t)
 -- for builtin booleans jfc why don't they have thiiiisss
 pirAnd :: PIRTerm -> PIRTerm -> DatatypeM PIRTerm
 pirAnd t1 t2 = do
-  tBranch <- pirIfThen t2 (mkConstant () True) (mkConstant () False)
-  pirIfThen t1 tBranch (mkConstant () False)
+  tBranch <- pirIfThen tyBuiltinBool t2 (mkConstant () True) (mkConstant () False)
+  pirIfThen tyBuiltinBool t1 tBranch (mkConstant () False)
 
 pirLetNonRec :: PIRType -- type of the expression we're let- binding
              -> PIRTerm
@@ -171,7 +179,7 @@ pirLetNonRec ty toLet f = do
   nm <- freshName
   let myvar = PIR.Var () nm
       varDecl = PIR.VarDecl () nm ty
-      binding = TermBind () Strict varDecl toLet
+      binding = TermBind () NonStrict varDecl toLet
   PIR.Let () NonRec (NE.singleton binding) <$> f myvar
 
 argTy :: TypeLike t => t -> t
@@ -179,9 +187,11 @@ argTy =  head . splitFunTyParts . snd . stripQuantifiers
 
 -- FIXME: Something's broken here w/ the type abstraction/instantiation for delay/force -_-
 --        switching to strict ifte for now
-pirIfThen :: PIRTerm -> PIRTerm -> PIRTerm -> DatatypeM PIRTerm
-pirIfThen cond troo fawlse =
-   pure $ PIR.Builtin () PLC.IfThenElse # cond # troo # fawlse
+pirIfThen :: PIRType -> PIRTerm -> PIRTerm -> PIRTerm -> DatatypeM PIRTerm
+pirIfThen resTy cond troo fawlse = do
+   troo' <- pirDelay troo
+   fawlse' <- pirDelay fawlse
+   pure . pirForce $ pirTyInst (PIR.TyFun () sopUnit resTy) (PIR.Builtin () PLC.IfThenElse) # cond # troo' # fawlse'
 
 
 -- utility for constructing LamAbs w/ a fresh variable name. We do this a lot in the case analysis stuff
@@ -234,6 +244,11 @@ firstPass _datatypes f _exp = doTraceM "firstPass" (prettyStr _exp) >> case _exp
         body' = instantiateEither (either (IR.V . B) (IR.V . F)) body
     body'' <- firstPass datatypes (>>= f) body'
     pirLetNonRec fTy (PIR.LamAbs () nm ty' body'') $ \x -> pure x
+  AppE e1 e2 | isConstructorE (f <$> e1) -> do
+    argTy <- toPIRType (expTy f e2)
+    e1' <- firstPass datatypes f e1
+    e2' <- firstPass datatypes f e2
+    pure $ PIR.Apply () (pirTyInst argTy e1') e2'
   AppE e1 e2 -> do
     e1' <- firstPass datatypes f e1
     e2' <- firstPass datatypes f e2
@@ -249,6 +264,7 @@ firstPass _datatypes f _exp = doTraceM "firstPass" (prettyStr _exp) >> case _exp
   CaseE ty scrutinee alts  -> case getPat <$> alts of
     [] -> error "empty case alternatives (should be impossible at this stage)"
     ps -> do
+      resultTy <- toPIRType ty
       let tmpSOPTyIR =  mkTmpSOP (expTy f scrutinee) <$> ps
       tmpSOPTy <- PIR.TySOP () <$> traverse (traverse toPIRType) tmpSOPTyIR
       doTraceM "tmpSOPTy" (prettyStr tmpSOPTy)
@@ -256,7 +272,7 @@ firstPass _datatypes f _exp = doTraceM "firstPass" (prettyStr _exp) >> case _exp
       let scrutTy = expTy f scrutinee
       scrutineeToPatternsTmp <- toPatternsTmp tmpSOPTy 0 scrutTy ps
       -- Make a [PIRTerm] where each PIRTerm is a lambda with args matching its index in the pattern ADT
-      branches <- traverse (mkCaseBranch ty) alts
+      branches <- traverse (mkCaseBranch (expTy f scrutinee)) alts
       scrutinee' <- firstPass datatypes f scrutinee
       ty' <- toPIRType ty
       pure $ PIR.Case () ty' (scrutineeToPatternsTmp # scrutinee') branches
@@ -292,20 +308,25 @@ firstPass _datatypes f _exp = doTraceM "firstPass" (prettyStr _exp) >> case _exp
        _ -> []
 
    collectPatBindings :: Ty -> Pat WithoutObjects (Exp WithoutObjects Ty) a -> [(Text,Int,Ty)]
-   collectPatBindings t p = doTraceM "collectPatBindings" ("Ty:\n" <> prettyStr t <> "\nPat: " <> prettyStr p) >> case p of
-     VarP i nx -> [(runIdent i,nx,t)]
-     WildP  -> []
-     AsP (asIdent,asN) innerP ->
-       let this = (runIdent asIdent,asN,t)
-           rest =  collectPatBindings t innerP
-       in this:rest
-     ConP cn tn ps ->
-       let (_,ctorFields) = monoCtorFields cn tn t datatypes
-       in concatMap (uncurry collectPatBindings) $ zip ctorFields ps
-     LitP lit -> case lit of
-       ArrayL xs -> case snd $ stripQuantifiers t of
-          IR.TyApp (TyCon C.Array) innerT -> concatMap (collectPatBindings innerT) xs
-          _ -> error "invalid array type"
+   collectPatBindings _t _p = do
+     result <- go _t _p
+     doTraceM "collectPatBindings" ("Ty:\n" <> prettyStr _t <> "\nPat: " <> prettyStr _p <> "\nResult:" <> show result)
+     pure result
+    where
+      go t p = case p of
+       VarP i nx -> [(runIdent i,nx,t)]
+       WildP  -> []
+       AsP (asIdent,asN) innerP ->
+         let this = (runIdent asIdent,asN,t)
+             rest =  collectPatBindings t innerP
+         in this:rest
+       ConP cn tn ps ->
+         let (_,ctorFields) = monoCtorFields cn tn t datatypes
+         in concatMap (uncurry collectPatBindings) $ zip ctorFields ps
+       LitP lit -> case lit of
+         ArrayL xs -> case snd $ stripQuantifiers t of
+            IR.TyApp (TyCon C.Array) innerT -> concatMap (collectPatBindings innerT) xs
+            _ -> error "invalid array type"
        _ -> []
 
    mkCaseBranch :: Ty
@@ -354,14 +375,20 @@ firstPass _datatypes f _exp = doTraceM "firstPass" (prettyStr _exp) >> case _exp
          let c' = mkConstant () . toInteger . fromEnum $ c
          pure $ pirEqInt c' xChar
        _ -> error "matches: Array pattern"
-     ConP tn cn ps -> do
-       let (ctorIx,fieldTys) = monoCtorFields tn cn t datatypes
-       matchFun <- matchesCtorFields ctorIx fieldTys ps
-       let allCtorDecls = getAllConstructorDecls tn datatypes
-       allFalseFuns <- mkAllFalse $ map (map snd . view cdCtorFields) allCtorDecls
-       let withTrueBranch = allFalseFuns & ix ctorIx .~ matchFun
-           tyBuiltinBool  = PLC.TyBuiltin () (PLC.SomeTypeIn PLC.DefaultUniBool)
-       freshLam t $ \_ scrutX -> pure $ PIR.Case () tyBuiltinBool scrutX withTrueBranch
+     -- TODO: Breaks w/ nullary constructors
+     ConP tn cn ps -> case t of
+       TyApp f arg -> do
+         argPIR <- toPIRType arg
+         let (ctorIx,fieldTys) = monoCtorFields tn cn t datatypes
+         destructor <- PIR.Var () <$> getDestructorTy tn
+         matchFun <-  matchesCtorFields ctorIx fieldTys ps
+         let allCtorDecls = getAllConstructorDecls tn datatypes
+         allFalseFuns <- mkAllFalse $ map (map snd . view cdCtorFields) allCtorDecls
+         let withTrueBranch = allFalseFuns & ix ctorIx .~ matchFun
+         freshLam t $ \_ scrutX -> do
+           let dctor = pirTyInst tyBuiltinBool $ (pirTyInst argPIR destructor) # scrutX
+           pure $  foldl' (#) dctor (withTrueBranch) -- PIR.Case () tyBuiltinBool scrutX withTrueBranch
+       other -> error $ "ToPIR.matches: Implement constructor match check for types like " <> prettyStr other
       where
         mkAllFalse :: [[Ty]] -> DatatypeM [PIRTerm]
         mkAllFalse [] = pure []
@@ -390,6 +417,9 @@ firstPass _datatypes f _exp = doTraceM "firstPass" (prettyStr _exp) >> case _exp
         goCtorMatchBody :: [(Name, (Ty, Pat WithoutObjects (Exp WithoutObjects Ty) a))]
                         -> DatatypeM PIRTerm
         goCtorMatchBody [] = pure $ mkConstant () True
+        goCtorMatchBody [(nm,(ty,pat))] = do
+          matchThis <- matches ty pat
+          pure $ matchThis # PIR.Var () nm
         goCtorMatchBody ((nm,(ty,pat)):rest) = do
           matchThis <- matches ty pat
           let matchThisApplied =  matchThis # PIR.Var () nm
@@ -409,7 +439,6 @@ firstPass _datatypes f _exp = doTraceM "firstPass" (prettyStr _exp) >> case _exp
                   -> DatatypeM PIRTerm
    toPatternsTmp tmpSOP _ t [] = freshLam t $ \_ _ -> pirError tmpSOP
    toPatternsTmp tmpSOP n t (x:ys)  =  do
-     -- TODO: Let bind the fallthrough (make sure to delay the error)
      fallThrough_ <- toPatternsTmp tmpSOP (n + 1) t ys
      _tx <- toPIRType t
      let pirFallthroughType = PIR.TyFun () _tx tmpSOP
@@ -426,7 +455,7 @@ firstPass _datatypes f _exp = doTraceM "firstPass" (prettyStr _exp) >> case _exp
           inner <- toPatternsTmp tmpSOP 0 t [pat] -- this isn't right -_-
           let nameVar = PIR.Var () name
               innerApplied = inner # nameVar
-          body <- pirIfThen
+          body <- pirIfThen tmpSOP
                     (matchesInner # nameVar)
                     (PIR.Constr () t' n [nameVar,innerApplied]) -- idk if this is right this is hard to visualize
                     fallThrough
@@ -434,43 +463,49 @@ firstPass _datatypes f _exp = doTraceM "firstPass" (prettyStr _exp) >> case _exp
         LitP litP -> case litP of
           IntL i -> freshLam t $ \t' xInt -> do
             let guard = pirEqInt (mkConstant () i)  xInt
-            pirIfThen guard (PIR.Constr () t' n []) fallThrough
+            pirIfThen tmpSOP guard (PIR.Constr () t' n []) fallThrough
           NumL _ -> error "number patterns not supported"
           StringL str -> freshLam t $ \t' xStr -> do
             let str' = mkConstant () $ prettyPrintString str
                 guard = pirEqString str' xStr
-            pirIfThen guard (PIR.Constr () t' n []) fallThrough
+            pirIfThen tmpSOP guard (PIR.Constr () t' n []) fallThrough
           CharL c -> freshLam t $ \t' xChar -> do
             let c' = mkConstant () . toInteger . fromEnum $ c
                 guard = pirEqInt c' xChar
-            pirIfThen guard (PIR.Constr () t' n []) fallThrough
+            pirIfThen tmpSOP guard (PIR.Constr () t' n []) fallThrough
           -- TODO: Remove boolean literals, they're subsumed by the constructor patterns, True/False are just normal ctors
           ArrayL{} -> error "TODO: Desugar Array patterns to ConP patterns for the SOP list and remove them"
           ConstArrayL{} -> error "TODO: Remove ConstArray and ConstArrayL"
-        conp@(ConP tn cn ps) -> do
-          _matchFun <- matches t conp
-          _tx <- toPIRType t
-          pirLetNonRec (PIR.TyFun () _tx (PIR.TyBuiltin () $ PLC.SomeTypeIn PLC.DefaultUniBool)) _matchFun $ \matchFun -> do
-           let (thisIx,argTys) = monoCtorFields tn cn t datatypes
-           names <- replicateM (length argTys) freshName
-           let nameTys = zip names argTys
-           binderF <- foldM (\accF (nm,ty) -> do
-                        ty' <- toPIRType ty
-                        pure $ accF . PIR.LamAbs () nm ty'
-                      ) id nameTys
-           let nameTyPats = zip nameTys ps
-               allCtorDecls = getAllConstructorDecls tn datatypes
+        conp@(ConP tn cn ps) -> case t of
+          TyApp f arg -> do
+            pirArg <- toPIRType arg
+            _matchFun <- matches t conp
+            _tx <- toPIRType t
+            destructor <- PIR.Var () <$> getDestructorTy tn
+            pirLetNonRec (PIR.TyFun () _tx (PIR.TyBuiltin () $ PLC.SomeTypeIn PLC.DefaultUniBool)) _matchFun $ \matchFun -> do
+             let (thisIx,argTys) = monoCtorFields tn cn t datatypes
+             names <- replicateM (length argTys) freshName
+             let nameTys = zip names argTys
+             binderF <- foldM (\accF (nm,ty) -> do
+                          ty' <- toPIRType ty
+                          pure $ accF . PIR.LamAbs () nm ty'
+                        ) id nameTys
+             let nameTyPats = zip nameTys ps
+                 allCtorDecls = getAllConstructorDecls tn datatypes
 
-           -- for a ctor `CT a0 ... aN` conToPatTmpFn should give us the *body* in \(n1 :: a1) ... (nN :: aN) -> body
-           freshLam t $ \_ scrutX -> do
-             let _fallThroughApplied = fallThrough # scrutX
-             pirLetNonRec tmpSOP _fallThroughApplied $ \fallThroughApplied -> do
+             -- for a ctor `CT a0 ... aN` conToPatTmpFn should give us the *body* in \(n1 :: a1) ... (nN :: aN) -> body
+             freshLam t $ \_ scrutX -> do
+               let _fallThroughApplied = fallThrough # scrutX
+               pirLetNonRec tmpSOP _fallThroughApplied $ \fallThroughApplied -> do
 
-              allFallthrough <- mkAllFallthrough fallThroughApplied
-                                  $ map (map snd . view cdCtorFields) allCtorDecls
-              conToPatTmpFun <- binderF . PIR.Constr () tmpSOP n . map snd <$> conToPatTmp  nameTyPats
-              let withSuccessBranch = allFallthrough & ix thisIx .~ conToPatTmpFun
-              pirIfThen (matchFun # scrutX) (PIR.Case () tmpSOP scrutX withSuccessBranch) fallThroughApplied
+                allFallthrough <- mkAllFallthrough fallThroughApplied
+                                    $ map (map snd . view cdCtorFields) allCtorDecls
+                conToPatTmpFun <- binderF . PIR.Constr () tmpSOP n . map snd <$> conToPatTmp  nameTyPats
+                let withSuccessBranch = allFallthrough & ix thisIx .~ conToPatTmpFun
+                    dctorInstantiated =  pirTyInst tmpSOP $ pirTyInst pirArg destructor # scrutX -- foldl' (#) destructor  (scrutX:withSuccessBranch)
+                    dctorApplied = foldl' (#) dctorInstantiated withSuccessBranch
+                pirLetNonRec tmpSOP dctorApplied $ \dctor ->
+                  pirIfThen tmpSOP (matchFun # scrutX) dctor fallThroughApplied
        where
          conToPatTmp :: [((Name, Ty), Pat WithoutObjects (Exp WithoutObjects Ty) a)]
                      -> DatatypeM [(PIRType,PIRTerm)]

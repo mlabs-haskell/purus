@@ -78,7 +78,7 @@ safeFunArgTypes t = case splitFunTyParts t of
 getInstantiations :: forall t. TypeLike t => t -> t -> [(Text,t)]
 getInstantiations mono poly = catMaybes mInstantiations
   where
-    freeInPoly = fst <$> freeTypeVariables poly
+    freeInPoly = fst <$> usedTypeVariables poly
     mInstantiations = freeInPoly <&> \nm -> (nm,) <$> instantiates nm mono poly
 
 instance TypeLike T.SourceType where
