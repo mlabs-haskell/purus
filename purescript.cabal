@@ -158,7 +158,6 @@ common defaults
     -- specific version.
     aeson >=2.0.3.0 && <2.1,
     aeson-better-errors >=0.9.1.1 && <0.10,
-    aeson-diff,
     ansi-terminal >=0.11.3 && <0.12,
     array >=0.5.4.0 && <0.6,
     base >=4.16.2.0 && <4.18,
@@ -209,8 +208,6 @@ common defaults
     sourcemap >=0.1.7 && <0.2,
     stm >=2.5.0.2 && <2.6,
     stringsearch >=0.3.6.6 && <0.4,
-    tasty,
-    tasty-hunit,
     template-haskell >=2.18.0.0 && <2.19,
     text >=1.2.5.0 && <2.3,
     th-abstraction,
@@ -498,7 +495,8 @@ test-suite tests
     plutus-core,
     regex-base >=0.94.0.2 && <0.95,
     split >=0.2.3.4 && <0.3,
-    typed-process >=0.2.10.1 && <0.3
+    typed-process >=0.2.10.1 && <0.3,
+    tasty
   build-tool-depends:
       hspec-discover:hspec-discover -any
     -- we need the compiler's executable available for the ide tests

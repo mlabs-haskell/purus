@@ -7,6 +7,7 @@ import Prelude
 
 import Language.PureScript.AST.Literals (Literal)
 import Language.PureScript.Names (Ident, ProperName, ProperNameType(..), Qualified)
+import Language.PureScript.Types
 
 import GHC.Generics
 import Data.Aeson (FromJSON, ToJSON)
@@ -26,7 +27,7 @@ data Binder a
   -- |
   -- A binder which binds an identifier
   --
-  | VarBinder a Ident
+  | VarBinder a Ident SourceType
   -- |
   -- A binder which matches a data constructor
   --
@@ -42,6 +43,6 @@ instance ToJSON a => ToJSON (Binder a)
 extractBinderAnn :: Binder a -> a
 extractBinderAnn (NullBinder a) = a
 extractBinderAnn (LiteralBinder a _) = a
-extractBinderAnn (VarBinder a _) = a
+extractBinderAnn (VarBinder a _ _) = a
 extractBinderAnn (ConstructorBinder a _ _ _) = a
 extractBinderAnn (NamedBinder a _ _) = a

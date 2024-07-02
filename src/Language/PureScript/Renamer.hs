@@ -214,8 +214,8 @@ renameInBinder :: Binder a -> Rename (Binder a)
 renameInBinder n@NullBinder{} = return n
 renameInBinder (LiteralBinder ann b) =
   LiteralBinder ann <$> renameInLiteral renameInBinder b
-renameInBinder (VarBinder ann name) =
-  VarBinder ann <$> updateScope name
+renameInBinder (VarBinder ann name t ) =
+  (\nn -> VarBinder ann nn t) <$> updateScope name
 renameInBinder (ConstructorBinder ann tctor dctor bs) =
   ConstructorBinder ann tctor dctor <$> traverse renameInBinder bs
 renameInBinder (NamedBinder ann name b) =

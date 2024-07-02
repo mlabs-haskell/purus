@@ -96,7 +96,7 @@ instance (Pretty k, Pretty t) => Pretty (Datatypes k t) where
 
 prettyDatatypes :: forall k t ann. (Pretty k, Pretty t) => Datatypes k t -> Doc ann
 prettyDatatypes (Datatypes tDict _) = vcat . punctuate line $ map prettyDataDecl (M.elems tDict)
-  where
+
 prettyDeclType :: DataDeclType -> Doc ann
 prettyDeclType = \case
       Data -> "data"
@@ -125,7 +125,7 @@ prettyDataDecl (DataDecl newtypeOrData qName args ctors ) =
 
 prettyCtorDecl :: Pretty t => CtorDecl t -> Doc ann
 prettyCtorDecl (CtorDecl nm fs) =
-      pretty (runIdent $ disqualify nm) <+> (hsep (parens . pretty . snd <$> fs))
+      pretty (runIdent $ disqualify nm) <+> hsep (parens . pretty . snd <$> fs)
 
 -- Is a printer for consistency mainly
 prettyObjectKey :: PSString -> Printer ann
@@ -269,7 +269,7 @@ prettyCaseAlternative (CaseAlternative binders result)  = do
 prettyBinderAtom :: Binder a -> Printer ann
 prettyBinderAtom (NullBinder _) = pure "_"
 prettyBinderAtom (LiteralBinder _ l) = prettyLiteralBinder l
-prettyBinderAtom (VarBinder _ ident) = pure $ pretty ident
+prettyBinderAtom (VarBinder _ ident _) = pure $ pretty ident
 prettyBinderAtom (ConstructorBinder _ _ ctor []) = pure . pretty $ runProperName (disqualify ctor)
 prettyBinderAtom b@ConstructorBinder{} = prettyBinder b
 prettyBinderAtom (NamedBinder _ ident binder)= do

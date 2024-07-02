@@ -1,4 +1,5 @@
 {-# OPTIONS_GHC -Wno-deferred-out-of-scope-variables #-}
+{-# OPTIONS_GHC -Wno-orphans #-}
 module Language.PureScript.CoreFn.Pretty.Common where
 
 import Prelude hiding ((<>))

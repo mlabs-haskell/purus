@@ -11,6 +11,9 @@ import Data.Bifunctor (Bifunctor(..))
 import Data.Kind qualified as GHC
 import Control.Lens.Operators ((<&>))
 import Data.Maybe (catMaybes)
+import Debug.Trace (trace)
+import Prettyprinter (Pretty)
+import Language.PureScript.CoreFn.Pretty.Common
 
 class TypeLike t where
   type KindOf t :: GHC.Type
@@ -69,6 +72,15 @@ class TypeLike t where
   -}
   resultTy :: t -> t
 
+  {- | Given a typelike t, return Just (Text, KindOf t) if it is a type variable.
+       (Needed to implement some functions generically over the typelike)
+  -}
+  unTyVar :: t -> Maybe (Text, KindOf t)
+
+  {- | Instantiate the first quantified variable in the second argument with the type in the first argument
+  -}
+  instTy :: t -> t -> t
+
 -- TODO: Just define it this way in the instances -_-
 safeFunArgTypes :: forall t. TypeLike t => t -> [t]
 safeFunArgTypes t = case splitFunTyParts t of
@@ -80,6 +92,38 @@ getInstantiations mono poly = catMaybes mInstantiations
   where
     freeInPoly = fst <$> usedTypeVariables poly
     mInstantiations = freeInPoly <&> \nm -> (nm,) <$> instantiates nm mono poly
+
+instantiateWithArgs :: forall t. (TypeLike t, Pretty t) => t  -> [t] -> t
+instantiateWithArgs f args = trace msg result
+  where
+    msg = "instantiateWithArgs:\n  fun: " <> prettyAsStr f
+           <> "\n  args: " <> prettyAsStr args
+           <> "\n  instantiations: " <> prettyAsStr instantiations
+           <> "\n  result: " <> prettyAsStr result
+    result = quantify $ replaceAllTypeVars instantiations (unQuantify f)
+    instantiations = getAllInstantiations f args
+
+getAllInstantiations :: forall t
+                      . (TypeLike t, Pretty t)
+                    => t
+                    -> [t]
+                    -> [(Text,t)]
+getAllInstantiations fun args@(_:_) = trace ("getAllInstantiations: " <> prettyAsStr result) result
+  where
+    result = catMaybes $ zipWith go funArgs args
+
+    funArgs = funArgTypes . unQuantify $ fun
+
+    go t x = case unTyVar t of
+      Just (v,_) -> Just (v,x)
+      Nothing -> Nothing
+
+getAllInstantiations _ _ = []
+
+
+unQuantify :: forall t. TypeLike t => t -> t
+unQuantify = snd . stripQuantifiers
+
 
 instance TypeLike T.SourceType where
   type KindOf T.SourceType = T.SourceType
@@ -115,3 +159,11 @@ instance TypeLike T.SourceType where
   resultTy t = case snd $  stripQuantifiers t of
     (_ E.:-> b) -> resultTy b
     other -> other
+
+  instTy t = \case
+    T.ForAll _ _ var _ inner _ -> replaceAllTypeVars [(var,t)] inner
+    other -> other
+
+  unTyVar = \case
+    T.TypeVar _ v k -> Just (v,k)
+    _ -> Nothing 

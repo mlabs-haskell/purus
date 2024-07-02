@@ -1,3 +1,4 @@
+{-# OPTIONS_GHC -Wno-orphans #-}
 module Language.PureScript.CoreFn.Utils where
 
 import Prelude hiding (error)

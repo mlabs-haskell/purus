@@ -564,8 +564,7 @@ altToCoreFn  mn ss ret boundTypes (A.CaseAlternative bs vs) = wrapTrace "altToCo
     env <- gets checkEnv
     bTypes <- M.unions <$> zipWithM inferBinder' boundTypes bs -- Inferring the types for binders requires some special machinery & knowledge of the scrutinee type. NOTE: Not sure why multiple binders?
     let toBind = (\(n',(ss',ty')) -> (ss',n',ty',Defined)) <$> M.toList bTypes
-        binders = binderToCoreFn env mn ss <$> bs
-    traceM $ concatMap (\x -> show x <> "\n") toBind
+        binders = binderToCoreFn (snd <$> bTypes) env mn ss <$> bs
     ege <- go toBind vs
     pure $ CaseAlternative binders ege
   where

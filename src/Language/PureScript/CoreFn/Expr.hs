@@ -10,15 +10,11 @@ import Data.Aeson (FromJSON, ToJSON)
 
 import Language.PureScript.AST.Literals (Literal)
 import Language.PureScript.CoreFn.Binders (Binder)
-import Language.PureScript.Names (Ident, ProperName, ProperNameType(..), Qualified)
+import Language.PureScript.Names (Ident, Qualified)
 import Language.PureScript.PSString (PSString)
-import Language.PureScript.Types (Type (..), SourceType)
+import Language.PureScript.Types (SourceType)
 
 import Control.Lens.TH (makePrisms)
-import Control.Lens (Traversal', Lens')
-import Data.Text (Text)
-import Language.PureScript.Environment
-import Data.Bifunctor (Bifunctor(first))
 
 type PurusType = SourceType -- Type ()
 

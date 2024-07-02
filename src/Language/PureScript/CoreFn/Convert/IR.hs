@@ -12,10 +12,9 @@
 module Language.PureScript.CoreFn.Convert.IR where
 
 import Prelude
-import Language.PureScript.Names (Ident(..), Qualified (..), QualifiedBy (..), ProperNameType (..), ProperName(..), disqualify, runModuleName, showIdent, runIdent, coerceProperName, showQualified)
+import Language.PureScript.Names (Ident(..), Qualified (..), QualifiedBy (..), ProperNameType (..), ProperName(..), disqualify, runModuleName, showIdent, runIdent, showQualified)
 import Language.PureScript.Types
     ( SkolemScope, TypeVarVisibility (..), genPureName )
-import Language.PureScript.CoreFn (Binder(..), Literal (..))
 import Language.PureScript.CoreFn.FromJSON ()
 import Data.Text qualified as T
 import Data.Map qualified as M
@@ -41,7 +40,7 @@ import Language.PureScript.CoreFn.TypeLike
 import Data.Void (Void)
 import Control.Lens.Plated
 import Language.PureScript.CoreFn.Pretty ((<::>))
-import Language.PureScript.Environment (mkTupleTyName)
+import Language.PureScript.CoreFn.Pretty.Common (prettyAsStr)
 
 -- The final representation of types and terms, where all constructions that
 -- *should* have been eliminated in previous steps are impossible
@@ -51,7 +50,6 @@ data Kind
   = KindType
   | KindArrow Kind Kind
   deriving (Show, Eq, Ord)
-
 
 data Ty
   = TyVar Text Kind
@@ -143,6 +141,14 @@ instance TypeLike Ty where
     (_ :~> b) -> resultTy b
     other -> other
 
+  unTyVar = \case
+    TyVar t k -> Just (t,k)
+    _         -> Nothing
+
+  instTy t = \case
+    Forall _ var _k inner _ -> replaceAllTypeVars [(var,t)] inner
+    other -> other 
+
 -- HACK: Need this for pretty printer, refactor later
 class FuncType ty where
   -- | Get first argument of a function, if function or act as identity otherwise
@@ -167,11 +173,11 @@ type family VoidList voidOrNot argTy where
 
 data Lit x a
   = IntL Integer
-  | NumL Double
+  -- | NumL Double
   | StringL PSString
   | CharL Char
-  | ArrayL [a]
-  | ConstArrayL [Lit x Void]
+  -- | ArrayL [a]
+  -- | ConstArrayL [Lit x Void]
   | ObjectL !(XObjectLiteral x) [(PSString, a)]
   deriving (Functor, Foldable, Traversable)
 
@@ -180,27 +186,26 @@ deriving instance (Eq a, Eq (XObjectLiteral x)) => Eq (Lit x a)
 deriving instance (Ord a, Ord (XObjectLiteral x)) => Ord (Lit x a)
 
 -- We're switching to a more "Haskell-like" representation (largely to avoid overlapping names)
-data Pat x (f :: GHC.Type -> GHC.Type) a
-  = VarP Ident Int  -- VarBinder
+data Pat x t (f :: GHC.Type -> GHC.Type) a
+  = VarP Ident Int  t -- VarBinder
   | WildP -- NullBinder
-  | AsP (Ident,Int) (Pat x f a) -- NamedBinder
-  | LitP (Lit x (Pat x f a)) -- LiteralBinder
-  | ConP (Qualified (ProperName 'TypeName)) (Qualified (ProperName 'ConstructorName)) [Pat x f a] -- CTor binder
+  | LitP (Lit x (Pat x t f a)) -- LiteralBinder
+  | ConP (Qualified (ProperName 'TypeName)) (Qualified (ProperName 'ConstructorName)) [Pat x t f a] -- CTor binder
   deriving (Functor, Foldable, Traversable)
 
-deriving instance (Show a, Show (XObjectLiteral x)) => Show (Pat x f a)
-deriving instance (Eq a, Eq (XObjectLiteral x)) => Eq (Pat x f a)
-deriving instance (Ord a, Ord (XObjectLiteral x)) => Ord (Pat x f a)
+deriving instance (Show a, Show t, Show (XObjectLiteral x)) => Show (Pat x t f a)
+deriving instance (Eq t, Eq a, Eq (XObjectLiteral x)) => Eq (Pat x t f a)
+deriving instance (Ord t, Ord a, Ord (XObjectLiteral x)) => Ord (Pat x t f a)
 
 data Alt x ty f a
-  = UnguardedAlt (Bindings ty) (Pat x f a) (Scope (BVar ty) f a)
+  = UnguardedAlt (Bindings ty) (Pat x ty f a) (Scope (BVar ty) f a)
   deriving (Functor, Foldable, Traversable)
 
 deriving instance (Monad f, Show1 f, Show a, Show ty, Show (XObjectLiteral x)) => Show (Alt x ty f a)
 deriving instance (Monad f, Eq1 f, Eq a, Eq ty, Eq (XObjectLiteral x)) => Eq (Alt x ty f a)
 deriving instance (Monad f, Ord1 f, Ord a, Ord ty, Ord (XObjectLiteral x)) => Ord (Alt x ty f a)
 
-getPat :: Alt x ty f a -> Pat x f a
+getPat :: Alt x ty f a -> Pat x ty f a
 getPat = \case
   UnguardedAlt _ ps _ -> ps
 
@@ -228,6 +233,7 @@ data Exp x ty a
  | LetE (Bindings ty) [BindE ty (Exp x ty) a] (Scope (BVar ty) (Exp x ty) a)
  | AccessorE !(XAccessor x) ty PSString (Exp x ty a)
  | ObjectUpdateE !(XObjectUpdate x) ty (Exp x ty a) (Maybe [PSString]) [(PSString, Exp x ty a)]
+ | TyInstE ty (Exp x ty a)
  deriving (Functor,Foldable,Traversable)
 
 deriving instance (Eq ty, Eq a, Eq (XAccessor x), Eq (XObjectUpdate x), Eq (XObjectLiteral x)) => Eq (Exp x ty a)
@@ -243,16 +249,15 @@ instance Eq ty => Eq1 (Exp x ty) where
 
 instance Eq1 (Lit x) where
   liftEq _ (IntL i1) (IntL i2) = i1 == i2
-  liftEq _ (NumL i1) (NumL i2) = i1 == i2
+  -- liftEq _ (NumL i1) (NumL i2) = i1 == i2
   liftEq _ (StringL i1) (StringL i2) = i1 == i2
   liftEq _ (CharL i1) (CharL i2) = i1 == i2
-  liftEq eq (ArrayL xs) (ArrayL ys) = liftEq eq xs ys
+  -- liftEq eq (ArrayL xs) (ArrayL ys) = liftEq eq xs ys
   liftEq _ _ _ = False
 
-instance (Eq1 f, Monad f) => Eq1 (Pat x f) where
-  liftEq _ (VarP i1 n1) (VarP i2 n2) = i1 == i2 && n1 == n2
+instance (Eq1 f, Monad f, Eq t) => Eq1 (Pat x t f) where
+  liftEq _ (VarP i1 n1 t1) (VarP i2 n2 t2) = i1 == i2 && n1 == n2 && t1 == t2 
   liftEq _ WildP WildP = True
-  liftEq eq (AsP i1 p1) (AsP i2 p2) = i1 == i2 && liftEq eq p1 p2
   liftEq eq (ConP tn1 cn1 ps1) (ConP tn2 cn2 ps2) = tn1 == tn2 && cn1 == cn2 && liftEq (liftEq eq) ps1 ps2
   liftEq eq (LitP l1) (LitP l2) =  liftEq (liftEq eq) l1 l2
   liftEq _ _ _ = False
@@ -285,30 +290,30 @@ instance Monad (Exp x ty) where
     where
       goLit = \case
         IntL i      -> IntL i
-        NumL d      -> NumL d
+        -- NumL d      -> NumL d
         StringL str -> StringL str
         CharL c     -> CharL c
-        ArrayL xs   -> ArrayL $ map (\x -> x >>= f) xs
-        ConstArrayL lits -> ConstArrayL  lits
+        -- ArrayL xs   -> ArrayL $ map (\x -> x >>= f) xs
+        -- ConstArrayL lits -> ConstArrayL  lits
         ObjectL ext obj -> ObjectL ext $ map (\(field, x) -> (field, x >>= f)) obj
+  TyInstE t e >>= f = TyInstE t (e >>= f)
   AccessorE ext ty field expr >>= f = AccessorE ext ty field (expr >>= f)
   ObjectUpdateE ext ty expr toCopy toUpdate >>= f =
     ObjectUpdateE ext ty (expr >>= f) toCopy (map (\(field, x) -> (field, x >>= f)) toUpdate)
 
-instance Bound (Pat x) where
-  VarP i n  >>>= _      = VarP i n
+instance Bound (Pat x t) where
+  VarP i n t >>>= _      = VarP i n t
   WildP   >>>= _      = WildP
-  AsP i p   >>>= f      = AsP i (p >>>= f)
   ConP tn cn p >>>= f = ConP tn cn (map (>>>= f) p)
   LitP litP >>>= f    = LitP (goLit litP)
     where
       goLit = \case
         IntL i      -> IntL i
-        NumL d      -> NumL d
+        -- NumL d      -> NumL d
         StringL str -> StringL str
         CharL c     -> CharL c
-        ConstArrayL lits -> ConstArrayL lits
-        ArrayL xs   -> ArrayL $ map (\x -> x >>>= f) xs
+        -- ConstArrayL lits -> ConstArrayL lits
+        -- ArrayL xs   -> ArrayL $ map (\x -> x >>>= f) xs
         ObjectL ext obj -> ObjectL ext $ map (\(field, x) -> (field, x >>>= f)) obj
 
 instance Bound (Alt x ty) where
@@ -328,8 +333,8 @@ instance Bound (BindE ty) where
 instance Pretty (BVar ty) where
   pretty (BVar n _t i) =   pretty (showIdent i) <> pretty n -- <+> "::" <+> pretty t
 
-instance Pretty (FVar ty) where
-  pretty (FVar _t i) =  pretty (showQualified showIdent i) -- <+> "::" <+> pretty t)
+instance Pretty ty => Pretty (FVar ty) where
+  pretty (FVar _t i) =  parens $ pretty (showQualified showIdent i)  <+> "::" <+> pretty _t
 
 instance Pretty Kind where
   pretty = \case
@@ -398,6 +403,7 @@ instance (Pretty a, Pretty ty, FuncType ty) => Pretty (Exp x ty a) where
           ]
     AccessorE _ _ field expr -> parens (pretty expr) <> dot <> pretty field
     ObjectUpdateE _ _ _ _ _ -> "TODO: Implement ObjectUpdateE printer"
+    TyInstE t e -> pretty e <+> "@" <> parens (pretty t)
 
 instance (Pretty a, Pretty ty, FuncType ty) => Pretty (Alt x ty (Exp x ty) a) where
   pretty = \case
@@ -412,26 +418,25 @@ instance (Pretty b, Pretty a) => Pretty (Var b a) where
 instance Pretty a => Pretty (Lit x a) where
   pretty = \case
     IntL i -> pretty i
-    NumL d -> pretty d
+    -- NumL d -> pretty d
     StringL pss -> pretty . T.unpack $ prettyPrintString pss
     CharL c -> viaShow . show $ c
-    ConstArrayL xs -> list $ pretty <$> xs
-    ArrayL xs -> list $ pretty <$> xs
+    -- ConstArrayL xs -> list $ pretty <$> xs
+    -- ArrayL xs -> list $ pretty <$> xs
     ObjectL _ obj -> encloseSep "{" "}" ", "
       (map (\(field, expr) -> pretty (T.pack $ decodeStringWithReplacement field) <> ":" <+> pretty expr) obj)
 
-instance Pretty a => Pretty (Pat x (Exp x ty) a) where
+instance (Pretty a) => Pretty (Pat x t (Exp x ty) a) where
   pretty = \case
-    VarP i n -> pretty (runIdent i) <> pretty n
+    VarP i n _ -> pretty (runIdent i) <> pretty n
     WildP -> "_"
-    AsP (i,n) pat -> pretty (runIdent i) <> pretty n <> "@" <> pretty pat
     LitP lit -> case lit of
       IntL i -> pretty i
-      NumL d -> pretty d
+      -- NumL d -> pretty d
       StringL pss -> pretty . T.unpack $ prettyPrintString pss
       CharL c -> viaShow . show $ c
-      ConstArrayL xs -> list $ pretty <$> xs
-      ArrayL xs -> list $ pretty <$> xs
+      -- ConstArrayL xs -> list $ pretty <$> xs
+      -- ArrayL xs -> list $ pretty <$> xs
       ObjectL _ _obj -> "TODO: Implement ObjectL pattern printer"
     ConP cn _ ps -> pretty (runProperName . disqualify $ cn) <+> hsep (pretty <$> ps)
 
@@ -464,7 +469,7 @@ unsafeAnalyzeApp e = fromJust $ (,appArgs e) <$> appFun e
         go other = Just other
     appFun _ = Nothing
 
-expTy :: forall x t a. TypeLike t => (a -> Var (BVar t) (FVar t)) -> Exp x t a -> t
+expTy :: forall x t a. (TypeLike t, Pretty t) => (a -> Var (BVar t) (FVar t)) -> Exp x t a -> t
 expTy f = \case
   V x -> case f x of
     B (BVar _ t _) -> t
@@ -476,8 +481,9 @@ expTy f = \case
   LetE _ _ e -> expTy' f e
   AccessorE _ t _ _ -> t
   ObjectUpdateE _ t _ _ _ -> t
+  TyInstE t e -> instTy t $ expTy f e
 
-expTy' :: forall x t a. TypeLike t => (a -> Var (BVar t) (FVar t)) -> Scope (BVar t) (Exp x t) a -> t
+expTy' :: forall x t a. (TypeLike t, Pretty t) => (a -> Var (BVar t) (FVar t)) -> Scope (BVar t) (Exp x t) a -> t
 expTy' f scoped = case instantiateEither (either (V . B) (V . F)) scoped of
   V x -> case x >>= f  of
     B (BVar _ t _) -> t
@@ -489,14 +495,20 @@ expTy' f scoped = case instantiateEither (either (V . B) (V . F)) scoped of
   LetE  _ _ e -> expTy' (>>= f) e
   AccessorE _ t _ _ -> t
   ObjectUpdateE _ t _ _ _ -> t
+  TyInstE t e ->
+    let e' = join <$> fmap f <$> e
+    in instTy t (expTy id e')
 
 -- | Gets the type of an application expression.
 --   (Name might be a bit confusing, does not apply types)
-appType :: forall x t a. TypeLike t => (a -> Var (BVar t) (FVar t)) -> Exp x t a -> Exp x t a -> t
+appType :: forall x t a. (TypeLike t, Pretty t) => (a -> Var (BVar t) (FVar t)) -> Exp x t a -> Exp x t a -> t
 appType h fe ae = case stripQuantifiers funT of
    ([],ft) ->
      let numArgs = length argTypes
-     in foldl1 funTy . drop numArgs . splitFunTyParts $ ft
+         tyParts = splitFunTyParts ft
+         msg = "appType\n" <> prettyAsStr numArgs <> "\n" <> prettyAsStr tyParts
+         dropped = drop numArgs tyParts
+     in if null dropped then error msg else foldl1 funTy dropped
    (xs,ft) ->
      let funArgs = funArgTypes ft
          dict    = mkInstanceMap M.empty (view _2 <$> xs) argTypes funArgs
@@ -538,7 +550,7 @@ $(deriveShow1 ''BindE)
 instance (Show (XObjectLiteral x)) => Show1 (Lit x) where
   liftShowsPrec = $(makeLiftShowsPrec ''Lit)
 
-instance (Show (XObjectLiteral x)) => Show1 (Pat x f) where
+instance (Show (XObjectLiteral x), Show t) => Show1 (Pat x t f) where
   liftShowsPrec = $(makeLiftShowsPrec ''Pat)
 
 instance (Show ty, Show (XAccessor x), Show (XObjectUpdate x), Show (XObjectLiteral x)) => Show1 (Exp x ty) where

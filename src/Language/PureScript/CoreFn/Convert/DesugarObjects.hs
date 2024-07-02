@@ -8,7 +8,7 @@ module Language.PureScript.CoreFn.Convert.DesugarObjects where
 import Prelude
 import Language.PureScript.CoreFn.Expr
     ( Expr(..) )
-import Language.PureScript.Names (Ident(..), Qualified (..), QualifiedBy (..), pattern ByNullSourcePos, ProperNameType (..), ProperName(..), runModuleName, coerceProperName)
+import Language.PureScript.Names (Ident(..), Qualified (..), QualifiedBy (..), ProperNameType (..), ProperName(..), runModuleName, coerceProperName)
 import Language.PureScript.Types
     ( SourceType, Type(..), srcTypeConstructor, srcTypeApp, RowListItem (rowListType), rowToList, eqType )
 import Language.PureScript.Environment (pattern (:->), pattern RecordT, kindType, DataDeclType (Data), mkTupleTyName)
@@ -20,8 +20,6 @@ import Data.Text qualified as T
 import Data.List ( elemIndex, sortOn, foldl' )
 import Data.Map qualified as M
 import Language.PureScript.PSString (PSString)
-import Language.PureScript.AST.SourcePos
-    ( pattern NullSourceAnn )
 import Control.Lens.IndexedPlated ( icosmos )
 import Control.Lens ( ix )
 import Language.PureScript.CoreFn.Convert.Monomorphize.Utils
@@ -33,8 +31,8 @@ import Language.PureScript.CoreFn.Convert.Monomorphize.Utils
 import Language.PureScript.CoreFn.Convert.Monomorphize
     ( runMonomorphize )
 import Data.Text (Text)
-import Bound ( toScope, Var(..) )
-import Data.Bifunctor (Bifunctor(first, second))
+import Bound ( Var(..) )
+import Data.Bifunctor (Bifunctor(second))
 import Control.Lens.Combinators (to)
 import Data.Maybe (fromJust)
 import Control.Lens.Operators ( (<&>), (.~), (&), (^..), (^.) )
@@ -58,7 +56,6 @@ import Language.PureScript.Constants.Prim qualified as C
 import Language.PureScript.CoreFn.Convert.DesugarCore (WithoutObjects, WithObjects, desugarCoreModule, DS, liftErr, bind, getVarIx)
 import Data.Void (Void, absurd)
 
-import Unsafe.Coerce qualified as UNSAFE
 
 import Prettyprinter
     ( defaultLayoutOptions, layoutPretty, Pretty(pretty) )
@@ -75,7 +72,7 @@ import GHC.IO (throwIO)
 import Language.PureScript.CoreFn.Desugar.Utils (properToIdent)
 import Bound.Scope
 import Control.Monad (join)
-import Control.Monad.State (runState, runStateT, evalStateT)
+import Control.Monad.State (runStateT, evalStateT)
 
 prettyStr :: Pretty a => a -> String
 prettyStr = T.unpack . renderStrict . layoutPretty defaultLayoutOptions . pretty
@@ -124,7 +121,7 @@ prepPIR path  decl = do
                                    tryConvertKind
                                    tryConvertType
                                    moduleDataTypes
-           putStrLn $ "tryConvertExpr result:\n" <> (ppExp e) <> "\n" <> replicate 20 '-'
+           putStrLn $ "tryConvertExpr result:\n" <> ppExp e <> "\n" <> replicate 20 '-'
            pure (e,moduleDataTypes')
 
 -- This gives us a way to report the exact location of the error (which may no longer correspond *at all* to
@@ -263,29 +260,28 @@ tryConvertExpr' toVar  __expr =  do
          e' <- toScope . fmap F <$> tryConvertExpr' id  unscoped
          pure $ UnguardedAlt binders' pat' e'
 
-       goPat :: Pat WithObjects (Exp WithObjects SourceType) a
-                -> DS (Pat WithoutObjects (Exp WithoutObjects Ty) (Var (BVar Ty) (FVar Ty)))
+       goPat :: Pat WithObjects SourceType (Exp WithObjects SourceType) a
+                -> DS (Pat WithoutObjects Ty (Exp WithoutObjects Ty) (Var (BVar Ty) (FVar Ty)))
        goPat = \case
-            VarP i n -> pure $ VarP i n
+            VarP i n tyx -> VarP i n <$> goType tyx
             WildP  -> pure WildP
-            AsP i px -> AsP i <$> goPat px
             LitP lp -> tryConvertLitP lp >>= \case
               Left p -> pure  p
               Right litp -> pure $ LitP litp
             ConP tn cn ps -> ConP tn cn  <$> traverse goPat ps
 
-       tryConvertLitP :: Lit WithObjects (Pat WithObjects (Exp WithObjects SourceType) a)
+       tryConvertLitP :: Lit WithObjects (Pat WithObjects SourceType (Exp WithObjects SourceType) a)
                       -> DS
                                 (Either
-                                 (Pat WithoutObjects (Exp WithoutObjects Ty) (Var (BVar Ty) (FVar Ty)))
-                                 (Lit WithoutObjects (Pat WithoutObjects (Exp WithoutObjects Ty) (Var (BVar Ty) (FVar Ty)))))
+                                 (Pat WithoutObjects Ty (Exp WithoutObjects Ty) (Var (BVar Ty) (FVar Ty)))
+                                 (Lit WithoutObjects (Pat WithoutObjects Ty (Exp WithoutObjects Ty) (Var (BVar Ty) (FVar Ty)))))
        tryConvertLitP = \case
          IntL i -> pure . pure $ IntL i
-         NumL d -> pure . pure $ NumL d
+         -- NumL d -> pure . pure $ NumL d
          StringL s -> pure . pure $ StringL s
          CharL c -> pure . pure $ CharL c
-         ArrayL ps -> pure . ArrayL <$> traverse (goPat) ps
-         ConstArrayL lits -> pure . ConstArrayL <$> traverse tryConvertConstLitP lits
+         -- ArrayL ps -> pure . ArrayL <$> traverse goPat ps
+         -- ConstArrayL lits -> pure . ConstArrayL <$> traverse tryConvertConstLitP lits
          ObjectL _ fs' -> do
            let fs          = sortOn fst fs'
                len         = length fs
@@ -300,11 +296,11 @@ tryConvertExpr' toVar  __expr =  do
        tryConvertConstLitP :: Lit WithObjects Void -> DS (Lit WithoutObjects Void)
        tryConvertConstLitP = \case
          IntL i -> pure $ IntL i
-         NumL d -> pure $ NumL d
+         -- NumL d -> pure $ NumL d
          StringL s -> pure $ StringL s
          CharL c -> pure $ CharL c
-         ArrayL [] -> pure $ ConstArrayL []
-         ConstArrayL lits ->  ConstArrayL <$> traverse tryConvertConstLitP lits
+         -- ArrayL [] -> pure $ ConstArrayL []
+         -- ConstArrayL lits ->  ConstArrayL <$> traverse tryConvertConstLitP lits
          ObjectL _ [] -> undefined
          _ -> error "impossible (?) pattern"
 
@@ -328,28 +324,28 @@ tryConvertExpr' toVar  __expr =  do
                          (Lit WithoutObjects (Exp WithoutObjects Ty (Var (BVar Ty) (FVar Ty)))))
        tryConvertLit   = \case
          IntL i -> pure . pure $ IntL i
-         NumL d -> pure . pure $ NumL d
+         -- NumL d -> pure . pure $ NumL d
          StringL psstr -> pure . pure $ StringL psstr
          CharL c       -> pure . pure $ CharL c
-         ArrayL nonLitArr ->  Right . ArrayL <$> traverse go  nonLitArr
-         ConstArrayL lits -> Right . ConstArrayL <$> traverse constArrHelper lits
+         -- ArrayL nonLitArr ->  Right . ArrayL <$> traverse go  nonLitArr
+         -- ConstArrayL lits -> Right . ConstArrayL <$> traverse constArrHelper lits
          ObjectL _ fs'  ->  Left <$> handleObjectLiteral fs'
         where
          constArrHelper ::  Lit WithObjects Void
                         -> DS (Lit WithoutObjects Void)
          constArrHelper = \case
               IntL i -> pure $ IntL i
-              NumL d -> pure $ NumL d
+              -- NumL d -> pure $ NumL d
               StringL s -> pure $ StringL s
               CharL c   -> pure $ CharL c
-              ArrayL [] -> pure $ ConstArrayL []
-              ArrayL (x:_) -> absurd x
+              -- ArrayL [] -> pure $ ConstArrayL []
+              -- ArrayL (x:_) -> absurd x
               ObjectL _ [] -> error "Empty record inside ConstArrayL. We should forbid this somehow."
               ObjectL _ ((_,x):_) -> absurd x
-              ConstArrayL lits -> do
+              {- -ConstArrayL lits -> do
                 res <- traverse constArrHelper lits
                 pure $ ConstArrayL res
-
+              -}
          handleObjectLiteral :: [(PSString,Exp WithObjects SourceType a)]
                              -> DS (Exp WithoutObjects Ty (Var (BVar Ty) (FVar Ty)))
          handleObjectLiteral fs' = do
@@ -407,12 +403,12 @@ tryConvertExpr' toVar  __expr =  do
              withPositioned :: forall x. (PSString -> Int -> DS x) -> DS [x]
              withPositioned f' = traverse (uncurry f')  positioned
 
-             argBndrTemplate :: DS [Pat WithoutObjects (Exp WithoutObjects Ty) (FVar Ty)]
+             argBndrTemplate :: DS [Pat WithoutObjects Ty (Exp WithoutObjects Ty) (FVar Ty)]
              argBndrTemplate = withPositioned $ \lbl i -> case M.lookup lbl updateMap of
                Nothing -> do
                  let ident = Ident $ "<UPD_" <> T.pack (show i) <> ">"
                  n <- bind ident
-                 pure @DS $ VarP ident n
+                 pure @DS $ VarP ident n (ts M.! lbl)
                Just _  -> pure @DS WildP
 
              resultTemplate = withPositioned $ \lbl i -> case M.lookup lbl updateMap of
@@ -458,7 +454,7 @@ tryConvertExpr' toVar  __expr =  do
          let fieldTy = types' !! lblIx -- if it's not there *something* should have caught it by now
          argBndrTemplate <- do
            n <- bind dummyNm
-           pure $ replicate len WildP & ix lblIx .~ VarP dummyNm n
+           pure $ replicate len WildP & ix lblIx .~ VarP dummyNm n fieldTy
          let ctorBndr = ConP tupTyName tupCtorName argBndrTemplate
              -- NOTE: `lblIx` is a placeholder for a better var ix
              rhs :: Exp WithoutObjects Ty (Var (BVar Ty) (FVar Ty))

@@ -12,7 +12,7 @@ module Language.PureScript.CoreFn.Convert.Monomorphize.Utils  where
 import Prelude
 
 import Language.PureScript.CoreFn.Expr (PurusType, Bind)
-import Language.PureScript.CoreFn.Convert.IR (_V, Exp(..), FVar(..), BindE(..), BVar (..), flattenBind, abstractMany, mkBindings, Alt (..), Lit (..), expTy, ppExp, Pat(..), XAccessor, XObjectUpdate, XObjectLiteral)
+import Language.PureScript.CoreFn.Convert.IR (_V, Exp(..), FVar(..), BindE(..), BVar (..), flattenBind, abstractMany, mkBindings, Alt (..), Lit (..), expTy, ppExp)
 import Language.PureScript.Names (Ident(..), ModuleName (..), QualifiedBy (..), Qualified (..), pattern ByNullSourcePos)
 import Language.PureScript.Types
     ( SourceType, RowListItem (..), rowToList, Type (..), Constraint(..) )
@@ -26,7 +26,7 @@ import Control.Monad.RWS (RWST(..))
 import Control.Monad.Except (throwError)
 import Data.Text (Text)
 import Bound.Var (Var(..))
-import Bound.Scope (Scope (..), abstractEither, toScope, fromScope, mapScope, mapBound, mapMBound, traverseScope)
+import Bound.Scope (Scope (..), toScope, fromScope, mapBound)
 import Data.Bifunctor (Bifunctor (..))
 import Data.List (find)
 import Control.Lens.Plated ( transform, Plated(..) )
@@ -42,7 +42,6 @@ import Language.PureScript.CoreFn.Convert.DesugarCore
 import Data.Aeson qualified as Aeson
 import GHC.IO (throwIO)
 import Control.Monad (join)
-import Data.Void (Void, absurd)
 import Language.PureScript.CoreFn.TypeLike (TypeLike(stripQuantifiers))
 
 type IR_Decl = BindE PurusType (Exp WithObjects PurusType) (FVar PurusType)
@@ -271,7 +270,7 @@ instance Plated (Exp x t a) where
         let e' =  toScope
                   <$> join
                   <$> fmap distributeExp
-                  <$> traverse (traverse (go tfun . (pure @(Exp x t)))) (fromScope e)
+                  <$> traverse (traverse (tfun . (pure @(Exp x t)))) (fromScope e)
         in LamE t bv <$> e'
       CaseE t es alts ->
         let goAlt ::  Alt x t (Exp x t) a -> f (Alt x t (Exp x t) a)
@@ -279,7 +278,7 @@ instance Plated (Exp x t a) where
               let scoped' = toScope
                             <$> join
                             <$> fmap distributeExp
-                            <$> traverse (traverse (go tfun . pure @(Exp x t))) (fromScope scoped)
+                            <$> traverse (traverse (tfun . pure @(Exp x t))) (fromScope scoped)
               in UnguardedAlt bs pats <$> scoped'
         in CaseE t <$>  tfun es <*>  traverse goAlt alts
       LetE binds decls scoped ->
@@ -292,7 +291,7 @@ instance Plated (Exp x t a) where
             scoped' = toScope
                             <$> join
                             <$> fmap distributeExp
-                            <$> traverse (traverse (go tfun . pure @(Exp x t))) (fromScope scoped)
+                            <$> traverse (traverse (tfun . pure @(Exp x t))) (fromScope scoped)
         in LetE binds <$> traverse goDecls decls <*> scoped'
       AppE e1 e2 -> AppE <$> tfun e1 <*> tfun e2
       AccessorE x t pss e -> AccessorE x t pss <$> tfun e
@@ -301,16 +300,17 @@ instance Plated (Exp x t a) where
                                    <*> traverse (\(nm,expr) -> (nm,) <$> tfun expr) fs
       LitE t lit -> LitE t <$> traverseLit lit
       V a -> pure (V a)
+      TyInstE _ e ->  tfun e
       where
         traverseLit :: Lit x (Exp x t a)
                     -> f (Lit x (Exp x t a))
         traverseLit  = \case
           IntL i -> pure $ IntL i
-          NumL d -> pure $ NumL d
+          -- NumL d -> pure $ NumL d
           StringL str -> pure $ StringL str
           CharL char -> pure $ CharL char
-          ArrayL xs -> ArrayL <$> traverse tfun  xs
-          ConstArrayL xs -> ConstArrayL <$> pure xs
+          -- ArrayL xs -> ArrayL <$> traverse tfun  xs
+          -- ConstArrayL xs -> ConstArrayL <$> pure xs
           ObjectL x fs -> ObjectL x <$> traverse (\(str,e) -> (str,) <$> tfun e) fs
 
 

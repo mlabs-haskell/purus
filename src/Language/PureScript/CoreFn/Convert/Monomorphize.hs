@@ -3,7 +3,6 @@
 {-# LANGUAGE ScopedTypeVariables, TypeApplications  #-}
 {-# OPTIONS_GHC -Wno-unrecognised-pragmas #-}
 {-# HLINT ignore "Use if" #-}
-{-# LANGUAGE MultiWayIf #-}
 module Language.PureScript.CoreFn.Convert.Monomorphize (runMonomorphize, testMono, isConstructorE) where
 
 import Prelude
@@ -28,7 +27,7 @@ import Language.PureScript.Names (Ident(..), Qualified (..), QualifiedBy (..), M
 import Language.PureScript.Types
     ( RowListItem(..), SourceType, Type(..), replaceTypeVars, isMonoType )
 import Language.PureScript.CoreFn.Desugar.Utils ( showIdent' )
-import Language.PureScript.Environment (pattern (:->), pattern ArrayT, pattern RecordT, function, getFunArgTy)
+import Language.PureScript.Environment (pattern (:->), pattern RecordT, function, getFunArgTy)
 import Language.PureScript.CoreFn.Pretty (prettyTypeStr)
 import Language.PureScript.CoreFn.FromJSON ()
 import Data.Text qualified as T
@@ -38,8 +37,8 @@ import Data.Map qualified as M
 import Language.PureScript.PSString (PSString, prettyPrintString)
 import Language.PureScript.AST.SourcePos (SourceAnn)
 import Control.Lens
-    ( (&), (^..), cosmos, transformM )
-import Control.Monad (foldM, join)
+    ( (&) )
+import Control.Monad (join)
 import Control.Monad.RWS.Class (MonadReader(ask))
 import Control.Monad.RWS (RWST(..))
 import Control.Monad.Except (throwError)
@@ -49,7 +48,7 @@ import Language.PureScript.CoreFn.Convert.DesugarCore
 import Bound.Var (Var(..))
 import Bound.Scope (mapBound, fromScope, toScope)
 import Language.PureScript.CoreFn.TypeLike
-    ( TypeLike(..), quantify )
+    ( TypeLike(..), quantify, getAllInstantiations )
 import Language.PureScript.CoreFn.Convert.Monomorphize.Utils
     ( mkFieldMap,
       findDeclBody,
@@ -72,9 +71,6 @@ import Language.PureScript.CoreFn.Convert.Monomorphize.Utils
 
 import Data.Text (Text)
 import GHC.IO (throwIO)
-import Control.Lens.Getter (to)
-import Data.Set qualified as S
-import Data.Foldable (traverse_)
 import Data.Char (isUpper)
 import Control.Lens.Plated
 import Prettyprinter (Pretty)
@@ -90,11 +86,7 @@ testMono path decl = do
   case runMonomorphize myMod [] myDecl of
     Left (MonoError msg ) -> throwIO $ userError $ "Couldn't monomorphize " <> T.unpack decl <> "\nReason:\n" <> msg
     Right body -> do
-      let allSubExpressionTypes = S.toList . S.fromList $  body ^.. cosmos . to (expTy id) . cosmos
-      putStrLn "All subexpression types:"
-      traverse_ (\ty -> putStrLn (prettyTypeStr ty)) allSubExpressionTypes
       putStrLn $ "MONO RESULT: \n" <>  ppExp body
-      -- pure unscopedBody
 
 {- This is the top-level entry point for monomorphization. Typically,
    you will search the module for a 'main' decl and use its
@@ -105,8 +97,8 @@ runMonomorphize ::
   [Module IR_Decl PurusType PurusType Ann] -> -- | Modules in scope, for declarations
   Exp WithObjects PurusType (FVar PurusType) ->
   Either MonoError (Exp WithObjects PurusType (Var (BVar PurusType) (FVar PurusType)))
-runMonomorphize Module{..} modulesInScope expr =
-  runRWST (monomorphize (F <$> expr) >>= inlineEverything) (moduleName,fmap F <$> moduleDecls) (MonoState 0) & \case
+runMonomorphize Module{..} _modulesInScope expr =
+  runRWST (transformM monomorphize (F <$> expr) >>= inlineEverything) (moduleName,fmap F <$> moduleDecls) (MonoState 0) & \case
     Left err -> Left err
     Right (a,_,_) -> do
       traceM ("\nMONOMORPHIZE OUTPUT: \n" <> ppExp a <> "\n" <> replicate 20 '-')
@@ -126,27 +118,19 @@ monomorphize ::
   Exp WithObjects PurusType (Var (BVar PurusType) (FVar PurusType))  ->
   Monomorphizer (Exp WithObjects PurusType (Var (BVar PurusType) (FVar PurusType)))
 monomorphize  xpr = trace ("\nmonomorphize " <>  "\n  " <> ppExp xpr)  $ case xpr of
-  app@(AppE _f _arg) ->  do
+  AppE _f _arg ->  do
     arg <- monomorphize _arg
-    -- First, we split the
     let (f,args) = unsafeAnalyzeApp (AppE _f arg)
     traceM $ "FUN: " <> ppExp f
     traceM $ "ARGS: " <> show (ppExp <$> args)
     let types = concatMap (splitFunTyParts . expTy id)  args
     traceM $ "ARG TYPES:" <> show (prettyTypeStr <$> types)
 
-
-    -- FIXME: Check for constructors as well as builtins
-    if | isBuiltinE (f) ->  do
-           traceM ("\nmonomorphize: Is builtin or ctor, skipping:\n" <> ppExp f)
-           pure $ unsafeApply id  f args
-       | isConstructorE f -> do
-           monoArgs <- traverse monomorphize args
-           let fTy' = instantiateWithArgs (expTy id f) (expTy id <$> monoArgs)
-           f' <- monomorphizeWithType fTy' f
-           pure $ unsafeApply id f' monoArgs
-       | otherwise -> handleFunction id f args
-  other -> trace ("\nmonomorphize: other: " <> ppExp other) $ pure (other)
+    if isBuiltinE f || isConstructorE f then do
+           let f' = instantiateConstructorWithArgs id f args
+           pure $ unsafeApply id f' args
+    else  handleFunction id f args
+  other -> trace ("\nmonomorphize: other: " <> ppExp other) $ pure other
 
 inlineEverything :: Exp WithObjects PurusType (Var (BVar PurusType) (FVar PurusType))
                  -> Monomorphizer (Exp WithObjects PurusType (Var (BVar PurusType) (FVar PurusType)))
@@ -194,18 +178,22 @@ inlineEverything = transformM go
    -- Builtins shouldn't be inlined because they can't be.
    -- TODO/REVIEW: Figure out whether it's necessary to *monomorphize*
    --              polymorphic builtins. (Trivial to implement if needed)
+isBuiltinE :: Exp x ty1 (Var b (FVar ty2)) -> Bool
 isBuiltinE = \case
-  V (F (FVar ty qi)) -> isBuiltin qi
-  other -> False
+  V (F (FVar _ qi)) -> isBuiltin qi
+  _ -> False
 
+isBuiltin :: Qualified a -> Bool
 isBuiltin (Qualified (ByModuleName (ModuleName "Builtin")) _ ) = True
 isBuiltin _ = False
 
+isConstructorE :: Exp x ty1 (Var b (FVar ty2)) -> Bool
 isConstructorE = \case
-  V (F (FVar ty qi)) -> isConstructor qi
+  V (F (FVar _ qi)) -> isConstructor qi
   _ -> False
    -- After the recent changes, constructors *can't* be inlined, i.e., they must remain
    -- free until the final PIR compilation stage
+isConstructor :: Qualified Ident -> Bool
 isConstructor (Qualified _ (Ident nm)) = isUpper (T.head nm)
 isConstructor _  = False
 
@@ -252,7 +240,7 @@ handleFunction toVar expr@(LamE (quantify -> (ForAll _ _ var _ inner  _)) bv@(BV
       body' = updateVarTyS  bv t body'' -- update the type of the variable bound by the lambda in the body of the expression
       -- NOTE/REVIEW: Not 100% sure that this doesn't involve a problematic join
       bodyUnscoped  = join <$> fmap toVar <$> fromScope body'
-  body <- toScope  <$>  (\b ->  handleFunction id b $ fmap toVar <$> args) (bodyUnscoped) -- recurse on the body, with the rest of the arguments
+  body <- toScope  <$>  (\b ->  handleFunction id b $ fmap toVar <$> args) bodyUnscoped -- recurse on the body, with the rest of the arguments
   traceM ("bodyUnscoped:\n" <> prettyAsStr bodyUnscoped)
   let bodyT = expTy' F body
       funT  = quantify $ doInstantiate $ function t bodyT
@@ -277,7 +265,7 @@ handleFunction toVar v@(V (toVar -> F (FVar ty qn))) es
 handleFunction toVar e es | isMonoType (expTy toVar e)  = traceM ("\nhandleFunction isMono: " <> ppExp e) >>
                             pure $ unsafeApply id  (toVar <$> e) (fmap toVar <$> es)
 -- Anything else is an error.
-handleFunction toVar e es = throwError $ MonoError
+handleFunction _ e es = throwError $ MonoError
                         $ "Error in handleFunction:\n  "
                         <> ppExp e
                         <> "\n  " <> show (ppExp <$> es)
@@ -384,11 +372,6 @@ inlineAs ty = \case
      Exp WithObjects PurusType (Var (BVar PurusType) (FVar PurusType)) ->
      Monomorphizer (Map Ident (Ident, SourceType, Exp WithObjects PurusType (Var (BVar PurusType) (FVar PurusType))))
    collectRecBinds t visited  e = trace ("\ncollectRecBinds:\n  " <> ppExp  e <> "\n  " <> prettyTypeStr t) $ case  e of
-     LitE _ (ArrayL arr) -> trace "crbARRAYLIT" $ case t of
-       ArrayT inner -> do
-         innerBinds <- foldM (collectRecBinds inner) visited arr
-         pure $ visited <> innerBinds
-       _ -> throwError $ MonoError ("Failed to collect recursive binds: " <> prettyTypeStr t <> " is not an Array type")
      LitE _ (ObjectL _ fs) -> trace "crbOBJLIT" $ case t of
          RecordT fields -> do
            let fieldMap = mkFieldMap fields
@@ -424,6 +407,9 @@ inlineAs ty = \case
        let flatAlts = concatMap extractAndFlattenAlts alts
        foldMScopeViaExp visited (collectRecBinds t) flatAlts
      LetE _ _ ex -> collectRecBinds t visited  (join <$> fromScope ex)
+     -- At this stage TyInst should only contain a Free Var expression which cannot be inlined
+     _ -> pure visited 
+
 
    -- Collect from the fields of an object
    collectRecFieldBinds :: Map Ident (Ident, SourceType, Exp WithObjects PurusType (Var (BVar PurusType) (FVar PurusType)))
@@ -452,6 +438,10 @@ inlineAs ty = \case
           let body' =  fmap join . fromScope $ updateVarTyS bv t  body''
           collectFun visited body' ts
 
+        LamE _ _ body'' -> do
+          let body' = fmap join . fromScope $ body''
+          collectFun visited body' ts
+
         (V (F (FVar _ (Qualified (ByModuleName _) nm)))) -> trace ("collectFun VAR: " <> showIdent' nm) $ do
          case M.lookup nm visited of
            Nothing -> do
@@ -463,7 +453,7 @@ inlineAs ty = \case
              collectRecBinds t' visited' declBody
            Just _ -> pure visited
 
-        other -> throwError $ MonoError $ "Unexpected expression in collectFun:\n  " <> ppExp other
+        other -> throwError $ MonoError $ "\n\nUnexpected expression in collectFun:\n\n" <> ppExp other <> "\n\n" <> show other 
    collectFun _ _ [] = throwError $ MonoError "Ran out of types in collectFun"
 
 
@@ -486,10 +476,6 @@ monomorphizeWithType ::
 monomorphizeWithType ty expr
   | expTy id expr == ty = pure expr
   | otherwise = trace ("monomorphizeWithType:\n  " <> ppExp expr <> "\n  " <> prettyTypeStr ty) $ case expr of
-      LitE ty' (ArrayL arr) -> case ty' of
-        ArrayT inner -> LitE ty . ArrayL <$> traverse (monomorphizeWithType inner)  arr
-        _ -> throwError $ MonoError  ("Failed to collect recursive binds: " <> prettyTypeStr ty <> " is not a Record type")
-
       LitE _ (ObjectL ext fs) -> case ty of
         RecordT fields -> do
           let fieldMap = mkFieldMap fields
@@ -540,6 +526,9 @@ monomorphizeWithType ty expr
       LetE a binds e -> do
         let unscoped = join <$> fromScope e
         LetE a binds . fmap F . toScope <$> monomorphizeWithType ty unscoped
+
+      -- type instantiations shouldn't be touched here
+      other -> pure other 
   where
     monomorphizeFieldsWithTypes :: M.Map PSString (RowListItem SourceAnn)
                                 -> [(PSString, Exp WithObjects PurusType (Var (BVar PurusType) (FVar PurusType)))]
@@ -553,19 +542,18 @@ monomorphizeWithType ty expr
       pure $ (lbl,e') : rest'
 
 
--- unsafe/partial
-
-instantiateWithArgs :: PurusType -> [PurusType] -> PurusType
-instantiateWithArgs f args = replaceAllTypeVars instantiations f
+-- should also work with builtins 
+instantiateConstructorWithArgs :: forall x a
+                                . (a -> Var (BVar PurusType) (FVar PurusType))
+                               -> Exp x PurusType a -- a non-monomorphized constructor
+                               -> [Exp x PurusType a] -- the arguments to which it is applied
+                               -> Exp x PurusType a
+instantiateConstructorWithArgs _ fun [] = fun
+instantiateConstructorWithArgs f fun args =  runInst fun used
   where
-    instantiations = getAllInstantiations f args
-
-getAllInstantiations :: PurusType
-                    -> [PurusType]
-                    -> [(Text,PurusType)]
-getAllInstantiations (quantify -> ForAll _ _ var _ inner _) (arg:args) = case instantiates var arg polyArg of
-   Nothing -> getAllInstantiations inner args
-   Just t  -> (var,t) : getAllInstantiations inner args
-  where
-    polyArg = getFunArgTy inner
-getAllInstantiations _ _ = []
+    used = usedTypeVariables (expTy f fun)
+    instantiationDict = M.fromList $ getAllInstantiations (expTy f fun) (expTy f <$> args)
+    runInst e [] = e
+    runInst e ((t,_):usedRest) = case M.lookup t instantiationDict of
+      Just new -> runInst (TyInstE new e) usedRest
+      Nothing  -> runInst e usedRest -- maybe this should be an error?

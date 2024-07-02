@@ -2,13 +2,13 @@ module Language.PureScript.CoreFn.Pretty.Types (prettyType, prettyTypeStr, prett
 
 import Prelude hiding ((<>))
 
-import Data.Text (Text)
+import Data.Text ( Text )
 import Data.Bifunctor (first, Bifunctor (..))
 import Control.Monad.Reader ( MonadReader(ask), Reader )
 
 import Language.PureScript.Environment
     ( tyRecord, tyFunction, pattern ArrayT )
-import Language.PureScript.Names (OpName(..), ProperName(..), disqualify, showQualified)
+import Language.PureScript.Names (OpName(..), ProperName(..), showQualified)
 import Language.PureScript.Types (Type (..), WildcardData (..), TypeVarVisibility (..), eqType, Constraint (..))
 import Language.PureScript.PSString (prettyPrintString)
 
@@ -33,12 +33,9 @@ import Language.PureScript.CoreFn.Pretty.Common
       arrow, asOneLine )
 -- need for debugging
 import Prettyprinter
-    ( layoutSmart,
-      defaultLayoutOptions,
-      layoutPretty,
-      Doc )
-import Prettyprinter.Render.Text ( renderIO, renderStrict )
-import Data.Text (Text)
+    ( defaultLayoutOptions,
+      layoutPretty )
+import Prettyprinter.Render.Text ( renderStrict )
 import Data.Text qualified as T
 
 

@@ -306,7 +306,8 @@ binderFromJSON modulePath = withObject "Binder" binderFromObj
   varBinderFromObj o = do
     ann <- o .: "annotation" >>= annFromJSON modulePath
     idn <- o .: "identifier" >>= identFromJSON
-    return $ VarBinder ann idn
+    ty  <- o .: "type" >>= parseJSON
+    return $ VarBinder ann idn ty 
 
   literalBinderFromObj o = do
     ann <- o .: "annotation" >>= annFromJSON modulePath

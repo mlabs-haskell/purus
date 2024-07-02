@@ -237,7 +237,7 @@ testBinders :: (Lib.TestBinderSum -> (Prim.Int))
 testBinders = 
   \(x: Lib.TestBinderSum) -> 
     case (x: Lib.TestBinderSum) of 
-       a@ConInt 3 -> (1: Prim.Int)
+       ConInt 3 -> (1: Prim.Int)
        ConInt a -> (a: Prim.Int)
        ConChar '\n' -> (5: Prim.Int)
        ConNested ConInt 2 -> (6: Prim.Int)

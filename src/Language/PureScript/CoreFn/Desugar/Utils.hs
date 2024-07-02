@@ -1,6 +1,7 @@
 {- HLINT ignore "Use void" -}
 {- HLINT ignore "Use <$" -}
 {- HLINT ignore "Use <&>" -}
+{-# OPTIONS_GHC -Wno-orphans #-}
 module Language.PureScript.CoreFn.Desugar.Utils where
 
 import Prelude
@@ -12,9 +13,10 @@ import Data.Map qualified as M
 
 import Language.PureScript.AST qualified as A
 import Language.PureScript.AST.Literals (Literal(..))
-import Language.PureScript.AST.SourcePos (pattern NullSourceSpan, SourceSpan(..))
+import Language.PureScript.AST.SourcePos
+    ( pattern NullSourceSpan, SourceSpan(..), SourceAnn )
 import Language.PureScript.AST.Traversals (everythingOnValues, overTypes)
-import Language.PureScript.CoreFn.Ann (Ann, nullAnn)
+import Language.PureScript.CoreFn.Ann (Ann)
 import Language.PureScript.CoreFn.Binders (Binder(..))
 import Language.PureScript.CoreFn.Expr (Expr(..), PurusType)
 import Language.PureScript.CoreFn.Meta (ConstructorType(..), Meta(..))
@@ -56,12 +58,10 @@ import Data.Bifunctor (Bifunctor(..))
 import Data.List.NonEmpty qualified as NEL
 import Language.PureScript.TypeClassDictionaries (NamedDict, TypeClassDictionaryInScope (..))
 import Data.List (foldl')
-import Language.PureScript.AST.Traversals (litM)
 import Control.Lens.Plated
 import Language.PureScript.Sugar (desugarGuardedExprs)
 import Language.PureScript.AST.Declarations (declSourceSpan)
 import Language.PureScript.Constants.Prim qualified as C
-import Language.PureScript.AST.SourcePos (SourceAnn)
 
 
 {- UTILITIES -}
@@ -270,7 +270,7 @@ traceNameTypes  = do
   nametypes <- getEnv >>= pure . debugNames
   traverse_ traceM nametypes
 
-desugarCasesEverywhere :: M m => A.Declaration -> m (A.Declaration)
+desugarCasesEverywhere :: M m => A.Declaration -> m A.Declaration
 desugarCasesEverywhere d = traverseDeclBodies (transformM $ desugarGuardedExprs (declSourceSpan d )) d
 
 
@@ -284,7 +284,7 @@ traverseDeclBodies f = \case
   other -> pure other
  where
   go :: ((A.SourceAnn, Ident), NameKind, A.Expr) -> m ((A.SourceAnn, Ident), NameKind, A.Expr)
-  go (annid, nk, e) = (\ex -> (annid, nk, ex)) <$> f e
+  go (annid, nk, e) = (annid, nk,) <$> f e
 
 
 instance Plated A.Expr where
@@ -324,9 +324,9 @@ instance Plated A.Expr where
        A.DoNotationLet decls -> A.DoNotationLet <$> traverse (traverseDeclBodies f) decls
        A.PositionedDoNotationElement ss cs de -> A.PositionedDoNotationElement ss cs <$> goDoElem de
 
-     
 
- 
+
+
 
 {- Since we operate on an AST where constraints have been desugared to dictionaries at the *expr* level,
    using a typechecker context which contains ConstrainedTypes, looking up the type for a class method
@@ -622,38 +622,38 @@ properToIdent = Ident . runProperName
 -- "Pure" desugaring utils
 
 -- Desugars case binders from AST to CoreFn representation. Doesn't need to be monadic / essentially the same as the old version.
-binderToCoreFn ::  Environment -> ModuleName -> SourceSpan -> A.Binder -> Binder Ann
-binderToCoreFn env mn _ss (A.LiteralBinder ss (ArrayLiteral bs)) = case bs of
+binderToCoreFn :: M.Map Ident SourceType ->  Environment -> ModuleName -> SourceSpan -> A.Binder -> Binder Ann
+binderToCoreFn dict env mn _ss (A.LiteralBinder ss (ArrayLiteral bs)) = case bs of
   [] -> nilP
   (bx:bxs) ->
-    let bx' = binderToCoreFn env mn _ss bx
-        bxs' = binderToCoreFn env mn _ss $ A.LiteralBinder ss (ArrayLiteral bxs)
+    let bx' = binderToCoreFn dict env mn _ss bx
+        bxs' = binderToCoreFn dict env mn _ss $ A.LiteralBinder ss (ArrayLiteral bxs)
     in consP [bx',bxs']
-binderToCoreFn  env mn _ss (A.LiteralBinder ss (BooleanLiteral b)) =
+binderToCoreFn _ _ _  _ss (A.LiteralBinder _ (BooleanLiteral b)) =
   if b then truePat else falsePat
-binderToCoreFn  env mn _ss (A.LiteralBinder ss lit) =
-  let lit' = binderToCoreFn env mn ss <$> lit
+binderToCoreFn dict env mn _ss (A.LiteralBinder ss lit) =
+  let lit' = binderToCoreFn dict env mn ss <$> lit
   in  LiteralBinder (ss, [], Nothing) lit'
-binderToCoreFn _ _ ss A.NullBinder =
+binderToCoreFn _ _ _ ss A.NullBinder =
   NullBinder (ss, [], Nothing)
-binderToCoreFn _ _ _ss vb@(A.VarBinder ss name) = trace ("binderToCoreFn: " <> show vb ) $
-  VarBinder (ss, [], Nothing) name
-binderToCoreFn env mn _ss (A.ConstructorBinder ss dctor@(Qualified mn' _) bs) =
+binderToCoreFn dict _ _ _ss vb@(A.VarBinder ss name) = trace ("binderToCoreFn: " <> show vb ) $
+  VarBinder (ss, [], Nothing) name (dict M.! name)
+binderToCoreFn dict env mn _ss (A.ConstructorBinder ss dctor@(Qualified mn' _) bs) =
   let (_, tctor, _, _) = lookupConstructor env dctor
-      args = binderToCoreFn env mn _ss <$> bs
+      args = binderToCoreFn dict env mn _ss <$> bs
   in  ConstructorBinder (ss, [], Just $ getConstructorMeta env dctor) (Qualified mn' tctor) dctor args
-binderToCoreFn env mn _ss (A.NamedBinder ss name b) =
-  let arg = binderToCoreFn env mn _ss b
+binderToCoreFn dict env mn _ss (A.NamedBinder ss name b) =
+  let arg = binderToCoreFn dict env mn _ss b
   in  NamedBinder (ss, [], Nothing) name arg
-binderToCoreFn env mn _ss (A.PositionedBinder ss _ b) =
-  binderToCoreFn env mn ss  b
-binderToCoreFn env mn ss  (A.TypedBinder _ b) =
-  binderToCoreFn env mn ss  b
-binderToCoreFn _ _ _  A.OpBinder{} =
+binderToCoreFn dict env mn _ss (A.PositionedBinder ss _ b) =
+  binderToCoreFn dict env mn ss  b
+binderToCoreFn dict env mn ss  (A.TypedBinder _ b) =
+  binderToCoreFn dict env mn ss  b
+binderToCoreFn _ _ _ _  A.OpBinder{} =
   internalError "OpBinder should have been desugared before binderToCoreFn"
-binderToCoreFn _ _ _  A.BinaryNoParensBinder{} =
+binderToCoreFn _ _ _ _  A.BinaryNoParensBinder{} =
   internalError "BinaryNoParensBinder should have been desugared before binderToCoreFn"
-binderToCoreFn _ _ _  A.ParensInBinder{} =
+binderToCoreFn _ _ _ _  A.ParensInBinder{} =
   internalError "ParensInBinder should have been desugared before binderToCoreFn"
 
 
@@ -724,7 +724,6 @@ consE = Var NoAnn (quantify $ x -:> srcTypeApp listTyCon x -:> srcTypeApp listTy
 nilE :: SourceType -> Expr Ann
 nilE ty = Var NoAnn (srcTypeApp listTyCon ty) (properToIdent <$> C.C_Nil)
   where
-    x = srcTypeVar "x" kindType
     listTyCon = srcTypeConstructor C.Array
 
 mkArray :: SourceType -> [Expr Ann] -> Expr Ann

@@ -357,7 +357,7 @@ identsFromBinders = foldMap identsFromBinder where
   identsFromBinder = \case
     LiteralBinder _ (ArrayLiteral xs)  -> identsFromBinders xs
     LiteralBinder _ (ObjectLiteral xs) -> identsFromBinders (map snd xs)
-    VarBinder _ ident                  -> [ident]
+    VarBinder _ ident _                -> [ident]
     ConstructorBinder _ _ _ xs         -> identsFromBinders xs
     NamedBinder _ ident x              -> ident : identsFromBinder x
     LiteralBinder _ BooleanLiteral{}   -> []

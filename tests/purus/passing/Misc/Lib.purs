@@ -77,7 +77,7 @@ data TestBinderSum =
 
 testBinders :: TestBinderSum  -> Int
 testBinders x = case x of
-  a@(ConInt 3)  -> 1   -- NamedBinder, ConstructorBinder, Int LitBinder
+  ConInt 3  -> 1   -- NamedBinder, ConstructorBinder, Int LitBinder
   ConInt a -> a -- ConstructorBinder enclosing VarBinder
   -- ConInts ([3] :: Array Int) -> 2  -- Array LitBinder, TypedBinder
   -- ConInts [a,b] -> b  -- VarBinders enclosed in Array LitBinder

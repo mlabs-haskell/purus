@@ -1,5 +1,7 @@
 {-# OPTIONS_GHC  -Wno-orphans #-}
 {-# LANGUAGE TypeApplications #-}
+{-# OPTIONS_GHC -Wno-unrecognised-pragmas #-}
+{-# HLINT ignore "Use camelCase" #-}
 module Language.PureScript.CoreFn.Convert.DesugarCore where
 
 import Prelude
@@ -7,7 +9,6 @@ import Prelude
 import Language.PureScript.Types (Type(..))
 import Language.PureScript.Names (Ident, Qualified(Qualified),
                                   QualifiedBy (ByModuleName, BySourcePos),
-                                  pattern ByNullSourcePos,
                                   ModuleName (ModuleName), ProperName (ProperName), disqualify, coerceProperName)
 import Language.PureScript.CoreFn.Expr (Expr(..), PurusType, Bind (NonRec, Rec),
                                         CaseAlternative(CaseAlternative), _Var)
@@ -20,26 +21,23 @@ import Language.PureScript.CoreFn.Convert.IR
       BindE(..),
       Alt(..),
       Pat(..),
-      Lit(ObjectL, IntL, NumL, StringL, CharL,  ArrayL),
+      Lit(ObjectL, IntL,  StringL, CharL),
       FVar(..),
       BVar(..),
       FuncType(..),
       ppExp,
       assembleBindEs,
-      mkBindings,
-      abstractMany )
+      mkBindings )
 import Data.Map qualified as M
 import Language.PureScript.AST.Literals (Literal (..))
-import Bound (abstract, Var (..))
-import Control.Monad (join, forM)
-import Control.Monad.State ( join, StateT, modify', put, gets, get, evalState, evalStateT, runStateT )
+import Bound (abstract)
+import Control.Monad (join)
+import Control.Monad.State ( StateT, modify', gets, runStateT )
 import Data.List (find, sortOn)
 import Language.PureScript.CoreFn.Utils (exprType, Context)
 import Language.PureScript.CoreFn.Binders ( Binder(..) )
 import Data.Maybe (mapMaybe)
-import Control.Lens.Operators ((^..))
 import Control.Lens.IndexedPlated (icosmos)
-import Control.Lens.Combinators (to, ix, preview)
 import Control.Monad.Error.Class (MonadError(throwError))
 import Language.PureScript.AST.SourcePos (spanStart)
 import Language.PureScript.CoreFn.Module (Module(..))
@@ -53,6 +51,7 @@ import Data.Foldable (Foldable(foldl'), traverse_)
 import Language.PureScript.Environment (mkCtorTy, mkTupleTyName)
 import Control.Lens hiding (Context)
 import Control.Monad.Trans (lift)
+import Language.PureScript (runIdent)
 
 
 -- Need the map to keep track of whether a variable has already been used in the scope (e.g. for shadowing)
@@ -192,8 +191,8 @@ desugarAlt (CaseAlternative [binder] result) = case result of
     pat <- toPat binder
     s <- gets (view _2)
     let abstrE = abstract (matchLet s)
-    re <- desugarCore ex
-    pure $ UnguardedAlt (M.empty) pat (abstrE re)
+    re' <- desugarCore ex
+    pure $ UnguardedAlt M.empty pat (abstrE re')
 desugarAlt (CaseAlternative binders result) = do
   pats <- traverse toPat binders
   s <- gets (view _2)
@@ -206,26 +205,26 @@ desugarAlt (CaseAlternative binders result) = do
     Left exs -> do
       throwError $ "internal error: `desugarAlt` guarded alt not expected at this stage: " <> show exs
     Right ex -> do
-      re <- desugarCore ex
-      pure $ UnguardedAlt (M.empty) pat (abstrE re)
+      re' <- desugarCore ex
+      pure $ UnguardedAlt M.empty pat (abstrE re')
 
-toPat :: Binder ann -> DS (Pat x (Exp x ty) (FVar ty))
+toPat :: Binder ann -> DS (Pat x PurusType (Exp x ty) (FVar ty))
 toPat = \case
   NullBinder _ -> pure WildP
-  VarBinder _ i  ->  do
+  VarBinder _ i ty ->  do
     n <- bind i
-    pure $ VarP i n
+    pure $ VarP i n ty 
   ConstructorBinder _ tn cn bs -> ConP tn cn <$> traverse toPat bs
-  NamedBinder _ nm b ->  do
-    n <- bind nm
-    AsP (nm,n) <$> toPat b
+  NamedBinder _ nm _ ->  error
+                         $ "found namedBinder: " <> T.unpack (runIdent nm)
+                           <> "TODO: remove NamedBinder/AsP everywhere (parser, cst, AST)"
   LiteralBinder _ lp -> case lp of
     NumericLiteral (Left i) -> pure . LitP $ IntL i
-    NumericLiteral (Right d) -> pure . LitP $ NumL d
+    NumericLiteral (Right _) -> error "numeric literals not supported (yet)"
     StringLiteral pss -> pure . LitP $ StringL pss
     CharLiteral c -> pure . LitP $ CharL c
-    BooleanLiteral _ -> error "boolean literals shouldn't exist anymore"
-    ArrayLiteral as ->  LitP . ArrayL <$> traverse toPat as
+    BooleanLiteral _ -> error "boolean literal patterns shouldn't exist anymore"
+    ArrayLiteral _ ->  error "array literal patterns shouldn't exist anymore"
     ObjectLiteral fs' -> do
       -- REVIEW/FIXME:
       -- this isn't right, we need to make sure the positions of the binders are correct,
@@ -234,7 +233,6 @@ toPat = \case
           len         = length fs
           tupTyName   = mkTupleTyName len
           tupCtorName = coerceProperName <$> tupTyName
-          inner = map (toPat . snd) fs
       ConP tupTyName tupCtorName <$> traverse (toPat . snd) fs
 
 
@@ -245,7 +243,7 @@ getBoundVar body binder = case binder of
   ConstructorBinder _ _ _ binders -> concatMap (getBoundVar body) binders
   LiteralBinder _ (ArrayLiteral arrBinders) -> concatMap (getBoundVar body) arrBinders
   LiteralBinder _ (ObjectLiteral objBinders) -> concatMap (getBoundVar body . snd) objBinders
-  VarBinder _ ident -> case body of
+  VarBinder _ ident _ -> case body of
     Right expr -> case findBoundVar ident expr of
       Nothing -> [] -- probably should trace or warn at least
       Just (ty, qi) -> [FVar ty qi]
@@ -288,11 +286,11 @@ desugarBinds (b:bs) = case b of
 
 desugarLit :: Literal (Expr Ann) -> DS (Lit WithObjects (Exp WithObjects PurusType (FVar PurusType)))
 desugarLit (NumericLiteral (Left int)) = pure $ IntL int
-desugarLit (NumericLiteral (Right number)) = pure $ NumL number
+desugarLit (NumericLiteral (Right _)) = error "TODO: Remove Number lits from all preceding ASTs" -- pure $ NumL number
 desugarLit (StringLiteral string) = pure $ StringL string
 desugarLit (CharLiteral char) = pure $ CharL char
 desugarLit (BooleanLiteral _) = error "TODO: Remove BooleanLiteral from all preceding ASTs"
-desugarLit (ArrayLiteral arr) = ArrayL <$> traverse desugarCore arr
+desugarLit (ArrayLiteral _) = error "TODO: Remove ArrayLiteral from IR AST" -- ArrayL <$> traverse desugarCore arr
 desugarLit (ObjectLiteral object) = ObjectL () <$> desugarObjectMembers object
 
 -- this looks like existing monadic combinator but I couldn't find it

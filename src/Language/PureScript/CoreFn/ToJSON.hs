@@ -251,9 +251,10 @@ caseAlternativeToJSON (CaseAlternative bs r') =
       ]
 
 binderToJSON :: Binder Ann -> Value
-binderToJSON (VarBinder ann v)              = object [ "binderType"  .= "VarBinder"
+binderToJSON (VarBinder ann v t)            = object [ "binderType"  .= "VarBinder"
                                                      , "annotation"  .= annToJSON ann
                                                      , "identifier"  .= identToJSON v
+                                                     , "type"        .= toJSON t
                                                      ]
 binderToJSON (NullBinder ann)               = object [ "binderType"  .= "NullBinder"
                                                      , "annotation"  .= annToJSON ann
