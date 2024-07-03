@@ -19,7 +19,7 @@ data Binder a
   -- |
   -- Wildcard binder
   --
-  = NullBinder a
+  = NullBinder a 
   -- |
   -- A binder which matches a literal value
   --

@@ -88,7 +88,7 @@ test :: FilePath -> Text -> IO (Exp WithoutObjects Ty (Var (BVar Ty) (FVar Ty)))
 test path decl = do
   (myMod,ds) <- decodeModuleIR path
   Just myDecl <- pure $ findDeclBody decl myMod
-  case runMonomorphize myMod [] myDecl of
+  case runMonomorphize myMod [] (fromScope myDecl) of
     Left (MonoError msg) -> throwIO $ userError $ "Couldn't monomorphize " <> T.unpack decl <> "\nReason:\n" <> msg
     Right body -> case evalStateT (tryConvertExpr body) ds of
       Left convertErr -> throwIO $ userError convertErr
@@ -105,7 +105,7 @@ prepPIR path  decl = do
   desugaredExpr <- case findDeclBody decl myMod of
     Nothing -> throwIO $ userError "findDeclBody"
     Just expr -> pure expr
-  case runMonomorphize myMod [] desugaredExpr of
+  case runMonomorphize myMod [] (fromScope desugaredExpr) of
     Left (MonoError msg ) ->
       throwIO
       $ userError
@@ -249,6 +249,7 @@ tryConvertExpr' toVar  __expr =  do
         F (FVar t qi) -> do
           t' <- goType t
           pure . V . F $ FVar t' qi
+      TyInstE t e -> TyInstE <$> goType t <*> go e
      where
        -- TODO: Error location w/ scope in alts
        goAlt :: Alt WithObjects SourceType (Exp WithObjects SourceType) a
@@ -308,15 +309,18 @@ tryConvertExpr' toVar  __expr =  do
                -> DS [BindE Ty (Exp WithoutObjects Ty) (Var (BVar Ty) (FVar Ty))]
        goBinds  [] = pure []
        goBinds  (b:bs) = case b of
-         NonRecursive ident expr -> do
-           e' <- tryConvertExpr' toVar expr
+         NonRecursive ident bvix expr -> do
+           let unscoped =  join <$> fromScope (toVar <$> expr)
+           e' <- tryConvertExpr' id unscoped
            rest <- goBinds bs
-           pure $ NonRecursive ident e'  : rest
+           pure $ NonRecursive ident bvix (fmap F $ toScope e')  : rest
          Recursive  xs -> do
            -- TODO: Accurate error reporting
-           xs' <- traverse (traverse $ tryConvertExpr' toVar) xs
+           let xsUnscoped = second (\e -> join <$> fromScope (toVar <$> e)) <$> xs
+           xs' <- traverse (traverse $ tryConvertExpr' id) xsUnscoped
+           let xsRescoped = second (fmap F . toScope) <$> xs'
            rest <- goBinds bs
-           pure $ Recursive xs' : rest
+           pure $ Recursive xsRescoped : rest
 
        tryConvertLit :: Lit WithObjects (Exp WithObjects SourceType a)
                      -> DS

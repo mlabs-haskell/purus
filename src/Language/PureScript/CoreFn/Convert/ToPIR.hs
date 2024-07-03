@@ -69,7 +69,7 @@ import Control.Monad.Trans.Reader ( runReader, Reader )
 import Control.Monad.Trans.Except ( ExceptT, runExceptT )
 import Control.Monad.Trans.State ( evalState )
 import PlutusIR.Compiler ( Compiling, toDefaultCompilationCtx )
-import Data.Bifunctor (Bifunctor(first))
+import Data.Bifunctor (Bifunctor(..))
 import PlutusIR.Core.Instance.Pretty.Readable (prettyPirReadable)
 import Bound ( Var(..) )
 import Control.Monad
@@ -79,7 +79,7 @@ import Language.PureScript.CoreFn.Convert.IR
     ( expTy,
       BindE(..),
       Lit(CharL, IntL, StringL),
-      Exp(CaseE, V, LitE, LamE, AppE, LetE),
+      Exp(..),
       FVar(..),
       BVar(..),
       Ty(TyCon), unsafeAnalyzeApp )
@@ -108,6 +108,7 @@ import PlutusIR (Program(Program))
 import PlutusCore.Pretty (prettyPlcReadableDef)
 import Language.PureScript.CoreFn.Convert.Monomorphize (isConstructorE)
 import Data.Functor qualified
+import Bound.Scope (fromScope)
 
 
 showType :: forall a. Typeable a => String
@@ -248,7 +249,11 @@ firstPass _datatypes f _exp = doTraceM "firstPass" (prettyStr _exp) >> case _exp
       Just boundTerms' -> pure $ PIR.Let () PIR.Rec boundTerms' body'
       Nothing -> error "empty bindings"
   CaseE{} -> error "Case expressions should be eliminated by now. TODO: Enforce this w/ types"
- where
+  TyInstE t e -> do
+    t' <- toPIRType t
+    e' <- firstPass datatypes f e
+    pure $ PIR.TyInst () e' t'
+ where 
    datatypes = _datatypes <> primData
 
    mkDict = M.fromList . fmap (\(a,FVar _ ident) -> (disqualify ident,a)) . M.toList
@@ -258,21 +263,21 @@ firstPass _datatypes f _exp = doTraceM "firstPass" (prettyStr _exp) >> case _exp
                -> BindE Ty (Exp WithoutObjects Ty) a
                -> DatatypeM [PIRTermBind]
    convertBind dict acc = \case
-     NonRecursive ident expr -> do
-       nonRec <- goBind ident expr
+     NonRecursive ident bvix expr -> do
+       let unscoped = fmap join . fromScope $ f <$>  expr
+       nonRec <- goBind (ident,bvix) unscoped
        pure $ nonRec:acc
      Recursive xs -> do
-       xs' <- traverse (uncurry goBind) xs
+       xs' <- traverse (uncurry goBind . second (fmap join . fromScope . fmap f)) xs
        pure $ xs' <> acc
     where
-      goBind ident expr = case M.lookup ident dict of
-       Just i -> do
+      goBind :: (Ident ,Int) -> Exp WithoutObjects Ty (Var (BVar Ty) (FVar Ty)) -> DatatypeM PIRTermBind
+      goBind (ident,i) expr = do
          let nm = Name (runIdent ident) $ Unique i
-         ty <- toPIRType (expTy f expr)
-         expr' <- firstPass datatypes f expr
+         ty <- toPIRType (expTy id expr)
+         expr' <- firstPass datatypes id expr
          -- NOTE: Not sure if this should always be strict?
          pure $ TermBind () Strict (VarDecl () nm ty) expr'
-       Nothing -> throwError $ "convertBind: Could not determine variable index for let-bound identifier " <> showIdent' ident
 
    firstPassLit :: Ty
                 -> Lit WithoutObjects (Exp WithoutObjects Ty a)

@@ -64,7 +64,7 @@ import Bound.Scope ( bindings, instantiate, toScope, fromScope, abstract )
 import Control.Monad.State ( gets, runState, modify, State )
 import Control.Monad.Except
     ( MonadError(throwError), runExceptT, ExceptT, liftEither )
-import Data.Foldable (traverse_, foldl')
+import Data.Foldable (traverse_, foldl',foldrM)
 import Language.PureScript.CoreFn.TypeLike ( TypeLike(funTy, applyType, replaceAllTypeVars), getInstantiations, safeFunArgTypes )
 import Language.PureScript.CoreFn.Convert.DesugarObjects
 import Data.Maybe (fromJust, isJust)
@@ -75,10 +75,11 @@ import Control.Monad (join, (>=>))
 import Control.Lens.Plated (transformM)
 import PlutusCore.Name (Unique(Unique))
 import Data.List (sortOn)
+import Data.Bifunctor (second)
 
 
 doTraces :: Bool
-doTraces = True
+doTraces = False
 
 doTrace :: forall a. String -> String -> a -> a
 doTrace hdr msg x
@@ -449,9 +450,16 @@ mkDestructorFunTy _datatypes tn = do
     Just dDecl -> do
       let funTyLHS' out = foldr (\(txt,k) acc -> Forall TypeVarVisible txt k acc Nothing) out (dDecl ^. dDataArgs)
       n <- T.pack . show <$> next
+      let outVarNm = ("out" <> n)
+          outVar   = TyVar outVarNm IR.KindType
       let funTyLHS inner = funTyLHS' $ Forall TypeVarVisible ("out" <> n) IR.KindType inner Nothing
-          -- tyCtor = foldl' IR.TyApp (TyCon )
-      error "TODO: Finish writing this"
+      funTyCtorArgs <- traverse (mkFunTyCtorArg outVar) (dDecl ^.  dDataCtors )
+      let funTyRHS = foldr funTy outVar funTyCtorArgs
+      pure $ funTyLHS funTyRHS
+ where
+   mkFunTyCtorArg :: Ty -> CtorDecl Ty -> DatatypeM Ty
+   mkFunTyCtorArg outVar (view cdCtorFields -> fields) = pure $ foldr funTy outVar (snd <$> fields)
+
 eliminateCaseExpressions :: Datatypes IR.Kind Ty
                          -> Exp WithoutObjects Ty (Var (BVar Ty) (FVar Ty))
                          -> DatatypeM (Exp WithoutObjects Ty (Var (BVar Ty) (FVar Ty)))
@@ -479,7 +487,7 @@ eliminateCaseExpressions _datatypes = \case
     pure $ LetE bindingsMap bindEs scoped
   TyInstE ty inner -> TyInstE ty <$> eliminateCaseExpressions datatypes inner
  where
-   datatypes = primData <> _datatypes 
+   datatypes = primData <> _datatypes
 
    eliminateCasesInAlt :: Alt WithoutObjects Ty (Exp WithoutObjects Ty) (Var (BVar Ty) (FVar Ty))
                        -> DatatypeM (Alt WithoutObjects Ty (Exp WithoutObjects Ty) (Var (BVar Ty) (FVar Ty)))
@@ -489,8 +497,15 @@ eliminateCaseExpressions _datatypes = \case
      pure $ UnguardedAlt bs pat inner'
 
    eliminateCasesInBind = \case
-     NonRecursive i e -> NonRecursive i <$> eliminateCaseExpressions datatypes e
-     Recursive xs -> Recursive <$> traverse (traverse (eliminateCaseExpressions datatypes)) xs
+     NonRecursive i bvix e ->
+       let e' = join <$> fromScope e
+       in NonRecursive i bvix . toScope . fmap F
+                         <$> eliminateCaseExpressions datatypes e'
+     Recursive xs ->
+       let deScope e = join <$> fromScope e
+           rescope = fmap F . toScope
+           xs' = traverse (traverse (eliminateCaseExpressions datatypes) . second deScope) xs
+       in Recursive . map (second rescope) <$> xs'
 eliminateCaseExpressions' :: Datatypes IR.Kind Ty
                        -> Exp WithoutObjects Ty (Var (BVar Ty) (FVar Ty))
                        -> DatatypeM (Exp WithoutObjects Ty (Var (BVar Ty) (FVar Ty)))
@@ -576,12 +591,12 @@ desugarConstructorPattern datatypes = \case
   CaseE resTy scrut alts@(UnguardedAlt _ (ConP tn _ _) _:_) -> do
     let isConP alt =  case getPat alt of {ConP{} -> True; _ -> False}
         conPatAlts = takeWhile isConP alts
-    indexedBranches <- sortOn fst  <$> traverse mkIndexedBranch conPatAlts
+        scrutTy = expTy id scrut
+    indexedBranches <- sortOn fst  <$> traverse (mkIndexedBranch scrutTy) conPatAlts
     let allCtors =  zip [0..] $ getAllConstructorDecls tn datatypes
     (Name dcTor (Unique dctorIx)) <- getDestructorTy tn
-    fresh <- next
-    let dummyTy = TyCon (Qualified (ByModuleName $ ModuleName "$COMPILER") (ProperName $ "$UNKNOWN_" <> T.pack (show fresh)))
-        destructorRaw = V . B $ BVar dctorIx dummyTy (Ident dcTor)
+    dctorTy <- mkDestructorFunTy datatypes tn
+    let destructorRaw = V . B $ BVar dctorIx dctorTy (Ident dcTor)
         instantiateTyCon :: Exp WithoutObjects Ty (Var (BVar Ty) (FVar Ty)) -> Exp WithoutObjects Ty (Var (BVar Ty) (FVar Ty))
         instantiateTyCon = mkInstantiateTyCon (expTy id scrut)
     case dropWhile isConP alts of
@@ -617,26 +632,33 @@ desugarConstructorPattern datatypes = \case
             Nothing -> e
 
 
-   mkIndexedBranch :: Alt WithoutObjects Ty (Exp WithoutObjects Ty) (Var (BVar Ty) (FVar Ty))
+   mkIndexedBranch :: Ty
+                   -> Alt WithoutObjects Ty (Exp WithoutObjects Ty) (Var (BVar Ty) (FVar Ty))
                    -> DatatypeM (Int, Exp WithoutObjects Ty (Var (BVar Ty) (FVar Ty)))
-   mkIndexedBranch (UnguardedAlt _ (ConP _ cn binders) rhs) = do
-     let go x acc = case x of
-           VarP bvId bvIx bvTy ->
+   mkIndexedBranch scrutTy (UnguardedAlt _ (ConP tn cn binders) rhs) = do
+     let go (x,t) acc = case x of
+           VarP bvId bvIx bvTy -> do
              let lamTy = funTy bvTy (expTy' id rhs)
                  lamBV = BVar bvIx  bvTy bvId
-             in  LamE lamTy lamBV
+             pure $  LamE lamTy lamBV
                  . abstract (\case {F fv -> matchVarLamAbs bvId bvIx fv; B _ -> Nothing})
                  . acc
+           WildP -> do
+             freshIx <- next
+             let freshName = "_t" <> T.pack (show freshIx)
+                 lamTy = funTy t (expTy' id rhs)
+                 lamBv = BVar freshIx t (Ident freshName)
+             pure $ LamE lamTy lamBv . toScope . fmap F . acc
            other -> error $ "Unexpected pattern in alternative: Expected a VarP but got " <> show other
-
-         lambdaLHS = foldr go id binders
-         indx = case fst <$> getConstructorIndexAndDecl cn datatypes of
+         monoFields = snd $ monoCtorFields tn cn scrutTy datatypes
+     lambdaLHS <- foldrM go id (zip binders monoFields)
+     let indx = case fst <$> getConstructorIndexAndDecl cn datatypes of
                           Left _ -> error $ "No constructor data for ctor " <> show cn
                           Right i ->  i
          rhsUnscoped = join <$> fromScope rhs
          result = lambdaLHS rhsUnscoped
      pure (indx,result)
-   mkIndexedBranch (UnguardedAlt _ otherP _) = error $  "mkIndexedBranch: Expected constructor pattern but got " <> prettyStr otherP
+   mkIndexedBranch _ (UnguardedAlt _ otherP _) = error $  "mkIndexedBranch: Expected constructor pattern but got " <> prettyStr otherP
 
 analyzeTyApp :: Ty -> Maybe (Ty,[Ty])
 analyzeTyApp t = (,tyAppArgs t) <$> tyAppFun t

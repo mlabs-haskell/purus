@@ -26,12 +26,11 @@ import Language.PureScript.CoreFn.Convert.IR
       BVar(..),
       FuncType(..),
       ppExp,
-      assembleBindEs,
       mkBindings )
 import Data.Map qualified as M
 import Language.PureScript.AST.Literals (Literal (..))
-import Bound (abstract)
-import Control.Monad (join)
+import Bound (abstract, Var (..))
+import Control.Monad (join, foldM, void)
 import Control.Monad.State ( StateT, modify', gets, runStateT )
 import Data.List (find, sortOn)
 import Language.PureScript.CoreFn.Utils (exprType, Context)
@@ -52,6 +51,7 @@ import Language.PureScript.Environment (mkCtorTy, mkTupleTyName)
 import Control.Lens hiding (Context)
 import Control.Monad.Trans (lift)
 import Language.PureScript (runIdent)
+import Bound.Scope (toScope, Scope)
 
 
 -- Need the map to keep track of whether a variable has already been used in the scope (e.g. for shadowing)
@@ -111,13 +111,22 @@ desugarCoreModule' Module{..} = do
 desugarCoreDecl :: Bind Ann
                 -> DS (BindE PurusType (Exp WithObjects PurusType) (FVar PurusType))
 desugarCoreDecl = \case
-  NonRec _ ident expr -> wrapTrace ("desugarCoreDecl: " <> showIdent' ident) $
-    NonRecursive ident  <$> desugarCore' expr
-  Rec xs -> Recursive
-          <$> traverse (\((_,ident),expr) ->
-                          wrapTrace ("desugarCoreDecl: " <> showIdent' ident) $
-                          (ident,)
-                          <$> desugarCore' expr) xs
+  NonRec _ ident expr -> wrapTrace ("desugarCoreDecl: " <> showIdent' ident) $ do
+     bvix <- bind ident
+     let abstr = abstract (matchVarLamAbs ident bvix)
+     scoped <-  abstr <$> desugarCore expr
+     pure $ NonRecursive ident bvix  scoped
+  Rec xs ->  do
+    first_pass <- traverse (\((_,ident),e) -> bind ident >>= \u -> pure ((ident,u),e)) xs
+    s <- gets (view _2)
+    let abstr = abstract (matchLet s)
+    second_pass  <- traverse (\((ident,bvix),expr) -> do
+                          wrapTrace ("desugarCoreDecl: " <> showIdent' ident) $ do
+                            expr' <- desugarCore expr
+                            let scoped = abstr expr'
+                            pure ((ident,bvix),scoped)) first_pass
+    pure $ Recursive second_pass
+                
 
 desugarCore' :: Expr Ann -> DS (Exp WithObjects PurusType (FVar PurusType))
 desugarCore' e = do
@@ -159,14 +168,11 @@ desugarCore (App _ann expr1 expr2) = do
 desugarCore (Var _ann ty qi) = pure $ V $ FVar ty qi
 desugarCore (Let _ann binds cont) = do
   binds' <- desugarBinds binds
-  let allBoundIdents = fst <$> join binds'
-  traverse_ (bind . (\(FVar _ nm) -> disqualify nm)) allBoundIdents
-  s <- gets (view _2)
+  s <-  gets (view _2)
   cont' <- desugarCore cont
   let abstr = abstract (matchLet s)
-      bindEs = assembleBindEs [] binds'
-      bindings = mkBindings allBoundIdents
-  pure $ LetE bindings bindEs $ abstr cont'
+  bindEs <- assembleBindEs  binds'
+  pure $ LetE M.empty bindEs $ abstr cont'
 desugarCore (Accessor _ann ty label expr) = do
   expr' <- desugarCore expr
   pure $ AccessorE () ty label expr'
@@ -183,6 +189,7 @@ desugarCore (Case _ann ty scrutinees alts) = do
   scrutinees' <- desugarCore $ tuplify scrutinees
   alts' <- traverse desugarAlt alts
   pure $ CaseE ty scrutinees' alts'
+
 
 desugarAlt :: CaseAlternative Ann -> DS (Alt WithObjects PurusType (Exp WithObjects PurusType) (FVar PurusType))
 desugarAlt (CaseAlternative [binder] result) = case result of
@@ -210,7 +217,7 @@ desugarAlt (CaseAlternative binders result) = do
 
 toPat :: Binder ann -> DS (Pat x PurusType (Exp x ty) (FVar ty))
 toPat = \case
-  NullBinder _ -> pure WildP
+  NullBinder _ -> pure WildP 
   VarBinder _ i ty ->  do
     n <- bind i
     pure $ VarP i n ty 
@@ -234,9 +241,6 @@ toPat = \case
           tupTyName   = mkTupleTyName len
           tupCtorName = coerceProperName <$> tupTyName
       ConP tupTyName tupCtorName <$> traverse (toPat . snd) fs
-
-
-
 
 getBoundVar :: forall ann. Show ann => Either [(Expr ann, Expr ann)] (Expr ann) -> Binder ann -> [FVar PurusType]
 getBoundVar body binder = case binder of
@@ -269,16 +273,19 @@ qualifySS :: Ann -> Ident -> Qualified Ident
 qualifySS ann i = Qualified (BySourcePos $ spanStart (annSS ann)) i
 
 -- Stolen from DesugarObjects
-desugarBinds :: [Bind Ann] -> DS [[(FVar PurusType, Exp WithObjects PurusType (FVar PurusType))]]
-desugarBinds [] = pure []
+desugarBinds :: [Bind Ann] -> DS [[((FVar PurusType,Int), Scope (BVar PurusType) (Exp WithObjects PurusType) (FVar PurusType))]]
+desugarBinds _bs  = pure []
 desugarBinds (b:bs) = case b of
-  NonRec _ann ident expr -> do
+  NonRec _ann ident expr ->  do
+    bvIx <- bind ident
     let qualifiedIdent = qualifySS _ann ident
     e' <- desugarCore expr
+    let scoped = abstract (matchLet $ M.singleton ident bvIx) e'
     rest <- desugarBinds bs
-    pure $ [(FVar (exprType expr) qualifiedIdent,e')] : rest
+    pure $ [((FVar (exprType expr) qualifiedIdent,bvIx),scoped)] : rest
   -- TODO: Fix this to preserve recursivity (requires modifying the *LET* ctor of Exp)
   Rec xs -> do
+    traverse_ (\((_,nm),_) -> bind nm) xs
     let xs' = map (\((ann,nm),e) -> NonRec ann nm e) xs
     xs'' <- desugarBinds xs'
     rest <- desugarBinds bs
@@ -323,3 +330,19 @@ matchLet binds (FVar ty n') = do
 -- TODO (t4ccer): Move somehwere, but cycilc imports are annoying
 instance FuncType PurusType where
   headArg = functionArgumentIfFunction
+
+
+
+-- REVIEW: This *MIGHT* not be right. I'm not 1000% sure what the PS criteria for a mutually rec group are
+--         First arg threads the FVars that correspond to the already-processed binds
+--         through the rest of the conversion. I think that's right - earlier bindings
+--         should be available to later bindings
+assembleBindEs :: Eq ty => [[((FVar ty,Int) ,Scope (BVar ty) (Exp x ty) (FVar ty))]] -> DS [BindE ty (Exp x ty) (FVar ty)]
+assembleBindEs  [] = pure []
+assembleBindEs  ([]:rest) = assembleBindEs rest -- shouldn't happen but w/e
+assembleBindEs ([((FVar _tx idnt,bix),e)]:rest) = do
+  (NonRecursive (disqualify idnt) bix  e:) <$>  assembleBindEs rest
+assembleBindEs  (xsRec:rest) = do
+  let  recBinds = flip map xsRec $ \((FVar _tx idnt,bvix), e) -> ((disqualify idnt,bvix), e)
+  rest' <- assembleBindEs rest
+  pure $ Recursive recBinds : rest'

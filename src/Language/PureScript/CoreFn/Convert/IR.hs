@@ -211,14 +211,9 @@ getPat = \case
 
 -- idk if we really need the identifiers?
 data BindE ty (f :: GHC.Type -> GHC.Type) a
-  = NonRecursive Ident (f a)
-  | Recursive [(Ident, f a)]
+  = NonRecursive Ident Int (Scope (BVar ty) f a)
+  | Recursive [((Ident,Int), Scope (BVar ty) f a)]
   deriving (Eq,Ord,Show,Functor,Foldable,Traversable)
-
-flattenBind :: BindE ty f a -> [(Ident, f a)]
-flattenBind = \case
-  NonRecursive i e -> [(i,e)]
-  Recursive xs -> xs
 
 type family XAccessor x
 type family XObjectUpdate x
@@ -262,11 +257,14 @@ instance (Eq1 f, Monad f, Eq t) => Eq1 (Pat x t f) where
   liftEq eq (LitP l1) (LitP l2) =  liftEq (liftEq eq) l1 l2
   liftEq _ _ _ = False
 
-instance (Eq1 f) => Eq1 (BindE ty f) where
-  liftEq eq (NonRecursive i1 b1) (NonRecursive i2 b2) = i1 == i2 && liftEq eq b1 b2
+instance (Eq1 f, Monad f, Eq ty) => Eq1 (BindE ty f) where
+  liftEq eq (NonRecursive i1 ix1 b1) (NonRecursive i2 ix2 b2) = ix1 == ix2 && i1 == i2 && liftEq eq b1 b2
   liftEq eq (Recursive xs) (Recursive ys) = go eq xs ys
     where
-      go :: forall a b. (a -> b -> Bool) -> [(Ident, f a)] -> [(Ident, f b)] -> Bool
+      go :: forall a b
+          . (a -> b -> Bool)
+         -> [((Ident,Int), Scope (BVar ty) f a)]
+         -> [((Ident,Int), Scope (BVar ty) f b)] -> Bool
       go f ((i1,x):xss) ((i2,y):yss) = i1 == i2 && liftEq f x y && go f xss yss
       go _ [] [] = True
       go _ _ _ = False
@@ -303,7 +301,7 @@ instance Monad (Exp x ty) where
 
 instance Bound (Pat x t) where
   VarP i n t >>>= _      = VarP i n t
-  WildP   >>>= _      = WildP
+  WildP  >>>= _      = WildP
   ConP tn cn p >>>= f = ConP tn cn (map (>>>= f) p)
   LitP litP >>>= f    = LitP (goLit litP)
     where
@@ -320,13 +318,17 @@ instance Bound (Alt x ty) where
   UnguardedAlt i ps e >>>= f = UnguardedAlt i (ps >>>= f) (e >>>= f)
 
 instance Bound (BindE ty) where
-  NonRecursive i e >>>= f = NonRecursive i $ e >>= f
+  NonRecursive i ix e >>>= f = NonRecursive i ix $ e >>>= f
   Recursive xs     >>>= f = Recursive $ go f xs
     where
-      go :: forall a f c. Monad f => (a -> f c) -> [(Ident, f a)] -> [(Ident, f c)]
+      go :: forall a f c
+          . Monad f
+         => (a -> f c)
+         -> [((Ident,Int), Scope (BVar ty) f a)]
+         -> [((Ident,Int), Scope (BVar ty) f c)]
       go _ [] = []
       go g ((i,e):rest) =
-        let e' = e >>= g
+        let e' = e >>>= g
             rest' = go g rest
         in (i,e') : rest'
 
@@ -429,7 +431,7 @@ instance Pretty a => Pretty (Lit x a) where
 instance (Pretty a) => Pretty (Pat x t (Exp x ty) a) where
   pretty = \case
     VarP i n _ -> pretty (runIdent i) <> pretty n
-    WildP -> "_"
+    WildP  -> "_"
     LitP lit -> case lit of
       IntL i -> pretty i
       -- NumL d -> pretty d
@@ -442,9 +444,11 @@ instance (Pretty a) => Pretty (Pat x t (Exp x ty) a) where
 
 instance (Pretty a, Pretty ty, FuncType ty, Pretty (Exp x ty a)) => Pretty (BindE ty (Exp x ty) a) where
   pretty = \case
-    NonRecursive i e -> pretty (runIdent i) <+> "=" <+> pretty e
+    NonRecursive i ix e -> let e' = fromScope e in pretty (runIdent i) <> "#" <> pretty ix  <+> "=" <+> pretty e'
     Recursive es ->
-      let go (ident,expr) = pretty (runIdent ident) <+> "=" <+> pretty expr
+      let go ((ident,ix),expr) =
+            let expr' = fromScope expr
+            in pretty (runIdent ident) <> "#" <> pretty ix <+> "=" <+> pretty expr'
       in align . vcat $ go <$> es
 
 ppExp :: (Pretty a, Pretty ty, FuncType ty) => Exp x ty a -> String
@@ -508,7 +512,7 @@ appType h fe ae = case stripQuantifiers funT of
          tyParts = splitFunTyParts ft
          msg = "appType\n" <> prettyAsStr numArgs <> "\n" <> prettyAsStr tyParts
          dropped = drop numArgs tyParts
-     in if null dropped then error msg else foldl1 funTy dropped
+     in if null dropped then error msg else foldl1 funTy dropped 
    (xs,ft) ->
      let funArgs = funArgTypes ft
          dict    = mkInstanceMap M.empty (view _2 <$> xs) argTypes funArgs
@@ -571,29 +575,7 @@ deriving instance (Show a, Show ty, Show1 (Exp x ty), Show (XAccessor x), Show (
 makePrisms ''Ty
 makePrisms ''Exp
 
--- REVIEW: This *MIGHT* not be right. I'm not 1000% sure what the PS criteria for a mutually rec group are
---         First arg threads the FVars that correspond to the already-processed binds
---         through the rest of the conversion. I think that's right - earlier bindings
---         should be available to later bindings
-assembleBindEs :: Eq ty =>  [FVar ty] -> [[(FVar ty ,Exp x ty (FVar ty))]] -> [BindE ty (Exp x ty) (FVar ty)]
-assembleBindEs _ [] = []
-assembleBindEs dict ([]:rest) = assembleBindEs dict rest -- shouldn't happen but w/e
-assembleBindEs dict ([(fv@(FVar _tx ix),e)]:rest) =
-  let dict' = fv:dict
-      -- abstr = abstract (abstractMany dict')
-  in NonRecursive (disqualify ix)  e : assembleBindEs dict' rest
-assembleBindEs dict (xsRec:rest) =
-  let (dict', recBind) = assembleRec dict xsRec
-  in recBind : assembleBindEs dict' rest
 
-assembleRec ::  [FVar ty] -> [(FVar ty, Exp x ty (FVar ty))] -> ([FVar ty], BindE ty (Exp x ty) (FVar ty))
-assembleRec dict xs =
-  let dict' = dict <> (fst <$> xs)
-      -- abstr = abstract (abstractMany dict')
-      recBind = Recursive
-                . map (uncurry $ \(FVar _ ixx) xp -> (disqualify ixx, xp))
-                $ xs
-  in (dict', recBind)
 
 mkBindings :: [FVar ty] -> Bindings ty
 mkBindings = M.fromList . zip [0..]
