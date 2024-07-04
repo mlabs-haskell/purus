@@ -327,13 +327,13 @@ instance Bound (BindE ty) where
          -> [((Ident,Int), Scope (BVar ty) f a)]
          -> [((Ident,Int), Scope (BVar ty) f c)]
       go _ [] = []
-      go g ((i,e):rest) =
+      go g ((i,e):rest) = 
         let e' = e >>>= g
             rest' = go g rest
         in (i,e') : rest'
 
-instance Pretty (BVar ty) where
-  pretty (BVar n _t i) =   pretty (showIdent i) <> pretty n -- <+> "::" <+> pretty t
+instance Pretty ty => Pretty (BVar ty) where
+  pretty (BVar n _t i) =   parens $ pretty (showIdent i) <> "#" <> pretty n <::> pretty _t-- <+> "::" <+> pretty t
 
 instance Pretty ty => Pretty (FVar ty) where
   pretty (FVar _t i) =  parens $ pretty (showQualified showIdent i)  <+> "::" <+> pretty _t
@@ -428,9 +428,9 @@ instance Pretty a => Pretty (Lit x a) where
     ObjectL _ obj -> encloseSep "{" "}" ", "
       (map (\(field, expr) -> pretty (T.pack $ decodeStringWithReplacement field) <> ":" <+> pretty expr) obj)
 
-instance (Pretty a) => Pretty (Pat x t (Exp x ty) a) where
+instance (Pretty a, Pretty t) => Pretty (Pat x t (Exp x ty) a) where
   pretty = \case
-    VarP i n _ -> pretty (runIdent i) <> pretty n
+    VarP i n t -> pretty (runIdent i) <> pretty n <> "@" <> parens (pretty t)
     WildP  -> "_"
     LitP lit -> case lit of
       IntL i -> pretty i

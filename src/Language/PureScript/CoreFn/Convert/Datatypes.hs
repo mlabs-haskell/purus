@@ -60,7 +60,7 @@ import Language.PureScript.CoreFn.Convert.DesugarCore
 import Language.PureScript.CoreFn.Convert.Monomorphize.Utils ()
 import Language.PureScript.CoreFn.Pretty (prettyTypeStr)
 import Data.Kind qualified as GHC
-import Bound.Scope ( bindings, instantiate, toScope, fromScope, abstract )
+import Bound.Scope ( bindings, instantiate, toScope, fromScope, abstract, mapBound )
 import Control.Monad.State ( gets, runState, modify, State )
 import Control.Monad.Except
     ( MonadError(throwError), runExceptT, ExceptT, liftEither )
@@ -76,27 +76,10 @@ import Control.Lens.Plated (transformM)
 import PlutusCore.Name (Unique(Unique))
 import Data.List (sortOn)
 import Data.Bifunctor (second)
+import Language.PureScript.CoreFn.Convert.Debug
+import System.Random (mkStdGen,randomR)
+import Bound.Scope (Scope)
 
-
-doTraces :: Bool
-doTraces = False
-
-doTrace :: forall a. String -> String -> a -> a
-doTrace hdr msg x
-  | doTraces = trace (mkMsg hdr msg) x
-  | otherwise = x
-
-doTraceM :: forall f . Applicative f => String -> String -> f ()
-doTraceM hdr msg
-  | doTraces = traceM (mkMsg hdr msg)
-  | otherwise = pure ()
-
-mkMsg :: String -> String -> String
-mkMsg header body = spacer <> header <> spacer
-                    <> "\n" <> body
-                    <> "\n" <> spacer <> spacer <> "\n"
-  where
-    spacer = replicate 20 '-'
 
 {- Monad for performing operations with datatypes. Supports limited TyVar binding
    operations for operating on type variables in scoped datatype declarations or
@@ -140,6 +123,9 @@ data DatatypeDictionary = DatatypeDictionary {
 -- jfc why didn't i makeLenses everywhere
 makeLenses ''DatatypeDictionary
 
+pseudoRandomChar :: Int -> Char
+pseudoRandomChar i = fst $ randomR ('a','z') (mkStdGen i)
+
 next :: DatatypeM Int
 next = do
   n <- gets (view counter)
@@ -177,7 +163,8 @@ mkNewVar nm = doTraceM "mkNewVar" (T.unpack nm) >> PIR.Name nm . PLC.Unique <$> 
 freshName :: DatatypeM PIR.Name
 freshName = do
   uniq <- next
-  let nm = "a" <> T.pack (show uniq)
+  let c = pseudoRandomChar uniq
+  let nm = T.pack (c : '#' : show uniq)
   pure $ PIR.Name nm (PLC.Unique uniq)
 
 mkVar :: Text -> DatatypeM PIR.Name
@@ -265,15 +252,15 @@ mkPIRDatatypes datatypes tyConsInExp = doTraceM "mkPIRDatatypes" (show $ S.map p
     go :: Qualified (ProperName 'TypeName)
        -> DatatypeM ()
     go qn | qn `S.member` truePrimitives  = pure ()
-    go qn@(Qualified _ (ProperName tnm)) = doTraceM "mkPIRDatatypes: go" (prettyQPN qn) >> case lookupDataDecl qn datatypes of
+    go qn@(Qualified _ (ProperName tnm)) = doTraceM "mkPIRDatatypes" ("go: " <> prettyQPN qn) >> case lookupDataDecl qn datatypes of
       Nothing -> throwError $ "Error when translating data types to PIR: "
                         <> "Couldn't find a data type declaration for "
                         <> T.unpack (showQualified runProperName qn)
       Just dDecl -> do -- TODO: newtypes should probably be newtype-ey
         let declArgs = fst <$> dDecl ^. dDataArgs
             declKind = mkDeclKind $ mkKind . snd <$> (dDecl ^. dDataArgs)
-        doTraceM "mkPIRDatatypes: Decl" (prettyStr dDecl)
-        doTraceM "mkPIRDatatypes: decl args: " (show declArgs)
+        doTraceM "mkPIRDatatypes" $  "Decl " <> prettyStr dDecl
+        doTraceM "mkPIRDatatypes" $ "decl args: "  <> show declArgs
         tyName <- mkTyName qn
         let typeNameDecl = TyVarDecl () tyName declKind
             dataArgs = dDecl ^. dDataArgs
@@ -510,8 +497,12 @@ eliminateCaseExpressions' :: Datatypes IR.Kind Ty
                        -> Exp WithoutObjects Ty (Var (BVar Ty) (FVar Ty))
                        -> DatatypeM (Exp WithoutObjects Ty (Var (BVar Ty) (FVar Ty)))
 eliminateCaseExpressions' datatypes
-  = transformM (desugarLiteralPatterns
+  = transformM (
+        (pure . monomorphizePatterns datatypes)
+    >=> desugarLiteralPatterns
+    >=> (pure . monomorphizePatterns datatypes)
     >=> desugarConstructorPatterns datatypes
+    >=> (pure . monomorphizePatterns datatypes)
     >=> desugarIrrefutables)
 
 desugarLiteralPatterns :: Exp WithoutObjects Ty (Var (BVar Ty) (FVar Ty)) -> DatatypeM (Exp WithoutObjects Ty (Var (BVar Ty) (FVar Ty)))
@@ -562,6 +553,55 @@ desugarLiteralPattern  = \case
      CharL c -> eqChar `AppE` LitE (TyCon C.Char) (CharL c) `AppE` scrut
      StringL s -> eqString `AppE` LitE (TyCon C.String) (StringL s) `AppE` scrut
 
+
+{-
+
+We can't easily do this in the monomorphizer itself
+
+-}
+monomorphizePatterns :: Datatypes IR.Kind Ty
+                     -> Exp WithoutObjects Ty (Var (BVar Ty) (FVar Ty))
+                     -> Exp WithoutObjects Ty (Var (BVar Ty) (FVar Ty))
+monomorphizePatterns _datatypes = \case
+  CaseE resTy scrut alts ->
+    let scrutTy = expTy id scrut
+    in CaseE resTy scrut $ goAlt scrutTy <$> alts
+  other -> other
+ where
+   monomorphPat :: Ty
+                -> Pat WithoutObjects Ty (Exp WithoutObjects Ty) (Var (BVar Ty) (FVar Ty))
+                -> Pat WithoutObjects Ty (Exp WithoutObjects Ty) (Var (BVar Ty) (FVar Ty))
+   monomorphPat t = \case
+     VarP idnt indx _ -> VarP idnt indx t
+     ConP tn cn ps ->
+       let monoFields = snd $ monoCtorFields tn cn t datatypes
+           ps'        = zipWith monomorphPat monoFields ps
+       in ConP tn cn ps'
+     other -> other
+
+   rebindPat :: Pat WithoutObjects Ty (Exp WithoutObjects Ty) (Var (BVar Ty) (FVar Ty))
+             -> Scope (BVar Ty) (Exp WithoutObjects Ty) (Var (BVar Ty) (FVar Ty))
+             -> Scope (BVar Ty) (Exp WithoutObjects Ty) (Var (BVar Ty) (FVar Ty))
+   rebindPat p e =
+     let upd idnt indx t =
+           mapBound (\bv@(BVar bvix _ bvidnt) -> if idnt == bvidnt && indx == bvix then BVar bvix t bvidnt else bv)
+           . fmap (\case
+                      bv@(B (BVar bvix _ bvidnt)) -> if idnt == bvidnt && indx == bvix then B (BVar bvix t bvidnt) else bv
+                      other -> other 
+                  )
+     in case p of
+       VarP vpId vpIx vpTy -> upd vpId vpIx vpTy e
+       ConP _ _  ps' -> foldl' (flip rebindPat) e ps'
+       _  -> e
+
+   datatypes = _datatypes <> primData
+   goAlt :: Ty
+         -> Alt WithoutObjects Ty (Exp WithoutObjects Ty) (Var (BVar Ty) (FVar Ty))
+         -> Alt WithoutObjects Ty (Exp WithoutObjects Ty) (Var (BVar Ty) (FVar Ty))
+   goAlt scrutTy (UnguardedAlt a p e) =
+     let p' = monomorphPat scrutTy p
+         e' = rebindPat p' e
+     in UnguardedAlt a p' e'
 
 -- This is for case expressions where the first alternative contains an irrefutable pattern (WildP, VarP)
 -- (we need this b/c the other two won't catch and eliminate those expressions)
@@ -628,7 +668,7 @@ desugarConstructorPattern datatypes = \case
                       -> Exp WithoutObjects Ty (Var (BVar Ty) (FVar Ty))
                       -> Exp WithoutObjects Ty (Var (BVar Ty) (FVar Ty))
    mkInstantiateTyCon t e = case analyzeTyApp t of
-            Just (_,tyArgs) -> foldr TyInstE e tyArgs
+            Just (_,tyArgs) -> foldr (TyInstE)  e tyArgs
             Nothing -> e
 
 

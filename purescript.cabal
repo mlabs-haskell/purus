@@ -206,6 +206,7 @@ common defaults
     semigroups ==0.20.*,
     semialign >=1.2.0.1 && <1.3,
     sourcemap >=0.1.7 && <0.2,
+    random,
     stm >=2.5.0.2 && <2.6,
     stringsearch >=0.3.6.6 && <0.4,
     template-haskell >=2.18.0.0 && <2.19,
@@ -247,6 +248,7 @@ library
     Language.PureScript.Constants.PLC
     Language.PureScript.Constants.PLC.TH
     Language.PureScript.CoreFn
+    Language.PureScript.CoreFn.Convert.Debug
     Language.PureScript.CoreFn.Ann
     Language.PureScript.CoreFn.Binders
     Language.PureScript.CoreFn.Convert

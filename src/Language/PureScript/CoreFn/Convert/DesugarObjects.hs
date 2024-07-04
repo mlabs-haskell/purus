@@ -13,7 +13,7 @@ import Language.PureScript.Types
     ( SourceType, Type(..), srcTypeConstructor, srcTypeApp, RowListItem (rowListType), rowToList, eqType )
 import Language.PureScript.Environment (pattern (:->), pattern RecordT, kindType, DataDeclType (Data), mkTupleTyName)
 import Language.PureScript.CoreFn.Pretty
-    ( prettyTypeStr )
+    ( prettyTypeStr, prettyAsStr )
 import Language.PureScript.CoreFn.Ann (Ann)
 import Language.PureScript.CoreFn.FromJSON ()
 import Data.Text qualified as T
@@ -50,7 +50,6 @@ import Language.PureScript.CoreFn.Convert.IR
       FVar(..),
       Ty(..) )
 import Language.PureScript.CoreFn.Utils ( exprType, Context )
-import Debug.Trace ( traceM )
 import Data.Map (Map)
 import Language.PureScript.Constants.Prim qualified as C
 import Language.PureScript.CoreFn.Convert.DesugarCore (WithoutObjects, WithObjects, desugarCoreModule, DS, liftErr, bind, getVarIx)
@@ -73,6 +72,7 @@ import Language.PureScript.CoreFn.Desugar.Utils (properToIdent)
 import Bound.Scope
 import Control.Monad (join)
 import Control.Monad.State (runStateT, evalStateT)
+import Language.PureScript.CoreFn.Convert.Debug
 
 prettyStr :: Pretty a => a -> String
 prettyStr = T.unpack . renderStrict . layoutPretty defaultLayoutOptions . pretty
@@ -95,6 +95,8 @@ test path decl = do
       Right e -> do
         putStrLn (ppExp e)
         pure e
+
+
 
 prepPIR :: FilePath
         -> Text
@@ -195,8 +197,6 @@ rowLast t = case rowToList t of
 allTypes :: Expr Ann -> [SourceType]
 allTypes e = e ^.. icosmos @Context @(Expr Ann) M.empty . to exprType
 
-
-
 tryConvertExpr :: Exp WithObjects SourceType (Var (BVar SourceType) (FVar SourceType))
                -> DS (Exp WithoutObjects Ty (Var (BVar Ty) (FVar Ty)))
 tryConvertExpr =  tryConvertExpr' id
@@ -209,7 +209,7 @@ tryConvertExpr' :: forall a.
 tryConvertExpr' toVar  __expr =  do
     result <- go  __expr
     let spacer = replicate 20 '-'
-    traceM (spacer <> "tryConvertExpr" <> spacer <> "\n  Expr:\n" <> ppExp __expr <> "\n  Result:\n" <> ppExp result <> "\n" <> spacer )
+    doTraceM "tryConvertExpr'" ("\n  Expr:\n" <> ppExp __expr <> "\n  Result:\n" <> ppExp result <> "\n" <> spacer )
     pure result
   where
     go ::  Exp WithObjects SourceType a  -> DS (Exp WithoutObjects Ty (Var (BVar Ty) (FVar Ty)))
@@ -249,7 +249,7 @@ tryConvertExpr' toVar  __expr =  do
         F (FVar t qi) -> do
           t' <- goType t
           pure . V . F $ FVar t' qi
-      TyInstE t e -> TyInstE <$> goType t <*> go e
+      TyInstE t e -> TyInstE <$> goType t <*> go e 
      where
        -- TODO: Error location w/ scope in alts
        goAlt :: Alt WithObjects SourceType (Exp WithObjects SourceType) a
@@ -439,7 +439,8 @@ tryConvertExpr' toVar  __expr =  do
                              -> Exp WithObjects SourceType a
                              -> DS (Exp WithoutObjects Ty (Var (BVar Ty) (FVar Ty)))
        desugarObjectAccessor _ lbl e = do
-         traceM "desugarObjectAccesor"
+         scrutTy <- goType (expTy toVar e)
+         doTraceM "desugarObjectAccesor" ("Lbl: " <> prettyAsStr lbl <> "\nExpr:\n" <> prettyAsStr e)
          _fs <- case expTy toVar e of
                          RecordT fs -> pure fs
                          other -> error $ "ERROR: Record expression:\n  "
@@ -453,16 +454,15 @@ tryConvertExpr' toVar  __expr =  do
              types' = snd <$> fs
              dummyNm =  Ident "<ACCESSOR>"
              lblIx = fromJust $ elemIndex lbl (fst <$> fs) -- FIXME: fromJust
-         traceM $ "TYPES: " <> show (prettyStr <$> types')
+         doTraceM "desugarObjectAccessor" $ "TYPES: " <> show (prettyStr <$> types')
 
          let fieldTy = types' !! lblIx -- if it's not there *something* should have caught it by now
-         argBndrTemplate <- do
-           n <- bind dummyNm
-           pure $ replicate len WildP & ix lblIx .~ VarP dummyNm n fieldTy
+         n <- bind dummyNm
+         let argBndrTemplate = replicate len WildP & ix lblIx .~ VarP dummyNm n scrutTy
          let ctorBndr = ConP tupTyName tupCtorName argBndrTemplate
              -- NOTE: `lblIx` is a placeholder for a better var ix
              rhs :: Exp WithoutObjects Ty (Var (BVar Ty) (FVar Ty))
-             rhs = V . B $ BVar lblIx  fieldTy  dummyNm
+             rhs = V . B $ BVar n  fieldTy  dummyNm
              altBranch = F <$> UnguardedAlt M.empty ctorBndr (toScope rhs)
          e' <- tryConvertExpr' toVar e
          pure $ CaseE fieldTy e' [altBranch]

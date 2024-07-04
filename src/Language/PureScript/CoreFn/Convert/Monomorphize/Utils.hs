@@ -20,7 +20,7 @@ import Language.PureScript.CoreFn.FromJSON ()
 import Data.Text qualified as T
 import Data.Map (Map)
 import Data.Map qualified as M
-import Control.Lens ( (<&>), (^?) )
+import Control.Lens ( (<&>), (^?), (^..) )
 import Control.Monad.RWS.Class (gets, modify', MonadReader (..))
 import Control.Monad.RWS (RWST(..))
 import Control.Monad.Except (throwError)
@@ -29,7 +29,7 @@ import Bound.Var (Var(..))
 import Bound.Scope (Scope (..), toScope, fromScope, mapBound)
 import Data.Bifunctor (Bifunctor (..))
 import Data.List (find)
-import Control.Lens.Plated ( transform, Plated(..) )
+import Control.Lens.Plated ( transform, Plated(..), cosmos )
 import Language.PureScript.Environment (pattern (:->), mkRecordT, pattern RecordT)
 import Language.PureScript.CoreFn.Pretty (prettyTypeStr, prettyAsStr)
 import Language.PureScript.AST.SourcePos ( SourceAnn, pattern NullSourceAnn )
@@ -44,6 +44,7 @@ import GHC.IO (throwIO)
 import Control.Monad (join)
 import Language.PureScript.CoreFn.TypeLike (TypeLike(..))
 import Prettyprinter (Pretty)
+import Data.Maybe (isJust)
 
 type IR_Decl = BindE PurusType (Exp WithObjects PurusType) (FVar PurusType)
 
@@ -330,7 +331,44 @@ updateBVar bvId bvIx newTy = \case
        in Recursive $ map goRecBind  xs
 
    
+-- something is wrong with my attempts to write a plated instance and I dunno how to fix it,
+-- but specific traverals seem to work, so this should work?
+transformExp :: forall x t f
+              . Monad f
+              => (Exp x t (Var (BVar t) (FVar t)) -> f (Exp x t (Var (BVar t) (FVar t))))
+              -> Exp x t (Var (BVar t) (FVar t))
+              -> f (Exp x t (Var (BVar t) (FVar t)))
+transformExp  f = \case
+      LamE t bv e -> LamE t bv <$> transformScope e 
+      CaseE t e alts ->
+        let goAlt ::  Alt x t (Exp x t) (Var (BVar t) (FVar t)) -> f (Alt x t (Exp x t) (Var (BVar t) (FVar t)))
+            goAlt (UnguardedAlt bs pats scoped) =  UnguardedAlt bs pats <$> transformScope scoped
+        in CaseE t <$>   runTransform e <*>  traverse goAlt alts
+      LetE binds decls scoped ->
+        let goDecls :: BindE t (Exp x t) (Var (BVar t) (FVar t)) -> f (BindE t (Exp x t) (Var (BVar t) (FVar t)))
+            goDecls = \case
+              NonRecursive ident bvix expr ->
+                NonRecursive ident bvix <$> transformScope expr
+              Recursive xs ->  Recursive <$> traverse (\(i,x) -> (i,) <$> transformScope x) xs
+        in LetE binds <$> traverse goDecls decls <*> transformScope scoped
+      AppE e1 e2 -> AppE <$> runTransform e1 <*> runTransform e2
+      AccessorE x t pss e -> AccessorE x t pss <$> runTransform e
+      ObjectUpdateE x t e cf fs -> (\e' fs' -> ObjectUpdateE x t e' cf fs')
+                                   <$> runTransform  e
+                                   <*> traverse (\(nm,expr) -> (nm,) <$> runTransform expr) fs
+      LitE t lit -> LitE t <$> traverse runTransform lit
+      V a -> pure (V a)
+      TyInstE t e -> TyInstE t <$> runTransform e
+  where
+    runTransform :: Exp x t (Var (BVar t) (FVar t)) -> f (Exp x t (Var (BVar t) (FVar t)))
+    runTransform x = transformExp f x >>= f
 
+    transformScope :: Scope (BVar t) (Exp x t) (Var (BVar t) (FVar t))
+                   -> f (Scope (BVar t) (Exp x t) (Var (BVar t) (FVar t)))
+    transformScope scoped = do
+      let unscoped = join <$> fromScope scoped
+      transformed <- runTransform unscoped
+      pure $ toScope (F <$> transformed)
 
 {- Useful for transform/rewrite/cosmos/etc -}
 instance Plated (Exp x t a) where
@@ -384,7 +422,7 @@ instance Plated (Exp x t a) where
                                    <*> traverse (\(nm,expr) -> (nm,) <$> tfun expr) fs
       LitE t lit -> LitE t <$> traverseLit lit
       V a -> pure (V a)
-      TyInstE _ e ->  tfun e
+      TyInstE t e -> TyInstE t <$> tfun e
       where
         traverseLit :: Lit x (Exp x t a)
                     -> f (Lit x (Exp x t a))
@@ -397,6 +435,16 @@ instance Plated (Exp x t a) where
           -- ConstArrayL xs -> ConstArrayL <$> pure xs
           ObjectL x fs -> ObjectL x <$> traverse (\(str,e) -> (str,) <$> tfun e) fs
 
+isSelfRecursiveNR :: BindE t (Exp x t) (Var (BVar t) (FVar t)) -> Bool
+isSelfRecursiveNR (NonRecursive ident indx body) = containsBVar ident indx body
+isSelfRecursiveNR _ = False
+
+containsBVar :: Ident -> Int -> Scope (BVar t) (Exp x t) (Var (BVar t) (FVar t)) -> Bool
+containsBVar idnt indx expr = any (\case
+    V (B (BVar bvix _ bvident)) -> bvix == indx &&  idnt == bvident
+    _ -> False) subExpressions 
+ where
+    subExpressions = (join <$> fromScope expr) ^.. cosmos
 
 -- put this somewhere else
 

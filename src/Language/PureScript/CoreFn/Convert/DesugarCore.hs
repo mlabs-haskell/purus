@@ -41,7 +41,6 @@ import Control.Monad.Error.Class (MonadError(throwError))
 import Language.PureScript.AST.SourcePos (spanStart)
 import Language.PureScript.CoreFn.Module (Module(..))
 import Language.PureScript.CoreFn.Pretty (renderExprStr, prettyAsStr)
-import Debug.Trace (traceM)
 import Language.PureScript.CoreFn.Desugar.Utils (wrapTrace, showIdent', properToIdent)
 import Data.Void (Void)
 import Language.PureScript.Constants.Prim qualified as C
@@ -53,6 +52,7 @@ import Control.Monad.Trans (lift)
 import Language.PureScript (runIdent)
 import Bound.Scope (toScope, Scope)
 
+import Language.PureScript.CoreFn.Convert.Debug
 
 -- Need the map to keep track of whether a variable has already been used in the scope (e.g. for shadowing)
 type DS = StateT (Int,M.Map Ident Int) (Either String)
@@ -100,7 +100,7 @@ desugarCoreModule :: Module (Bind Ann) PurusType PurusType Ann -> Either String 
 desugarCoreModule m = case runStateT (desugarCoreModule' m) (0,M.empty) of
   Left err -> Left err
   Right res -> do
-    traceM ("desugarCoreModule decls OUTPUT:\n" <> prettyAsStr (moduleDecls $ fst res))
+    doTraceM "desugarCoreModule" ("decls OUTPUT:\n" <> prettyAsStr (moduleDecls $ fst res))
     pure res
 
 desugarCoreModule' :: Module (Bind Ann) PurusType PurusType Ann -> DS (Module IR_Decl PurusType PurusType Ann)
@@ -130,9 +130,9 @@ desugarCoreDecl = \case
 
 desugarCore' :: Expr Ann -> DS (Exp WithObjects PurusType (FVar PurusType))
 desugarCore' e = do
-  traceM $ "desugarCore INPUT: " <> renderExprStr e
+  doTraceM "desugarCore'" ("INPUT: " <> renderExprStr e)
   res <- desugarCore e
-  traceM $ "desugarCore OUTPUT: " <> ppExp res
+  doTraceM "desugarCore'" $ "OUTPUT: " <> ppExp res
   pure res
 
 {- | Turns a list of expressions into an n-ary
@@ -274,7 +274,7 @@ qualifySS ann i = Qualified (BySourcePos $ spanStart (annSS ann)) i
 
 -- Stolen from DesugarObjects
 desugarBinds :: [Bind Ann] -> DS [[((FVar PurusType,Int), Scope (BVar PurusType) (Exp WithObjects PurusType) (FVar PurusType))]]
-desugarBinds _bs  = pure []
+desugarBinds []  = pure []
 desugarBinds (b:bs) = case b of
   NonRec _ann ident expr ->  do
     bvIx <- bind ident

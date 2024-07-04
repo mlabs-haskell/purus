@@ -49,7 +49,7 @@ import Language.PureScript.CoreFn.Convert.Datatypes
       PIRTerm,
       mkTypeBindDict,
       pirDatatypes,
-      doTraceM, mkNewTyVar, bindTV, mkKind, eliminateCaseExpressions )
+      mkNewTyVar, bindTV, mkKind, eliminateCaseExpressions )
 import Control.Monad.Except (MonadError(..))
 import Language.PureScript.CoreFn.Module (
   Datatypes,
@@ -109,7 +109,7 @@ import PlutusCore.Pretty (prettyPlcReadableDef)
 import Language.PureScript.CoreFn.Convert.Monomorphize (isConstructorE)
 import Data.Functor qualified
 import Bound.Scope (fromScope)
-
+import Language.PureScript.CoreFn.Convert.Debug
 
 showType :: forall a. Typeable a => String
 showType = show (typeRep :: TypeRep a)
