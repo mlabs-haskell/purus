@@ -240,7 +240,7 @@ tryConvertExpr' toVar  __expr =  do
         let unscoped = join <$> fromScope (toVar <$> e)
         e' <- toScope  <$> tryConvertExpr' id  unscoped
         pure $ LetE bindings' bound' (F <$> e')
-      AccessorE _ ty lbl e -> desugarObjectAccessor ty lbl e
+      AccessorE _ resTy lbl e -> desugarObjectAccessor resTy lbl e
       ObjectUpdateE _ ty orig copF updF -> desugarObjectUpdate ty orig copF updF
       V fvar -> case toVar fvar of
         B (BVar i t nm) -> do
@@ -438,9 +438,8 @@ tryConvertExpr' toVar  __expr =  do
                              -> PSString
                              -> Exp WithObjects SourceType a
                              -> DS (Exp WithoutObjects Ty (Var (BVar Ty) (FVar Ty)))
-       desugarObjectAccessor _ lbl e = do
-         scrutTy <- goType (expTy toVar e)
-         doTraceM "desugarObjectAccesor" ("Lbl: " <> prettyAsStr lbl <> "\nExpr:\n" <> prettyAsStr e)
+       desugarObjectAccessor resTy lbl e = do
+         doTraceM "desugarObjectAccessor" ("Lbl: " <> prettyAsStr lbl <> "\nExpr:\n" <> prettyAsStr e <> "\nResTy:\n" <> prettyAsStr resTy)
          _fs <- case expTy toVar e of
                          RecordT fs -> pure fs
                          other -> error $ "ERROR: Record expression:\n  "
@@ -458,7 +457,7 @@ tryConvertExpr' toVar  __expr =  do
 
          let fieldTy = types' !! lblIx -- if it's not there *something* should have caught it by now
          n <- bind dummyNm
-         let argBndrTemplate = replicate len WildP & ix lblIx .~ VarP dummyNm n scrutTy
+         let argBndrTemplate = replicate len WildP & ix lblIx .~ VarP dummyNm n fieldTy
          let ctorBndr = ConP tupTyName tupCtorName argBndrTemplate
              -- NOTE: `lblIx` is a placeholder for a better var ix
              rhs :: Exp WithoutObjects Ty (Var (BVar Ty) (FVar Ty))

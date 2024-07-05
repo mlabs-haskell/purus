@@ -82,7 +82,7 @@ import Language.PureScript.CoreFn.Convert.IR
       Exp(..),
       FVar(..),
       BVar(..),
-      Ty(TyCon), unsafeAnalyzeApp )
+      Ty(TyCon), unsafeAnalyzeApp, expTy' )
 import PlutusIR
     ( Name(Name),
       VarDecl(VarDecl),
@@ -223,19 +223,22 @@ firstPass _datatypes f _exp = doTraceM "firstPass" (prettyStr _exp) >> case _exp
                      <> " isn't a builtin, and it shouldn't be possible to have a free variable that's anything but a builtin"
     B (BVar bvix _ (runIdent -> nm)) -> pure $ PIR.Var () (Name nm $ Unique bvix)
   LitE litTy lit -> firstPassLit litTy lit
-  LamE lty (BVar bvIx bvTy bvNm) body -> do
+  LamE _ (BVar bvIx bvTy bvNm) body -> do
+
+    let lty = funTy bvTy (expTy' f body)
+    doTraceM "firstPass" ("LamE lamTy" <> prettyStr lty)
     let used = usedTypeVariables lty
     forM_ used $ \(v,k) -> do
         v' <- mkNewTyVar v
         bindTV v v'
         pure $ PIR.TyVarDecl () v' (mkKind k)
-    fTy <- toPIRType (quantify lty)
+    fTy <- toPIRType lty
     -- error (prettyStr lty)
-    ty' <- toPIRType (argTy bvTy)
+    ty' <- toPIRType  bvTy
     let nm = Name (runIdent bvNm) $ Unique bvIx
         body' = instantiateEither (either (IR.V . B) (IR.V . F)) body
     body'' <- firstPass datatypes (>>= f) body'
-    pirLetNonRec fTy (PIR.LamAbs () nm ty' body'') $ \x -> pure x
+    pirLetNonRec fTy (PIR.LamAbs () nm ty' body'') $ \x -> pure x 
   AppE e1 e2  ->  do
     e1' <- firstPass datatypes f e1
     e2' <- firstPass datatypes f e2

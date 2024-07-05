@@ -463,10 +463,13 @@ eliminateCaseExpressions _datatypes = \case
     e1' <- eliminateCaseExpressions datatypes e1
     e2' <- eliminateCaseExpressions datatypes e2
     pure $ AppE e1' e2'
-  CaseE resTy _scrut _alts -> do
-    scrut <- eliminateCaseExpressions datatypes _scrut
-    alts  <- traverse eliminateCasesInAlt _alts
-    eliminateCaseExpressions' datatypes (CaseE resTy scrut alts)
+  ce@CaseE{} -> do
+    case monomorphizePatterns datatypes ce of
+      CaseE resTy _scrut _alts -> do
+        scrut <- eliminateCaseExpressions datatypes _scrut
+        alts  <- traverse eliminateCasesInAlt _alts
+        eliminateCaseExpressions' datatypes (CaseE resTy scrut alts)
+      other -> error ("eliminateCaseExpressions: IMPOSSIBLE:\n" <> prettyStr other)
   LetE bindingsMap _bindEs _scoped -> do
     let unscoped = join <$> fromScope _scoped
     scoped <- toScope . fmap F <$> eliminateCaseExpressions datatypes unscoped
@@ -501,9 +504,9 @@ eliminateCaseExpressions' datatypes
         (pure . monomorphizePatterns datatypes)
     >=> desugarLiteralPatterns
     >=> (pure . monomorphizePatterns datatypes)
-    >=> desugarConstructorPatterns datatypes
+    >=> desugarIrrefutables
     >=> (pure . monomorphizePatterns datatypes)
-    >=> desugarIrrefutables)
+    >=> desugarConstructorPatterns datatypes)
 
 desugarLiteralPatterns :: Exp WithoutObjects Ty (Var (BVar Ty) (FVar Ty)) -> DatatypeM (Exp WithoutObjects Ty (Var (BVar Ty) (FVar Ty)))
 desugarLiteralPatterns = transformM desugarLiteralPattern
@@ -562,10 +565,15 @@ We can't easily do this in the monomorphizer itself
 monomorphizePatterns :: Datatypes IR.Kind Ty
                      -> Exp WithoutObjects Ty (Var (BVar Ty) (FVar Ty))
                      -> Exp WithoutObjects Ty (Var (BVar Ty) (FVar Ty))
-monomorphizePatterns _datatypes = \case
+monomorphizePatterns _datatypes _e' =  case _e' of
   CaseE resTy scrut alts ->
-    let scrutTy = expTy id scrut
-    in CaseE resTy scrut $ goAlt scrutTy <$> alts
+    doTrace "monomorphizePatterns" ("INPUT:\n" <> prettyStr _e') $
+      let scrutTy = expTy id scrut
+          alts'   = goAlt scrutTy <$> alts
+          newResTy = case head alts' of
+            UnguardedAlt _ _ rhs -> expTy' id rhs
+          res =  CaseE newResTy scrut $ goAlt scrutTy <$> alts
+      in doTrace "monomorphizePatterns" ("RESULT:\n" <> prettyStr res)  res
   other -> other
  where
    monomorphPat :: Ty
@@ -627,7 +635,7 @@ data CtorCase = CtorCase {
 desugarConstructorPattern :: Datatypes IR.Kind Ty
                           -> Exp WithoutObjects Ty (Var (BVar Ty) (FVar Ty))
                           -> DatatypeM (Exp WithoutObjects Ty (Var (BVar Ty) (FVar Ty)))
-desugarConstructorPattern datatypes = \case
+desugarConstructorPattern datatypes _e = doTrace "desugarConstructorPattern" (prettyStr _e) $ case _e of
   CaseE resTy scrut alts@(UnguardedAlt _ (ConP tn _ _) _:_) -> do
     let isConP alt =  case getPat alt of {ConP{} -> True; _ -> False}
         conPatAlts = takeWhile isConP alts
@@ -675,7 +683,8 @@ desugarConstructorPattern datatypes = \case
    mkIndexedBranch :: Ty
                    -> Alt WithoutObjects Ty (Exp WithoutObjects Ty) (Var (BVar Ty) (FVar Ty))
                    -> DatatypeM (Int, Exp WithoutObjects Ty (Var (BVar Ty) (FVar Ty)))
-   mkIndexedBranch scrutTy (UnguardedAlt _ (ConP tn cn binders) rhs) = do
+   mkIndexedBranch scrutTy alte@(UnguardedAlt _ (ConP tn cn binders) rhs) = do
+     doTraceM "mkIndexedBranch" ("INPUT:\n" <> prettyStr alte)
      let go (x,t) acc = case x of
            VarP bvId bvIx bvTy -> do
              let lamTy = funTy bvTy (expTy' id rhs)
@@ -691,12 +700,14 @@ desugarConstructorPattern datatypes = \case
              pure $ LamE lamTy lamBv . toScope . fmap F . acc
            other -> error $ "Unexpected pattern in alternative: Expected a VarP but got " <> show other
          monoFields = snd $ monoCtorFields tn cn scrutTy datatypes
+     doTraceM "mkIndexedBranch" ("MONO FIELDS:\n" <> prettyStr monoFields)
      lambdaLHS <- foldrM go id (zip binders monoFields)
      let indx = case fst <$> getConstructorIndexAndDecl cn datatypes of
                           Left _ -> error $ "No constructor data for ctor " <> show cn
                           Right i ->  i
          rhsUnscoped = join <$> fromScope rhs
          result = lambdaLHS rhsUnscoped
+     doTraceM "mkIndexedBranch" ("RESULT:\n" <> prettyStr result)
      pure (indx,result)
    mkIndexedBranch _ (UnguardedAlt _ otherP _) = error $  "mkIndexedBranch: Expected constructor pattern but got " <> prettyStr otherP
 

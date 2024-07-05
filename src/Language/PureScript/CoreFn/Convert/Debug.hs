@@ -22,7 +22,7 @@ traceCfg = S.fromList [
     "desugarCore'",
 
     -- Monomorphize
-    "runMonomorphize",
+    {- "runMonomorphize",
     "monomorphize",
     "handleFunction",
     "inlineAs",
@@ -31,7 +31,7 @@ traceCfg = S.fromList [
     "collectRecFieldBinds",
     "collectFun",
     "monomorphizeWithType",
-
+    -} 
     -- DesugarObjects
     -- "tryConvertExpr'",
     "desugarObjectAccessor",
@@ -51,6 +51,9 @@ traceCfg = S.fromList [
     "sourceTypeToKind",
     "getConstructorName",
     -}
+    "desugarConstructorPattern",
+    "monomorphizePatterns",
+    "mkIndexedBranch",
     -- ToPIR
     "firstPass"
 

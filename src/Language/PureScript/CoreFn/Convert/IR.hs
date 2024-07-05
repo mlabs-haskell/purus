@@ -378,18 +378,18 @@ instance Pretty Ty where
         renderBoundVar :: (TypeVarVisibility, Text, Kind) -> Doc ann
         renderBoundVar (_, var, mk) =  parens (pretty var <+> "::" <+> pretty mk)
 
-instance (Pretty a, Pretty ty, FuncType ty) => Pretty (Exp x ty a) where
+instance (Pretty a, Pretty ty, TypeLike ty) => Pretty (Exp x ty a) where
   pretty = \case
     V x -> pretty x
     LitE ty lit -> parens $ pretty lit <+> "::" <+> pretty ty
     LamE ty bv body' ->
       let unscoped = fromScope body'
-      in "\\" <> parens (align $ pretty bv <+> "::" <+> pretty (headArg ty))
+      in "\\" <> parens (align $ pretty bv <+> "::" <+> pretty (head $ splitFunTyParts ty))
          <+> "->" <> hardline
          <> indent 2 (pretty unscoped)
     appE@(AppE _ _) -> case unsafeAnalyzeApp appE of
       (fun,args) ->
-        let applied = group . align . hsep $ parens . pretty <$> (fun:args)
+        let applied = group . align . vsep $ parens . pretty <$> (fun:args)
         in group . align $ parens applied
     CaseE _ es alts ->
       let scrutinees = pretty es
@@ -407,7 +407,7 @@ instance (Pretty a, Pretty ty, FuncType ty) => Pretty (Exp x ty a) where
     ObjectUpdateE _ _ _ _ _ -> "TODO: Implement ObjectUpdateE printer"
     TyInstE t e -> pretty e <+> "@" <> parens (pretty t)
 
-instance (Pretty a, Pretty ty, FuncType ty) => Pretty (Alt x ty (Exp x ty) a) where
+instance (Pretty a, Pretty ty, TypeLike ty) => Pretty (Alt x ty (Exp x ty) a) where
   pretty = \case
     UnguardedAlt _ ps body -> pretty ps <+> "->" <>
                               hardline <> indent 2 (pretty $ fromScope body)
@@ -442,7 +442,7 @@ instance (Pretty a, Pretty t) => Pretty (Pat x t (Exp x ty) a) where
       ObjectL _ _obj -> "TODO: Implement ObjectL pattern printer"
     ConP cn _ ps -> pretty (runProperName . disqualify $ cn) <+> hsep (pretty <$> ps)
 
-instance (Pretty a, Pretty ty, FuncType ty, Pretty (Exp x ty a)) => Pretty (BindE ty (Exp x ty) a) where
+instance (Pretty a, Pretty ty, TypeLike ty, Pretty (Exp x ty a)) => Pretty (BindE ty (Exp x ty) a) where
   pretty = \case
     NonRecursive i ix e -> let e' = fromScope e in pretty (runIdent i) <> "#" <> pretty ix  <+> "=" <+> pretty e'
     Recursive es ->
@@ -451,7 +451,7 @@ instance (Pretty a, Pretty ty, FuncType ty, Pretty (Exp x ty a)) => Pretty (Bind
             in pretty (runIdent ident) <> "#" <> pretty ix <+> "=" <+> pretty expr'
       in align . vcat $ go <$> es
 
-ppExp :: (Pretty a, Pretty ty, FuncType ty) => Exp x ty a -> String
+ppExp :: (Pretty a, Pretty ty, TypeLike ty) => Exp x ty a -> String
 ppExp = T.unpack . renderStrict . layoutPretty defaultLayoutOptions . pretty
 
 ppTy :: Ty -> String
@@ -510,7 +510,14 @@ appType h fe ae = case stripQuantifiers funT of
    ([],ft) ->
      let numArgs = length argTypes
          tyParts = splitFunTyParts ft
-         msg = "appType\n" <> prettyAsStr numArgs <> "\n" <> prettyAsStr tyParts
+         msg :: String
+         msg = "appType\n"
+               <> "\n\ninput FUN:\n" <> prettyAsStr (h <$> fe)
+               <> "\n\ninput FUN TY:\n" <> prettyAsStr (expTy h fe)
+               <> "\n\ninput ARG:\n" <> prettyAsStr (h <$> ae)
+               <> "\n\ninput ARG TY:\n" <> prettyAsStr (expTy h ae)
+               <> "\n\nnumArgs: " <> prettyAsStr numArgs
+               <> "\n\ntyParts: " <> prettyAsStr tyParts
          dropped = drop numArgs tyParts
      in if null dropped then error msg else foldl1 funTy dropped 
    (xs,ft) ->
