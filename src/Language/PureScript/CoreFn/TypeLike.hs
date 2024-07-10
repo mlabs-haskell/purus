@@ -14,6 +14,8 @@ import Data.Maybe (catMaybes)
 import Debug.Trace (trace)
 import Prettyprinter (Pretty)
 import Language.PureScript.CoreFn.Pretty.Common
+import Language.PureScript.CoreFn.Convert.Debug (doTrace)
+import Language.PureScript.Environment (pattern (:->))
 
 class TypeLike t where
   type KindOf t :: GHC.Type
@@ -81,6 +83,8 @@ class TypeLike t where
   -}
   instTy :: t -> t -> t
 
+  unFunction :: t -> Maybe (t,t)
+
 -- TODO: Just define it this way in the instances -_-
 safeFunArgTypes :: forall t. TypeLike t => t -> [t]
 safeFunArgTypes t = case splitFunTyParts t of
@@ -94,7 +98,7 @@ getInstantiations mono poly = catMaybes mInstantiations
     mInstantiations = freeInPoly <&> \nm -> (nm,) <$> instantiates nm mono poly
 
 instantiateWithArgs :: forall t. (TypeLike t, Pretty t) => t  -> [t] -> t
-instantiateWithArgs f args = trace msg result
+instantiateWithArgs f args = doTrace "instantiateWithArgs" msg result
   where
     msg = "instantiateWithArgs:\n  fun: " <> prettyAsStr f
            <> "\n  args: " <> prettyAsStr args
@@ -108,7 +112,7 @@ getAllInstantiations :: forall t
                     => t
                     -> [t]
                     -> [(Text,t)]
-getAllInstantiations fun args@(_:_) = trace ("getAllInstantiations: " <> prettyAsStr result) result
+getAllInstantiations fun args@(_:_) = doTrace "getAllInstantiations" (prettyAsStr result) result
   where
     result = catMaybes $ zipWith go funArgs args
 
@@ -166,4 +170,8 @@ instance TypeLike T.SourceType where
 
   unTyVar = \case
     T.TypeVar _ v k -> Just (v,k)
-    _ -> Nothing 
+    _ -> Nothing
+
+  unFunction = \case
+    a :-> b -> Just (a,b)
+    _ -> Nothing

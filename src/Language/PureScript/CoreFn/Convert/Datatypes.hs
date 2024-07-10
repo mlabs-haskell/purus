@@ -11,7 +11,7 @@ import Language.PureScript.CoreFn.Convert.IR
       BVar(BVar),
       Exp(..),
       FVar(FVar),
-      Ty(..), Pat (..), Lit (..), pattern (:~>), getPat, expTy, expTy', BindE (..) )
+      Ty(..), Pat (..), Lit (..), pattern (:~>), getPat, expTy, expTy', BindE (..), unsafeAnalyzeApp )
 import Language.PureScript.CoreFn.Convert.IR qualified as IR
 import PlutusIR
     ( Type(TyBuiltin, TyForall),
@@ -23,7 +23,7 @@ import PlutusIR qualified as PIR
 import PlutusCore qualified as PLC
 
 import Control.Lens
-    ( (^.), (^?), ix, to, cosmos, (^..), over, view, makeLenses, _1 )
+    ( (^.), (^?), ix, to, cosmos, (^..), over, view, makeLenses, _1, mapped )
 import Language.PureScript.Names
     ( ProperNameType(..),
       Qualified(..),
@@ -49,7 +49,7 @@ import Language.PureScript.CoreFn.Module
       dDataArgs,
       lookupDataDecl,
       CtorDecl,
-      Datatypes, tyDict, getAllConstructorDecls, getConstructorIndexAndDecl )
+      Datatypes, tyDict, getAllConstructorDecls, getConstructorIndexAndDecl, lookupCtorType )
 import Language.PureScript.Environment ( pattern (:->), mkTupleTyName )
 import Language.PureScript.Types
     ( Type(TypeConstructor), SourceType, TypeVarVisibility (TypeVarVisible) )
@@ -57,7 +57,7 @@ import Language.PureScript.Constants.Prim qualified as C
 import Language.PureScript.Constants.Purus qualified as C
 import Language.PureScript.CoreFn.Convert.DesugarCore
     ( WithoutObjects, matchVarLamAbs )
-import Language.PureScript.CoreFn.Convert.Monomorphize.Utils ()
+import Language.PureScript.CoreFn.Convert.Monomorphize.Utils (qualifyNull, unsafeApply)
 import Language.PureScript.CoreFn.Pretty (prettyTypeStr)
 import Data.Kind qualified as GHC
 import Bound.Scope ( bindings, instantiate, toScope, fromScope, abstract, mapBound )
@@ -65,7 +65,7 @@ import Control.Monad.State ( gets, runState, modify, State )
 import Control.Monad.Except
     ( MonadError(throwError), runExceptT, ExceptT, liftEither )
 import Data.Foldable (traverse_, foldl',foldrM)
-import Language.PureScript.CoreFn.TypeLike ( TypeLike(funTy, applyType, replaceAllTypeVars), getInstantiations, safeFunArgTypes )
+import Language.PureScript.CoreFn.TypeLike 
 import Language.PureScript.CoreFn.Convert.DesugarObjects
 import Data.Maybe (fromJust, isJust)
 import Debug.Trace
@@ -79,6 +79,8 @@ import Data.Bifunctor (second)
 import Language.PureScript.CoreFn.Convert.Debug
 import System.Random (mkStdGen,randomR)
 import Bound.Scope (Scope)
+import Control.Lens.Combinators (folded, transform)
+import Language.PureScript.CoreFn.Convert.Monomorphize (isConstructor)
 
 
 {- Monad for performing operations with datatypes. Supports limited TyVar binding
@@ -299,20 +301,27 @@ mkPIRDatatypes datatypes tyConsInExp = doTraceM "mkPIRDatatypes" (show $ S.map p
       pure $ TyVarDecl () tyVarNm (mkKind ki)
 
 toPIRType :: Ty -> DatatypeM PIRType
-toPIRType _ty = doTraceM "toPIRType" (prettyStr _ty) >> case _ty of
+toPIRType _ty =  case _ty of
   IR.TyVar txt _ -> PIR.TyVar () <$> getBoundTyVarName txt
   TyCon qtn@(Qualified qb _) -> case qb of
     ByThisModuleName "Builtin" -> either throwError pure $  handleBuiltinTy qtn
     ByThisModuleName "Prim" | isJust (handlePrimTy qtn) ->   pure . fromJust $ handlePrimTy qtn
     _ -> do
       tyName <- mkTyName qtn
-      pure $ PIR.TyVar () tyName
-  IR.TyApp t1 t2 -> goTypeApp t1 t2
+      let result =  PIR.TyVar () tyName
+      doTraceM "toPIRType" ("\nINPUT:\n" <> prettyStr _ty <> "\n\nRESULT:\n" <> prettyStr result)
+      pure result
+  IR.TyApp t1 t2 -> do
+    result <- goTypeApp t1 t2
+    doTraceM "toPIRType" ("\nINPUT:\n" <> prettyStr _ty <> "\n\nRESULT:\n" <> prettyStr result)
+    pure result
   Forall _ v k ty _ -> do
     vTyName <- mkNewTyVar v
     bindTV v vTyName
     ty' <- toPIRType ty
-    pure $ TyForall () vTyName (mkKind k) ty'
+    let result =  TyForall () vTyName (mkKind k) ty'
+    doTraceM "toPIRType" ("\nINPUT:\n" <> prettyStr _ty <> "\n\nRESULT:\n" <> prettyStr result)
+    pure result 
   other -> error $ "Upon reflection, other types like " <> ppTy other <> " shouldn't be allowed in the Ty ast"
  where
    goTypeApp (IR.TyApp (TyCon C.Function) a) b = do
@@ -435,17 +444,39 @@ mkDestructorFunTy _datatypes tn = do
   case datatypes ^? tyDict . ix tn of
     Nothing -> throwError $ "mkDestructorFunTy: No type info for " <> prettyQPN tn
     Just dDecl -> do
+      let tyArgs = dDecl ^. dDataArgs
+          tyAppliedToArgs = foldl' (\acc (t,k) -> TyApp acc (TyVar t k)) (TyCon tn) tyArgs
       let funTyLHS' out = foldr (\(txt,k) acc -> Forall TypeVarVisible txt k acc Nothing) out (dDecl ^. dDataArgs)
       n <- T.pack . show <$> next
       let outVarNm = ("out" <> n)
           outVar   = TyVar outVarNm IR.KindType
       let funTyLHS inner = funTyLHS' $ Forall TypeVarVisible ("out" <> n) IR.KindType inner Nothing
-      funTyCtorArgs <- traverse (mkFunTyCtorArg outVar) (dDecl ^.  dDataCtors )
-      let funTyRHS = foldr funTy outVar funTyCtorArgs
-      pure $ funTyLHS funTyRHS
+          ctorfs = map snd . view cdCtorFields <$> dDecl ^. dDataCtors
+      let funTyRHS = tyAppliedToArgs :~> mkFunTyRHS outVar ctorfs  -- foldr funTy outVar funTyCtorArgs
+      let result = funTyLHS funTyRHS
+      doTraceM "mkDestructorFunTy" ("TYPE NAME:\n" <> prettyStr tn
+                                    <> "\n\nTY CTOR FIELDS:\n" <> prettyStr ctorfs 
+                                    <> "\n\nTY RHS:\n" <> prettyStr funTyRHS 
+                                    <> "\n\nRESULT:\n" <> prettyStr result)
+      pure result 
  where
-   mkFunTyCtorArg :: Ty -> CtorDecl Ty -> DatatypeM Ty
-   mkFunTyCtorArg outVar (view cdCtorFields -> fields) = pure $ foldr funTy outVar (snd <$> fields)
+   mkFunTyRHS outVar [] =  outVar
+   mkFunTyRHS outVar ([]:fss) = outVar :~> mkFunTyRHS outVar fss
+   mkFunTyRHS outVar (fs:fss) =
+     let fs' = foldr1 (:~>) fs
+     in (fs' :~> outVar) :~> mkFunTyRHS outVar fss 
+
+bvTy :: BVar ty -> ty
+bvTy (BVar _ t _ ) = t
+
+
+eliminateCaseExpressionsTrace :: Datatypes IR.Kind Ty
+                         -> Exp WithoutObjects Ty (Var (BVar Ty) (FVar Ty))
+                         -> DatatypeM (Exp WithoutObjects Ty (Var (BVar Ty) (FVar Ty)))
+eliminateCaseExpressionsTrace _datatypes _exp = do
+  res <- eliminateCaseExpressions _datatypes _exp
+  doTraceM "eliminateCaseExpressions" ("INPUT:\n" <> prettyStr _exp <> "\n\nOUTPUT:\n" <> prettyStr res)
+  pure $ instantiateCtors (_datatypes <> primData)  res
 
 eliminateCaseExpressions :: Datatypes IR.Kind Ty
                          -> Exp WithoutObjects Ty (Var (BVar Ty) (FVar Ty))
@@ -453,23 +484,29 @@ eliminateCaseExpressions :: Datatypes IR.Kind Ty
 eliminateCaseExpressions _datatypes = \case
   V x -> pure $ V x
   LitE t lit -> pure $ LitE t lit
-  LamE t bv scoped -> do
+  LamE _ bv scoped -> do
     let unscoped = join <$> fromScope scoped
-    LamE t bv
+    rescoped <- eliminateCaseExpressions datatypes unscoped
+    let t = quantify $ funTy (bvTy bv) (expTy id rescoped )
+    pure
+     . LamE t bv
      . toScope
      . fmap F
-     <$> eliminateCaseExpressions datatypes unscoped
+     $ rescoped
   AppE e1 e2 -> do
     e1' <- eliminateCaseExpressions datatypes e1
     e2' <- eliminateCaseExpressions datatypes e2
     pure $ AppE e1' e2'
-  ce@CaseE{} -> do
+  ce@CaseE{} -> 
     case monomorphizePatterns datatypes ce of
       CaseE resTy _scrut _alts -> do
+        let retTy  = case head _alts of
+                                UnguardedAlt _ _ e -> expTy' id e
+                                _ -> error "Couldn't determine case expression return type"
         scrut <- eliminateCaseExpressions datatypes _scrut
         alts  <- traverse eliminateCasesInAlt _alts
-        eliminateCaseExpressions' datatypes (CaseE resTy scrut alts)
-      other -> error ("eliminateCaseExpressions: IMPOSSIBLE:\n" <> prettyStr other)
+        desugarConstructorPattern datatypes retTy (CaseE resTy scrut alts)
+      other -> error ("eliminateCaseExpressions: IMPOSSIBLE:\n" <> prettyStr other) 
   LetE bindingsMap _bindEs _scoped -> do
     let unscoped = join <$> fromScope _scoped
     scoped <- toScope . fmap F <$> eliminateCaseExpressions datatypes unscoped
@@ -496,29 +533,30 @@ eliminateCaseExpressions _datatypes = \case
            rescope = fmap F . toScope
            xs' = traverse (traverse (eliminateCaseExpressions datatypes) . second deScope) xs
        in Recursive . map (second rescope) <$> xs'
+{-
 eliminateCaseExpressions' :: Datatypes IR.Kind Ty
-                       -> Exp WithoutObjects Ty (Var (BVar Ty) (FVar Ty))
-                       -> DatatypeM (Exp WithoutObjects Ty (Var (BVar Ty) (FVar Ty)))
+                          -> Exp WithoutObjects Ty (Var (BVar Ty) (FVar Ty))
+                          -> DatatypeM (Exp WithoutObjects Ty (Var (BVar Ty) (FVar Ty)))
 eliminateCaseExpressions' datatypes
   = transformM (
-        (pure . monomorphizePatterns datatypes)
-    >=> desugarLiteralPatterns
-    >=> (pure . monomorphizePatterns datatypes)
+        desugarLiteralPatterns
     >=> desugarIrrefutables
+    >=> desugarConstructorPatterns datatypes
     >=> (pure . monomorphizePatterns datatypes)
-    >=> desugarConstructorPatterns datatypes)
-
+        )
+-}
 desugarLiteralPatterns :: Exp WithoutObjects Ty (Var (BVar Ty) (FVar Ty)) -> DatatypeM (Exp WithoutObjects Ty (Var (BVar Ty) (FVar Ty)))
 desugarLiteralPatterns = transformM desugarLiteralPattern
 
 desugarIrrefutables :: Exp WithoutObjects Ty (Var (BVar Ty) (FVar Ty)) -> DatatypeM (Exp WithoutObjects Ty (Var (BVar Ty) (FVar Ty)))
 desugarIrrefutables = transformM desugarIrrefutable
 
+{-
 desugarConstructorPatterns :: Datatypes IR.Kind Ty
                            -> Exp WithoutObjects Ty (Var (BVar Ty) (FVar Ty))
                            -> DatatypeM (Exp WithoutObjects Ty (Var (BVar Ty) (FVar Ty)))
 desugarConstructorPatterns datatypes = transformM (desugarConstructorPattern datatypes)
-
+-}
 
 desugarLiteralPattern :: Exp WithoutObjects Ty (Var (BVar Ty) (FVar Ty))
                       -> DatatypeM (Exp WithoutObjects Ty (Var (BVar Ty) (FVar Ty)))
@@ -567,13 +605,10 @@ monomorphizePatterns :: Datatypes IR.Kind Ty
                      -> Exp WithoutObjects Ty (Var (BVar Ty) (FVar Ty))
 monomorphizePatterns _datatypes _e' =  case _e' of
   CaseE resTy scrut alts ->
-    doTrace "monomorphizePatterns" ("INPUT:\n" <> prettyStr _e') $
       let scrutTy = expTy id scrut
           alts'   = goAlt scrutTy <$> alts
-          newResTy = case head alts' of
-            UnguardedAlt _ _ rhs -> expTy' id rhs
-          res =  CaseE newResTy scrut $ goAlt scrutTy <$> alts
-      in doTrace "monomorphizePatterns" ("RESULT:\n" <> prettyStr res)  res
+          res =  CaseE resTy scrut $ goAlt scrutTy <$> alts'
+      in doTrace "monomorphizePatterns" ("INPUT:\n" <> prettyStr _e' <> "\n\nRESULT:\n" <> prettyStr res)  res
   other -> other
  where
    monomorphPat :: Ty
@@ -633,26 +668,47 @@ data CtorCase = CtorCase {
   }
 
 desugarConstructorPattern :: Datatypes IR.Kind Ty
+                          -> Ty
                           -> Exp WithoutObjects Ty (Var (BVar Ty) (FVar Ty))
                           -> DatatypeM (Exp WithoutObjects Ty (Var (BVar Ty) (FVar Ty)))
-desugarConstructorPattern datatypes _e = doTrace "desugarConstructorPattern" (prettyStr _e) $ case _e of
-  CaseE resTy scrut alts@(UnguardedAlt _ (ConP tn _ _) _:_) -> do
+desugarConstructorPattern datatypes altBodyTy _e = let _eTy = expTy id _e in case _e of
+  CaseE _resTy scrut alts@(UnguardedAlt _ (ConP tn _ _) inrhs:_) -> do
     let isConP alt =  case getPat alt of {ConP{} -> True; _ -> False}
         conPatAlts = takeWhile isConP alts
         scrutTy = expTy id scrut
     indexedBranches <- sortOn fst  <$> traverse (mkIndexedBranch scrutTy) conPatAlts
-    let allCtors =  zip [0..] $ getAllConstructorDecls tn datatypes
+    let branchTy  = expTy id . snd . head $ indexedBranches
+        branchSplit = splitFunTyParts branchTy
+        branchRetTy =  last . splitFunTyParts $ branchTy
+        allCtors =  zip [0..] $ getAllConstructorDecls tn datatypes
     (Name dcTor (Unique dctorIx)) <- getDestructorTy tn
     dctorTy <- mkDestructorFunTy datatypes tn
     let destructorRaw = V . B $ BVar dctorIx dctorTy (Ident dcTor)
         instantiateTyCon :: Exp WithoutObjects Ty (Var (BVar Ty) (FVar Ty)) -> Exp WithoutObjects Ty (Var (BVar Ty) (FVar Ty))
         instantiateTyCon = mkInstantiateTyCon (expTy id scrut)
+
+
+        retTy' = mkInstantiateResTy scrutTy altBodyTy
     case dropWhile isConP alts of
       [] -> do -- In this branch we know we have exhaustive constructor patterns in the alts
-        let destructor = TyInstE resTy (AppE (instantiateTyCon destructorRaw) scrut)
-        pure $ foldl' AppE destructor (snd <$> indexedBranches)
+        let destructor = TyInstE retTy' (AppE (instantiateTyCon destructorRaw) scrut)
+            result = foldl' AppE destructor (snd <$> indexedBranches)
+            msg =  "INPUT TY:\n" <> prettyStr _eTy
+                   <> "\n\nINPUT:\n" <> prettyStr _e
+                   <> "\n\nRESULT TY:\n" <> prettyStr (expTy id result)
+                   <> "\n\nDESTRUCTOR TY:\n" <> prettyStr (expTy id destructor)
+                   <> "\n\nORIGINAL CASE RES TY:\n" <> prettyStr _resTy
+                   <> "\n\nDEDUCED BRANCH RES TY:\n" <> prettyStr branchRetTy
+                   <> "\n\nSPLIT BRANCH TY:\n" <> prettyStr branchSplit
+                   <> "\n\nFULL BRANCH TY:\n" <> prettyStr branchTy
+                   <> "\n\nSCRUT TY:\n" <> prettyStr scrutTy
+                   <> "\n\nRESULT:\n" <> prettyStr result
+                   <> "\n\nALT BODY TY:\n" <> prettyStr altBodyTy
+                   <> "\n\nINSTANTIATED ALT BODY TY:\n" <> prettyStr retTy'
+        doTraceM "desugarConstructorPattern" msg
+        pure result
       _ -> do
-        let destructor = TyInstE resTy (AppE (instantiateTyCon destructorRaw) scrut)
+        let destructor = TyInstE retTy' (AppE (instantiateTyCon destructorRaw) scrut)
             irrefutable = case head $ dropWhile isConP alts of
                             UnguardedAlt _ WildP irrRHS -> join <$> fromScope irrRHS
                             UnguardedAlt _ (VarP bvId bvIx _) irrRHS -> flip instantiate irrRHS $ \case
@@ -661,7 +717,21 @@ desugarConstructorPattern datatypes _e = doTrace "desugarConstructorPattern" (pr
                                 then scrut
                                 else V . B $ bv
                             other -> error $ "desugarConstructorPattern: Expected an irrefutable pattern, but got " <> prettyStr other
-        pure $ assemblePartialCtorCase (CtorCase irrefutable  (M.fromList indexedBranches) destructor) allCtors
+        let result = assemblePartialCtorCase (CtorCase irrefutable  (M.fromList indexedBranches) destructor) allCtors
+            msg = "INPUT TY:\n" <> prettyStr _eTy
+                   <> "\n\nINPUT:\n" <> prettyStr _e
+                   <> "\n\nRESULT TY:\n" <> prettyStr (expTy id result)
+                   <> "\n\n DESTRUCTOR TY:\n" <> prettyStr (expTy id destructor)
+                   <> "\n\nORIGINAL CASE RES TY:\n" <> prettyStr _resTy 
+                   <> "\n\nDEDUCED BRANCH RES TY:\n" <> prettyStr branchRetTy
+                   <> "\n\nSPLIT BRANCH TY:\n" <> prettyStr branchSplit
+                   <> "\n\nFULL BRANCH TY:\n" <> prettyStr branchTy
+                   <> "\n\nSCRUT TY:\n" <> prettyStr scrutTy 
+                   <> "\n\nRESULT:\n" <> prettyStr result
+                   <> "\n\nALT BODY TY:\n" <> prettyStr altBodyTy
+                   <> "\n\nINSTANTIATED ALT BODY TY:\n" <> prettyStr retTy'
+        doTraceM "desugarConstructorPattern" msg
+        pure result 
   other -> pure other
  where
    assemblePartialCtorCase :: CtorCase -> [(Int,CtorDecl Ty)] -> Exp WithoutObjects Ty (Var (BVar Ty) (FVar Ty))
@@ -675,9 +745,27 @@ desugarConstructorPattern datatypes _e = doTrace "desugarConstructorPattern" (pr
    mkInstantiateTyCon :: Ty
                       -> Exp WithoutObjects Ty (Var (BVar Ty) (FVar Ty))
                       -> Exp WithoutObjects Ty (Var (BVar Ty) (FVar Ty))
-   mkInstantiateTyCon t e = case analyzeTyApp t of
-            Just (_,tyArgs) -> foldr (TyInstE)  e tyArgs
+   mkInstantiateTyCon t e = doTrace "instantiateTyCon" msg result 
+     where
+       result = case analyzeTyApp t of
+            Just (_,tyArgs) -> foldr TyInstE  e (reverse tyArgs)
             Nothing -> e
+       resTy = expTy id result
+       msg = "INPUT TY:\n" <> prettyStr t
+             <> "\n\nINPUT EXPR:\n" <> prettyStr e
+             <> "\n\nOUTPUT TY:\n" <> prettyStr resTy
+             <> "\n\nOUTPUT:\n" <> prettyStr result
+
+   mkInstantiateResTy :: Ty -> Ty -> Ty
+   mkInstantiateResTy scrutT altT = doTrace "instantiateResTy" msg result
+     where
+       result = case analyzeTyApp scrutT of
+            Just (_,tyArgs) -> foldr instTy (quantify altT) (reverse tyArgs)
+            Nothing -> altT
+       msg = "INPUT SCRUT TY:\n" <> prettyStr scrutT
+             <> "\n\nINPUT TARG TY:\n" <> prettyStr altT
+             <> "\n\nOUTPUT TY:\n" <> prettyStr result
+             
 
 
    mkIndexedBranch :: Ty
@@ -711,6 +799,40 @@ desugarConstructorPattern datatypes _e = doTrace "desugarConstructorPattern" (pr
      pure (indx,result)
    mkIndexedBranch _ (UnguardedAlt _ otherP _) = error $  "mkIndexedBranch: Expected constructor pattern but got " <> prettyStr otherP
 
+instantiateCtors :: Datatypes IR.Kind Ty -> Exp WithoutObjects Ty (Var (BVar Ty) (FVar Ty)) -> Exp WithoutObjects Ty (Var (BVar Ty) (FVar Ty))
+instantiateCtors dt = transform (instantiateCtor dt)
+
+instantiateCtor :: Datatypes IR.Kind Ty
+                -> Exp WithoutObjects Ty (Var (BVar Ty) (FVar Ty))
+                -> Exp WithoutObjects Ty (Var (BVar Ty) (FVar Ty))
+instantiateCtor datatypes expr = case expr of
+  AppE fe ae -> case unsafeAnalyzeApp (AppE fe ae) of
+        (V (F (FVar t n)),args) | isConstructor n ->
+          let ctorNm :: Qualified (ProperName 'ConstructorName)
+              ctorNm = ProperName . runIdent <$> n
+
+              tyNm   = case lookupCtorType n datatypes of
+                         Nothing -> error
+                                    $ "instantiateCtor: No type information for constructor: "
+                                    <> prettyQI n
+                         Just tn -> tn
+              monoFields =  monoCtorInst tyNm ctorNm (funResultTy t) datatypes
+              fe' = foldr TyInstE fe monoFields
+              result = unsafeApply id fe' args
+              msg =     "NAME:" <> T.unpack (showQualified runIdent n)
+                     <> "\n\nMONO TYPE:\n" <> prettyStr t 
+                     <> "\n\nINPUT:\n" <> prettyStr expr
+                     <> "\n\nRESULT:\n" <> prettyStr result
+                     <> "\n\nMONO FIELDS:\n" <> prettyStr monoFields
+                     <> "\n\nINSTANTIATED FUN:\n" <> prettyStr fe' 
+          in doTrace "instantiateCtor" msg
+              $ unsafeApply id fe' args
+        _ -> expr
+  _  -> expr
+
+funResultTy :: TypeLike t => t -> t
+funResultTy = last . splitFunTyParts
+
 analyzeTyApp :: Ty -> Maybe (Ty,[Ty])
 analyzeTyApp t = (,tyAppArgs t) <$> tyAppFun t
   where
@@ -725,6 +847,28 @@ analyzeTyApp t = (,tyAppArgs t) <$> tyAppFun t
         go other = Just other
     tyAppFun _ = Nothing
 
+monoCtorInst
+  :: Qualified (ProperName 'TypeName)
+  -> Qualified (ProperName 'ConstructorName)
+  -> Ty -- the type of the scrutinee
+  -> Datatypes IR.Kind Ty
+  -> [Ty] -- Constructor index & list of field types
+monoCtorInst tn cn t datatypes = doTrace "monoCtorInst" msg $ snd <$> (reverse instantiations)
+ where
+   msg = "TYPE NAME:" <> T.unpack (showQualified runProperName tn)
+       <> "\n\nCTOR NAME:\n" <> T.unpack (showQualified runProperName cn)
+       <> "\n\nMONO IN TYPE:\n" <> prettyStr t
+       <> "\n\nCTOR DECL ARGS:\n" <> prettyStr ctorArgs
+       <> "\n\nPOLY TY:\n" <> prettyStr polyTy
+       <> "\n\nINSTANTIATIONS:\n" <> prettyStr instantiations
+   (thisCtorIx,thisCtorDecl) =  either error id $ getConstructorIndexAndDecl cn datatypes
+   ctorArgs = snd <$> thisCtorDecl ^. cdCtorFields
+   thisDataDecl = fromJust $ lookupDataDecl tn datatypes
+   declArgVars = uncurry IR.TyVar <$> thisDataDecl ^. dDataArgs
+   dataTyCon    = TyCon tn
+   polyTy    = foldl' applyType dataTyCon declArgVars
+
+   instantiations = getInstantiations t polyTy
 
 monoCtorFields
   :: Qualified (ProperName 'TypeName)
@@ -732,8 +876,15 @@ monoCtorFields
   -> Ty -- the type of the scrutinee
   -> Datatypes IR.Kind Ty
   -> (Int,[Ty]) -- Constructor index & list of field types
-monoCtorFields tn cn t datatypes = (thisCtorIx,monoCtorArgs)
+monoCtorFields tn cn t datatypes = doTrace "monoCtorFields" msg (thisCtorIx,monoCtorArgs)
  where
+   msg = "TYPE NAME:" <> T.unpack (showQualified runProperName tn)
+       <> "\n\nCTOR NAME:\n" <> T.unpack (showQualified runProperName cn)
+       <> "\n\nMONO IN TYPE:\n" <> prettyStr t
+       <> "\n\nCTOR DECL ARGS:\n" <> prettyStr ctorArgs
+       <> "\n\nPOLY TY:\n" <> prettyStr polyTy
+       <> "\n\nRESULT TYS:\n" <> prettyStr monoCtorArgs
+       <> "\n\nINSTANTIATIONS:\n" <> prettyStr instantiations 
    (thisCtorIx,thisCtorDecl) =  either error id $ getConstructorIndexAndDecl cn datatypes
    ctorArgs = snd <$> thisCtorDecl ^. cdCtorFields
    thisDataDecl = fromJust $ lookupDataDecl tn datatypes

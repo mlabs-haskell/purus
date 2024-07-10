@@ -3,7 +3,7 @@
 {-# LANGUAGE ScopedTypeVariables, TypeApplications  #-}
 {-# OPTIONS_GHC -Wno-unrecognised-pragmas #-}
 {-# HLINT ignore "Use if" #-}
-module Language.PureScript.CoreFn.Convert.Monomorphize (runMonomorphize, testMono, isConstructorE) where
+module Language.PureScript.CoreFn.Convert.Monomorphize (runMonomorphize, testMono, isConstructorE, isConstructor) where
 
 import Prelude
 
@@ -116,72 +116,69 @@ runMonomorphize Module{..} _modulesInScope expr =
 monomorphize ::
   Exp WithObjects PurusType (Var (BVar PurusType) (FVar PurusType))  ->
   Monomorphizer (Exp WithObjects PurusType (Var (BVar PurusType) (FVar PurusType)))
-monomorphize  xpr = doTrace "monomorphize "("INPUT: " <> ppExp xpr)  $ case xpr of
+monomorphize  xpr =  case xpr of
   AppE _f _arg ->  do
     arg <- monomorphize _arg
     let (f,args) = unsafeAnalyzeApp (AppE _f arg)
-    traceEm $ "FUN: " <> ppExp f
-    traceEm $ "ARGS: " <> show (ppExp <$> args)
-    let types = concatMap (splitFunTyParts . expTy id)  args
-    traceEm $ "ARG TYPES:" <> show (prettyTypeStr <$> types)
-
     if isBuiltinE f || isConstructorE f then do
-           pure $ unsafeApply id f args
-    else  handleFunction id f args
-  other -> doTrace "monomorphize" ("other: " <> ppExp other) $ pure other
- where
-   traceEm = doTraceM "monomorphize"
+           let result =  unsafeApply id f args
+           doTraceM "monomorphize" ("INPUT:\n" <> prettyAsStr xpr <> "\n\nOUTPUT:\n" <> prettyAsStr result)
+           pure result
+    else do
+      result <- handleFunction id f args
+      doTraceM "monomorphize" ("INPUT:\n" <> prettyAsStr xpr <> "\n\nOUTPUT:\n" <> prettyAsStr result)
+      pure result
+  other -> doTrace "monomorphize" ("UNCHANGED:\n" <> ppExp other) $ pure other
+
+
+-- FIXME: Rewrite this 
 inlineEverything :: Exp WithObjects PurusType (Var (BVar PurusType) (FVar PurusType))
                  -> Monomorphizer (Exp WithObjects PurusType (Var (BVar PurusType) (FVar PurusType)))
-inlineEverything = transformM go
+inlineEverything xp = do
+    res <-  go xp
+    let msg = "INPUT:\n" <> prettyAsStr xp <> "\n\nOUTPUT:\n" <> prettyAsStr res
+    doTraceM "inlineEverything" msg
+    pure res 
   where
     go :: Exp WithObjects PurusType (Var (BVar PurusType) (FVar PurusType))
        -> Monomorphizer (Exp WithObjects PurusType (Var (BVar PurusType) (FVar PurusType)))
     go = \case
       (V (F (FVar ty qi))) | not (isBuiltin qi || isConstructor qi) ->  inlineAs ty qi
-      AppE e1 e2  -> AppE <$> go e1 <*> go e2
+      AppE e1 e2  -> do
+        e1' <- go e1
+        e2' <- go e2
+        pure $ AppE e1' e2' -- AppE <$> go e1 <*> go e2
       CaseE t scrut alts -> do
         scrut' <- go scrut
         alts' <- traverse goAlt alts
         pure $ CaseE t scrut' alts'
       LamE t bv body -> do
-        let scoped' = toScope
-                  <$> join
-                  <$> fmap distributeExp
-                  <$> traverse (traverse (go . pure @(Exp WithObjects PurusType))) (fromScope body)
-        LamE t bv <$> scoped'
+        LamE t bv <$> scopeHelper body
       LetE binds decls body -> do
-        let scoped' = toScope
-                  <$> join
-                  <$> fmap distributeExp
-                  <$> traverse (traverse (go . pure @(Exp WithObjects PurusType))) (fromScope body)
-            goDecl = \case
+        let  goDecl = \case
               NonRecursive ident bvix expr ->
-                let scopedX = toScope
-                        <$> join
-                        <$> fmap distributeExp
-                        <$> traverse (traverse (go . pure @(Exp WithObjects PurusType))) (fromScope expr)
-                in NonRecursive ident bvix <$> scopedX
+                 NonRecursive ident bvix <$> scopeHelper expr
               Recursive xs ->
-                let f ex' = toScope
-                        <$> join
-                        <$> fmap distributeExp
-                        <$> traverse (traverse (go . pure @(Exp WithObjects PurusType))) (fromScope ex')
-                in Recursive <$> traverse (\(i,ex) -> (i,) <$> f ex) xs
-        LetE binds <$> traverse goDecl decls <*> scoped'
+                Recursive <$> traverse (\(i,ex) -> (i,) <$> scopeHelper ex) xs
+        LetE binds <$> traverse goDecl decls <*> scopeHelper body
       AccessorE x t pss e -> AccessorE x t pss <$> go e
       ObjectUpdateE x t e cf fs -> (\e' fs' -> ObjectUpdateE x t e' cf fs')
                                    <$> go  e
                                    <*> traverse (\(nm,expr) -> (nm,) <$> go expr) fs
       LitE t lit -> LitE t <$> traverse go lit
-      other -> pure other
+      TyInstE t e -> TyInstE t <$> go e
+      other -> pure other 
+
+    scopeHelper :: Scope (BVar PurusType) (Exp WithObjects PurusType) (Var (BVar PurusType) (FVar PurusType))
+                -> Monomorphizer (Scope (BVar PurusType) (Exp WithObjects PurusType) (Var (BVar PurusType) (FVar PurusType)))
+    scopeHelper scoped = do
+      let unscoped = join <$> fromScope scoped
+      transformed <- go unscoped
+      let rescoped = abstract (\case {B bv@(BVar{}) -> Just bv; _ -> Nothing}) transformed
+      pure rescoped
 
     goAlt (UnguardedAlt bs pat body ) = do
-      let body' = toScope
-                  <$> join
-                  <$> fmap distributeExp
-                  <$> traverse (traverse (go . pure @(Exp WithObjects PurusType))) (fromScope body)
-      UnguardedAlt bs pat <$> body'
+      UnguardedAlt bs pat <$> scopeHelper body
 
 
    -- Builtins shouldn't be inlined because they can't be.
@@ -267,7 +264,7 @@ handleFunction  toVar v@(V (FVar ty  qn)) es = trace ("\nhandleFunction VarGo: "
   handleFunction toVar e' es
 -}
 handleFunction toVar v@(V (toVar -> F (FVar ty qn))) es
-  | not (isBuiltin qn) = doTrace "handleFunction" ("VarGo:\n" <> ppExp v) $ do
+  | not (isBuiltin qn || isConstructor qn) = doTrace "handleFunction" ("VarGo:\n" <> ppExp v) $ do
     e' <- inlineAs ty qn
     handleFunction id e' (fmap toVar <$> es)
 
@@ -292,17 +289,30 @@ handleFunction _ e es = throwError $ MonoError
      inlined are monomorphized to the appropriate type and themselves inlined. (I.e. inlines
      everything and monomorphizes everything to the maximum extent possible)
 -}
+
+inlineable :: Qualified Ident -> Bool
+inlineable nm = not (isConstructor nm || isBuiltin nm )
+
 inlineAs ::
   PurusType ->
   Qualified Ident ->
   Monomorphizer (Exp WithObjects PurusType (Var (BVar PurusType) (FVar PurusType)))
+inlineAs t ident = do
+  res <- inlineAs' t ident
+  let msg = "IDENT:" <> show ident  <>  "\n\nINPUT:\n" <> prettyAsStr res <> "\n\nOUTPUT:\n" <> prettyAsStr res
+  doTraceM "inlineAs" msg
+  pure res
+  
+inlineAs' ::
+  PurusType ->
+  Qualified Ident ->
+  Monomorphizer (Exp WithObjects PurusType (Var (BVar PurusType) (FVar PurusType)))
 -- TODO/REVIEW: Check whether this has any purpose here \/
-inlineAs ty = \case
-  nm@(Qualified (ByModuleName (ModuleName "Builtin")) _ ) -> do
-    doTraceM "inlineAs" ("BUILTIN:\n" <> T.unpack (showQualified showIdent nm))
-    pure . V . F $ FVar ty nm
+inlineAs' ty inNm
+  | not (inlineable inNm) = pure (V . F $ FVar ty inNm)
+  | otherwise = case inNm of
    -- TODO: Linker so we can make this work no matter what the source module is
-  (Qualified (ByModuleName mn') ident) -> doTrace "inlineAs"(showIdent' ident <> " :: " <>  prettyTypeStr ty) $ ask >>= \(mn,modDict) ->
+  (Qualified (ByModuleName mn') ident) -> ask >>= \(mn,modDict) ->
     if mn ==  mn' then do
       let msg = "Couldn't find a declaration with identifier " <> showIdent' ident <> " to inline as " <> prettyTypeStr ty
       note msg  (findInlineDeclGroup ident modDict) >>= \case
@@ -336,12 +346,11 @@ inlineAs ty = \case
                          <> show renameMap
      -- TODO: This is a temporary hack to get builtins working w/o a real linker.
      else  throwError $ MonoError "Imports aren't supported yet!"
-  wrong@(Qualified (BySourcePos _) _) -> pure . V . F $ FVar ty wrong {-
-    throwError
+  wrong@(Qualified (BySourcePos _) _) -> throwError
     $ MonoError
     $ "Cannot inline variable qualified by SourcePos. Such a variable should be bound (and ergo not exist at this stage of compilation)"
       <> "\n Variable: "
-      <> show wrong -}
+      <> show wrong 
  where
    {- Arguments:
         1. A renaming dictionary,
@@ -365,7 +374,8 @@ inlineAs ty = \case
                    fv@(F (FVar a (Qualified ByNullSourcePos fvId))) | fvId == oldIdent -> case M.lookup (fvId,oldIx) renameDict of
                      Nothing ->  Nothing
                      Just ((newIdent',newIx'),newTy) -> Just (BVar newIx' newTy newIdent')
-                   _ -> Nothing
+                   B (bv@BVar{}) -> Just bv
+                   _ -> Nothing 
 
      pure $ NonRecursive newIdent newIx (abstr e')
 
@@ -507,7 +517,7 @@ monomorphizeWithType ::
   Monomorphizer (Exp WithObjects PurusType (Var (BVar PurusType) (FVar PurusType)))
 monomorphizeWithType ty expr
   | expTy id expr == ty = pure expr
-  | otherwise = doTrace "monomorphizeWithType" (ppExp expr <> "\n  " <> prettyTypeStr ty) $ case expr of
+  | otherwise = doTrace "monomorphizeWithType" ("INPUT:\n" <> ppExp expr <> "\n\nINPUT TY:\n" <> prettyTypeStr ty) $ case expr of
       LitE _ (ObjectL ext fs) -> case ty of
         RecordT fields -> do
           let fieldMap = mkFieldMap fields
@@ -539,8 +549,8 @@ monomorphizeWithType ty expr
 
       app@(AppE _ e2) -> doTrace "monomorphizeWithType" ("APP:\n  " <> ppExp app) $  do
         let (f,args) = unsafeAnalyzeApp app
-        e1' <-  handleFunction id f args
-        pure $ AppE e1' e2
+        handleFunction id f args
+        
 
       V a -> case a of
         F (FVar _ b) -> pure . V . F $ FVar ty b -- idk
@@ -552,7 +562,9 @@ monomorphizeWithType ty expr
                    -> Monomorphizer (Alt WithObjects PurusType (Exp WithObjects PurusType) (Var (BVar PurusType) (FVar PurusType)))
             goAlt (UnguardedAlt bindings binders result) = do
                let unscoped = join <$> fromScope result
-               UnguardedAlt bindings binders . fmap F . toScope <$>  f unscoped
+                   abstr = abstract (\case {B bv -> Just bv; _ -> Nothing})
+               unscoped' <- f unscoped
+               pure $  UnguardedAlt bindings binders (abstr unscoped')
 
         CaseE ty scrut <$> traverse goAlt alts
 
@@ -592,7 +604,7 @@ instantiateConstructorWithArgs :: forall x a
                                -> [Exp x PurusType a] -- the arguments to which it is applied
                                -> Exp x PurusType a
 instantiateConstructorWithArgs _ fun [] = fun
-instantiateConstructorWithArgs f fun args =  runInst fun used
+instantiateConstructorWithArgs f fun args =  runInst fun (reverse used)
   where
     used = usedTypeVariables (expTy f fun)
     instantiationDict = M.fromList $ getAllInstantiations (expTy f fun) (expTy f <$> args)

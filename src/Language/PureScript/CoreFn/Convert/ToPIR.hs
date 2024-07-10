@@ -49,7 +49,7 @@ import Language.PureScript.CoreFn.Convert.Datatypes
       PIRTerm,
       mkTypeBindDict,
       pirDatatypes,
-      mkNewTyVar, bindTV, mkKind, eliminateCaseExpressions )
+      mkNewTyVar, bindTV, mkKind, eliminateCaseExpressions, eliminateCaseExpressionsTrace)
 import Control.Monad.Except (MonadError(..))
 import Language.PureScript.CoreFn.Module (
   Datatypes,
@@ -110,6 +110,7 @@ import Language.PureScript.CoreFn.Convert.Monomorphize (isConstructorE)
 import Data.Functor qualified
 import Bound.Scope (fromScope)
 import Language.PureScript.CoreFn.Convert.Debug
+import Prettyprinter
 
 showType :: forall a. Typeable a => String
 showType = show (typeRep :: TypeRep a)
@@ -209,7 +210,20 @@ firstPass :: forall a
           -> (a -> Var (BVar Ty) (FVar Ty))
           -> Exp WithoutObjects Ty a
           -> DatatypeM PIRTerm
-firstPass _datatypes f _exp = doTraceM "firstPass" (prettyStr _exp) >> case _exp of
+firstPass _datatypes f _exp = do
+  res <- firstPass' _datatypes f _exp
+  let msg = "INPUT:\n" <> prettyStr (f <$> _exp)
+            <> "\n\nOUTPUT:\n" <> prettyStr res
+  doTraceM "firstPass" msg
+  pure res 
+
+firstPass' :: forall a
+           . Pretty a
+          => Datatypes IR.Kind Ty
+          -> (a -> Var (BVar Ty) (FVar Ty))
+          -> Exp WithoutObjects Ty a
+          -> DatatypeM PIRTerm
+firstPass' _datatypes f _exp = doTraceM "firstPass'" (prettyStr _exp) >> case _exp of
   V x -> case f x of
     F (FVar _ ident) ->
       let nm = runIdent $ disqualify ident
@@ -226,7 +240,7 @@ firstPass _datatypes f _exp = doTraceM "firstPass" (prettyStr _exp) >> case _exp
   LamE _ (BVar bvIx bvTy bvNm) body -> do
 
     let lty = funTy bvTy (expTy' f body)
-    doTraceM "firstPass" ("LamE lamTy" <> prettyStr lty)
+    doTraceM "firstPass'" ("LamE lamTy:\n" <> prettyStr lty)
     let used = usedTypeVariables lty
     forM_ used $ \(v,k) -> do
         v' <- mkNewTyVar v
@@ -238,7 +252,7 @@ firstPass _datatypes f _exp = doTraceM "firstPass" (prettyStr _exp) >> case _exp
     let nm = Name (runIdent bvNm) $ Unique bvIx
         body' = instantiateEither (either (IR.V . B) (IR.V . F)) body
     body'' <- firstPass datatypes (>>= f) body'
-    pirLetNonRec fTy (PIR.LamAbs () nm ty' body'') $ \x -> pure x 
+    pure $ PIR.LamAbs () nm ty' body''
   AppE e1 e2  ->  do
     e1' <- firstPass datatypes f e1
     e2' <- firstPass datatypes f e2
@@ -349,9 +363,10 @@ declToPIR path decl = prepPIR path decl >>= \case
   (mainExpr,datatypes) -> do
     case mkTypeBindDict datatypes mainExpr of
       Left err -> throwIO . userError $ err
-      Right dict -> case runDatatypeM dict $ firstPass datatypes id =<< eliminateCaseExpressions datatypes mainExpr of
+      Right dict -> case runDatatypeM dict $ firstPass datatypes id =<< eliminateCaseExpressionsTrace datatypes mainExpr of
         Left err -> throwIO . userError $ err
         Right e  -> do
+          print (pretty e)
           let
               dtBinds = NE.fromList $  PIR.DatatypeBind () <$> M.elems (dict ^. pirDatatypes)
               result = PIR.Let () Rec dtBinds e
@@ -359,6 +374,11 @@ declToPIR path decl = prepPIR path decl >>= \case
           print e
           print $ prettyPirReadable result
           pure result
+
+printExpr :: FilePath -> Text -> IO ()
+printExpr path decl = prepPIR path decl >>= \case
+  (e,_) -> putStrLn ("\n\n\n" <> T.unpack decl <> " = \n" <>  prettyStr e)
+  
 
 declToPLC :: FilePath -> Text -> IO (PLCProgram DefaultUni DefaultFun ())
 declToPLC path main = declToPIR path main >>= compileToUPLC

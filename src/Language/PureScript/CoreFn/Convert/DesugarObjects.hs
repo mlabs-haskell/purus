@@ -209,7 +209,7 @@ tryConvertExpr' :: forall a.
 tryConvertExpr' toVar  __expr =  do
     result <- go  __expr
     let spacer = replicate 20 '-'
-    doTraceM "tryConvertExpr'" ("\n  Expr:\n" <> ppExp __expr <> "\n  Result:\n" <> ppExp result <> "\n" <> spacer )
+    doTraceM "tryConvertExpr'" ("\n  Expr:\n" <> ppExp __expr <> "\n\n  Result:\n" <> ppExp result)
     pure result
   where
     go ::  Exp WithObjects SourceType a  -> DS (Exp WithoutObjects Ty (Var (BVar Ty) (FVar Ty)))
@@ -439,7 +439,6 @@ tryConvertExpr' toVar  __expr =  do
                              -> Exp WithObjects SourceType a
                              -> DS (Exp WithoutObjects Ty (Var (BVar Ty) (FVar Ty)))
        desugarObjectAccessor resTy lbl e = do
-         doTraceM "desugarObjectAccessor" ("Lbl: " <> prettyAsStr lbl <> "\nExpr:\n" <> prettyAsStr e <> "\nResTy:\n" <> prettyAsStr resTy)
          _fs <- case expTy toVar e of
                          RecordT fs -> pure fs
                          other -> error $ "ERROR: Record expression:\n  "
@@ -453,7 +452,6 @@ tryConvertExpr' toVar  __expr =  do
              types' = snd <$> fs
              dummyNm =  Ident "<ACCESSOR>"
              lblIx = fromJust $ elemIndex lbl (fst <$> fs) -- FIXME: fromJust
-         doTraceM "desugarObjectAccessor" $ "TYPES: " <> show (prettyStr <$> types')
 
          let fieldTy = types' !! lblIx -- if it's not there *something* should have caught it by now
          n <- bind dummyNm
@@ -464,6 +462,14 @@ tryConvertExpr' toVar  __expr =  do
              rhs = V . B $ BVar n  fieldTy  dummyNm
              altBranch = F <$> UnguardedAlt M.empty ctorBndr (toScope rhs)
          e' <- tryConvertExpr' toVar e
+         let result = CaseE fieldTy e' [altBranch]
+             msg =    "INPUT EXP:\n" <> prettyStr e
+                   <> "\n\nLABEL:\n" <> prettyStr lbl
+                   <> "\n\nSUPPLIED RESTYPE:\n" <> prettyStr resTy
+                   <> "\n\nFIELD TYPES:\n" <> prettyStr types'
+                   <>  "\n\nRESULT RHS:\n" <> prettyStr rhs
+                   <>  "\n\nOUTPUT RESULT:\n" <> prettyStr result
+         doTraceM "desugarObjectAccessor" msg 
          pure $ CaseE fieldTy e' [altBranch]
 
 assembleDesugaredObjectLit :: forall x a. Exp x Ty a  -> Ty -> [Exp x Ty a] -> DS  (Exp x Ty a)

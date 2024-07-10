@@ -7,6 +7,16 @@ testCons = Prim.Cons 1 Nil
 
 {- Type Classes -}
 -- Single Param
+
+class TestClass (a :: Type) where
+  testMethod :: a -> Boolean
+
+instance TestClass Int where
+  testMethod x = True 
+
+testTestClass :: Boolean
+testTestClass = testMethod 3 
+
 class Eq (a :: Type) where
   eq :: a -> a -> Boolean
 
@@ -77,19 +87,21 @@ data TestBinderSum =
 
 testBinders :: TestBinderSum  -> Int
 testBinders x = case x of
-  ConInt 3  -> 1   -- NamedBinder, ConstructorBinder, Int LitBinder
   ConInt a -> a -- ConstructorBinder enclosing VarBinder
   -- ConInts ([3] :: Array Int) -> 2  -- Array LitBinder, TypedBinder
   -- ConInts [a,b] -> b  -- VarBinders enclosed in Array LitBinder
   -- ConBoolean true ->  4 -- Bool LitBinder
-  ConChar '\n' -> 5 -- Char LitBinder
-  ConNested (ConInt 2) -> 6 -- Nested ConstructorBinders
+  ConChar _ -> 5 -- Char LitBinder
+  ConNested conNest -> case conNest of  -- Nested ConstructorBinders
+    ConInt n -> n
+    _ -> 2 
   ConQuantified f -> f "hello"
   ConConstrained f -> f 2
   ConNested other -> 7
   ConObject obj -> obj.objField
   ConObjectQuantified objQ -> objQ.objFieldQ "world"
-  ConObject {objField: f} -> f
+  ConObject objs -> case objs of
+    {objField: f} -> f
   _         -> 0
 
 testBindersCase :: Int

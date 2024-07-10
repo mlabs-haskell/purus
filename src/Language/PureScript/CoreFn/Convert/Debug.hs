@@ -18,22 +18,26 @@ type TraceCfg = S.Set String
 traceCfg :: TraceCfg
 traceCfg = S.fromList [
     -- DesugarCore
-    "desugarCoreModule",
-    "desugarCore'",
+    --"desugarCoreModule",
+    -- "desugarCore'",
 
     -- Monomorphize
     {- "runMonomorphize",
     "monomorphize",
-    "handleFunction",
+    "handleFunction", -}
+    "monomorphize",
+    "monomorphizeWithType",
     "inlineAs",
-    "makeBind",
+    "inlineEverything",
+    --"monomorphize",
+    {- "makeBind",
     "collectRecBinds",
     "collectRecFieldBinds",
     "collectFun",
     "monomorphizeWithType",
     -} 
     -- DesugarObjects
-    -- "tryConvertExpr'",
+    --"tryConvertExpr'"
     "desugarObjectAccessor",
 
     -- Datatypes
@@ -50,12 +54,26 @@ traceCfg = S.fromList [
     "toPIRType",
     "sourceTypeToKind",
     "getConstructorName",
-    -}
+
+    "mkIndexedBranch",
+    "instantiateTyCon",
     "desugarConstructorPattern",
     "monomorphizePatterns",
-    "mkIndexedBranch",
+    "mkDestructorFunTy",
+    "instantiateResTy",
+-}
+     "eliminateCaseExpressions",
+     "firstPass",
+      "instantiateCtor",
+      "monoCtorFields",
+       "monoCtorInst"
+
+    --"mkIndexedBranch"
     -- ToPIR
-    "firstPass"
+
+    -- IR
+   -- "appType",
+    --"toPIRType"
 
   ]
 

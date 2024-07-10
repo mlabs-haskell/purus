@@ -148,18 +148,19 @@ renameBoundVar old new  = mapBound $ \case
    TODO: Eventually we shouldn't need this but it's useful to throw errors
          while debugging if we get something that's not a function
 -}
-unsafeApply :: forall a.
-  (a -> Var (BVar PurusType) (FVar PurusType)) ->
-  Exp WithObjects PurusType a ->
-  [Exp WithObjects PurusType a] ->
-  Exp WithObjects PurusType a
-unsafeApply f e (arg:args)= case snd . stripQuantifiers . expTy f $ e of
-  (_ :-> _) -> unsafeApply f (AppE e arg) args
+unsafeApply :: forall a x t.
+  (TypeLike t, Pretty t) =>
+  (a -> Var (BVar t) (FVar t)) ->
+  Exp x t a ->
+  [Exp x t a] ->
+  Exp x t a
+unsafeApply f e (arg:args)= case unFunction . snd . stripQuantifiers . expTy f $ e of
+  Just _ -> unsafeApply f (AppE e arg) args
   other -> Prelude.error $ "Unexpected argument to unsafeApply:\n  "
                            <> "Fun Expression: " <> ppExp (f <$> e)
                            <> "\n  Arg: " <> ppExp (f <$> arg)
-                           <> "\n  FunType: " <> prettyTypeStr other
-                           <> "\n  ArgType: " <> prettyTypeStr (expTy f arg)
+                           <> "\n  FunType: " <> prettyAsStr other
+                           <> "\n  ArgType: " <> prettyAsStr (expTy f arg)
 unsafeApply _ e [] = e
 
 {- Find the declaration *group* to which a given identifier belongs.

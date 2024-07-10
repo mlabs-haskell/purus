@@ -41,6 +41,7 @@ import Data.Void (Void)
 import Control.Lens.Plated
 import Language.PureScript.CoreFn.Pretty ((<::>))
 import Language.PureScript.CoreFn.Pretty.Common (prettyAsStr)
+import Language.PureScript.CoreFn.Convert.Debug (doTrace)
 
 -- The final representation of types and terms, where all constructions that
 -- *should* have been eliminated in previous steps are impossible
@@ -147,7 +148,11 @@ instance TypeLike Ty where
 
   instTy t = \case
     Forall _ var _k inner _ -> replaceAllTypeVars [(var,t)] inner
-    other -> other 
+    other -> other
+
+  unFunction = \case
+    (a :~> b) -> Just (a,b)
+    _ -> Nothing
 
 -- HACK: Need this for pretty printer, refactor later
 class FuncType ty where
@@ -362,11 +367,11 @@ instance Pretty Ty where
        |  f == TyCon C.Function =
            let a' = pretty a
                b' = pretty b
-           in hsep [a' <+> "->",b']
+           in parens $ hsep [a' <+> "->",b']
        | otherwise =
            let f' = goTypeApp f a
-               b' = parens $ pretty b
-           in  f' <+> b'
+               b' =  pretty b
+           in  parens $ f' <+> b'
      goTypeApp a b = hsep [pretty a, parens $ pretty b]
 
      goForall :: [(TypeVarVisibility,Text,Kind)] -> Ty -> Doc ann
@@ -506,55 +511,13 @@ expTy' f scoped = case instantiateEither (either (V . B) (V . F)) scoped of
 -- | Gets the type of an application expression.
 --   (Name might be a bit confusing, does not apply types)
 appType :: forall x t a. (TypeLike t, Pretty t) => (a -> Var (BVar t) (FVar t)) -> Exp x t a -> Exp x t a -> t
-appType h fe ae = case stripQuantifiers funT of
-   ([],ft) ->
-     let numArgs = length argTypes
-         tyParts = splitFunTyParts ft
-         msg :: String
-         msg = "appType\n"
-               <> "\n\ninput FUN:\n" <> prettyAsStr (h <$> fe)
-               <> "\n\ninput FUN TY:\n" <> prettyAsStr (expTy h fe)
-               <> "\n\ninput ARG:\n" <> prettyAsStr (h <$> ae)
-               <> "\n\ninput ARG TY:\n" <> prettyAsStr (expTy h ae)
-               <> "\n\nnumArgs: " <> prettyAsStr numArgs
-               <> "\n\ntyParts: " <> prettyAsStr tyParts
-         dropped = drop numArgs tyParts
-     in if null dropped then error msg else foldl1 funTy dropped 
-   (xs,ft) ->
-     let funArgs = funArgTypes ft
-         dict    = mkInstanceMap M.empty (view _2 <$> xs) argTypes funArgs
-         numArgs = length argTypes
-     in quantify
-        . foldl1 funTy
-        . drop numArgs
-        . splitFunTyParts
-        . replaceAllTypeVars (M.toList dict)
-        $ ft
+appType h fe ae = doTrace "appType" (
+      "\nINPUT FUN:\n" <> prettyAsStr (expTy h fe) <>
+      "\n\nINPUT ARGS:\n" <> prettyAsStr (expTy h ae)
+      <> "\n\nRESULT\n: " <> prettyAsStr result) result
   where
-    (f,args) = appFunArgs fe ae
-    funT    = expTy h f
-    argTypes = expTy h <$> args
-
-    mkInstanceMap :: Map Text t -> [Text] -> [t] -> [t] -> Map Text t
-    mkInstanceMap acc [] _ _ = acc
-    mkInstanceMap acc _ [] _ = acc
-    mkInstanceMap acc _ _ [] = acc
-    mkInstanceMap acc (var:vars) (mt:mts) (pt:pts) = case instantiates var mt pt of
-      Nothing -> mkInstanceMap acc [var] mts pts
-                 <> mkInstanceMap M.empty vars (mt:mts) (pt:pts)
-      Just t  -> mkInstanceMap (M.insert var t acc) vars (mt:mts) (pt:pts)
-
-appFunArgs :: forall x ty a.  Exp x ty a -> Exp x ty a -> (Exp x ty a, [Exp x ty a])
-appFunArgs f args = (appFun f, appArgs f args)
-  where
-    appArgs :: Exp x ty a -> Exp x ty a -> [Exp x ty a]
-    appArgs (AppE t1 t2) t3 = appArgs t1 t2 <> [t3]
-    appArgs _  t3 = [t3]
-
-    appFun :: Exp x ty a -> Exp x ty a
-    appFun (AppE t1 _) = appFun t1
-    appFun res            = res
-
+    result = case unsafeAnalyzeApp (AppE fe ae) of
+      (fe',ae') -> instantiateWithArgs (expTy h fe') (expTy h <$> ae')
 
 $(deriveShow1 ''BindE)
 

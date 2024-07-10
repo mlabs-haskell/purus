@@ -114,7 +114,7 @@ desugarCoreDecl = \case
   NonRec _ ident expr -> wrapTrace ("desugarCoreDecl: " <> showIdent' ident) $ do
      bvix <- bind ident
      let abstr = abstract (matchVarLamAbs ident bvix)
-     scoped <-  abstr <$> desugarCore expr
+     scoped <-  abstr <$> desugarCore' expr
      pure $ NonRecursive ident bvix  scoped
   Rec xs ->  do
     first_pass <- traverse (\((_,ident),e) -> bind ident >>= \u -> pure ((ident,u),e)) xs
@@ -122,7 +122,7 @@ desugarCoreDecl = \case
     let abstr = abstract (matchLet s)
     second_pass  <- traverse (\((ident,bvix),expr) -> do
                           wrapTrace ("desugarCoreDecl: " <> showIdent' ident) $ do
-                            expr' <- desugarCore expr
+                            expr' <- desugarCore' expr
                             let scoped = abstr expr'
                             pure ((ident,bvix),scoped)) first_pass
     pure $ Recursive second_pass
@@ -132,7 +132,9 @@ desugarCore' :: Expr Ann -> DS (Exp WithObjects PurusType (FVar PurusType))
 desugarCore' e = do
   doTraceM "desugarCore'" ("INPUT: " <> renderExprStr e)
   res <- desugarCore e
-  doTraceM "desugarCore'" $ "OUTPUT: " <> ppExp res
+  let msg = "INPUT:\n" <> renderExprStr e
+            <>  "\n\nOUTPUT:\n" <> ppExp res
+  doTraceM "desugarCore'" msg 
   pure res
 
 {- | Turns a list of expressions into an n-ary
