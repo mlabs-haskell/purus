@@ -67,7 +67,14 @@ traceCfg = S.fromList [
       -- "instantiateCtor",
       -- "monoCtorFields",
       --"monoCtorInst",
-       "ezMonomorphize"
+       "monomorphize",
+       "monomorphizeWithType",
+       "inlineAs",
+       "handleFunction",
+       "instantiateTyCon",
+       "mkDestructorFunTy",
+       "ezMonomorphize",
+       "desugarConstructorPattern"
 
     --"mkIndexedBranch"
     -- ToPIR
@@ -75,7 +82,6 @@ traceCfg = S.fromList [
     -- IR
    -- "appType",
     --"toPIRType"
-
   ]
 
 

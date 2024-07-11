@@ -439,7 +439,7 @@ extractUni' = \case
 
 mkDestructorFunTy :: Datatypes IR.Kind Ty
                   -> Qualified (ProperName 'TypeName)
-                  -> DatatypeM Ty
+                  -> DatatypeM (Bool,Ty) -- (Is it a nullary TyCon,Destructor fun ty )
 mkDestructorFunTy _datatypes tn = do
   let datatypes = primData <> _datatypes
   case datatypes ^? tyDict . ix tn of
@@ -459,7 +459,7 @@ mkDestructorFunTy _datatypes tn = do
                                     <> "\n\nTY CTOR FIELDS:\n" <> prettyStr ctorfs
                                     <> "\n\nTY RHS:\n" <> prettyStr funTyRHS
                                     <> "\n\nRESULT:\n" <> prettyStr result)
-      pure result
+      pure (null tyArgs,result)
  where
    mkFunTyRHS outVar [] =  outVar
    mkFunTyRHS outVar ([]:fss) = outVar :~> mkFunTyRHS outVar fss
@@ -477,7 +477,7 @@ eliminateCaseExpressionsTrace :: Datatypes IR.Kind Ty
 eliminateCaseExpressionsTrace _datatypes _exp = do
   res <- eliminateCaseExpressions _datatypes _exp
   doTraceM "eliminateCaseExpressions" ("INPUT:\n" <> prettyStr _exp <> "\n\nOUTPUT:\n" <> prettyStr res)
-  pure . ezMonomorphize . instantiateCtors (_datatypes <> primData)  $ res
+  pure . instantiateCtors (_datatypes <> primData)  $ res
 
 eliminateCaseExpressions :: Datatypes IR.Kind Ty
                          -> Exp WithoutObjects Ty (Var (BVar Ty) (FVar Ty))
@@ -499,7 +499,7 @@ eliminateCaseExpressions _datatypes = \case
     e2' <- eliminateCaseExpressions datatypes e2
     pure $ AppE e1' e2'
   ce@CaseE{} ->
-    case monomorphizePatterns datatypes ce of
+    case ezMonomorphize $  monomorphizePatterns datatypes ce of
       CaseE resTy _scrut _alts -> do
         let retTy  = case head _alts of
                                 UnguardedAlt _ _ e -> expTy' id e
@@ -669,24 +669,29 @@ data CtorCase = CtorCase {
     scrutType :: Ty 
   }
 
--- Need to do this *again* after all of this desugaring -_-
+
 ezMonomorphize :: Exp WithoutObjects Ty (Var (BVar Ty) (FVar Ty))
                -> Exp WithoutObjects Ty (Var (BVar Ty) (FVar Ty))
 ezMonomorphize = transform go
   where
     go expr = case expr of
       AppE fe ae -> case unsafeAnalyzeApp (AppE fe ae) of
-        (f,args) -> case getAllInstantiations (expTy id f) (expTy id <$> args) of
-          [] -> expr
-          instantiations' ->
-            let instantiations = reverse (snd <$> instantiations')
-                f' = foldr TyInstE f instantiations
-                result = unsafeApply id f' args
-                msg = "INPUT:\n" <> prettyStr expr
-                      <> "\n\nOUTPUT:\n" <> prettyStr result
-            in doTrace "ezMonomorphize" msg result
-      _ -> expr
-
+        (f,args) -> case expTy id f of
+          ft@Forall{} -> case getAllInstantiations ft (expTy id <$> args) of
+                 [] -> expr
+                 instantiations' ->
+                   let instantiations = reverse (snd <$> instantiations')
+                       f' = foldr TyInstE f instantiations
+                       result = unsafeApply id f' args
+                       msg = "INPUT:\n" <> prettyStr expr
+                             <> "\n\nOUTPUT:\n" <> prettyStr result
+                   in doTrace "ezMonomorphize" msg result
+          ft -> let msg = "NO CHANGE (NOT A FORALL):\n\n"
+                          <> "FUN TY:\n" <> prettyStr ft
+                          <> "\n\nARG TYPES:\n" <> prettyStr (expTy id <$> args)
+                          <> "\n\nORIGINAL EXPR:\n" <> prettyStr expr
+               in expr -- doTrace "ezMonomorphize" ""  expr
+      _ -> expr -- doTrace "ezMonomorphize" ("" <> prettyStr expr) expr
 
 desugarConstructorPattern :: Datatypes IR.Kind Ty
                           -> Ty
@@ -703,11 +708,12 @@ desugarConstructorPattern datatypes altBodyTy _e = let _eTy = expTy id _e in cas
         branchRetTy =  last . splitFunTyParts $ branchTy
         allCtors =  zip [0..] $ getAllConstructorDecls tn datatypes
     (Name dcTor (Unique dctorIx)) <- getDestructorTy tn
-    dctorTy <- mkDestructorFunTy datatypes tn
+    (isNullaryTyCon,dctorTy) <- mkDestructorFunTy datatypes tn
     let destructorRaw = V . B $ BVar dctorIx dctorTy (Ident dcTor)
         instantiateTyCon :: Exp WithoutObjects Ty (Var (BVar Ty) (FVar Ty)) -> Exp WithoutObjects Ty (Var (BVar Ty) (FVar Ty))
-        instantiateTyCon = mkInstantiateTyCon (expTy id scrut)
-
+        instantiateTyCon
+          | isNullaryTyCon = id
+          | otherwise = mkInstantiateTyCon (expTy id scrut)
 
         retTy' = mkInstantiateResTy scrutTy altBodyTy
     -- NOTE: We'll need more sophisticated "pattern sorting" with as patterns
@@ -779,7 +785,7 @@ desugarConstructorPattern datatypes altBodyTy _e = let _eTy = expTy id _e in cas
                  match_Maybe @Int mb 0 (\(_n :: Int) -> 1)
                ```
 
-              Anyway, the idea is that `irrefutable` here is always going to be a self-contains RHS for a lambda that we will attach unused binders to
+              Anyway, the idea is that `irrefutable` here is always going to be a self-contained RHS for a lambda that we will attach unused binders to
               during assembly so as to make the types line up w/ what the destructor fn expects
 
               TODO: We should let- bind the scrutinee because it will almost always occur in multiple places
@@ -847,18 +853,24 @@ desugarConstructorPattern datatypes altBodyTy _e = let _eTy = expTy id _e in cas
    mkInstantiateTyCon :: Ty
                       -> Exp WithoutObjects Ty (Var (BVar Ty) (FVar Ty))
                       -> Exp WithoutObjects Ty (Var (BVar Ty) (FVar Ty))
-   mkInstantiateTyCon t e = doTrace "instantiateTyCon" msg result
+   mkInstantiateTyCon t e  = doTrace "instantiateTyCon" msg result
      where
        result = case analyzeTyApp t of
             Just (_,tyArgs) -> foldr TyInstE  e (reverse tyArgs)
             Nothing -> e
+
        resTy = expTy id result
+
        msg = "INPUT TY:\n" <> prettyStr t
              <> "\n\nINPUT EXPR:\n" <> prettyStr e
+             <> "\n\nINPUT EXPR TY:\n" <> prettyStr (expTy id e)
              <> "\n\nOUTPUT TY:\n" <> prettyStr resTy
              <> "\n\nOUTPUT:\n" <> prettyStr result
-
+   {- This is a bit weird. If the alt body type is already quantified then we don't want to
+      do any instantiations. TODO: Explain why (kind of complicated)
+   -}
    mkInstantiateResTy :: Ty -> Ty -> Ty
+   mkInstantiateResTy _ altT@(Forall{}) = doTrace "instantiateResTy" ("UNCHANGED:\n" <> prettyStr altT) altT 
    mkInstantiateResTy scrutT altT = doTrace "instantiateResTy" msg result
      where
        result = case analyzeTyApp scrutT of
