@@ -96,13 +96,13 @@ testBinders x = case x of
     ConInt n -> n
     _ -> 2 
   ConQuantified f -> f "hello"
-  ConConstrained f -> f 2
+  ConConstrained g -> g 2
   ConNested other -> 7
   ConObject obj -> obj.objField
   ConObjectQuantified objQ -> objQ.objFieldQ "world"
   ConObject objs -> case objs of
     {objField: f} -> f
-  _         -> 0
+  other         -> 0
 
 testBindersCase :: Int
 testBindersCase = testBinders (ConInt 2)

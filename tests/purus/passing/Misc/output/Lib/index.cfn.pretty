@@ -268,7 +268,6 @@ testBinders :: (Lib.TestBinderSum -> (Prim.Int))
 testBinders = 
   \(x: Lib.TestBinderSum) -> 
     case (x: Lib.TestBinderSum) of 
-       ConInt _ -> (1: Prim.Int)
        ConInt a -> (a: Prim.Int)
        ConChar _ -> (5: Prim.Int)
        ConNested conNest -> 
@@ -278,8 +277,8 @@ testBinders =
        ConQuantified f -> 
          (f: forall (x :: Prim.Type). ((x :: Prim.Type) -> (Prim.Int)))
          ("hello": Prim.String)
-       ConConstrained f -> 
-         (f: forall (x :: Prim.Type). ((Lib.Eq$Dict ((x :: Prim.Type))) ->
+       ConConstrained g -> 
+         (g: forall (x :: Prim.Type). ((Lib.Eq$Dict ((x :: Prim.Type))) ->
          (((x :: Prim.Type) -> (Prim.Int)))))
          (eqInt: (Lib.Eq$Dict (Prim.Int)))
          (2: Prim.Int)
@@ -295,7 +294,7 @@ testBinders =
        ConObject objs -> 
          case (objs: { objField :: Prim.Int }) of 
             { objField: f } -> (f: Prim.Int)
-       _ -> (0: Prim.Int)
+       other -> (0: Prim.Int)
 
 testBindersCase :: Prim.Int
 testBindersCase = 

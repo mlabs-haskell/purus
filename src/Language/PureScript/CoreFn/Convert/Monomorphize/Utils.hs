@@ -45,6 +45,7 @@ import Control.Monad (join)
 import Language.PureScript.CoreFn.TypeLike (TypeLike(..))
 import Prettyprinter (Pretty)
 import Data.Maybe (isJust)
+import Bound (abstract)
 
 type IR_Decl = BindE PurusType (Exp WithObjects PurusType) (FVar PurusType)
 
@@ -372,50 +373,30 @@ transformExp  f = \case
       pure $ toScope (F <$> transformed)
 
 {- Useful for transform/rewrite/cosmos/etc -}
-instance Plated (Exp x t a) where
+instance Plated (Exp x t (Var (BVar t) (FVar t))) where
   plate = go
    where
      go :: forall f
          . ( Applicative f)
-        => (Exp x t a -> f  (Exp x t a))
-        -> Exp x t a
-        -> f (Exp x t  a)
+        => (Exp x t (Var (BVar t) (FVar t)) -> f  (Exp x t (Var (BVar t) (FVar t))))
+        -> Exp x t (Var (BVar t) (FVar t))
+        -> f (Exp x t (Var (BVar t) (FVar t)))
      go  tfun = \case
-      LamE t bv e ->
-        let e' =  toScope
-                  <$> join
-                  <$> fmap distributeExp
-                  <$> traverse (traverse (tfun . (pure @(Exp x t)))) (fromScope e)
-        in LamE t bv <$> e'
+      LamE t bv e ->  LamE t bv <$> scopeHelper e
       CaseE t es alts ->
-        let goAlt ::  Alt x t (Exp x t) a -> f (Alt x t (Exp x t) a)
+        let goAlt ::  Alt x t (Exp x t) (Var (BVar t) (FVar t)) -> f (Alt x t (Exp x t) (Var (BVar t) (FVar t)))
             goAlt (UnguardedAlt bs pats scoped) =
-              let scoped' = toScope
-                            <$> join
-                            <$> fmap distributeExp
-                            <$> traverse (traverse (tfun . pure @(Exp x t))) (fromScope scoped)
-              in UnguardedAlt bs pats <$> scoped'
+              UnguardedAlt bs pats <$> scopeHelper scoped
         in CaseE t <$>  tfun es <*>  traverse goAlt alts
       LetE binds decls scoped ->
-        let goDecls :: BindE t (Exp x t) a -> f (BindE t (Exp x t) a)
+        let goDecls :: BindE t (Exp x t) (Var (BVar t) (FVar t)) -> f (BindE t (Exp x t) (Var (BVar t) (FVar t)))
             goDecls = \case
               NonRecursive ident bvix expr ->
-                let expr' = toScope
-                            <$> join
-                            <$> fmap distributeExp
-                            <$> traverse (traverse (tfun . (pure @(Exp x t)))) (fromScope expr)
-                in NonRecursive ident bvix <$> expr'
+                NonRecursive ident bvix <$> scopeHelper expr
               Recursive xs ->
-                let f e = toScope
-                     <$> join
-                     <$> fmap distributeExp
-                     <$> traverse (traverse (tfun . (pure @(Exp x t)))) (fromScope e)
-                in Recursive <$> traverse (\(i,x) -> (i,) <$> f x) xs
-            scoped' = toScope
-                            <$> join
-                            <$> fmap distributeExp
-                            <$> traverse (traverse (tfun . pure @(Exp x t))) (fromScope scoped)
-        in LetE binds <$> traverse goDecls decls <*> scoped'
+                Recursive <$> traverse (\(i,x) -> (i,) <$> scopeHelper x) xs
+
+        in LetE binds <$> traverse goDecls decls <*> scopeHelper scoped
       AppE e1 e2 -> AppE <$> tfun e1 <*> tfun e2
       AccessorE x t pss e -> AccessorE x t pss <$> tfun e
       ObjectUpdateE x t e cf fs -> (\e' fs' -> ObjectUpdateE x t e' cf fs')
@@ -425,8 +406,16 @@ instance Plated (Exp x t a) where
       V a -> pure (V a)
       TyInstE t e -> TyInstE t <$> tfun e
       where
-        traverseLit :: Lit x (Exp x t a)
-                    -> f (Lit x (Exp x t a))
+        scopeHelper :: Scope (BVar t) (Exp x t) (Var (BVar t) (FVar t))
+                    -> f (Scope (BVar t) (Exp x t) (Var (BVar t) (FVar t)))
+        scopeHelper scoped =
+          let unscoped = join <$> fromScope scoped
+              effed    = tfun unscoped
+              abstr = abstract $ \case
+               B bv -> Just bv
+               _    -> Nothing
+          in abstr <$> effed
+
         traverseLit  = \case
           IntL i -> pure $ IntL i
           -- NumL d -> pure $ NumL d

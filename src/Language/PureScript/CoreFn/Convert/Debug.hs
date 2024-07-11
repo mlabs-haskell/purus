@@ -25,10 +25,10 @@ traceCfg = S.fromList [
     {- "runMonomorphize",
     "monomorphize",
     "handleFunction", -}
-    "monomorphize",
-    "monomorphizeWithType",
-    "inlineAs",
-    "inlineEverything",
+    -- "monomorphize",
+    -- "monomorphizeWithType",
+    -- "inlineAs",
+    -- "inlineEverything",
     --"monomorphize",
     {- "makeBind",
     "collectRecBinds",
@@ -38,7 +38,7 @@ traceCfg = S.fromList [
     -} 
     -- DesugarObjects
     --"tryConvertExpr'"
-    "desugarObjectAccessor",
+    -- "desugarObjectAccessor",
 
     -- Datatypes
     {-
@@ -62,11 +62,12 @@ traceCfg = S.fromList [
     "mkDestructorFunTy",
     "instantiateResTy",
 -}
-     "eliminateCaseExpressions",
-     "firstPass",
-      "instantiateCtor",
-      "monoCtorFields",
-       "monoCtorInst"
+     -- "eliminateCaseExpressions",
+     -- "firstPass",
+      -- "instantiateCtor",
+      -- "monoCtorFields",
+      --"monoCtorInst",
+       "ezMonomorphize"
 
     --"mkIndexedBranch"
     -- ToPIR
