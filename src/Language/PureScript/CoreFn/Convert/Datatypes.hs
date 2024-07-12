@@ -730,6 +730,7 @@ desugarConstructorPattern datatypes altBodyTy _e = let _eTy = expTy id _e in cas
                    <> "\n\nSPLIT BRANCH TY:\n" <> prettyStr branchSplit
                    <> "\n\nFULL BRANCH TY:\n" <> prettyStr branchTy
                    <> "\n\nSCRUT TY:\n" <> prettyStr scrutTy
+                   <> "\n\nSCRUT EXPR:\n" <> prettyStr scrut
                    <> "\n\nRESULT:\n" <> prettyStr result
                    <> "\n\nALT BODY TY:\n" <> prettyStr altBodyTy
                    <> "\n\nINSTANTIATED ALT BODY TY:\n" <> prettyStr retTy'
@@ -807,6 +808,7 @@ desugarConstructorPattern datatypes altBodyTy _e = let _eTy = expTy id _e in cas
                    <> "\n\nSPLIT BRANCH TY:\n" <> prettyStr branchSplit
                    <> "\n\nFULL BRANCH TY:\n" <> prettyStr branchTy
                    <> "\n\nSCRUT TY:\n" <> prettyStr scrutTy
+                   <> "\n\nSCRUT EXPR:\n" <> prettyStr scrut
                    <> "\n\nRESULT:\n" <> prettyStr result
                    <> "\n\nALT BODY TY:\n" <> prettyStr altBodyTy
                    <> "\n\nINSTANTIATED ALT BODY TY:\n" <> prettyStr retTy'

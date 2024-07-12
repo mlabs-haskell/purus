@@ -338,10 +338,10 @@ instance Bound (BindE ty) where
         in (i,e') : rest'
 
 instance Pretty ty => Pretty (BVar ty) where
-  pretty (BVar n _t i) =   parens $ pretty (showIdent i) <> "#" <> pretty n <::> pretty _t-- <+> "::" <+> pretty t
+  pretty (BVar n _t i) =   pretty (showIdent i) <> "#" <> pretty n
 
 instance Pretty ty => Pretty (FVar ty) where
-  pretty (FVar _t i) =  parens $ pretty (showQualified showIdent i)  <+> "::" <+> pretty _t
+  pretty (FVar _t i) =   pretty (showQualified showIdent i)  
 
 instance Pretty Kind where
   pretty = \case
@@ -389,13 +389,13 @@ instance (Pretty a, Pretty ty, TypeLike ty) => Pretty (Exp x ty a) where
     LitE ty lit -> parens $ pretty lit <+> "::" <+> pretty ty
     LamE ty bv body' ->
       let unscoped = fromScope body'
-      in "\\" <> parens (align $ pretty bv <+> "::" <+> pretty (head $ splitFunTyParts ty))
+      in group . align $ "\\" <> parens (align $ pretty bv <+> "::" <+> pretty (head $ splitFunTyParts ty))
          <+> "->" <> hardline
-         <> indent 2 (pretty unscoped)
+         <> indent 4 (pretty unscoped)
     appE@(AppE _ _) -> case unsafeAnalyzeApp appE of
       (fun,args) ->
-        let applied = group . align . vsep $ parens . pretty <$> (fun:args)
-        in group . align $ parens applied
+        let applied = group . align . vsep $ pretty fun : fmap (indent 2 . ("#" <+>) . pretty) args
+        in group . align $  applied
     CaseE _ es alts ->
       let scrutinees = pretty es
           branches = group . pretty <$> alts
@@ -484,7 +484,7 @@ expTy f = \case
     B (BVar _ t _) -> t
     F (FVar t _) -> t
   LitE t _ -> t
-  LamE t _ _ -> t
+  LamE t _ _ -> t 
   AppE e1 e2 -> appType f e1 e2
   CaseE t _ _  -> t
   LetE _ _ e -> expTy' f e
@@ -498,7 +498,7 @@ expTy' f scoped = case instantiateEither (either (V . B) (V . F)) scoped of
     B (BVar _ t _) -> t
     F (FVar t _) -> t
   LitE t _ -> t
-  LamE t _ _ -> t
+  LamE t _ _  -> t
   AppE  e1 e2 -> appType (>>= f) e1 e2
   CaseE t _ _  -> t
   LetE  _ _ e -> expTy' (>>= f) e
@@ -517,7 +517,14 @@ appType h fe ae = doTrace "appType" (
       <> "\n\nRESULT\n: " <> prettyAsStr result) result
   where
     result = case unsafeAnalyzeApp (AppE fe ae) of
-      (fe',ae') -> instantiateWithArgs (expTy h fe') (expTy h <$> ae')
+      (fe',ae') ->
+          quantify
+        . foldr1 funTy
+        . drop (length ae')
+        . splitFunTyParts
+        . snd
+        . stripQuantifiers
+        $ instantiateWithArgs (expTy h fe') (expTy h <$> ae')
 
 $(deriveShow1 ''BindE)
 

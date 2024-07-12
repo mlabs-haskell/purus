@@ -46,6 +46,7 @@ import Language.PureScript.CoreFn.TypeLike (TypeLike(..))
 import Prettyprinter (Pretty)
 import Data.Maybe (isJust)
 import Bound (abstract)
+import Language.PureScript.CoreFn.Convert.Debug (doTrace)
 
 type IR_Decl = BindE PurusType (Exp WithObjects PurusType) (FVar PurusType)
 
@@ -178,19 +179,49 @@ findInlineDeclGroup ident (Recursive xs:rest) = case  find (\x -> fst (fst x) ==
   Nothing -> findInlineDeclGroup ident rest
   Just _ -> Just (Recursive xs)
 
+letBindRecursive ::  (TypeLike t, Pretty t)
+                 => (a -> Var (BVar t) (FVar t))
+                 -> Ident
+                 -> Int
+                 -> Scope (BVar t) (Exp x t) a
+                 -> Scope (BVar t) (Exp x t) (Var (BVar t) (FVar t))
+letBindRecursive f idnt indx _scoped
+  | containsBVar idnt indx scoped =
+      let result = abstr $ LetE M.empty [NonRecursive idnt indx scoped] (toScope (V . B $ BVar indx (expTy' id scoped) idnt))
+          msg = "IDENT:\n" <> prettyAsStr idnt <> "#" <> prettyAsStr indx
+                <> "\n\nINPUT EXPR:\n" <> prettyAsStr (fromScope scoped)
+                <> "\n\nINPUT TY:\n" <> prettyAsStr (expTy' id scoped)
+                <> "\n\nRESULT:\n" <> prettyAsStr (fromScope result)
+                <> "\n\nRESULT TY:\n" <> prettyAsStr (expTy' id result)
+      in doTrace "letBindRecursive" msg result
+  | otherwise = scoped
+ where
+   scoped = f <$> _scoped
+   abstr = abstract $ \case
+             B bv -> Just bv
+             _ -> Nothing
+
+
 {- Find the body of a declaration with the given name in the given module.
+
 -}
-findDeclBody :: Text
-             -> Module IR_Decl k t Ann
-             -> Maybe (Scope (BVar PurusType) (Exp WithObjects PurusType) (FVar PurusType))
+findDeclBody :: forall k.
+                Text
+             -> Module IR_Decl k PurusType Ann
+             -> Maybe (Scope (BVar PurusType) (Exp WithObjects PurusType) (Var (BVar PurusType) (FVar PurusType)))
 findDeclBody nm Module{..} = findDeclBody' (Ident nm) moduleDecls
 
-findDeclBody' :: Ident -> [BindE ty (Exp x ty) a] -> Maybe (Scope (BVar ty) (Exp x ty) a)
+findDeclBody' :: forall x ty. (TypeLike ty, Pretty ty)
+              => Ident
+              -> [BindE ty (Exp x ty) (FVar ty)]
+              -> Maybe (Scope (BVar ty) (Exp x ty) (Var (BVar ty) (FVar ty)))
 findDeclBody' ident binds = case findInlineDeclGroup ident binds of
   Nothing -> Nothing
   Just decl -> case decl of
-    NonRecursive _ _ e -> Just e
-    Recursive xs -> snd <$> find (\x -> fst (fst x) == ident) xs
+    NonRecursive nrid nrix  e -> Just $ letBindRecursive id nrid nrix (F <$> e)
+    Recursive xs -> case  find (\x -> fst (fst x) == ident) xs of
+      Nothing -> Nothing
+      Just ((idnt,indx),e) -> Just $ letBindRecursive F idnt indx e
 {- Turns a Row Type into a Map of field names to Row item data.
 
    NOTE: Be sure to unwrap the enclosing record if you're working w/ a
@@ -382,7 +413,7 @@ instance Plated (Exp x t (Var (BVar t) (FVar t))) where
         -> Exp x t (Var (BVar t) (FVar t))
         -> f (Exp x t (Var (BVar t) (FVar t)))
      go  tfun = \case
-      LamE t bv e ->  LamE t bv <$> scopeHelper e
+      LamE t bv e ->  LamE t bv <$> scopeHelper e 
       CaseE t es alts ->
         let goAlt ::  Alt x t (Exp x t) (Var (BVar t) (FVar t)) -> f (Alt x t (Exp x t) (Var (BVar t) (FVar t)))
             goAlt (UnguardedAlt bs pats scoped) =
@@ -411,10 +442,10 @@ instance Plated (Exp x t (Var (BVar t) (FVar t))) where
         scopeHelper scoped =
           let unscoped = join <$> fromScope scoped
               effed    = tfun unscoped
-              abstr = abstract $ \case
+              abstr = abstract $ \case 
                B bv -> Just bv
-               _    -> Nothing
-          in abstr <$> effed
+               _    -> Nothing 
+          in abstr <$> effed 
 
         traverseLit  = \case
           IntL i -> pure $ IntL i
@@ -435,6 +466,7 @@ containsBVar idnt indx expr = any (\case
     _ -> False) subExpressions 
  where
     subExpressions = (join <$> fromScope expr) ^.. cosmos
+
 
 -- put this somewhere else
 

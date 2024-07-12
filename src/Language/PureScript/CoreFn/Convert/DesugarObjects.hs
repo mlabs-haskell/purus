@@ -88,7 +88,7 @@ test :: FilePath -> Text -> IO (Exp WithoutObjects Ty (Var (BVar Ty) (FVar Ty)))
 test path decl = do
   (myMod,ds) <- decodeModuleIR path
   Just myDecl <- pure $ findDeclBody decl myMod
-  case runMonomorphize myMod [] (fromScope myDecl) of
+  case runMonomorphize myMod [] (join <$> fromScope myDecl) of
     Left (MonoError msg) -> throwIO $ userError $ "Couldn't monomorphize " <> T.unpack decl <> "\nReason:\n" <> msg
     Right body -> case evalStateT (tryConvertExpr body) ds of
       Left convertErr -> throwIO $ userError convertErr
@@ -107,7 +107,7 @@ prepPIR path  decl = do
   desugaredExpr <- case findDeclBody decl myMod of
     Nothing -> throwIO $ userError "findDeclBody"
     Just expr -> pure expr
-  case runMonomorphize myMod [] (fromScope desugaredExpr) of
+  case runMonomorphize myMod [] (join <$> fromScope desugaredExpr) of
     Left (MonoError msg ) ->
       throwIO
       $ userError

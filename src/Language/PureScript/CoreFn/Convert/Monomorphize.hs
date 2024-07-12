@@ -66,7 +66,7 @@ import Language.PureScript.CoreFn.Convert.Monomorphize.Utils
       updateFreeVars,
       updateVarTyS,
       MonoState(MonoState),
-      Monomorphizer, foldMScopeViaExp, distributeExp, freshUnique, containsBVar )
+      Monomorphizer, foldMScopeViaExp, distributeExp, freshUnique, containsBVar, isSelfRecursiveNR )
 
 import Data.Text (Text)
 import GHC.IO (throwIO)
@@ -77,6 +77,22 @@ import Language.PureScript.CoreFn.Pretty.Common (prettyAsStr)
 import Data.Bifunctor (first)
 import Language.PureScript.CoreFn.Convert.Debug
 
+
+monomorphizeWithTypeRec ::
+                  PurusType
+               -> Ident
+               -> Int
+               -> Scope (BVar PurusType) (Exp WithObjects PurusType) (Var (BVar PurusType) (FVar PurusType))
+               -> Monomorphizer (Exp WithObjects PurusType (Var (BVar PurusType) (FVar PurusType)))
+monomorphizeWithTypeRec ty idnt indx expr | containsBVar idnt indx expr = do
+  body <- monomorphizeWithType ty (join <$> fromScope expr)
+  let abstr = abstract (\case {B bv -> Just bv; _ -> Nothing})
+      rescoped = abstr body
+      result = LetE M.empty [NonRecursive idnt indx rescoped] (toScope (V . B $ BVar indx ty idnt))
+  pure  result
+monomorphizeWithTypeRec ty _ _ expr = monomorphizeWithType ty (join <$> fromScope expr)
+
+
 {- Function for quickly testing/debugging monomorphization -}
 
 testMono :: FilePath -> Text -> IO ()
@@ -84,7 +100,7 @@ testMono path decl = do
   myModCoreFn <- decodeModuleIO path
   (myMod,_) <- either (throwIO . userError) pure $ desugarCoreModule myModCoreFn
   Just myDecl <- pure $ findDeclBody decl myMod
-  case runMonomorphize myMod [] (fromScope myDecl) of
+  case runMonomorphize myMod [] (join <$> fromScope myDecl) of
     Left (MonoError msg ) -> throwIO $ userError $ "Couldn't monomorphize " <> T.unpack decl <> "\nReason:\n" <> msg
     Right body -> do
       putStrLn $ "MONO RESULT: \n" <>  ppExp body
@@ -264,8 +280,9 @@ handleFunction  toVar v@(V (FVar ty  qn)) es = trace ("\nhandleFunction VarGo: "
   handleFunction toVar e' es
 -}
 handleFunction toVar v@(V (toVar -> F (FVar ty qn))) es
-  | not (isBuiltin qn || isConstructor qn) = doTrace "handleFunction" ("VarGo:\n" <> ppExp v) $ do
+  | not (isBuiltin qn || isConstructor qn) =  do
     e' <- inlineAs ty qn
+    doTraceM "handleFunction" ("VarGo:\n\nVAR:\n" <> ppExp v <> "\n\nINLINED:\n" <> prettyAsStr e')
     handleFunction id e' (fmap toVar <$> es)
 
 
@@ -299,7 +316,7 @@ inlineAs ::
   Monomorphizer (Exp WithObjects PurusType (Var (BVar PurusType) (FVar PurusType)))
 inlineAs t ident = do
   res <- inlineAs' t ident
-  let msg = "IDENT:" <> show ident  <>  "\n\nINPUT:\n" <> prettyAsStr res <> "\n\nOUTPUT:\n" <> prettyAsStr res
+  let msg = "IDENT:" <> show ident  <>  "\n\nTY:\n" <> prettyAsStr t <>  "\n\nINPUT:\n" <> prettyAsStr res <> "\n\nOUTPUT:\n" <> prettyAsStr res
   doTraceM "inlineAs" msg
   pure res
   
@@ -316,14 +333,7 @@ inlineAs' ty inNm
     if mn ==  mn' then do
       let msg = "Couldn't find a declaration with identifier " <> showIdent' ident <> " to inline as " <> prettyTypeStr ty
       note msg  (findInlineDeclGroup ident modDict) >>= \case
-        {-
-        NonRecursive nrid nrix e | containsBVar nrid nrix e -> do
-          e' <- toScope . fmap F <$> monomorphizeWithType ty (join <$> fromScope e)
-          let selfBind = LetE M.empty [NonRecursive nrid nrix e'] (pure  $ B $ BVar nrix ty nrid)
-          monomorphizeWithType ty selfBind
-        -}
-        NonRecursive nrid nrix e ->  do 
-          monomorphizeWithType ty (join <$> fromScope e)
+        NonRecursive nrid nrix e ->  monomorphizeWithTypeRec ty nrid nrix e
         Recursive xs -> do
           let msg' = "Target expression with identifier " <> showIdent' ident <> " not found in mutually recursive group"
           ((targIdent,targIx),targExpr) <- note msg' $ find (\x -> fst (fst x) == ident)  xs -- has to be there
@@ -368,8 +378,9 @@ inlineAs' ty inNm
             -> Exp WithObjects PurusType (Var (BVar PurusType) (FVar PurusType)) -- Declaration body
             -> Monomorphizer (BindE PurusType (Exp WithObjects PurusType) (Var (BVar PurusType) (FVar PurusType)))
    makeBind renameDict (newIdent,newIx) t (oldIdent,oldIx) e = doTrace "makeBind" (showIdent'  newIdent) $ do
-     let renameDictForUpdate = M.mapKeys fst . M.map (first fst) $ renameDict 
-     e' <- updateFreeVars renameDictForUpdate <$> monomorphizeWithType t e
+     let renameDictForUpdate = M.mapKeys fst . M.map (first fst) $ renameDict
+         renamed = abstract (\case {B bv -> Just bv; _ -> Nothing}) $ updateFreeVars renameDictForUpdate e
+     e' <- monomorphizeWithTypeRec t newIdent newIx renamed 
      let abstr = abstract $ \case
                    fv@(F (FVar a (Qualified ByNullSourcePos fvId))) | fvId == oldIdent -> case M.lookup (fvId,oldIx) renameDict of
                      Nothing ->  Nothing
@@ -536,7 +547,7 @@ monomorphizeWithType ty expr
 
       AccessorE ext _ str e -> pure $ AccessorE ext ty str e -- idk?
 
-      fun@(LamE _ bv body) -> doTrace "monomorphizeWithType" ("ABS:\n  " <> ppExp fun <> " :: " <> prettyTypeStr ty) $ do
+      fun@(LamE _ bv body) -> doTrace "monomorphizeWithType" ("ABS:\n  " <> ppExp fun <> "\n\nTARGET TY:\n" <> prettyTypeStr ty <> "\n\nABS TY:\n" <> prettyAsStr (expTy id fun)) $ do
         case ty of
           (a :-> b) ->  do
               -- REVIEW: If something is weirdly broken w/ bound vars look here first
@@ -545,7 +556,7 @@ monomorphizeWithType ty expr
                   body' = fmap join . fromScope $ replaceBVar $ updateVarTyS bv a body
               body'' <-  fmap F . toScope <$> monomorphizeWithType b body'
               pure $ LamE ty freshBV body''
-          _ -> throwError $ MonoError  "Abs isn't a function"
+          other -> throwError $ MonoError  $ "Expected Function Type for Expression:\n\n" <> prettyAsStr fun <> "\n\nbut got type:\n\n" <> prettyAsStr other 
 
       app@(AppE _ e2) -> doTrace "monomorphizeWithType" ("APP:\n  " <> ppExp app) $  do
         let (f,args) = unsafeAnalyzeApp app
