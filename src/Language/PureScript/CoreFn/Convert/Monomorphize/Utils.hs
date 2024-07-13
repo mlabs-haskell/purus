@@ -38,7 +38,7 @@ import Language.PureScript.Label (Label(..))
 import Language.PureScript.CoreFn.Module ( Module(..) )
 import Language.PureScript.CoreFn.Ann ( Ann )
 import Language.PureScript.CoreFn.Convert.DesugarCore
-    ( WithObjects )
+    ( WithObjects, IR_Decl, Vars )
 import Data.Aeson qualified as Aeson
 import GHC.IO (throwIO)
 import Control.Monad (join)
@@ -48,7 +48,6 @@ import Data.Maybe (isJust)
 import Bound (abstract)
 import Language.PureScript.CoreFn.Convert.Debug (doTrace)
 
-type IR_Decl = BindE PurusType (Exp WithObjects PurusType) (FVar PurusType)
 
 {- Monomorphizer monad & related utilities -}
 
@@ -62,12 +61,12 @@ newtype MonoState = MonoState {
 }
 
 -- Reads (ModuleName,ModuleDecls), writes nothing (...yet), State is a newtype over Int for fresh names & etc
-type Monomorphizer a = RWST (ModuleName, [BindE PurusType (Exp WithObjects PurusType) (Var (BVar PurusType) (FVar PurusType))]) () MonoState (Either MonoError)  a
+type Monomorphizer a = RWST (ModuleName, [BindE PurusType (Exp WithObjects PurusType) (Vars PurusType)]) () MonoState (Either MonoError)  a
 
 getModName :: Monomorphizer ModuleName
 getModName = ask <&> fst
 
-getModBinds :: Monomorphizer [BindE PurusType (Exp WithObjects PurusType) (Var (BVar PurusType) (FVar PurusType))]
+getModBinds :: Monomorphizer [BindE PurusType (Exp WithObjects PurusType) (Vars PurusType)]
 getModBinds = ask <&> snd
 
 note ::  String -> Maybe b -> Monomorphizer b
@@ -110,9 +109,9 @@ qualifyNull = Qualified ByNullSourcePos
 -- REVIEW: IDK if this is right? Do we need to abstract here?
 -- Construct a Let expression from a list of BindEs and a scoped body
 gLet ::
-  [BindE PurusType (Exp WithObjects PurusType) (Var (BVar PurusType) (FVar PurusType))] ->
-  Scope (BVar PurusType) (Exp WithObjects PurusType) (Var (BVar PurusType) (FVar PurusType)) ->
-  Exp WithObjects PurusType (Var (BVar PurusType) (FVar PurusType))
+  [BindE PurusType (Exp WithObjects PurusType) (Vars PurusType)] ->
+  Scope (BVar PurusType) (Exp WithObjects PurusType) (Vars PurusType) ->
+  Exp WithObjects PurusType (Vars PurusType)
 gLet binds e =  LetE M.empty binds e
 
 -- Tools for updating variable types/names
@@ -123,8 +122,14 @@ updateVarTyS :: forall x
              -> SourceType
              -> Scope (BVar SourceType) (Exp x SourceType) (Var (BVar SourceType) (FVar SourceType))
              -> Scope (BVar SourceType) (Exp x SourceType) (Var (BVar SourceType) (FVar SourceType))
-updateVarTyS (BVar bvIx _ bvIdent) ty scoped = toScope . fmap F . updateBVar bvIdent bvIx ty $ unscoped
+updateVarTyS (BVar bvIx _ bvIdent) ty scoped = abstr  unscoped
   where
+    abstr = abstract $ \case
+      B bv@(BVar bvIx' _ bvIdent' )
+        | bvIx == bvIx' && bvIdent == bvIdent' -> Just $ BVar bvIx ty bvIdent'
+      B bv -> Just bv
+      _ -> Nothing
+
     scoped' = mapBound goBound scoped
     unscoped = join <$> fromScope scoped'
     goBound :: BVar SourceType -> BVar SourceType
@@ -152,7 +157,7 @@ renameBoundVar old new  = mapBound $ \case
 -}
 unsafeApply :: forall a x t.
   (TypeLike t, Pretty t) =>
-  (a -> Var (BVar t) (FVar t)) ->
+  (a -> Vars t) ->
   Exp x t a ->
   [Exp x t a] ->
   Exp x t a
@@ -180,11 +185,11 @@ findInlineDeclGroup ident (Recursive xs:rest) = case  find (\x -> fst (fst x) ==
   Just _ -> Just (Recursive xs)
 
 letBindRecursive ::  (TypeLike t, Pretty t)
-                 => (a -> Var (BVar t) (FVar t))
+                 => (a -> Vars t)
                  -> Ident
                  -> Int
                  -> Scope (BVar t) (Exp x t) a
-                 -> Scope (BVar t) (Exp x t) (Var (BVar t) (FVar t))
+                 -> Scope (BVar t) (Exp x t) (Vars t)
 letBindRecursive f idnt indx _scoped
   | containsBVar idnt indx scoped =
       let result = abstr $ LetE M.empty [NonRecursive idnt indx scoped] (toScope (V . B $ BVar indx (expTy' id scoped) idnt))
@@ -208,20 +213,20 @@ letBindRecursive f idnt indx _scoped
 findDeclBody :: forall k.
                 Text
              -> Module IR_Decl k PurusType Ann
-             -> Maybe (Scope (BVar PurusType) (Exp WithObjects PurusType) (Var (BVar PurusType) (FVar PurusType)))
+             -> Maybe (Scope (BVar PurusType) (Exp WithObjects PurusType) (Vars PurusType))
 findDeclBody nm Module{..} = findDeclBody' (Ident nm) moduleDecls
 
 findDeclBody' :: forall x ty. (TypeLike ty, Pretty ty)
               => Ident
-              -> [BindE ty (Exp x ty) (FVar ty)]
-              -> Maybe (Scope (BVar ty) (Exp x ty) (Var (BVar ty) (FVar ty)))
+              -> [BindE ty (Exp x ty) (Vars ty)]
+              -> Maybe (Scope (BVar ty) (Exp x ty) (Vars ty))
 findDeclBody' ident binds = case findInlineDeclGroup ident binds of
   Nothing -> Nothing
   Just decl -> case decl of
-    NonRecursive nrid nrix  e -> Just $ letBindRecursive id nrid nrix (F <$> e)
+    NonRecursive nrid nrix  e -> Just $ letBindRecursive id nrid nrix e
     Recursive xs -> case  find (\x -> fst (fst x) == ident) xs of
       Nothing -> Nothing
-      Just ((idnt,indx),e) -> Just $ letBindRecursive F idnt indx e
+      Just ((idnt,indx),e) -> Just $ letBindRecursive id idnt indx e
 {- Turns a Row Type into a Map of field names to Row item data.
 
    NOTE: Be sure to unwrap the enclosing record if you're working w/ a
@@ -242,12 +247,12 @@ extractAndFlattenAlts (UnguardedAlt _ _ res) = [res]
    accurate or meaningful, e.g. in generated code)
 -}
 updateFreeVars :: Map Ident (Ident, SourceType)
-               -> Exp WithObjects PurusType (Var (BVar PurusType) (FVar PurusType))
-               -> Exp WithObjects PurusType (Var (BVar PurusType) (FVar PurusType))
+               -> Exp WithObjects PurusType (Vars PurusType)
+               -> Exp WithObjects PurusType (Vars PurusType)
 updateFreeVars dict = transform updateFreeVar
   where
-    updateFreeVar :: Exp WithObjects PurusType (Var (BVar PurusType) (FVar PurusType))
-                  -> Exp WithObjects PurusType (Var (BVar PurusType) (FVar PurusType))
+    updateFreeVar :: Exp WithObjects PurusType (Vars PurusType)
+                  -> Exp WithObjects PurusType (Vars PurusType)
     updateFreeVar  expr = case expr ^? _V of
      Just (F (FVar _ (Qualified (ByModuleName _) varId))) -> case M.lookup varId dict of
        Nothing -> expr
@@ -262,11 +267,6 @@ decodeModuleIO :: FilePath -> IO (Module (Bind Ann) PurusType PurusType Ann)
 decodeModuleIO path = Aeson.eitherDecodeFileStrict' path >>= \case
   Left err -> throwIO $ userError err
   Right modx -> pure modx
-
-
-
-
-
 
 {- Mashup of `foldM` and `transverseScope`.
 -}
@@ -288,97 +288,22 @@ distributeExp = \case
   B bv -> pure (B bv)
   F fv -> F <$> fv
 
-
-updateBVar :: forall x
-            . Ident
-           -> Int
-           -> SourceType
-           -> Exp x SourceType (Var (BVar SourceType) (FVar SourceType))
-           -> Exp x SourceType (Var (BVar SourceType) (FVar SourceType))
-updateBVar bvId bvIx newTy = \case
-  V (B (BVar bvIx' _ bvId')) | bvId' == bvId && bvIx == bvIx' -> V . B $ BVar bvIx' newTy bvId'
-  LamE t bv@(BVar bvIx' _ bvId') scoped ->
-    let newLamTy1 = quantify $ funTy newTy (expTy' id scoped')
-        newLamTy2 = quantify $ funTy t (expTy' id scoped')
-        unscoped = join <$> fromScope scoped
-        scoped'  = toScope . fmap F $ updateBVar bvId bvIx newTy unscoped
-    in if bvIx' == bvIx && bvId' == bvId
-       then LamE newLamTy1 (BVar bvIx newTy bvId') scoped'
-       else LamE newLamTy2 bv scoped'
-  LitE _ (ObjectL x fs) ->
-    let fs' = map (second $ updateBVar bvId bvIx newTy) fs
-        newLitTy = mkRecordT $ foldr (\(nm,e) acc -> RCons NullSourceAnn (Label nm) (expTy id e) acc) (REmpty NullSourceAnn) fs'
-    in LitE newLitTy (ObjectL x fs')
-  AppE e1 e2 -> AppE (updateBVar bvId bvIx newTy e1) (updateBVar bvId bvIx newTy e2)
-  ObjectUpdateE x _t orig copy fs ->
-    let fs' = map (second $ updateBVar bvId bvIx newTy) fs
-        orig' = updateBVar bvId bvIx newTy orig
-        newUpdTy = mkRecordT $ foldr (\(nm,e) acc -> RCons NullSourceAnn (Label nm) (expTy id e) acc) (REmpty NullSourceAnn) fs'
-    in ObjectUpdateE x newUpdTy orig' copy fs'
-  AccessorE x _t lbl e -> let e' = updateBVar bvId bvIx newTy e in
-    case expTy id e' of
-     RecordT row ->
-      let rowList :: [RowListItem SourceAnn]
-          rowList = fst $ rowToList row
-          newAccTy = case find (\ri -> rowListLabel ri == Label lbl) rowList of
-                       Nothing -> error $ "updateBVar: No row field for " <> prettyAsStr lbl <> "in row type " <> prettyAsStr row
-                       Just t -> rowListType t
-      in AccessorE x newAccTy lbl e'
-     other -> error "updateBVar: Malformed object type"
-  CaseE _ scrut alts ->
-     let scrut' = updateBVar bvId bvIx newTy scrut
-         alts' = map goAlt alts
-         newResTy = case head alts' of
-                     UnguardedAlt _ _ rhs -> expTy' id rhs
-     in CaseE newResTy scrut' alts'
-  LetE _ binders scoped ->
-    let unscoped = join <$> fromScope scoped
-        scoped'  = toScope . fmap F . updateBVar bvId bvIx newTy $ unscoped
-        binders' = map goBinder binders
-    in LetE M.empty binders' scoped'
-  TyInstE unchanged e -> TyInstE unchanged $ updateBVar bvId bvIx newTy e
-  other ->  other
- where
-   goAlt :: Alt x SourceType (Exp x SourceType) (Var (BVar SourceType) (FVar SourceType))
-         -> Alt x SourceType (Exp x SourceType) (Var (BVar SourceType) (FVar SourceType))
-   goAlt (UnguardedAlt _ pat scoped) =
-     let pat' = goPat pat
-         unscoped = join <$> fromScope scoped
-         scoped' = toScope . fmap F . updateBVar bvId bvIx newTy $ unscoped
-     in UnguardedAlt M.empty pat' scoped'
-   goPat = \case
-     VarP bvId' bvIx' _t | bvId == bvId' && bvIx == bvIx' -> VarP bvId bvIx newTy
-     LitP (ObjectL x fs) -> LitP . ObjectL x . map (second goPat) $ fs
-     ConP tn cn inner -> ConP tn cn $ map goPat inner
-     other -> other
-
-   goBinder :: BindE SourceType (Exp x SourceType) (Var (BVar SourceType) (FVar SourceType))
-            -> BindE SourceType (Exp x SourceType) (Var (BVar SourceType) (FVar SourceType))
-   goBinder = \case
-     NonRecursive idnt bvix body ->
-       let bop = join <$> fromScope body
-           body' =   toScope . fmap F $ updateBVar bvId bvIx newTy bop
-       in NonRecursive idnt bvix body'
-     Recursive xs ->
-       let goRecBind (idnt,scoped) = (idnt, toScope . fmap F . updateBVar bvId bvIx newTy . fmap join . fromScope $ scoped)
-       in Recursive $ map goRecBind  xs
-
    
 -- something is wrong with my attempts to write a plated instance and I dunno how to fix it,
 -- but specific traverals seem to work, so this should work?
 transformExp :: forall x t f
               . Monad f
-              => (Exp x t (Var (BVar t) (FVar t)) -> f (Exp x t (Var (BVar t) (FVar t))))
-              -> Exp x t (Var (BVar t) (FVar t))
-              -> f (Exp x t (Var (BVar t) (FVar t)))
+              => (Exp x t (Vars t) -> f (Exp x t (Vars t)))
+              -> Exp x t (Vars t)
+              -> f (Exp x t (Vars t))
 transformExp  f = \case
       LamE t bv e -> LamE t bv <$> transformScope e 
       CaseE t e alts ->
-        let goAlt ::  Alt x t (Exp x t) (Var (BVar t) (FVar t)) -> f (Alt x t (Exp x t) (Var (BVar t) (FVar t)))
+        let goAlt ::  Alt x t (Exp x t) (Vars t) -> f (Alt x t (Exp x t) (Vars t))
             goAlt (UnguardedAlt bs pats scoped) =  UnguardedAlt bs pats <$> transformScope scoped
         in CaseE t <$>   runTransform e <*>  traverse goAlt alts
       LetE binds decls scoped ->
-        let goDecls :: BindE t (Exp x t) (Var (BVar t) (FVar t)) -> f (BindE t (Exp x t) (Var (BVar t) (FVar t)))
+        let goDecls :: BindE t (Exp x t) (Vars t) -> f (BindE t (Exp x t) (Vars t))
             goDecls = \case
               NonRecursive ident bvix expr ->
                 NonRecursive ident bvix <$> transformScope expr
@@ -393,80 +318,27 @@ transformExp  f = \case
       V a -> pure (V a)
       TyInstE t e -> TyInstE t <$> runTransform e
   where
-    runTransform :: Exp x t (Var (BVar t) (FVar t)) -> f (Exp x t (Var (BVar t) (FVar t)))
+    runTransform :: Exp x t (Vars t) -> f (Exp x t (Vars t))
     runTransform x = transformExp f x >>= f
 
-    transformScope :: Scope (BVar t) (Exp x t) (Var (BVar t) (FVar t))
-                   -> f (Scope (BVar t) (Exp x t) (Var (BVar t) (FVar t)))
+    transformScope :: Scope (BVar t) (Exp x t) (Vars t)
+                   -> f (Scope (BVar t) (Exp x t) (Vars t))
     transformScope scoped = do
       let unscoped = join <$> fromScope scoped
       transformed <- runTransform unscoped
       pure $ toScope (F <$> transformed)
 
-{- Useful for transform/rewrite/cosmos/etc -}
-instance Plated (Exp x t (Var (BVar t) (FVar t))) where
-  plate = go
-   where
-     go :: forall f
-         . ( Applicative f)
-        => (Exp x t (Var (BVar t) (FVar t)) -> f  (Exp x t (Var (BVar t) (FVar t))))
-        -> Exp x t (Var (BVar t) (FVar t))
-        -> f (Exp x t (Var (BVar t) (FVar t)))
-     go  tfun = \case
-      LamE t bv e ->  LamE t bv <$> scopeHelper e 
-      CaseE t es alts ->
-        let goAlt ::  Alt x t (Exp x t) (Var (BVar t) (FVar t)) -> f (Alt x t (Exp x t) (Var (BVar t) (FVar t)))
-            goAlt (UnguardedAlt bs pats scoped) =
-              UnguardedAlt bs pats <$> scopeHelper scoped
-        in CaseE t <$>  tfun es <*>  traverse goAlt alts
-      LetE binds decls scoped ->
-        let goDecls :: BindE t (Exp x t) (Var (BVar t) (FVar t)) -> f (BindE t (Exp x t) (Var (BVar t) (FVar t)))
-            goDecls = \case
-              NonRecursive ident bvix expr ->
-                NonRecursive ident bvix <$> scopeHelper expr
-              Recursive xs ->
-                Recursive <$> traverse (\(i,x) -> (i,) <$> scopeHelper x) xs
 
-        in LetE binds <$> traverse goDecls decls <*> scopeHelper scoped
-      AppE e1 e2 -> AppE <$> tfun e1 <*> tfun e2
-      AccessorE x t pss e -> AccessorE x t pss <$> tfun e
-      ObjectUpdateE x t e cf fs -> (\e' fs' -> ObjectUpdateE x t e' cf fs')
-                                   <$> tfun  e
-                                   <*> traverse (\(nm,expr) -> (nm,) <$> tfun expr) fs
-      LitE t lit -> LitE t <$> traverseLit lit
-      V a -> pure (V a)
-      TyInstE t e -> TyInstE t <$> tfun e
-      where
-        scopeHelper :: Scope (BVar t) (Exp x t) (Var (BVar t) (FVar t))
-                    -> f (Scope (BVar t) (Exp x t) (Var (BVar t) (FVar t)))
-        scopeHelper scoped =
-          let unscoped = join <$> fromScope scoped
-              effed    = tfun unscoped
-              abstr = abstract $ \case 
-               B bv -> Just bv
-               _    -> Nothing 
-          in abstr <$> effed 
-
-        traverseLit  = \case
-          IntL i -> pure $ IntL i
-          -- NumL d -> pure $ NumL d
-          StringL str -> pure $ StringL str
-          CharL char -> pure $ CharL char
-          -- ArrayL xs -> ArrayL <$> traverse tfun  xs
-          -- ConstArrayL xs -> ConstArrayL <$> pure xs
-          ObjectL x fs -> ObjectL x <$> traverse (\(str,e) -> (str,) <$> tfun e) fs
-
-isSelfRecursiveNR :: BindE t (Exp x t) (Var (BVar t) (FVar t)) -> Bool
+isSelfRecursiveNR :: BindE t (Exp x t) (Vars t) -> Bool
 isSelfRecursiveNR (NonRecursive ident indx body) = containsBVar ident indx body
 isSelfRecursiveNR _ = False
 
-containsBVar :: Ident -> Int -> Scope (BVar t) (Exp x t) (Var (BVar t) (FVar t)) -> Bool
+containsBVar :: Ident -> Int -> Scope (BVar t) (Exp x t) (Vars t) -> Bool
 containsBVar idnt indx expr = any (\case
     V (B (BVar bvix _ bvident)) -> bvix == indx &&  idnt == bvident
     _ -> False) subExpressions 
  where
     subExpressions = (join <$> fromScope expr) ^.. cosmos
-
 
 -- put this somewhere else
 

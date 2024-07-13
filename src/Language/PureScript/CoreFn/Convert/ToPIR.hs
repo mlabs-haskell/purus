@@ -49,7 +49,7 @@ import Language.PureScript.CoreFn.Convert.Datatypes
       PIRTerm,
       mkTypeBindDict,
       pirDatatypes,
-      mkNewTyVar, bindTV, mkKind, eliminateCaseExpressions, eliminateCaseExpressionsTrace)
+      mkNewTyVar, bindTV, mkKind, eliminateCaseExpressions, eliminateCaseExpressionsTrace, lookupTyVar, getBoundTyVarName)
 import Control.Monad.Except (MonadError(..))
 import Language.PureScript.CoreFn.Module (
   Datatypes,
@@ -58,7 +58,7 @@ import Language.PureScript.CoreFn.Module (
   cdCtorFields,
   dDataArgs)
 import Language.PureScript.CoreFn.TypeLike (TypeLike (..), getInstantiations, safeFunArgTypes)
-import Data.Foldable (foldl')
+import Data.Foldable (foldl', traverse_)
 import Data.Maybe (fromJust)
 import Control.Lens.Operators ((^.))
 import Data.Text (Text)
@@ -214,8 +214,9 @@ firstPass _datatypes f _exp = do
   res <- firstPass' _datatypes f _exp
   let msg = "INPUT:\n" <> prettyStr (f <$> _exp)
             <> "\n\nOUTPUT:\n" <> prettyStr res
+  doTraceM "firstPassInput" ("INPUT EXPR:\n" <> prettyStr (f <$> _exp) <> "\n\nEXPR TYPE:\n" <> prettyStr (expTy f _exp))
   doTraceM "firstPass" msg
-  pure res 
+  pure res
 
 firstPass' :: forall a
            . Pretty a
@@ -237,40 +238,48 @@ firstPass' _datatypes f _exp = doTraceM "firstPass'" (prettyStr _exp) >> case _e
                      <> " isn't a builtin, and it shouldn't be possible to have a free variable that's anything but a builtin"
     B (BVar bvix _ (runIdent -> nm)) -> pure $ PIR.Var () (Name nm $ Unique bvix)
   LitE litTy lit -> firstPassLit litTy lit
-  LamE _ (BVar bvIx bvTy bvNm) body -> do
-
+  lam@(LamE annTy (BVar bvIx bvTy bvNm) body) -> do
     let lty = funTy bvTy (expTy' f body)
-    doTraceM "firstPass'" ("LamE lamTy:\n" <> prettyStr lty)
-    let used = usedTypeVariables lty
-    forM_ used $ \(v,k) -> do
+        used = (\(_,b,c) -> (b,c)) <$> fst (stripQuantifiers annTy)
+        msg = "BVar:\n" <> prettyStr bvNm
+              <> "\n\nInput Lam:\n" <> prettyStr lam 
+              <> "\n\nInferred Lam Ty:\n" <> prettyStr lty
+              <> "\n\nAnnotated Lam Ty:\n" <> prettyStr annTy
+    doTraceM "firstPassLamTy" msg
+
+    forM_ used $ \(v,_) -> lookupTyVar v >>= \case
+      Nothing -> do
         v' <- mkNewTyVar v
         bindTV v v'
-        pure $ PIR.TyVarDecl () v' (mkKind k)
-    fTy <- toPIRType lty
-    -- error (prettyStr lty)
+      Just _ -> pure ()
     ty' <- toPIRType  bvTy
     let nm = Name (runIdent bvNm) $ Unique bvIx
         body' = instantiateEither (either (IR.V . B) (IR.V . F)) body
-    body'' <- firstPass datatypes (>>= f) body'
-    pure $ PIR.LamAbs () nm ty' body''
+    body'' <-  firstPass datatypes (>>= f) body'
+    mkTyLam used $  PIR.LamAbs () nm ty' body''
   AppE e1 e2  ->  do
     e1' <- firstPass datatypes f e1
     e2' <- firstPass datatypes f e2
     pure $ PIR.Apply () e1' e2'
   LetE varMap binds body -> do
-    boundTerms <- foldM (convertBind (mkDict varMap)) [] binds
+    boundTerms <- foldM (convertBind (mkDict varMap)) [] binds -- FIXME: This is almost certainly wrong. We should remove the Var Map
     body' <- firstPass datatypes (>>= f) $ instantiateEither (either (IR.V . B) (IR.V . F)) body
     case NE.nonEmpty boundTerms of
       -- NOTE: For simplicity we assume here that all let bindings are mutually recursive.
       --       This might not be great for performance (depends on what the PIR compiler does)
       Just boundTerms' -> pure $ PIR.Let () PIR.Rec boundTerms' body'
       Nothing -> error "empty bindings"
-  CaseE{} -> error "Case expressions should be eliminated by now. TODO: Enforce this w/ types"
+  ce@CaseE{} -> error $ "Case expressions should be eliminated by now, but found:\n\n" <> prettyStr ce
   TyInstE t e -> do
     t' <- toPIRType t
     e' <- firstPass datatypes f e
     pure $ PIR.TyInst () e' t'
- where 
+ where
+   mkTyLam :: [(Text,IR.Kind)] -> PIRTerm -> DatatypeM PIRTerm
+   mkTyLam [] e = pure e
+   mkTyLam ((nm,k):rest) e = getBoundTyVarName nm >>= \tNm ->
+     PIR.TyAbs () tNm (mkKind k) <$> mkTyLam rest e
+
    datatypes = _datatypes <> primData
 
    mkDict = M.fromList . fmap (\(a,FVar _ ident) -> (disqualify ident,a)) . M.toList
@@ -377,8 +386,8 @@ declToPIR path decl = prepPIR path decl >>= \case
 
 printExpr :: FilePath -> Text -> IO ()
 printExpr path decl = prepPIR path decl >>= \case
-  (e,_) -> putStrLn ("\n\n\n" <> T.unpack decl <> " = \n" <>  prettyStr e)
-  
+  (e,_) -> putStrLn ("\n\n\n" <> T.unpack decl <> " = \n" <> prettyStr e)
+
 
 declToPLC :: FilePath -> Text -> IO (PLCProgram DefaultUni DefaultFun ())
 declToPLC path main = declToPIR path main >>= compileToUPLC
@@ -412,3 +421,50 @@ runCompile x  =
             join $ flip runReader ctx $ runQuoteT $ runExceptT $ runExceptT x
       in first show res
 
+passing :: IO ()
+passing = traverse_ eval passingTests
+  where
+    eval = evaluateDecl "tests/purus/passing/Misc/output/Lib/index.cfn"
+    passingTests = [
+         "testTestClass",
+         "minus",
+         "testEq",
+         "workingEven",
+         "brokenEven",
+         "opt2Int",
+         "testOpt2Int",
+         "unIdentitee",
+         "testIdentitee",
+         "testEq2",
+         "nestedBinds",
+         "anIntLit",
+         "aStringLit",
+         "aVal",
+         "testTuple",
+         "testCons",
+         "cons",
+         "aList",
+         "aFunction2",
+         "polyInObjMatch",
+         "arrForall",
+         "testBinders",
+         "testBindersCase",
+         "testValidator",
+         "testasum",
+         "aBool",
+         "aFunction",
+         "aFunction3",
+         "testBuiltin",
+         "main",
+         "plus",
+         "testPlus",
+         "guardedCase",
+         "anObj",
+         "objUpdate",
+         "polyInObj",
+         "aPred",
+         "id",
+         "testId",
+         "objForall",
+         "arrForall"
+       ]

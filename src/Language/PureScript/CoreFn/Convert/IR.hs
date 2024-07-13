@@ -8,6 +8,7 @@
 {-# LANGUAGE UndecidableInstances #-}
 {-# LANGUAGE StandaloneKindSignatures #-}
 {-# LANGUAGE QuantifiedConstraints #-}
+{-# OPTIONS_GHC -Wno-deferred-out-of-scope-variables #-}
 
 module Language.PureScript.CoreFn.Convert.IR where
 
@@ -383,13 +384,16 @@ instance Pretty Ty where
         renderBoundVar :: (TypeVarVisibility, Text, Kind) -> Doc ann
         renderBoundVar (_, var, mk) =  parens (pretty var <+> "::" <+> pretty mk)
 
+bvType :: BVar ty -> ty
+bvType (BVar _ t _) = t
+
 instance (Pretty a, Pretty ty, TypeLike ty) => Pretty (Exp x ty a) where
   pretty = \case
     V x -> pretty x
     LitE ty lit -> parens $ pretty lit <+> "::" <+> pretty ty
     LamE ty bv body' ->
       let unscoped = fromScope body'
-      in group . align $ "\\" <> parens (align $ pretty bv <+> "::" <+> pretty (head $ splitFunTyParts ty))
+      in group . align $ "\\" <> parens (align $ pretty bv <+> "::" <+> pretty (bvType bv))
          <+> "->" <> hardline
          <> indent 4 (pretty unscoped)
     appE@(AppE _ _) -> case unsafeAnalyzeApp appE of
@@ -463,7 +467,10 @@ ppTy :: Ty -> String
 ppTy = T.unpack . renderStrict . layoutPretty defaultLayoutOptions . pretty
 
 unsafeAnalyzeApp :: forall x a ty. Exp x ty a -> (Exp x ty a, [Exp x ty a])
-unsafeAnalyzeApp e = fromJust $ (,appArgs e) <$> appFun e
+unsafeAnalyzeApp  = fromJust . analyzeApp
+
+analyzeApp :: forall x a ty. Exp x ty a -> Maybe (Exp x ty a, [Exp x ty a])
+analyzeApp e =  (,appArgs e) <$> appFun e
   where
     appArgs :: Exp x ty a -> [Exp x ty a]
     appArgs (AppE t1 t2) = appArgs t1 <> [t2]
@@ -477,6 +484,7 @@ unsafeAnalyzeApp e = fromJust $ (,appArgs e) <$> appFun e
           Just tx' -> Just tx'
         go other = Just other
     appFun _ = Nothing
+
 
 expTy :: forall x t a. (TypeLike t, Pretty t) => (a -> Var (BVar t) (FVar t)) -> Exp x t a -> t
 expTy f = \case

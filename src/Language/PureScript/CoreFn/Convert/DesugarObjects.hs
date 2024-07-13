@@ -26,10 +26,9 @@ import Language.PureScript.CoreFn.Convert.Monomorphize.Utils
     ( mkFieldMap,
       findDeclBody,
       decodeModuleIO,
-      MonoError(MonoError),
-      IR_Decl )
+      MonoError(MonoError))
 import Language.PureScript.CoreFn.Convert.Monomorphize
-    ( runMonomorphize )
+    ( runMonomorphize, instantiateAllConstructors )
 import Data.Text (Text)
 import Bound ( Var(..) )
 import Data.Bifunctor (Bifunctor(second))
@@ -52,7 +51,7 @@ import Language.PureScript.CoreFn.Convert.IR
 import Language.PureScript.CoreFn.Utils ( exprType, Context )
 import Data.Map (Map)
 import Language.PureScript.Constants.Prim qualified as C
-import Language.PureScript.CoreFn.Convert.DesugarCore (WithoutObjects, WithObjects, desugarCoreModule, DS, liftErr, bind, getVarIx)
+import Language.PureScript.CoreFn.Convert.DesugarCore (WithoutObjects, WithObjects, desugarCoreModule, DS, liftErr, bind, getVarIx, IR_Decl)
 import Data.Void (Void, absurd)
 
 
@@ -73,6 +72,7 @@ import Bound.Scope
 import Control.Monad (join)
 import Control.Monad.State (runStateT, evalStateT)
 import Language.PureScript.CoreFn.Convert.Debug
+import Distribution.Utils.Progress (stepProgress)
 
 prettyStr :: Pretty a => a -> String
 prettyStr = T.unpack . renderStrict . layoutPretty defaultLayoutOptions . pretty
@@ -199,7 +199,13 @@ allTypes e = e ^.. icosmos @Context @(Expr Ann) M.empty . to exprType
 
 tryConvertExpr :: Exp WithObjects SourceType (Var (BVar SourceType) (FVar SourceType))
                -> DS (Exp WithoutObjects Ty (Var (BVar Ty) (FVar Ty)))
-tryConvertExpr =  tryConvertExpr' id
+tryConvertExpr =
+  {- TODO: We have to instantiate constructors here to keep the types correct for the later steps
+           in the pipeline, but we really get this into a state where we can see all the transformations
+           in one place (i.e. by unifying the disparate functionality of the several monads we have
+           & representing the pipeline as a sequence of kleisli arrows)
+  -}
+  fmap instantiateAllConstructors . tryConvertExpr' id
 
 tryConvertExpr' :: forall a.
                    Pretty a
@@ -208,8 +214,11 @@ tryConvertExpr' :: forall a.
                 -> DS (Exp WithoutObjects Ty (Var (BVar Ty) (FVar Ty)))
 tryConvertExpr' toVar  __expr =  do
     result <- go  __expr
-    let spacer = replicate 20 '-'
-    doTraceM "tryConvertExpr'" ("\n  Expr:\n" <> ppExp __expr <> "\n\n  Result:\n" <> ppExp result)
+    let msg = "INPUT:\n" <> ppExp __expr
+               <> "\n\nINPUT TY:\n" <> prettyStr (expTy toVar __expr)
+               <> "\n\nRESULT:\n" <> ppExp result
+               <> "\n\nRESULT TY:\n" <> prettyStr (expTy id result)
+    doTraceM "tryConvertExpr'" msg 
     pure result
   where
     go ::  Exp WithObjects SourceType a  -> DS (Exp WithoutObjects Ty (Var (BVar Ty) (FVar Ty)))
@@ -249,13 +258,13 @@ tryConvertExpr' toVar  __expr =  do
         F (FVar t qi) -> do
           t' <- goType t
           pure . V . F $ FVar t' qi
-      TyInstE t e -> TyInstE <$> goType t <*> go e 
+      TyInstE t e -> TyInstE <$> goType t <*> go e
      where
        -- TODO: Error location w/ scope in alts
        goAlt :: Alt WithObjects SourceType (Exp WithObjects SourceType) a
              -> DS (Alt WithoutObjects Ty (Exp WithoutObjects Ty) (Var (BVar Ty) (FVar Ty)))
        goAlt  (UnguardedAlt binders pat e) = do
-         binders' <- fmap M.fromList $ traverse (traverse (traverse goType)) (M.toList binders)
+         binders' <- M.fromList <$> traverse (traverse (traverse goType)) (M.toList binders)
          pat' <- goPat pat
          let unscoped  =  join <$> fromScope (toVar <$> e)
          e' <- toScope . fmap F <$> tryConvertExpr' id  unscoped
@@ -469,7 +478,7 @@ tryConvertExpr' toVar  __expr =  do
                    <> "\n\nFIELD TYPES:\n" <> prettyStr types'
                    <>  "\n\nRESULT RHS:\n" <> prettyStr rhs
                    <>  "\n\nOUTPUT RESULT:\n" <> prettyStr result
-         doTraceM "desugarObjectAccessor" msg 
+         doTraceM "desugarObjectAccessor" msg
          pure $ CaseE fieldTy e' [altBranch]
 
 assembleDesugaredObjectLit :: forall x a. Exp x Ty a  -> Ty -> [Exp x Ty a] -> DS  (Exp x Ty a)
@@ -494,7 +503,7 @@ primData = tupleDatatypes <> Datatypes tDict cDict
     tDict = M.fromList $ map (\x -> (x ^. dDataTyName,x))
         [ DataDecl Data C.Array [("a", KindType)] [
             CtorDecl ArrayNil [],
-            CtorDecl ArrayCons $ mkProdFields [TyVar "a" KindType]
+            CtorDecl ArrayCons $ mkProdFields [TyVar "a" KindType, TyApp (TyCon C.Array) (TyVar "a" KindType)]
           ],
 
           DataDecl Data C.Boolean [] [

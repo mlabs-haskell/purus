@@ -3,7 +3,8 @@
 {-# LANGUAGE ScopedTypeVariables, TypeApplications  #-}
 {-# OPTIONS_GHC -Wno-unrecognised-pragmas #-}
 {-# HLINT ignore "Use if" #-}
-module Language.PureScript.CoreFn.Convert.Monomorphize (runMonomorphize, testMono, isConstructorE, isConstructor) where
+{-# HLINT ignore "Use <&>" #-}
+module Language.PureScript.CoreFn.Convert.Monomorphize (runMonomorphize, testMono, isConstructorE, isConstructor, instantiateAllConstructors) where
 
 import Prelude
 
@@ -43,17 +44,16 @@ import Control.Monad.RWS.Class (MonadReader(ask))
 import Control.Monad.RWS (RWST(..))
 import Control.Monad.Except (throwError)
 import Language.PureScript.CoreFn.Convert.DesugarCore
-    ( desugarCoreModule, WithObjects )
+    ( desugarCoreModule, WithObjects, IR_Decl )
 import Bound.Var (Var(..))
 import Bound.Scope (mapBound, fromScope, toScope, Scope(..), abstract)
 import Language.PureScript.CoreFn.TypeLike
-    ( TypeLike(..), quantify, getAllInstantiations )
+    ( TypeLike(..), quantify, getAllInstantiations, instantiateWithArgs )
 import Language.PureScript.CoreFn.Convert.Monomorphize.Utils
     ( mkFieldMap,
       findDeclBody,
       decodeModuleIO,
       MonoError(..),
-      IR_Decl,
       extractAndFlattenAlts,
       findInlineDeclGroup,
       freshBVar,
@@ -115,7 +115,7 @@ runMonomorphize ::
   Exp WithObjects PurusType (Var (BVar PurusType) (FVar PurusType)) ->
   Either MonoError (Exp WithObjects PurusType (Var (BVar PurusType) (FVar PurusType)))
 runMonomorphize Module{..} _modulesInScope expr =
-  runRWST (transformM monomorphize ( expr) >>= inlineEverything >>= (pure . instantiateAllConstructors)) (moduleName,fmap F <$> moduleDecls) (MonoState 100000) & \case -- FIXME: That 0 needs to be a MaxBv or we need to pass the real value from the core desugarer state
+  runRWST (transformM monomorphize ( expr) >>= inlineEverything >>= (pure . instantiateAllConstructors)) (moduleName, moduleDecls) (MonoState 100000) & \case -- FIXME: That 0 needs to be a MaxBv or we need to pass the real value from the core desugarer state
     Left err -> Left err
     Right (a,_,_) -> do
       doTraceM "runMonomorphize" ("OUTPUT: \n" <> ppExp a <> "\n" <> replicate 20 '-')
@@ -203,6 +203,7 @@ inlineEverything xp = do
 isBuiltinE :: Exp x ty1 (Var b (FVar ty2)) -> Bool
 isBuiltinE = \case
   V (F (FVar _ qi)) -> isBuiltin qi
+  TyInstE _ e -> isBuiltinE e
   _ -> False
 
 isBuiltin :: Qualified a -> Bool
@@ -212,6 +213,7 @@ isBuiltin _ = False
 isConstructorE :: Exp x ty1 (Var b (FVar ty2)) -> Bool
 isConstructorE = \case
   V (F (FVar _ qi)) -> isConstructor qi
+  TyInstE _ e -> isConstructorE e
   _ -> False
    -- After the recent changes, constructors *can't* be inlined, i.e., they must remain
    -- free until the final PIR compilation stage
@@ -247,7 +249,7 @@ handleFunction  toVar e [] = doTrace "handleFunction" ("FIN: " <> ppExp e) $ pur
    and check whether those types allow us to deduce the type to which the TyVar bound by the Forall in
    the lambda's type ought to be instantiated. (See the `instantiates` function)
 -}
-handleFunction toVar expr@(LamE (quantify -> (ForAll _ _ var _ inner  _)) bv@(BVar bvIx _ bvIdent) body'') (arg:args) = do
+handleFunction toVar expr@(LamE (ForAll _ _ var _ inner  _) bv@(BVar bvIx _ bvIdent) body'') (arg:args) = do
   traceM  ("abs:\n  " <> ppExp expr)
   let t = expTy toVar arg -- get the type of the first expression to which the function is applied
   traceM $ prettyTypeStr t
@@ -265,7 +267,7 @@ handleFunction toVar expr@(LamE (quantify -> (ForAll _ _ var _ inner  _)) bv@(BV
   body <- toScope  <$>  (\b ->  handleFunction id b $ fmap toVar <$> args) bodyUnscoped -- recurse on the body, with the rest of the arguments
   traceM ("bodyUnscoped:\n" <> prettyAsStr bodyUnscoped)
   let bodyT = expTy' F body
-      funT  = quantify $ doInstantiate $ function t bodyT
+      funT  = doInstantiate $ function t bodyT
       firstArgT = headArg funT
       e' = LamE funT (BVar bvIx firstArgT bvIdent) body
   pure $  AppE  (F <$> e') (toVar <$> arg) -- Put the app back together. (Remember, the params to this function come from a deconstructed AppE)
@@ -285,17 +287,26 @@ handleFunction toVar v@(V (toVar -> F (FVar ty qn))) es
     doTraceM "handleFunction" ("VarGo:\n\nVAR:\n" <> ppExp v <> "\n\nINLINED:\n" <> prettyAsStr e')
     handleFunction id e' (fmap toVar <$> es)
 
+handleFunction toVar v@(V (toVar -> B (BVar bvix bvty bvident))) es = do
+  case bvty of
+    -- N.B. This is really just special handling for polymorphic let-bound functions.
+    ForAll{} -> do
+      let toInstantiate = reverse . fmap snd $ getAllInstantiations bvty (expTy toVar <$> es)
+          v' = toVar <$> foldr TyInstE v toInstantiate
+      pure $ unsafeApply id v' (fmap toVar <$> es)
+    _ -> pure $ unsafeApply id (toVar <$> v) (fmap toVar <$> es)
 
 {- If the function parameter is monomorphic then we rebuild the initial AppE and return it.
 -}
 handleFunction toVar e es | isMonoType (expTy toVar e)  = doTraceM "handleFunction" ("isMono:\n" <> ppExp e) >>
                             pure $ unsafeApply id  (toVar <$> e) (fmap toVar <$> es)
 -- Anything else is an error.
-handleFunction _ e es = throwError $ MonoError
-                        $ "Error in handleFunction:\n  "
-                        <> ppExp e
-                        <> "\n  " <> show (ppExp <$> es)
-                        <> "\n  is not an abstraction or variable"
+handleFunction toVar e es = throwError $ MonoError
+                        $ "Error in handleFunction:\n\n"
+                        <> "FUN EXPR:\n  " <> prettyAsStr e
+                        <> "\n\nFUN TY:\n  " <> prettyAsStr (expTy toVar e)
+                        <> "\n\n ARGS:\n  " <> show (ppExp <$> es)
+                        <> "\n\nREASON: Not an abstraction or variable"
 
 {- | Monomorphizing inliner. Looks up the provided
      identifier in the module context (TODO: linker that lets us support multiple modules)
@@ -598,26 +609,43 @@ monomorphizeWithType ty expr
       pure $ (lbl,e') : rest'
 
 
-instantiateAllConstructors :: Exp WithObjects PurusType (Var (BVar PurusType) (FVar PurusType))
-                           -> Exp WithObjects PurusType (Var (BVar PurusType) (FVar PurusType))
+instantiateAllConstructors :: forall x t
+                            . (TypeLike t, Pretty t, Pretty (KindOf t))
+                           => Exp x t (Var (BVar t) (FVar t))
+                           -> Exp x t (Var (BVar t) (FVar t))
 instantiateAllConstructors = transform $ \case
   AppE e1 e2 -> case unsafeAnalyzeApp (AppE e1 e2) of
     (f,args) | isConstructorE f || isBuiltinE f ->
                let f' = instantiateConstructorWithArgs id f args
                in unsafeApply id f' args
     _ -> AppE e1 e2
-  other -> other 
+  other -> other
+
+
 
 -- should also work with builtins 
-instantiateConstructorWithArgs :: forall x a
-                                . (a -> Var (BVar PurusType) (FVar PurusType))
-                               -> Exp x PurusType a -- a non-monomorphized constructor
-                               -> [Exp x PurusType a] -- the arguments to which it is applied
-                               -> Exp x PurusType a
+instantiateConstructorWithArgs :: forall x t a
+                                . (TypeLike t, Pretty t, Pretty (KindOf t))
+                               => (a -> Var (BVar t) (FVar t))
+                               -> Exp x t a -- a non-monomorphized constructor
+                               -> [Exp x t a] -- the arguments to which it is applied
+                               -> Exp x t a
 instantiateConstructorWithArgs _ fun [] = fun
-instantiateConstructorWithArgs f fun args =  runInst fun (reverse used)
+instantiateConstructorWithArgs f fun args = doTrace "instantiateConstructorWithArgs" msg result 
   where
-    used = usedTypeVariables (expTy f fun)
+    quantifiedTyVars = fmap (\(a,b,c) -> (b,c))
+                       . fst
+                       . stripQuantifiers
+                       $ expTy f fun
+
+    msg = "INPUT FUN:\n" <> prettyAsStr (f <$> fun)
+          <> "\n\nINPUT FUN TY:\n" <> prettyAsStr (expTy f fun)
+          <> "\n\nINPUT ARGS:\n" <> prettyAsStr (fmap f <$> args)
+          <> "\n\nINPUT ARG TYPES:\n" <> prettyAsStr (expTy f <$> args)
+          <> "\n\nRESULT FUN:\n" <> prettyAsStr (f <$> result)
+          <> "\n\nRESULT FUN TY:\n" <> prettyAsStr (expTy f result)
+          <> "\n\nQUANTIFIED TYVARS:\n" <> prettyAsStr quantifiedTyVars
+    result = runInst fun (reverse quantifiedTyVars)
     instantiationDict = M.fromList $ getAllInstantiations (expTy f fun) (expTy f <$> args)
     runInst e [] = e
     runInst e ((t,_):usedRest) = case M.lookup t instantiationDict of

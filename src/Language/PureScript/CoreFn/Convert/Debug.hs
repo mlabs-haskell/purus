@@ -76,17 +76,21 @@ traceCfg = S.fromList [
        "ezMonomorphize",
        "desugarConstructorPattern"
       -}
-    "inlineAs",
+   {-  "inlineAs",
     "handleFunction",
     "monomorphize",
     "letBindRecursive",
-           "instantiateTyCon",
-       "mkDestructorFunTy",
-       "ezMonomorphize",
-       "desugarConstructorPattern",
-       "appType",
-       "monomorphizeWithType"
+    "instantiateTyCon",
+    "mkDestructorFunTy",
+    "ezMonomorphize",
+    "desugarConstructorPattern",
+    "appType",
+    "monomorphizeWithType",
+   -}
     --"mkIndexedBranch"
+
+    "desugarCoreLam",
+    "instantiateConstructorWithArgs"
     -- ToPIR
 
     -- IR

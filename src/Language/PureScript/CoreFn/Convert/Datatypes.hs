@@ -56,7 +56,7 @@ import Language.PureScript.Types
 import Language.PureScript.Constants.Prim qualified as C
 import Language.PureScript.Constants.Purus qualified as C
 import Language.PureScript.CoreFn.Convert.DesugarCore
-    ( WithoutObjects, matchVarLamAbs )
+    ( WithoutObjects, matchVarLamAbs, Vars )
 import Language.PureScript.CoreFn.Convert.Monomorphize.Utils (qualifyNull, unsafeApply)
 import Language.PureScript.CoreFn.Pretty (prettyTypeStr)
 import Data.Kind qualified as GHC
@@ -79,7 +79,7 @@ import Data.Bifunctor (second)
 import Language.PureScript.CoreFn.Convert.Debug
 import System.Random (mkStdGen,randomR)
 import Bound.Scope (Scope)
-import Control.Lens.Combinators (folded, transform)
+import Control.Lens.Combinators (folded, transform, preview)
 import Language.PureScript.CoreFn.Convert.Monomorphize (isConstructor)
 import Data.Traversable (for)
 
@@ -184,6 +184,10 @@ getBoundTyVarName nm = doTraceM "mkBoundTyVarName" (T.unpack nm) >>  do
   case M.lookup nm boundTyVars of
     Just tyName -> pure  tyName
     Nothing -> error $ "Free type variable in IR: " <> T.unpack nm
+
+-- Sometimes (e.g. when typing lambdas) we have to branch on whether the tv is already bound
+lookupTyVar :: Text -> DatatypeM (Maybe PIR.TyName)
+lookupTyVar nm = gets (preview (tyVars . ix nm))
 
 
 
@@ -475,9 +479,13 @@ eliminateCaseExpressionsTrace :: Datatypes IR.Kind Ty
                          -> Exp WithoutObjects Ty (Var (BVar Ty) (FVar Ty))
                          -> DatatypeM (Exp WithoutObjects Ty (Var (BVar Ty) (FVar Ty)))
 eliminateCaseExpressionsTrace _datatypes _exp = do
-  res <- eliminateCaseExpressions _datatypes _exp
+  let datatypes = _datatypes <> primData
+  res <- eliminateCaseExpressions datatypes _exp
   doTraceM "eliminateCaseExpressions" ("INPUT:\n" <> prettyStr _exp <> "\n\nOUTPUT:\n" <> prettyStr res)
-  pure . instantiateCtors (_datatypes <> primData)  $ res
+  pure
+    . instantiateNullaryWithAnnotatedType datatypes
+    . instantiateCtors datatypes
+    $ res
 
 eliminateCaseExpressions :: Datatypes IR.Kind Ty
                          -> Exp WithoutObjects Ty (Var (BVar Ty) (FVar Ty))
@@ -485,12 +493,12 @@ eliminateCaseExpressions :: Datatypes IR.Kind Ty
 eliminateCaseExpressions _datatypes = \case
   V x -> pure $ V x
   LitE t lit -> pure $ LitE t lit
-  LamE _ bv scoped -> do
+  LamE lamTy bv scoped -> do
     let unscoped = join <$> fromScope scoped
     rescoped <- eliminateCaseExpressions datatypes unscoped
     let t = quantify $ funTy (bvTy bv) (expTy id rescoped )
     pure
-     . LamE t bv
+     . LamE lamTy bv
      . toScope
      . fmap F
      $ rescoped
@@ -570,7 +578,9 @@ desugarLiteralPattern  = \case
     pure $ CaseE resTy eqTest [UnguardedAlt M.empty trueP rhs,
                                UnguardedAlt M.empty falseP rest
                               ]
-  CaseE _ _ (UnguardedAlt _ WildP rhs:_) -> pure $ join <$> fromScope rhs
+  CaseE _ _ (UnguardedAlt _ WildP rhs:_) -> pure $ join <$> fromScope rhs -- FIXME: Wrong! Need to do the same
+                                                                          -- catchall stuff we do in the ctor
+                                                                          -- case eliminator
   CaseE _ scrut (UnguardedAlt _ (VarP bvId bvIx _) rhs:_) -> pure $ flip instantiate rhs $ \case
     bv@(BVar bvIx' _ bvId') ->
       if bvIx == bvIx' && bvId == bvId'
@@ -963,6 +973,28 @@ analyzeTyApp t = (,tyAppArgs t) <$> tyAppFun t
         go other = Just other
     tyAppFun _ = Nothing
 
+instantiateNullaryWithAnnotatedType :: forall x t
+                                     . Datatypes IR.Kind Ty
+                                    -> Exp x Ty (Vars Ty)
+                                    -> Exp x Ty (Vars Ty)
+instantiateNullaryWithAnnotatedType datatypes _e = doTrace "instantiateNullaryWithAnnotatedType" msg result 
+  where
+    msg = "INPUT:\n" <> prettyStr _e
+          <> "\n\nOUTPUT:\n" <> prettyStr result
+    result = transform go _e
+    go :: Exp x Ty (Vars Ty)
+       -> Exp x Ty (Vars Ty)
+    go expr = case expr of
+      V (F (FVar ty nm)) | isConstructor nm ->
+        let cnm = ProperName . runIdent <$> nm
+            ctorDecl = either error snd $ getConstructorIndexAndDecl cnm datatypes
+        in case ctorDecl ^. cdCtorFields of
+            [] -> case analyzeTyApp ty of
+              Just (_,xs@(_:_)) -> foldr TyInstE expr (reverse xs)
+              _ -> expr
+            _ -> expr 
+      _ -> expr
+      
 monoCtorInst
   :: Qualified (ProperName 'TypeName)
   -> Qualified (ProperName 'ConstructorName)

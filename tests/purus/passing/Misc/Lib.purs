@@ -5,8 +5,6 @@ import Prim
 testCons :: Array Int
 testCons = Prim.Cons 1 Nil
 
-{- Type Classes -}
--- Single Param
 
 class TestClass (a :: Type) where
   testMethod :: a -> Boolean
@@ -272,7 +270,7 @@ testId = id 2
 objForall :: forall (a :: Type) (b :: Type). {getIdA :: a -> a, getIdB :: b -> b}
 objForall = {getIdA: id, getIdB: id}
 
-arrForall :: forall (a :: Type). Array (a -> a)
+arrForall ::  Array (forall (a :: Type). a -> a)
 arrForall = [id]
 
 {- We should probably just remove guarded case branches, see slack msg

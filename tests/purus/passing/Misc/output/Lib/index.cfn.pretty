@@ -566,7 +566,8 @@ arrForall =
   (Cons: forall (x :: Prim.Type). ((x :: Prim.Type) ->
   ((Array ((x :: Prim.Type)) -> (Array ((x :: Prim.Type)))))))
   (id: forall (t :: Prim.Type). ((t :: Prim.Type) -> ((t :: Prim.Type))))
-  (Nil: Array (((a :: Prim.Type) -> ((a :: Prim.Type)))))
+  (Nil: Array (forall (a :: Prim.Type). ((a :: Prim.Type) ->
+  ((a :: Prim.Type)))))
 
 anObj :: { foo :: Prim.Int }
 anObj = ({ foo: (3: Prim.Int) }: { foo :: Prim.Int })

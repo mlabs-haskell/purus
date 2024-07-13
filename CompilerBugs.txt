@@ -1,0 +1,135 @@
+NOT COMPILING:
+
+* mutuallyRecursiveBindinGroup
+  - Not abstracting variables correctly in lambda bodies
+  - Probably we use an abstract fn that only looks for the var bound in the lambda, should be easy to fix
+-------------
+letrec
+  !f_111 : integer -> integer = \(x_112 : integer) -> g_109 2
+  !g_109 : integer -> integer = \(y_110 : integer) -> h_106 (f_105 y_110) 3
+  !h_106 : integer -> integer -> integer
+    = \(x_107 : integer) (y_108 : integer) -> y_108
+in
+g_109 3
+*** Exception: user error (Error during PIR typechecking:
+Free variable at  () :  f)
+-------------
+
+
+* mutuallyRecursiveBindinGroupNoTypes
+  - Same as above
+
+
+* aFunction4
+  - This *should* fail b/c it mentions a polymorphic record in the type sig
+  - it works when applied to an argument that lets us monomorphize, see aFunction5
+
+
+* aFunction6
+  - Fails during object desugaring, seems like an unknown remains in there, likely related to the above list issue
+-------------
+let
+  go#185 = \(v#186 :: forall (z :: Prim.Type). ((z :: Prim.Type) -> (Prim.Int))) ->
+               (10 :: Prim.Int)
+in \(any#181 :: Array (t148)) ->
+       \(f#182 :: (forall (y :: Prim.Type). ((y :: Prim.Type) -> (Prim.Int)) -> (Prim.Int))) ->
+           f#182   # any#181
+     # Prim.Nil
+     # go#185
+*** Exception: user error (Unsupported type:
+  t148)
+-------------
+
+
+* recF1 / recG1 (mutually recursive)
+  - We're getting 'free variable' errors, probably what's happening is that
+    we need to bind all top level module identifiers like we do for let binding groups (should be ez fix)
+-------------
+/\x_96 -> \(x_48 : x_96) -> recF1_47 {x_96} x_48
+*** Exception: user error (Error during PIR typechecking:
+Free variable at  () :  recF1)
+-------------
+
+
+* nestedApplications
+  - Case expression wasn't eliminated properly. This is easy to fix, we just need to port over the
+    catchall handling machinery from `desugarConstructorPattern` to `desugarLiteralPattern`
+-------------
+*** Exception: Case expressions should be eliminated by now, but found:
+
+case v#86 of
+   2 ->
+     (3 :: Prim.Int)
+   _ ->
+     (5 :: Prim.Int)
+CallStack (from HasCallStack):
+  error, called at src/Language/PureScript/CoreFn/Convert/ToPIR.hs:269:17 in purescript-0.15.13-inplace:Language.PureScript.CoreFn.Convert.ToPIR
+-------------
+
+
+* consEmptyList1 / consEmptyList2
+  - Same error as the other list stuff
+-------------
+(/\a_191 ->
+   \(x_136 : integer) ->
+     /\a_191 -> \(xs_137 : Array_190 a_191) -> Cons_194 {integer} x_136 Nil_193)
+  1
+  Nil_193
+*** Exception: user error (Error during PIR typechecking:
+Type mismatch at () in term
+  '[ { Cons (con integer) } x ]'.
+Expected type
+  '(fun * *)',
+found type
+  '[ Array (con integer) ]')
+-------------
+
+
+* testEqViaOrd
+  - We expect the dictionary to have a record type in DesugarObjects but getting the dict via
+    superclass is a fn from the dict to the subclass method
+-------------
+\(dictOrd#129 :: forall (a :: Prim.Type). ((Lib.Ord$Dict ((a :: Prim.Type))) -> (((a :: Prim.Type) -> (((a :: Prim.Type) -> (Prim.Boolean))))))) ->
+    \(a#130 :: (a :: Prim.Type)) ->
+        \(b#131 :: (a :: Prim.Type)) ->
+            \(dict#125 :: forall (a :: Prim.Type). (Lib.Eq$Dict ((a :: Prim.Type)))) ->
+                case dict#125 of
+                   Eq$Dict v126@({ eq :: ((a :: Prim.Type) -> (((a :: Prim.Type) -> (Prim.Boolean)))) }) ->
+                     (v#126).eq
+                  # a#130
+              # (dictOrd#129).Eq0   # ({} :: (Prim.Record ({})))
+              # b#131
+*** Exception: ERROR: Record expression:
+  dictOrd#129
+  should have a Record type, but instead has type:
+  (Lib.Ord$Dict ((a :: Prim.Type)))
+CallStack (from HasCallStack):
+  error, called at src/Language/PureScript/CoreFn/Convert/DesugarObjects.hs:444:35 in purescript-0.15.13-inplace:Language.PureScript.CoreFn.Convert.DesugarObjects
+-------------
+
+
+* testValidatorApplied
+  - Free type variable. We lost the quantifiers somewhere here. Probably in the monomorphizer? This seems annoying b/c it worked last week, some of the other fixes must have broken it -_-
+  - Weirdly, the unapplied version works. I think that adding the explicit type abstractions is interacting weirdly with the monomorphizer.
+-------------
+==========END desugarCoreDecl: aBool==========
+\(datum#20 :: Prim.String) ->
+    \(redeemer#21 :: (b :: Prim.Type)) ->
+        \(context#22 :: (c :: Prim.Type)) ->
+            Prim.True
+  # ("datum" :: Prim.String)
+  # ("redeemer" :: Prim.String)
+  # ("context" :: Prim.String)
+tryConvertExpr result:
+\(datum#20 :: Prim.String) ->
+    \(redeemer#21 :: (b :: *)) ->
+        \(context#22 :: (c :: *)) ->
+            Prim.True
+  # ("datum" :: Prim.String)
+  # ("redeemer" :: Prim.String)
+  # ("context" :: Prim.String)
+
+*** Exception: Free type variable in IR: c
+CallStack (from HasCallStack):
+  error, called at src/Language/PureScript/CoreFn/Convert/Datatypes.hs:186:16 in purescript-0.15.13-inplace:Language.PureScript.CoreFn.Convert.Datatypes
+-------------
