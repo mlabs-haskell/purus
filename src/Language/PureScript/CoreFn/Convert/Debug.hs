@@ -18,8 +18,18 @@ type TraceCfg = S.Set String
 traceCfg :: TraceCfg
 traceCfg = S.fromList [
     -- DesugarCore
-    --"desugarCoreModule",
-    -- "desugarCore'",
+    "desugarCoreModule",
+    "desugarCore'",
+    "desugarCore",
+    "monomorphize",
+    "inlineAs",
+    "inlineEverything",
+    "monomorphizeWithBoundTyVars",
+    "updateTypes",
+    "monomorphizeWithType",
+    "monomorphizeWithTypeRec",
+    "desugarConstructorPattern",
+    "instantiateResTy"
 
     -- Monomorphize
     {- "runMonomorphize",
@@ -88,9 +98,6 @@ traceCfg = S.fromList [
     "monomorphizeWithType",
    -}
     --"mkIndexedBranch"
-
-    "desugarCoreLam",
-    "instantiateConstructorWithArgs"
     -- ToPIR
 
     -- IR
@@ -128,6 +135,9 @@ wrapTraceM identifier msg act = do
    pad str = padding <> str <> padding
    startMsg = pad $ "BEGIN " <> msg
    endMsg = pad $ "END " <> msg
+
+prettify :: [String] -> String
+prettify = concatMap (\x -> x <> "\n\n")
 
 mkMsg :: String -> String -> String
 mkMsg header body = spacer <> header <> spacer

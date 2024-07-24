@@ -20,11 +20,9 @@ import Language.PureScript.Names (
   Qualified (..),
   ProperName(..), runIdent, disqualify, ProperNameType (..), Ident)
 import Language.PureScript.CoreFn.FromJSON ()
-import Data.Map (Map)
 import Data.Map qualified as M
 import Data.Text qualified as T
 import Language.PureScript.PSString (prettyPrintString)
-import Language.PureScript.Constants.Prim qualified as C
  -- mainly for the module (we might need it for constructors? idk)
 import PlutusIR qualified as PIR
 import PlutusCore (Unique (..), runQuoteT, latestVersion)
@@ -38,7 +36,6 @@ import Data.Kind qualified as GHC
 import Type.Reflection ( Typeable, TypeRep, typeRep )
 import Bound.Scope (instantiateEither)
 import Data.List.NonEmpty qualified as NE
-import Language.PureScript.CoreFn.Desugar.Utils (showIdent', properToIdent)
 import Language.PureScript.CoreFn.Convert.Datatypes
     ( getConstructorName,
       toPIRType,
@@ -48,8 +45,7 @@ import Language.PureScript.CoreFn.Convert.Datatypes
       PIRType,
       PIRTerm,
       mkTypeBindDict,
-      pirDatatypes,
-      mkNewTyVar, bindTV, mkKind, eliminateCaseExpressions, eliminateCaseExpressionsTrace, lookupTyVar, getBoundTyVarName)
+      pirDatatypes, mkKind, eliminateCaseExpressionsTrace, bindTV)
 import Control.Monad.Except (MonadError(..))
 import Language.PureScript.CoreFn.Module (
   Datatypes,
@@ -73,7 +69,7 @@ import Data.Bifunctor (Bifunctor(..))
 import PlutusIR.Core.Instance.Pretty.Readable (prettyPirReadable)
 import Bound ( Var(..) )
 import Control.Monad
-    ( join, foldM, void, forM_ )
+    ( join, foldM, void )
  -- mainly for the module (we might need it for constructors? idk)
 import Language.PureScript.CoreFn.Convert.IR
     ( expTy,
@@ -82,7 +78,7 @@ import Language.PureScript.CoreFn.Convert.IR
       Exp(..),
       FVar(..),
       BVar(..),
-      Ty(TyCon), unsafeAnalyzeApp, expTy' )
+      Ty(TyCon), expTy' )
 import PlutusIR
     ( Name(Name),
       VarDecl(VarDecl),
@@ -103,10 +99,8 @@ import PlutusIR.Error ( Error )
 import Control.Exception ( throwIO )
 import PlutusCore.Evaluation.Machine.Ck
     ( EvaluationResult, unsafeEvaluateCk )
-import Prettyprinter ( Pretty)
 import PlutusIR (Program(Program))
 import PlutusCore.Pretty (prettyPlcReadableDef)
-import Language.PureScript.CoreFn.Convert.Monomorphize (isConstructorE)
 import Data.Functor qualified
 import Bound.Scope (fromScope)
 import Language.PureScript.CoreFn.Convert.Debug
@@ -237,32 +231,26 @@ firstPass' _datatypes f _exp = doTraceM "firstPass'" (prettyStr _exp) >> case _e
                      $ T.unpack nm
                      <> " isn't a builtin, and it shouldn't be possible to have a free variable that's anything but a builtin"
     B (BVar bvix _ (runIdent -> nm)) -> pure $ PIR.Var () (Name nm $ Unique bvix)
-  LitE litTy lit -> firstPassLit litTy lit
-  lam@(LamE annTy (BVar bvIx bvTy bvNm) body) -> do
+  LitE _ lit -> firstPassLit lit
+  lam@(LamE  (BVar bvIx bvTy bvNm) body) -> do
     let lty = funTy bvTy (expTy' f body)
-        used = (\(_,b,c) -> (b,c)) <$> fst (stripQuantifiers annTy)
-        msg = "BVar:\n" <> prettyStr bvNm
-              <> "\n\nInput Lam:\n" <> prettyStr lam 
-              <> "\n\nInferred Lam Ty:\n" <> prettyStr lty
-              <> "\n\nAnnotated Lam Ty:\n" <> prettyStr annTy
-    doTraceM "firstPassLamTy" msg
-
-    forM_ used $ \(v,_) -> lookupTyVar v >>= \case
-      Nothing -> do
-        v' <- mkNewTyVar v
-        bindTV v v'
-      Just _ -> pure ()
     ty' <- toPIRType  bvTy
     let nm = Name (runIdent bvNm) $ Unique bvIx
         body' = instantiateEither (either (IR.V . B) (IR.V . F)) body
     body'' <-  firstPass datatypes (>>= f) body'
-    mkTyLam used $  PIR.LamAbs () nm ty' body''
+    let result = PIR.LamAbs () nm ty' body''
+        msg = "BVar:\n" <> prettyStr bvNm
+              <> "\n\nInput Lam:\n" <> prettyStr lam
+              <> "\n\nInferred Lam Ty:\n" <> prettyStr lty
+              <> "\n\nRESULT: " <> prettyStr result
+    doTraceM "firstPassLamTy" msg
+    pure result
   AppE e1 e2  ->  do
     e1' <- firstPass datatypes f e1
     e2' <- firstPass datatypes f e2
     pure $ PIR.Apply () e1' e2'
   LetE varMap binds body -> do
-    boundTerms <- foldM (convertBind (mkDict varMap)) [] binds -- FIXME: This is almost certainly wrong. We should remove the Var Map
+    boundTerms <- foldM convertBind  [] binds -- FIXME: This is almost certainly wrong. We should remove the Var Map
     body' <- firstPass datatypes (>>= f) $ instantiateEither (either (IR.V . B) (IR.V . F)) body
     case NE.nonEmpty boundTerms of
       -- NOTE: For simplicity we assume here that all let bindings are mutually recursive.
@@ -274,21 +262,22 @@ firstPass' _datatypes f _exp = doTraceM "firstPass'" (prettyStr _exp) >> case _e
     t' <- toPIRType t
     e' <- firstPass datatypes f e
     pure $ PIR.TyInst () e' t'
+  TyAbs (BVar bvIx bvTy bvNm) e -> do
+    let bvKind = mkKind bvTy
+        bvNmTxt = runIdent bvNm
+        tNm    = PIR.TyName $ PIR.Name (runIdent bvNm) (Unique bvIx)
+    bindTV bvNmTxt tNm
+    e' <- firstPass datatypes f e
+    pure $ PIR.TyAbs () tNm bvKind  e' 
  where
-   mkTyLam :: [(Text,IR.Kind)] -> PIRTerm -> DatatypeM PIRTerm
-   mkTyLam [] e = pure e
-   mkTyLam ((nm,k):rest) e = getBoundTyVarName nm >>= \tNm ->
-     PIR.TyAbs () tNm (mkKind k) <$> mkTyLam rest e
-
    datatypes = _datatypes <> primData
 
    mkDict = M.fromList . fmap (\(a,FVar _ ident) -> (disqualify ident,a)) . M.toList
 
-   convertBind :: Map Ident Int
-               -> [PIRTermBind]
+   convertBind :: [PIRTermBind]
                -> BindE Ty (Exp WithoutObjects Ty) a
                -> DatatypeM [PIRTermBind]
-   convertBind dict acc = \case
+   convertBind  acc = \case
      NonRecursive ident bvix expr -> do
        let unscoped = fmap join . fromScope $ f <$>  expr
        nonRec <- goBind (ident,bvix) unscoped
@@ -305,10 +294,9 @@ firstPass' _datatypes f _exp = doTraceM "firstPass'" (prettyStr _exp) >> case _e
          -- NOTE: Not sure if this should always be strict?
          pure $ TermBind () Strict (VarDecl () nm ty) expr'
 
-   firstPassLit :: Ty
-                -> Lit WithoutObjects (Exp WithoutObjects Ty a)
+   firstPassLit :: Lit WithoutObjects (Exp WithoutObjects Ty a)
                 -> DatatypeM PIRTerm
-   firstPassLit litTy = \case
+   firstPassLit  = \case
     IntL i -> pure $ mkConstant () i
     StringL str -> -- REVIEW/TODO/FIXME: This is probably wrong?
        pure $ mkConstant () $ prettyPrintString str
@@ -466,5 +454,6 @@ passing = traverse_ eval passingTests
          "id",
          "testId",
          "objForall",
-         "arrForall"
+         "arrForall",
+         "testValidatorApplied"
        ]

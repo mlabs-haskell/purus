@@ -155,6 +155,8 @@ instance TypeLike Ty where
     (a :~> b) -> Just (a,b)
     _ -> Nothing
 
+  quantify1 nm kind inner = Forall TypeVarInvisible nm kind inner Nothing
+
 -- HACK: Need this for pretty printer, refactor later
 class FuncType ty where
   -- | Get first argument of a function, if function or act as identity otherwise
@@ -228,24 +230,27 @@ type family XObjectLiteral x
 data Exp x ty a
  = V a -- let's see if this works
  | LitE ty (Lit x (Exp x ty a))
- | LamE ty (BVar ty) (Scope (BVar ty) (Exp x ty) a)
+ | LamE (BVar ty) (Scope (BVar ty) (Exp x ty) a)
  | AppE (Exp x ty a) (Exp x ty a)
  | CaseE ty (Exp x ty a) [Alt x ty (Exp x ty) a]
  | LetE (Bindings ty) [BindE ty (Exp x ty) a] (Scope (BVar ty) (Exp x ty) a)
  | AccessorE !(XAccessor x) ty PSString (Exp x ty a)
  | ObjectUpdateE !(XObjectUpdate x) ty (Exp x ty a) (Maybe [PSString]) [(PSString, Exp x ty a)]
  | TyInstE ty (Exp x ty a)
+ | TyAbs (BVar (KindOf ty)) (Exp x ty a)
  deriving (Functor,Foldable,Traversable)
 
-deriving instance (Eq ty, Eq a, Eq (XAccessor x), Eq (XObjectUpdate x), Eq (XObjectLiteral x)) => Eq (Exp x ty a)
+deriving instance (Eq ty, Eq a, Eq (KindOf ty), Eq (XAccessor x), Eq (XObjectUpdate x), Eq (XObjectLiteral x)) => Eq (Exp x ty a)
 
-instance Eq ty => Eq1 (Exp x ty) where
+instance (Eq ty, Eq (KindOf ty)) => Eq1 (Exp x ty) where
   liftEq eq (V a) (V b) = eq a b
   liftEq eq (LitE t1 l1) (LitE t2 l2) = t1 == t2 && liftEq (liftEq eq) l1 l2
-  liftEq eq (LamE t1 n1 e1) (LamE t2 n2 e2) = t1 == t2 && n1 == n2 && liftEq eq e1 e2
+  liftEq eq (LamE n1 e1) (LamE n2 e2) =  n1 == n2 && liftEq eq e1 e2
   liftEq eq (AppE l1 l2) (AppE r1 r2) = liftEq eq l1 r1 && liftEq eq l2 r2
   liftEq eq (CaseE t1 es1 as1) (CaseE t2 es2 as2) = t1 == t2 && liftEq eq es1 es2 && liftEq (liftEq eq) as1 as2
   liftEq eq (LetE n1 bs1 e1) (LetE n2 bs2 e2) = n1 == n2 && liftEq (liftEq eq) bs1 bs2 && liftEq eq e1 e2
+  liftEq eq (TyInstE t1 e1) (TyInstE t2 e2) = t1 == t2 && liftEq eq e1 e2
+  liftEq eq (TyAbs bv1 e1) (TyAbs bv2 e2) = bv1 == bv2 && liftEq eq e1 e2
   liftEq _ _ _ = False
 
 instance Eq1 (Lit x) where
@@ -287,7 +292,7 @@ instance Monad (Exp x ty) where
   return = pure
   V a           >>= f     = f a
   AppE e1 e2    >>=   f = AppE (e1 >>= f) (e2 >>= f)
-  LamE t i e   >>=    f = LamE t i (e >>>= f)
+  LamE i e   >>=    f = LamE i (e >>>= f)
   LetE n bs e >>=     f = LetE n (map (>>>= f) bs) (e >>>= f)
   CaseE t es alts >>=   f = CaseE t (es >>= f) (map (>>>= f) alts)
   LitE t lit        >>= f = LitE t $ goLit lit
@@ -301,6 +306,7 @@ instance Monad (Exp x ty) where
         -- ConstArrayL lits -> ConstArrayL  lits
         ObjectL ext obj -> ObjectL ext $ map (\(field, x) -> (field, x >>= f)) obj
   TyInstE t e >>= f = TyInstE t (e >>= f)
+  TyAbs bv e >>= f = TyAbs bv (e >>= f)
   AccessorE ext ty field expr >>= f = AccessorE ext ty field (expr >>= f)
   ObjectUpdateE ext ty expr toCopy toUpdate >>= f =
     ObjectUpdateE ext ty (expr >>= f) toCopy (map (\(field, x) -> (field, x >>= f)) toUpdate)
@@ -387,11 +393,11 @@ instance Pretty Ty where
 bvType :: BVar ty -> ty
 bvType (BVar _ t _) = t
 
-instance (Pretty a, Pretty ty, TypeLike ty) => Pretty (Exp x ty a) where
+instance (Pretty a, Pretty ty, Pretty (KindOf ty), TypeLike ty) => Pretty (Exp x ty a) where
   pretty = \case
     V x -> pretty x
     LitE ty lit -> parens $ pretty lit <+> "::" <+> pretty ty
-    LamE ty bv body' ->
+    LamE bv body' ->
       let unscoped = fromScope body'
       in group . align $ "\\" <> parens (align $ pretty bv <+> "::" <+> pretty (bvType bv))
          <+> "->" <> hardline
@@ -415,8 +421,11 @@ instance (Pretty a, Pretty ty, TypeLike ty) => Pretty (Exp x ty a) where
     AccessorE _ _ field expr -> parens (pretty expr) <> dot <> pretty field
     ObjectUpdateE _ _ _ _ _ -> "TODO: Implement ObjectUpdateE printer"
     TyInstE t e -> pretty e <+> "@" <> parens (pretty t)
+    TyAbs bv e -> "/\\" <+> (align $ pretty bv <+> "::" <+> pretty (bvType bv))
+                  <+> "->" <> hardline
+                  <> indent 4 (pretty e)
 
-instance (Pretty a, Pretty ty, TypeLike ty) => Pretty (Alt x ty (Exp x ty) a) where
+instance (Pretty a, Pretty ty, Pretty (KindOf ty), TypeLike ty) => Pretty (Alt x ty (Exp x ty) a) where
   pretty = \case
     UnguardedAlt _ ps body -> pretty ps <+> "->" <>
                               hardline <> indent 2 (pretty $ fromScope body)
@@ -451,7 +460,7 @@ instance (Pretty a, Pretty t) => Pretty (Pat x t (Exp x ty) a) where
       ObjectL _ _obj -> "TODO: Implement ObjectL pattern printer"
     ConP cn _ ps -> pretty (runProperName . disqualify $ cn) <+> hsep (pretty <$> ps)
 
-instance (Pretty a, Pretty ty, TypeLike ty, Pretty (Exp x ty a)) => Pretty (BindE ty (Exp x ty) a) where
+instance (Pretty a, Pretty (KindOf ty), Pretty ty, TypeLike ty, Pretty (Exp x ty a)) => Pretty (BindE ty (Exp x ty) a) where
   pretty = \case
     NonRecursive i ix e -> let e' = fromScope e in pretty (runIdent i) <> "#" <> pretty ix  <+> "=" <+> pretty e'
     Recursive es ->
@@ -460,7 +469,7 @@ instance (Pretty a, Pretty ty, TypeLike ty, Pretty (Exp x ty a)) => Pretty (Bind
             in pretty (runIdent ident) <> "#" <> pretty ix <+> "=" <+> pretty expr'
       in align . vcat $ go <$> es
 
-ppExp :: (Pretty a, Pretty ty, TypeLike ty) => Exp x ty a -> String
+ppExp :: (Pretty a, Pretty ty, Pretty (KindOf ty), TypeLike ty) => Exp x ty a -> String
 ppExp = T.unpack . renderStrict . layoutPretty defaultLayoutOptions . pretty
 
 ppTy :: Ty -> String
@@ -492,13 +501,14 @@ expTy f = \case
     B (BVar _ t _) -> t
     F (FVar t _) -> t
   LitE t _ -> t
-  LamE t _ _ -> t 
+  LamE (BVar _ t _) body -> t `funTy` expTy' f body
   AppE e1 e2 -> appType f e1 e2
   CaseE t _ _  -> t
   LetE _ _ e -> expTy' f e
   AccessorE _ t _ _ -> t
   ObjectUpdateE _ t _ _ _ -> t
   TyInstE t e -> instTy t $ expTy f e
+  TyAbs (BVar _ k idnt) inner -> quantify1 (runIdent idnt) k (expTy f inner)
 
 expTy' :: forall x t a. (TypeLike t, Pretty t) => (a -> Var (BVar t) (FVar t)) -> Scope (BVar t) (Exp x t) a -> t
 expTy' f scoped = case instantiateEither (either (V . B) (V . F)) scoped of
@@ -506,12 +516,18 @@ expTy' f scoped = case instantiateEither (either (V . B) (V . F)) scoped of
     B (BVar _ t _) -> t
     F (FVar t _) -> t
   LitE t _ -> t
-  LamE t _ _  -> t
+  LamE (BVar _ t _) body  ->
+    let body' = join <$> fmap f <$> body
+    in t `funTy` expTy' id body'
   AppE  e1 e2 -> appType (>>= f) e1 e2
   CaseE t _ _  -> t
   LetE  _ _ e -> expTy' (>>= f) e
   AccessorE _ t _ _ -> t
   ObjectUpdateE _ t _ _ _ -> t
+  TyAbs (BVar _ k idnt) inner ->
+    let e' = join <$> fmap f <$> inner
+        innerT = expTy id e'
+    in quantify1 (runIdent idnt) k innerT 
   TyInstE t e ->
     let e' = join <$> fmap f <$> e
     in instTy t (expTy id e')
@@ -519,15 +535,22 @@ expTy' f scoped = case instantiateEither (either (V . B) (V . F)) scoped of
 -- | Gets the type of an application expression.
 --   (Name might be a bit confusing, does not apply types)
 appType :: forall x t a. (TypeLike t, Pretty t) => (a -> Var (BVar t) (FVar t)) -> Exp x t a -> Exp x t a -> t
-appType h fe ae = doTrace "appType" (
-      "\nINPUT FUN:\n" <> prettyAsStr (expTy h fe) <>
-      "\n\nINPUT ARGS:\n" <> prettyAsStr (expTy h ae)
-      <> "\n\nRESULT\n: " <> prettyAsStr result) result
+appType h fe ae = doTrace "appType" msg  result
   where
+    errmsg = (
+      "\nINPUT FUN:\n" <> prettyAsStr (expTy h fe) <>
+      "\n\nINPUT ARGS:\n" <> prettyAsStr (expTy h ae))
+
+    msg = errmsg <> "\n\nRESULT\n: " <> prettyAsStr result
+
+    foldr1Trace f xs
+      | null xs = error $ "appType\n\n" <> errmsg
+      | otherwise = foldr1 f xs
+
     result = case unsafeAnalyzeApp (AppE fe ae) of
       (fe',ae') ->
           quantify
-        . foldr1 funTy
+        . foldr1Trace funTy
         . drop (length ae')
         . splitFunTyParts
         . snd
@@ -542,11 +565,11 @@ instance (Show (XObjectLiteral x)) => Show1 (Lit x) where
 instance (Show (XObjectLiteral x), Show t) => Show1 (Pat x t f) where
   liftShowsPrec = $(makeLiftShowsPrec ''Pat)
 
-instance (Show ty, Show (XAccessor x), Show (XObjectUpdate x), Show (XObjectLiteral x)) => Show1 (Exp x ty) where
+instance (Show ty, Show (KindOf ty), Show (XAccessor x), Show (XObjectUpdate x), Show (XObjectLiteral x)) => Show1 (Exp x ty) where
   liftShowsPrec = $(makeLiftShowsPrec ''Exp)
 
 -- TH cannot derive it because `f` is used in last and second last field and some machinery doesn't like that
-instance (Show ty, Show (XAccessor x), Show (XObjectUpdate x), Show (XObjectLiteral x)) => Show1 (Alt x ty (Exp x ty)) where
+instance (Show ty, Show (KindOf ty), Show (XAccessor x), Show (XObjectUpdate x), Show (XObjectLiteral x)) => Show1 (Alt x ty (Exp x ty)) where
   liftShowsPrec sp sl d (UnguardedAlt i ps e)
     = showString "UnGuardedAlt "
       . showsPrec d i
@@ -555,12 +578,10 @@ instance (Show ty, Show (XAccessor x), Show (XObjectUpdate x), Show (XObjectLite
       . showString " "
       . liftShowsPrec sp sl d e
 
-deriving instance (Show a, Show ty, Show1 (Exp x ty), Show (XAccessor x), Show (XObjectUpdate x), Show (XObjectLiteral x)) => Show (Exp x ty a)
+deriving instance (Show a, Show (KindOf ty), Show ty, Show1 (Exp x ty), Show (XAccessor x), Show (XObjectUpdate x), Show (XObjectLiteral x)) => Show (Exp x ty a)
 
 makePrisms ''Ty
 makePrisms ''Exp
-
-
 
 mkBindings :: [FVar ty] -> Bindings ty
 mkBindings = M.fromList . zip [0..]

@@ -23,7 +23,7 @@ import PlutusIR qualified as PIR
 import PlutusCore qualified as PLC
 
 import Control.Lens
-    ( (^.), (^?), ix, to, cosmos, (^..), over, view, makeLenses, _1, mapped )
+    ( (^.), (^?), ix, to, cosmos, (^..), over, view, makeLenses, _1 )
 import Language.PureScript.Names
     ( ProperNameType(..),
       Qualified(..),
@@ -32,7 +32,7 @@ import Language.PureScript.Names
       pattern ByThisModuleName,
       showQualified,
       showIdent,
-      disqualify, runIdent, QualifiedBy (ByModuleName), ModuleName (..) )
+      disqualify, runIdent, QualifiedBy (ByModuleName) )
 import Bound.Var ( Var )
 
 
@@ -57,10 +57,18 @@ import Language.PureScript.Constants.Prim qualified as C
 import Language.PureScript.Constants.Purus qualified as C
 import Language.PureScript.CoreFn.Convert.DesugarCore
     ( WithoutObjects, matchVarLamAbs, Vars )
-import Language.PureScript.CoreFn.Convert.Monomorphize.Utils (qualifyNull, unsafeApply)
+import Language.PureScript.CoreFn.Convert.Monomorphize.Utils
+    ( unsafeApply, isConstructor )
 import Language.PureScript.CoreFn.Pretty (prettyTypeStr)
 import Data.Kind qualified as GHC
-import Bound.Scope ( bindings, instantiate, toScope, fromScope, abstract, mapBound )
+import Bound.Scope
+    ( bindings,
+      instantiate,
+      toScope,
+      fromScope,
+      abstract,
+      mapBound,
+      Scope )
 import Control.Monad.State ( gets, runState, modify, State )
 import Control.Monad.Except
     ( MonadError(throwError), runExceptT, ExceptT, liftEither )
@@ -71,18 +79,21 @@ import Data.Maybe (fromJust, isJust)
 import Debug.Trace
 import Bound (Var(..))
 import Prettyprinter (Pretty (..))
-import Control.Monad (join, (>=>))
+import Control.Monad (join)
 import Control.Lens.Plated (transformM)
 import PlutusCore.Name (Unique(Unique))
 import Data.List (sortOn)
 import Data.Bifunctor (second)
 import Language.PureScript.CoreFn.Convert.Debug
 import System.Random (mkStdGen,randomR)
-import Bound.Scope (Scope)
-import Control.Lens.Combinators (folded, transform, preview)
-import Language.PureScript.CoreFn.Convert.Monomorphize (isConstructor)
+import Control.Lens.Combinators (transform, preview)
 import Data.Traversable (for)
 
+
+foldr1Err :: Foldable t => String -> (a -> a -> a) -> t a -> a
+foldr1Err msg f ta
+ | null ta = error msg
+ | otherwise = foldr1 f ta 
 
 {- Monad for performing operations with datatypes. Supports limited TyVar binding
    operations for operating on type variables in scoped datatype declarations or
@@ -230,7 +241,7 @@ mkTypeBindDict _datatypes main = doTraceM "mkTypeBindDict" (prettyStr main) >>  
         go :: Exp WithoutObjects t (Var (BVar t) (FVar t)) -> Int -> Int
         go x acc = case x of
           V (B bv) -> max (bvIx bv) acc
-          LamE _ (BVar n _ _) _ -> max n acc
+          LamE (BVar n _ _) _ -> max n acc
           LetE _ _ scope ->  foldr (max . bvIx) acc (bindings scope)
           CaseE _ _ alts -> maxAlt acc alts
           AppE e1 e2     -> max (go e1 acc) (go e2 acc)
@@ -265,7 +276,7 @@ mkPIRDatatypes datatypes tyConsInExp = doTraceM "mkPIRDatatypes" (show $ S.map p
                         <> T.unpack (showQualified runProperName qn)
       Just dDecl -> do -- TODO: newtypes should probably be newtype-ey
         let declArgs = fst <$> dDecl ^. dDataArgs
-            declKind = mkDeclKind $ mkKind . snd <$> (dDecl ^. dDataArgs)
+            declKind = mkDeclKind $ mkKind . snd <$> dDecl ^. dDataArgs
         doTraceM "mkPIRDatatypes" $  "Decl " <> prettyStr dDecl
         doTraceM "mkPIRDatatypes" $ "decl args: "  <> show declArgs
         tyName <- mkTyName qn
@@ -285,9 +296,9 @@ mkPIRDatatypes datatypes tyConsInExp = doTraceM "mkPIRDatatypes" (show $ S.map p
                -> DatatypeM (PIR.VarDecl PIR.TyName PIR.Name PLC.DefaultUni ())
     mkCtorDecl qTyName dataArgs (cix,ctorDecl) =  doTraceM "mkCtorDecl" (prettyQPN qTyName) >> do
         let ctorFields = snd <$> ctorDecl ^. cdCtorFields
-            resultTy = foldl' TyApp (TyCon qTyName) (uncurry TyVar <$> dataArgs)
+            resultTy' = foldl' TyApp (TyCon qTyName) (uncurry TyVar <$> dataArgs)
             ctorFunTy :: Ty
-            ctorFunTy = foldr1 funTy (ctorFields <> [resultTy])
+            ctorFunTy = foldr1Err "mkCtorDecl" funTy (ctorFields <> [resultTy'])
         ctorName <- mkConstrName (ctorDecl ^. cdCtorName) cix
         ctorFunTyPIR <- toPIRType  ctorFunTy
         pure $ VarDecl () ctorName ctorFunTyPIR
@@ -295,7 +306,7 @@ mkPIRDatatypes datatypes tyConsInExp = doTraceM "mkPIRDatatypes" (show $ S.map p
     mkDeclKind :: [PIR.Kind ()] -> PIR.Kind ()
     mkDeclKind = \case
       [] -> PIR.Type ()
-      xs ->  foldr1 (PIR.KindArrow ()) (xs <> [PIR.Type ()])
+      xs ->  foldr1Err "mkDeclKind" (PIR.KindArrow ()) (xs <> [PIR.Type ()])
 
     -- the arguments to the *type*, i.e., they're all tyvars
     -- NOTE: We should really make changes such that `Maybe SourceType` is `SourceType`
@@ -378,7 +389,7 @@ getConstructorName qi = doTraceM "getConstructorName" (show qi) >> do
   ctors <- gets (view constrNames)
   traceM $ show ctors
   pure $ ctors ^? ix qi . _1
-
+ 
 
 prettyQPN :: Qualified (ProperName 'TypeName) -> String
 prettyQPN = T.unpack . showQualified runProperName
@@ -453,7 +464,7 @@ mkDestructorFunTy _datatypes tn = do
           tyAppliedToArgs = foldl' (\acc (t,k) -> TyApp acc (TyVar t k)) (TyCon tn) tyArgs
       let funTyLHS' out = foldr (\(txt,k) acc -> Forall TypeVarVisible txt k acc Nothing) out (dDecl ^. dDataArgs)
       n <- T.pack . show <$> next
-      let outVarNm = ("out" <> n)
+      let outVarNm = "out" <> n
           outVar   = TyVar outVarNm IR.KindType
       let funTyLHS inner = funTyLHS' $ Forall TypeVarVisible ("out" <> n) IR.KindType inner Nothing
           ctorfs = map snd . view cdCtorFields <$> dDecl ^. dDataCtors
@@ -468,7 +479,7 @@ mkDestructorFunTy _datatypes tn = do
    mkFunTyRHS outVar [] =  outVar
    mkFunTyRHS outVar ([]:fss) = outVar :~> mkFunTyRHS outVar fss
    mkFunTyRHS outVar (fs:fss) =
-     let fs' = foldr1 (:~>) fs
+     let fs' = foldr1Err "mkFunTyRHS" (:~>) fs
      in (fs' :~> outVar) :~> mkFunTyRHS outVar fss
 
 bvTy :: BVar ty -> ty
@@ -493,12 +504,11 @@ eliminateCaseExpressions :: Datatypes IR.Kind Ty
 eliminateCaseExpressions _datatypes = \case
   V x -> pure $ V x
   LitE t lit -> pure $ LitE t lit
-  LamE lamTy bv scoped -> do
+  LamE  bv scoped -> do
     let unscoped = join <$> fromScope scoped
     rescoped <- eliminateCaseExpressions datatypes unscoped
-    let t = quantify $ funTy (bvTy bv) (expTy id rescoped )
     pure
-     . LamE lamTy bv
+     . LamE bv
      . toScope
      . fmap F
      $ rescoped
@@ -509,9 +519,7 @@ eliminateCaseExpressions _datatypes = \case
   ce@CaseE{} ->
     case ezMonomorphize $  monomorphizePatterns datatypes ce of
       CaseE resTy _scrut _alts -> do
-        let retTy  = case head _alts of
-                                UnguardedAlt _ _ e -> expTy' id e
-                                _ -> error "Couldn't determine case expression return type"
+        let retTy  = case head _alts of {UnguardedAlt _ _ e -> expTy' id e}
         scrut <- eliminateCaseExpressions datatypes _scrut
         alts  <- traverse eliminateCasesInAlt _alts
         desugarConstructorPattern datatypes retTy (CaseE resTy scrut alts)
@@ -522,6 +530,7 @@ eliminateCaseExpressions _datatypes = \case
     bindEs <- traverse eliminateCasesInBind _bindEs
     pure $ LetE bindingsMap bindEs scoped
   TyInstE ty inner -> TyInstE ty <$> eliminateCaseExpressions datatypes inner
+  TyAbs bv inner -> TyAbs bv <$> eliminateCaseExpressions datatypes inner
  where
    datatypes = primData <> _datatypes
 
@@ -676,7 +685,7 @@ data CtorCase = CtorCase {
     indexedMatchArgs :: M.Map Int (Exp WithoutObjects Ty (Var (BVar Ty) (FVar Ty))),
     -- The destructor fun initially, then the application of that fun to its args
     acc :: Exp WithoutObjects Ty (Var (BVar Ty) (FVar Ty)),
-    scrutType :: Ty 
+    scrutType :: Ty
   }
 
 
@@ -700,7 +709,7 @@ ezMonomorphize = transform go
                           <> "FUN TY:\n" <> prettyStr ft
                           <> "\n\nARG TYPES:\n" <> prettyStr (expTy id <$> args)
                           <> "\n\nORIGINAL EXPR:\n" <> prettyStr expr
-               in expr -- doTrace "ezMonomorphize" ""  expr
+               in doTrace "ezMonomorphize" msg   expr
       _ -> expr -- doTrace "ezMonomorphize" ("" <> prettyStr expr) expr
 
 desugarConstructorPattern :: Datatypes IR.Kind Ty
@@ -708,7 +717,7 @@ desugarConstructorPattern :: Datatypes IR.Kind Ty
                           -> Exp WithoutObjects Ty (Var (BVar Ty) (FVar Ty))
                           -> DatatypeM (Exp WithoutObjects Ty (Var (BVar Ty) (FVar Ty)))
 desugarConstructorPattern datatypes altBodyTy _e = let _eTy = expTy id _e in case _e of
-  CaseE _resTy scrut alts@(UnguardedAlt _ (ConP tn _ _) inrhs:_) -> do
+  CaseE _resTy scrut alts@(UnguardedAlt _ (ConP tn _ _) _:_) -> do
     let isConP alt =  case getPat alt of {ConP{} -> True; _ -> False}
         conPatAlts = takeWhile isConP alts
         scrutTy = expTy id scrut
@@ -729,7 +738,7 @@ desugarConstructorPattern datatypes altBodyTy _e = let _eTy = expTy id _e in cas
     -- NOTE: We'll need more sophisticated "pattern sorting" with as patterns
     case dropWhile isConP alts of
       [] -> do -- In this branch we know we have exhaustive constructor patterns in the alts
-        let destructor = TyInstE retTy' (AppE (instantiateTyCon destructorRaw) scrut)
+        let destructor = TyInstE altBodyTy (AppE (instantiateTyCon destructorRaw) scrut)
             result = foldl' AppE destructor (snd <$> indexedBranches)
             msg =  "INPUT TY:\n" <> prettyStr _eTy
                    <> "\n\nINPUT:\n" <> prettyStr _e
@@ -747,10 +756,7 @@ desugarConstructorPattern datatypes altBodyTy _e = let _eTy = expTy id _e in cas
         doTraceM "desugarConstructorPattern" msg
         pure result
       irrefutables -> do
-        -- we don't have an abstractM so we need to make a var for the wildP branch here even if we don't need it
-        Name nm (Unique u) <- freshName
-        -- don't need to bind it b/c it only gets used in a wildP branch so doesn't "really" bind a var
-        let destructor = TyInstE retTy' (AppE (instantiateTyCon destructorRaw) scrut)
+        let destructor = TyInstE altBodyTy (AppE (instantiateTyCon destructorRaw) scrut)
             {- This is confusing and I keep making mistakes, so what's going on with 'irrefutables' is:
 
                This only concerns the "catchall" case that we expect when we encounter an
@@ -808,6 +814,7 @@ desugarConstructorPattern datatypes altBodyTy _e = let _eTy = expTy id _e in cas
                                 if bvIx == bvIx' && bvId == bvId'
                                 then scrut
                                 else V . B $ bv
+                            other -> error $ "Expected an irrefutable alt but got: " <> prettyStr other
         result <- assemblePartialCtorCase (CtorCase irrefutable  (M.fromList indexedBranches) destructor scrutTy) allCtors
         let  msg = "INPUT TY:\n" <> prettyStr _eTy
                    <> "\n\nINPUT:\n" <> prettyStr _e
@@ -841,7 +848,7 @@ desugarConstructorPattern datatypes altBodyTy _e = let _eTy = expTy id _e in cas
 
 
        let irrefutableLam = mkLHSBinder lhsVars irrefutableRHS
-           acc' = AppE acc irrefutableLam 
+           acc' = AppE acc irrefutableLam
        assemblePartialCtorCase (CtorCase irrefutableRHS indexedMatchArgs acc' scrutType) rest
      Just iFun -> do
        let acc' = AppE acc iFun
@@ -854,13 +861,10 @@ desugarConstructorPattern datatypes altBodyTy _e = let _eTy = expTy id _e in cas
                   -> Exp WithoutObjects Ty (Var (BVar Ty) (FVar Ty))
                   -> Exp WithoutObjects Ty (Var (BVar Ty) (FVar Ty))
       mkLHSBinder [] = id
-      mkLHSBinder (bv@(BVar bvIx bvTy bvIdent):rest) = \inner ->
-        let mkRHS = mkLHSBinder rest
+      mkLHSBinder (bv:bvs) = \inner ->
+        let mkRHS = mkLHSBinder bvs
             rhs   = mkRHS inner
-            rhsTy = expTy id rhs
-            lamTy = bvTy `funTy` rhsTy
-        in  LamE lamTy bv (defAbstr rhs)
-
+        in  LamE bv (defAbstr rhs)
 
    mkInstantiateTyCon :: Ty
                       -> Exp WithoutObjects Ty (Var (BVar Ty) (FVar Ty))
@@ -882,7 +886,7 @@ desugarConstructorPattern datatypes altBodyTy _e = let _eTy = expTy id _e in cas
       do any instantiations. TODO: Explain why (kind of complicated)
    -}
    mkInstantiateResTy :: Ty -> Ty -> Ty
-   mkInstantiateResTy _ altT@(Forall{}) = doTrace "instantiateResTy" ("UNCHANGED:\n" <> prettyStr altT) altT 
+   mkInstantiateResTy _ altT@(Forall{}) = doTrace "instantiateResTy" ("UNCHANGED:\n" <> prettyStr altT) altT
    mkInstantiateResTy scrutT altT = doTrace "instantiateResTy" msg result
      where
        result = case analyzeTyApp scrutT of
@@ -900,18 +904,16 @@ desugarConstructorPattern datatypes altBodyTy _e = let _eTy = expTy id _e in cas
    mkIndexedBranch scrutTy alte@(UnguardedAlt _ (ConP tn cn binders) rhs) = do
      doTraceM "mkIndexedBranch" ("INPUT:\n" <> prettyStr alte)
      let go (x,t) acc = case x of
-           VarP bvId bvIx bvTy -> do
-             let lamTy = funTy bvTy (expTy' id rhs)
-                 lamBV = BVar bvIx  bvTy bvId
-             pure $  LamE lamTy lamBV
+           VarP bvId bvIx bvTy' -> do
+             let lamBV = BVar bvIx bvTy' bvId
+             pure $  LamE  lamBV
                  . abstract (\case {F fv -> matchVarLamAbs bvId bvIx fv; B _ -> Nothing})
                  . acc
            WildP -> do
              freshIx <- next
-             let freshName = "_t" <> T.pack (show freshIx)
-                 lamTy = funTy t (expTy' id rhs)
-                 lamBv = BVar freshIx t (Ident freshName)
-             pure $ LamE lamTy lamBv . toScope . fmap F . acc
+             let newName = "_t" <> T.pack (show freshIx)
+                 lamBv = BVar freshIx t (Ident newName)
+             pure $ LamE lamBv . toScope . fmap F . acc
            other -> error $ "Unexpected pattern in alternative: Expected a VarP but got " <> show other
          monoFields = snd $ monoCtorFields tn cn scrutTy datatypes
      doTraceM "mkIndexedBranch" ("MONO FIELDS:\n" <> prettyStr monoFields)
@@ -973,11 +975,11 @@ analyzeTyApp t = (,tyAppArgs t) <$> tyAppFun t
         go other = Just other
     tyAppFun _ = Nothing
 
-instantiateNullaryWithAnnotatedType :: forall x t
+instantiateNullaryWithAnnotatedType :: forall x
                                      . Datatypes IR.Kind Ty
                                     -> Exp x Ty (Vars Ty)
                                     -> Exp x Ty (Vars Ty)
-instantiateNullaryWithAnnotatedType datatypes _e = doTrace "instantiateNullaryWithAnnotatedType" msg result 
+instantiateNullaryWithAnnotatedType datatypes _e = doTrace "instantiateNullaryWithAnnotatedType" msg result
   where
     msg = "INPUT:\n" <> prettyStr _e
           <> "\n\nOUTPUT:\n" <> prettyStr result
@@ -992,16 +994,16 @@ instantiateNullaryWithAnnotatedType datatypes _e = doTrace "instantiateNullaryWi
             [] -> case analyzeTyApp ty of
               Just (_,xs@(_:_)) -> foldr TyInstE expr (reverse xs)
               _ -> expr
-            _ -> expr 
+            _ -> expr
       _ -> expr
-      
+
 monoCtorInst
   :: Qualified (ProperName 'TypeName)
   -> Qualified (ProperName 'ConstructorName)
   -> Ty -- the type of the scrutinee
   -> Datatypes IR.Kind Ty
   -> [Ty] -- Constructor index & list of field types
-monoCtorInst tn cn t datatypes = doTrace "monoCtorInst" msg $ snd <$> (reverse instantiations)
+monoCtorInst tn cn t datatypes = doTrace "monoCtorInst" msg $ snd <$> reverse instantiations
  where
    msg = "TYPE NAME:" <> T.unpack (showQualified runProperName tn)
        <> "\n\nCTOR NAME:\n" <> T.unpack (showQualified runProperName cn)
@@ -1009,7 +1011,7 @@ monoCtorInst tn cn t datatypes = doTrace "monoCtorInst" msg $ snd <$> (reverse i
        <> "\n\nCTOR DECL ARGS:\n" <> prettyStr ctorArgs
        <> "\n\nPOLY TY:\n" <> prettyStr polyTy
        <> "\n\nINSTANTIATIONS:\n" <> prettyStr instantiations
-   (thisCtorIx,thisCtorDecl) =  either error id $ getConstructorIndexAndDecl cn datatypes
+   (_,thisCtorDecl) =  either error id $ getConstructorIndexAndDecl cn datatypes
    ctorArgs = snd <$> thisCtorDecl ^. cdCtorFields
    thisDataDecl = fromJust $ lookupDataDecl tn datatypes
    declArgVars = uncurry IR.TyVar <$> thisDataDecl ^. dDataArgs

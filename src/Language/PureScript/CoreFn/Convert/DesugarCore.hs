@@ -7,7 +7,7 @@ module Language.PureScript.CoreFn.Convert.DesugarCore where
 import Prelude
 
 import Language.PureScript.Types (Type(..))
-import Language.PureScript.Names (Ident, Qualified(Qualified),
+import Language.PureScript.Names (Ident(..), Qualified(Qualified),
                                   QualifiedBy (ByModuleName, BySourcePos),
                                   ModuleName (ModuleName), ProperName (ProperName), disqualify, coerceProperName)
 import Language.PureScript.CoreFn.Expr (Expr(..), PurusType, Bind (NonRec, Rec),
@@ -40,12 +40,12 @@ import Control.Lens.IndexedPlated (icosmos)
 import Control.Monad.Error.Class (MonadError(throwError))
 import Language.PureScript.AST.SourcePos (spanStart)
 import Language.PureScript.CoreFn.Module (Module(..))
-import Language.PureScript.CoreFn.Pretty (renderExprStr, prettyAsStr)
+import Language.PureScript.CoreFn.Pretty (renderExprStr, prettyAsStr, prettyTypeStr)
 import Language.PureScript.CoreFn.Desugar.Utils (wrapTrace, showIdent', properToIdent)
 import Data.Void (Void)
 import Language.PureScript.Constants.Prim qualified as C
 import Data.Text qualified as T
-import Data.Foldable (Foldable(foldl'), traverse_)
+import Data.Foldable (Foldable(foldl'), traverse_, foldrM)
 import Language.PureScript.Environment (mkCtorTy, mkTupleTyName)
 import Control.Lens hiding (Context)
 import Control.Monad.Trans (lift)
@@ -56,6 +56,7 @@ import Language.PureScript.CoreFn.Convert.Debug
 import Prettyprinter (Pretty (..), vcat)
 import Language.PureScript.CoreFn.TypeLike (TypeLike(..))
 import Data.Bifunctor (Bifunctor(first))
+import Data.Text (Text)
 
 -- Need the map to keep track of whether a variable has already been used in the scope (e.g. for shadowing)
 type DS = StateT (Int,M.Map Ident Int) (Either String)
@@ -85,6 +86,15 @@ getVarIx :: Ident -> DS Int
 getVarIx ident = gets (preview (_2 . ix ident)) >>= \case
   Nothing -> error $ "getVarIx: Free variable " <> showIdent' ident
   Just indx -> pure indx
+
+{- We don't bind anything b/c the type level isn't `Bound` -}
+tyAbs :: forall x t a.  Text -> KindOf t -> Exp x t a -> DS (Exp x t a)
+tyAbs nm k exp = do
+  u <- fresh
+  pure $ TyAbs (BVar u k (Ident nm)) exp
+
+tyAbsMany :: forall x t a. [(Text,KindOf t)] -> Exp x t a -> DS (Exp x t a)
+tyAbsMany vars expr = foldrM (uncurry tyAbs) expr vars
 
 data WithObjects
 
@@ -121,29 +131,27 @@ desugarCoreDecl = \case
      bvix <- bind ident
      s <- gets (view _2)
      let abstr = abstract (matchLet s) . runEtaReduce
-     scoped <-  abstr  <$> desugarCore' expr
+     desugared <- desugarCore' expr
+     let boundVars = freeTypeVariables (expTy id desugared)
+     scoped <-  abstr  <$> tyAbsMany boundVars  desugared
      pure $ NonRecursive ident bvix  scoped
   Rec xs ->  do
-    doTraceM "desugarCoreDecl" ("INPUT (RECURSIVE):\n" <> show (fmap renderExprStr <$> xs))
+    let inMsg = concatMap (\((_,i),x) ->
+                               prettyAsStr i <> " :: " <> prettyTypeStr (exprType x) <> "\n"
+                               <> prettyAsStr i <> " = " <> renderExprStr x <> "\n\n") xs
+    doTraceM "desugarCoreDecl" inMsg
     first_pass <- traverse (\((_,ident),e) -> bind ident >>= \u -> pure ((ident,u),e)) xs
     s <- gets (view _2)
     let abstr = abstract (matchLet s) . runEtaReduce 
     second_pass  <- traverse (\((ident,bvix),expr) -> do
                           wrapTrace ("desugarCoreDecl: " <> showIdent' ident) $ do
-                            expr' <- desugarCore' expr
-                            let scoped = abstr expr'
+                            desugared <- desugarCore' expr
+                            let boundVars = freeTypeVariables (expTy id desugared)
+                            scoped <- abstr <$> tyAbsMany boundVars desugared
                             pure ((ident,bvix),scoped)) first_pass
     doTraceM "desugarCoreDecl" ("RESULT (RECURSIVE):\n" <> prettyAsStr (fmap fromScope <$> second_pass))
     pure $ Recursive second_pass
 
-
-desugarCore' :: Expr Ann -> DS (Exp WithObjects PurusType (Vars PurusType))
-desugarCore' e = do
-  res <- desugarCore e
-  let msg = "INPUT:\n" <> renderExprStr e
-            <>  "\n\nOUTPUT:\n" <> ppExp res
-  doTraceM "desugarCore'" msg
-  pure res
 
 {- | Turns a list of expressions into an n-ary
      tuple, where n = the length of the list.
@@ -164,26 +172,39 @@ tuplify es = foldl' (App nullAnn) tupCtor es
     tupCtor = Var nullAnn tupCtorType (properToIdent <$> tupName)
 
 desugarCore :: Expr Ann -> DS (Exp WithObjects PurusType (Vars PurusType))
-desugarCore (Literal _ann ty lit) = LitE ty <$> desugarLit lit
-desugarCore abs@(Abs _ann ty ident expr) = do
+desugarCore e = do
+  let ty = exprType e
+  e' <- desugarCore' e
+  let (vars',_) = stripQuantifiers ty
+      vars = (\(a,b,c) -> (b,c)) <$> vars'
+  result <- tyAbsMany vars e'
+  let msg = prettify [ "INPUT: " <> renderExprStr e
+                     , "OUTPUT: " <> prettyAsStr result]
+  doTraceM "desugarCore" msg
+  pure result 
+
+
+desugarCore' :: Expr Ann -> DS (Exp WithObjects PurusType (Vars PurusType))
+desugarCore' (Literal _ann ty lit) = LitE ty <$> desugarLit lit
+desugarCore' lam@(Abs _ann ty ident expr) = do
   bvIx  <- bind ident
   s <- gets (view _2)
   expr' <- desugarCore expr
   let !ty' = functionArgumentIfFunction $ snd (stripQuantifiers ty)
       scopedExpr = abstract (matchLet s) expr'
-      result =  LamE ty (BVar bvIx ty' ident) scopedExpr
+      result =  LamE (BVar bvIx ty' ident) scopedExpr
       msg = "ANNOTATED LAM TY:\n" <> prettyAsStr ty
             <> "\n\nBOUND VAR TY:\n" <> prettyAsStr ty'
-            <> "\n\nINPUT EXPR:\n" <> renderExprStr abs
+            <> "\n\nINPUT EXPR:\n" <> renderExprStr lam
             <> "\nRESULT EXPR:\n" <> prettyAsStr result
   doTraceM "desugarCoreLam" msg
   pure result 
-desugarCore (App _ann expr1 expr2) = do
+desugarCore' (App _ann expr1 expr2) = do
   expr1' <- desugarCore expr1
   expr2' <- desugarCore expr2
   pure $ AppE expr1' expr2'
-desugarCore (Var _ann ty qi) = pure $ V . F $ FVar ty qi
-desugarCore (Let _ann binds cont) = do
+desugarCore' (Var _ann ty qi) = pure $ V . F $ FVar ty qi
+desugarCore' (Let _ann binds cont) = do
   -- afaict their mutual recursion sorter doesn't work properly in let exprs (maybe it's implicit that they're all mutually recursive?)
   traverse_ bindAllNames binds
   bindEs <- traverse desugarCoreDecl binds
@@ -191,19 +212,19 @@ desugarCore (Let _ann binds cont) = do
   cont' <- desugarCore cont
   let abstr = abstract (matchLet s)
   pure $ LetE M.empty bindEs $ abstr cont'
-desugarCore (Accessor _ann ty label expr) = do
+desugarCore' (Accessor _ann ty label expr) = do
   expr' <- desugarCore expr
   pure $ AccessorE () ty label expr'
-desugarCore (ObjectUpdate _ann ty expr toCopy toUpdate) = do
+desugarCore' (ObjectUpdate _ann ty expr toCopy toUpdate) = do
   expr' <- desugarCore expr
   toUpdate' <- desugarObjectMembers toUpdate
   pure $ ObjectUpdateE () ty expr' toCopy toUpdate'
 -- NOTE: We do not tuple single scrutinees b/c that's just a performance hit w/ no point
-desugarCore (Case _ann ty [scrutinee] alts) = do
+desugarCore' (Case _ann ty [scrutinee] alts) = do
   scrutinee' <- desugarCore  scrutinee
   alts' <- traverse desugarAlt alts
   pure $ CaseE ty scrutinee' alts'
-desugarCore (Case _ann ty scrutinees alts) = do
+desugarCore' (Case _ann ty scrutinees alts) = do
   scrutinees' <- desugarCore $ tuplify scrutinees
   alts' <- traverse desugarAlt alts
   pure $ CaseE ty scrutinees' alts'
@@ -389,7 +410,7 @@ assembleBindEs  (xsRec:rest) = do
   pure $ Recursive recBinds : rest'
 
 runEtaReduce :: forall x t
-           . (Eq (Exp x t (Var (BVar t) (FVar t))), Pretty t, TypeLike t)
+           . (Eq (Exp x t (Var (BVar t) (FVar t))), Pretty t, Pretty (KindOf t), TypeLike t)
           => Exp x t (Var (BVar t) (FVar t))
           -> Exp x t (Var (BVar t) (FVar t))
 runEtaReduce e = doTrace "runEtaReduce" msg result
@@ -399,7 +420,7 @@ runEtaReduce e = doTrace "runEtaReduce" msg result
              <> "\n\nOUTPUT:\n" <> prettyAsStr result 
 
 etaReduce :: forall x t
-           . (Eq (Exp x t (Var (BVar t) (FVar t))), Pretty t, TypeLike t)
+           . (Eq (Exp x t (Var (BVar t) (FVar t))), Pretty t, Pretty (KindOf t), TypeLike t)
           => Exp x t (Var (BVar t) (FVar t))
           -> Exp x t (Var (BVar t) (FVar t))
 etaReduce input =  case partitionLam input  of
@@ -422,7 +443,7 @@ etaReduce input =  case partitionLam input  of
      pure $ (V . B <$> bvars,f,args)
 
    stripLambdas = \case
-     LamE _ bv body -> first (bv:) $ stripLambdas (join <$> fromScope body)
+     LamE bv body -> first (bv:) $ stripLambdas (join <$> fromScope body)
      TyInstE _ inner -> stripLambdas inner
      other -> ([],other)
 
@@ -436,7 +457,7 @@ instance Plated (Exp x t (Vars t)) where
         -> Exp x t (Vars t)
         -> f (Exp x t (Vars t))
      go  tfun = \case
-      LamE t bv e ->  LamE t bv <$> scopeHelper e
+      LamE bv e ->  LamE  bv <$> scopeHelper e
       CaseE t es alts ->
         let goAlt ::  Alt x t (Exp x t) (Vars t) -> f (Alt x t (Exp x t) (Vars t))
             goAlt (UnguardedAlt bs pats scoped) =
@@ -458,6 +479,7 @@ instance Plated (Exp x t (Vars t)) where
                                    <*> traverse (\(nm,expr) -> (nm,) <$> tfun expr) fs
       LitE t lit -> LitE t <$> traverseLit lit
       V a -> pure (V a)
+      TyAbs bv e -> TyAbs bv <$> tfun e
       TyInstE t e -> TyInstE t <$> tfun e
       where
         scopeHelper :: Scope (BVar t) (Exp x t) (Vars t)

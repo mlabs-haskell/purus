@@ -1,6 +1,6 @@
 module Language.PureScript.CoreFn.TypeLike where
 
-import Language.PureScript.Types (TypeVarVisibility)
+import Language.PureScript.Types (TypeVarVisibility (..))
 import Data.Text (Text)
 import Prelude
 
@@ -16,6 +16,7 @@ import Prettyprinter (Pretty)
 import Language.PureScript.CoreFn.Pretty.Common
 import Language.PureScript.CoreFn.Convert.Debug (doTrace)
 import Language.PureScript.Environment (pattern (:->))
+import Language.PureScript.AST.SourcePos (pattern NullSourceAnn)
 
 class TypeLike t where
   type KindOf t :: GHC.Type
@@ -85,7 +86,11 @@ class TypeLike t where
 
   unFunction :: t -> Maybe (t,t)
 
--- TODO: Just define it this way in the instances -_-
+  {- We need this to correctly reconstruct the type of expressions in the presence of TyAbs
+  -}
+  quantify1 :: Text -> KindOf t -> t -> t
+
+    -- TODO: Just define it this way in the instances -_-
 safeFunArgTypes :: forall t. TypeLike t => t -> [t]
 safeFunArgTypes t = case splitFunTyParts t of
   [] -> []
@@ -175,3 +180,5 @@ instance TypeLike T.SourceType where
   unFunction = \case
     a :-> b -> Just (a,b)
     _ -> Nothing
+
+  quantify1 nm k inner = T.ForAll NullSourceAnn TypeVarVisible nm k inner Nothing

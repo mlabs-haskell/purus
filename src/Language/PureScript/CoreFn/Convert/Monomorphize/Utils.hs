@@ -5,17 +5,16 @@
 {-# LANGUAGE PartialTypeSignatures #-}
 {-# OPTIONS_GHC -Wno-unrecognised-pragmas #-}
 {-# HLINT ignore "Use camelCase" #-}
-{-# LANGUAGE TypeApplications #-}
 
 module Language.PureScript.CoreFn.Convert.Monomorphize.Utils  where
 
 import Prelude
 
 import Language.PureScript.CoreFn.Expr (PurusType, Bind)
-import Language.PureScript.CoreFn.Convert.IR (_V, Exp(..), FVar(..), BindE(..), BVar (..), abstractMany, mkBindings, Alt (..), Lit (..), expTy, ppExp, expTy', Pat (..))
-import Language.PureScript.Names (Ident(..), ModuleName (..), QualifiedBy (..), Qualified (..), pattern ByNullSourcePos)
+import Language.PureScript.CoreFn.Convert.IR (_V, Exp(..), FVar(..), BindE(..), BVar (..), Alt (..), expTy, ppExp, expTy', Pat(..))
+import Language.PureScript.Names (Ident(..), ModuleName (..), QualifiedBy (..), Qualified (..), pattern ByNullSourcePos, runIdent)
 import Language.PureScript.Types
-    ( SourceType, RowListItem (..), rowToList, Type (..), Constraint(..) )
+    ( SourceType, RowListItem (..), rowToList, Type (..), Constraint(..), TypeVarVisibility )
 import Language.PureScript.CoreFn.FromJSON ()
 import Data.Text qualified as T
 import Data.Map (Map)
@@ -27,12 +26,10 @@ import Control.Monad.Except (throwError)
 import Data.Text (Text)
 import Bound.Var (Var(..))
 import Bound.Scope (Scope (..), toScope, fromScope, mapBound)
-import Data.Bifunctor (Bifunctor (..))
 import Data.List (find)
 import Control.Lens.Plated ( transform, Plated(..), cosmos )
-import Language.PureScript.Environment (pattern (:->), mkRecordT, pattern RecordT)
-import Language.PureScript.CoreFn.Pretty (prettyTypeStr, prettyAsStr)
-import Language.PureScript.AST.SourcePos ( SourceAnn, pattern NullSourceAnn )
+import Language.PureScript.CoreFn.Pretty (prettyAsStr)
+import Language.PureScript.AST.SourcePos ( SourceAnn )
 import Language.PureScript.PSString (PSString)
 import Language.PureScript.Label (Label(..))
 import Language.PureScript.CoreFn.Module ( Module(..) )
@@ -42,11 +39,12 @@ import Language.PureScript.CoreFn.Convert.DesugarCore
 import Data.Aeson qualified as Aeson
 import GHC.IO (throwIO)
 import Control.Monad (join)
-import Language.PureScript.CoreFn.TypeLike (TypeLike(..))
+import Language.PureScript.CoreFn.TypeLike (TypeLike(..), unQuantify)
 import Prettyprinter (Pretty)
-import Data.Maybe (isJust)
 import Bound (abstract)
-import Language.PureScript.CoreFn.Convert.Debug (doTrace)
+import Language.PureScript.CoreFn.Convert.Debug (doTrace, prettify)
+import Data.Char (isUpper)
+import Data.Bifunctor (first)
 
 
 {- Monomorphizer monad & related utilities -}
@@ -125,7 +123,7 @@ updateVarTyS :: forall x
 updateVarTyS (BVar bvIx _ bvIdent) ty scoped = abstr  unscoped
   where
     abstr = abstract $ \case
-      B bv@(BVar bvIx' _ bvIdent' )
+      B (BVar bvIx' _ bvIdent' )
         | bvIx == bvIx' && bvIdent == bvIdent' -> Just $ BVar bvIx ty bvIdent'
       B bv -> Just bv
       _ -> Nothing
@@ -134,7 +132,7 @@ updateVarTyS (BVar bvIx _ bvIdent) ty scoped = abstr  unscoped
     unscoped = join <$> fromScope scoped'
     goBound :: BVar SourceType -> BVar SourceType
     goBound bv@(BVar bvIx' _ bvIdent')
-      | bvIx == bvIx' && bvIdent == bvIdent' = BVar bvIx ty bvIdent 
+      | bvIx == bvIx' && bvIdent == bvIdent' = BVar bvIx ty bvIdent
       | otherwise = bv
 
 
@@ -156,7 +154,7 @@ renameBoundVar old new  = mapBound $ \case
          while debugging if we get something that's not a function
 -}
 unsafeApply :: forall a x t.
-  (TypeLike t, Pretty t) =>
+  (TypeLike t, Pretty t, Pretty (KindOf t)) =>
   (a -> Vars t) ->
   Exp x t a ->
   [Exp x t a] ->
@@ -184,7 +182,7 @@ findInlineDeclGroup ident (Recursive xs:rest) = case  find (\x -> fst (fst x) ==
   Nothing -> findInlineDeclGroup ident rest
   Just _ -> Just (Recursive xs)
 
-letBindRecursive ::  (TypeLike t, Pretty t)
+letBindRecursive ::  (TypeLike t, Pretty t, Pretty (KindOf t))
                  => (a -> Vars t)
                  -> Ident
                  -> Int
@@ -214,9 +212,9 @@ findDeclBody :: forall k.
                 Text
              -> Module IR_Decl k PurusType Ann
              -> Maybe (Scope (BVar PurusType) (Exp WithObjects PurusType) (Vars PurusType))
-findDeclBody nm Module{..} = findDeclBody' (Ident nm) moduleDecls
+findDeclBody nm Module{..} = doTrace "findDeclBody" ("NAME: " <> T.unpack nm) $ findDeclBody' (Ident nm) moduleDecls
 
-findDeclBody' :: forall x ty. (TypeLike ty, Pretty ty)
+findDeclBody' :: forall x ty. (TypeLike ty, Pretty ty, Pretty (KindOf ty))
               => Ident
               -> [BindE ty (Exp x ty) (Vars ty)]
               -> Maybe (Scope (BVar ty) (Exp x ty) (Vars ty))
@@ -288,7 +286,6 @@ distributeExp = \case
   B bv -> pure (B bv)
   F fv -> F <$> fv
 
-   
 -- something is wrong with my attempts to write a plated instance and I dunno how to fix it,
 -- but specific traverals seem to work, so this should work?
 transformExp :: forall x t f
@@ -297,7 +294,7 @@ transformExp :: forall x t f
               -> Exp x t (Vars t)
               -> f (Exp x t (Vars t))
 transformExp  f = \case
-      LamE t bv e -> LamE t bv <$> transformScope e 
+      LamE bv e -> LamE bv <$> transformScope e
       CaseE t e alts ->
         let goAlt ::  Alt x t (Exp x t) (Vars t) -> f (Alt x t (Exp x t) (Vars t))
             goAlt (UnguardedAlt bs pats scoped) =  UnguardedAlt bs pats <$> transformScope scoped
@@ -316,6 +313,7 @@ transformExp  f = \case
                                    <*> traverse (\(nm,expr) -> (nm,) <$> runTransform expr) fs
       LitE t lit -> LitE t <$> traverse runTransform lit
       V a -> pure (V a)
+      TyAbs bv e -> TyAbs bv <$> runTransform e
       TyInstE t e -> TyInstE t <$> runTransform e
   where
     runTransform :: Exp x t (Vars t) -> f (Exp x t (Vars t))
@@ -328,6 +326,11 @@ transformExp  f = \case
       transformed <- runTransform unscoped
       pure $ toScope (F <$> transformed)
 
+stripTypeAbstractions :: Exp x t a -> ([(Int,Ident,KindOf t)], Exp x t a)
+stripTypeAbstractions = \case
+  TyAbs (BVar i k nm) inner -> first ((i,nm,k):) $ stripTypeAbstractions inner
+  other -> ([],other)
+
 
 isSelfRecursiveNR :: BindE t (Exp x t) (Vars t) -> Bool
 isSelfRecursiveNR (NonRecursive ident indx body) = containsBVar ident indx body
@@ -336,9 +339,138 @@ isSelfRecursiveNR _ = False
 containsBVar :: Ident -> Int -> Scope (BVar t) (Exp x t) (Vars t) -> Bool
 containsBVar idnt indx expr = any (\case
     V (B (BVar bvix _ bvident)) -> bvix == indx &&  idnt == bvident
-    _ -> False) subExpressions 
+    _ -> False) subExpressions
  where
     subExpressions = (join <$> fromScope expr) ^.. cosmos
+
+   -- Builtins shouldn't be inlined because they can't be.
+   -- TODO/REVIEW: Figure out whether it's necessary to *monomorphize*
+   --              polymorphic builtins. (Trivial to implement if needed)
+isBuiltinE :: Exp x ty1 (Var b (FVar ty2)) -> Bool
+isBuiltinE = \case
+  V (F (FVar _ qi)) -> isBuiltin qi
+  TyInstE _ e -> isBuiltinE e
+  _ -> False
+
+isBuiltin :: Qualified a -> Bool
+isBuiltin (Qualified (ByModuleName (ModuleName "Builtin")) _ ) = True
+isBuiltin _ = False
+
+isConstructorE :: Exp x ty1 (Var b (FVar ty2)) -> Bool
+isConstructorE = \case
+  V (F (FVar _ qi)) -> isConstructor qi
+  TyInstE _ e -> isConstructorE e
+  _ -> False
+   -- After the recent changes, constructors *can't* be inlined, i.e., they must remain
+   -- free until the final PIR compilation stage
+isConstructor :: Qualified Ident -> Bool
+isConstructor (Qualified _ (Ident nm)) = isUpper (T.head nm)
+isConstructor _  = False
+
+inlineable :: Qualified Ident -> Bool
+inlineable nm = not (isConstructor nm || isBuiltin nm )
+
+
+updateTypes :: forall x t
+                . (TypeLike t, Pretty t, Pretty (KindOf t), Show (Exp x t (Vars t)))
+               => [(Text,t)]
+               -> Exp x t (Vars t)
+               -> Exp x t (Vars t)
+updateTypes vars e = doTrace "updateTypes" msg result
+  where
+    msg = prettify [ "UPDATE:\n" <> prettyAsStr vars
+                   , "INPUT EXPR:\n" <> prettyAsStr e
+                   , "RESULT EXPR:\n " <> prettyAsStr result
+                   , "RESULT TY:\n" <> prettyAsStr (expTy id result)
+                   , "RESULT EXPR (RAW):\n" <> show result
+                   ]
+    result = updateTypes' vars e
+
+updateTypes' :: forall x t
+                . (TypeLike t, Pretty t, Pretty (KindOf t), Show (Exp x t (Vars t)))
+               => [(Text,t)]
+               -> Exp x t (Vars t)
+               -> Exp x t (Vars t)
+updateTypes' vars = \case
+  V x -> case x of
+    B (BVar bvix bvty bvnm) ->
+      V . B $ BVar bvix (f vars bvty) bvnm
+    F (FVar ty ident) -> V . F $ FVar (f vars ty) ident
+  AppE e1 e2 -> AppE (updateTypes vars e1) (updateTypes vars e2)
+  LamE (BVar bvix bvty bvnm) body ->
+    let bv = BVar bvix (f vars bvty) bvnm
+        body' = goScope vars body
+    in LamE bv body'
+  -- TODO: Remove the "bindings" arg in LetE. We aggresively ignore it everywhere
+  LetE n bs e ->
+    let bs' = goBind vars <$> bs
+        e'  = goScope vars e
+    in LetE n bs' e'
+  LitE t lit ->
+    let t' = f vars t
+        lit' = updateTypes vars <$> lit
+    in LitE t' lit'
+  AccessorE x t str e ->
+    let t' = f vars t
+        e' = updateTypes vars e
+    in AccessorE x t' str e'
+  ObjectUpdateE x t e copy fs ->
+    let t' = f vars t
+        e' = updateTypes vars e
+        fs' = fmap (updateTypes vars) <$> fs
+    in ObjectUpdateE x t' e' copy fs'
+  TyInstE t e ->
+    let t' = f vars t
+        e' = updateTypes vars e
+    in TyInstE t' e'
+  -- If we cross a TyAbs binder, we have tyvar shadowing and should remove the bound tyvar from our set
+  TyAbs bv@(BVar _ _ bvid) e ->
+    let vars' = filter (\x -> fst x /= runIdent bvid) vars
+    in TyAbs bv $ updateTypes vars' e
+  CaseE ty scrut alts ->
+    let ty'    = f vars ty
+        scrut' = updateTypes vars scrut
+        alts'   = goAlt vars <$> alts
+    in CaseE ty' scrut' alts'
+ where
+   f :: [(Text,t)] -> t -> t
+   f vs ty = quantify
+           . replaceAllTypeVars vs
+           $ unQuantify ty
+
+   goScope :: [(Text,t)] -> Scope (BVar t) (Exp x t) (Vars t) -> Scope (BVar t) (Exp x t) (Vars t)
+   goScope vs scoped =
+     let unscoped = join <$> fromScope scoped
+         effed    = updateTypes vs unscoped
+     in F <$> toScope effed
+
+   goBind :: [(Text,t)] -> BindE t (Exp x t) (Vars t) -> BindE t (Exp x t) (Vars t)
+   goBind vs = \case
+     NonRecursive nrid nrix scoped -> NonRecursive nrid nrix $ goScope vs scoped
+     Recursive xs -> Recursive $ fmap (goScope vs) <$> xs
+
+   goAlt :: [(Text,t)] -> Alt x t (Exp x t) (Vars t) -> Alt x t (Exp x t) (Vars t)
+   goAlt vs (UnguardedAlt _bs pat scoped) =
+     let pat' = goPat vs pat
+     in UnguardedAlt _bs pat' (goScope vs scoped)
+
+   goPat :: [(Text,t)] -> Pat x t (Exp x t) (Vars t) -> Pat x t (Exp x t) (Vars t)
+   goPat vs = \case
+     VarP vid vix vty -> VarP vid vix $ f vs vty
+     WildP -> WildP
+     LitP lit -> LitP $ goPat vs <$> lit
+     ConP tn cn ps -> ConP tn cn $ goPat vs <$> ps 
+
+tyAbstractExpr :: [(TypeVarVisibility, Text, KindOf PurusType)]
+               -> Exp WithObjects PurusType (Vars PurusType)
+               -> Monomorphizer (Exp WithObjects PurusType (Vars PurusType))
+tyAbstractExpr [] e = pure e
+tyAbstractExpr ((_,var,kind):rest) e = do
+  bvix <- freshUnique
+  let bv = BVar bvix kind (Ident var)
+  e' <- tyAbstractExpr rest e
+  pure $ TyAbs bv e'
+
 
 -- put this somewhere else
 

@@ -13,7 +13,7 @@ import Language.PureScript.Types
     ( SourceType, Type(..), srcTypeConstructor, srcTypeApp, RowListItem (rowListType), rowToList, eqType )
 import Language.PureScript.Environment (pattern (:->), pattern RecordT, kindType, DataDeclType (Data), mkTupleTyName)
 import Language.PureScript.CoreFn.Pretty
-    ( prettyTypeStr, prettyAsStr )
+    ( prettyTypeStr )
 import Language.PureScript.CoreFn.Ann (Ann)
 import Language.PureScript.CoreFn.FromJSON ()
 import Data.Text qualified as T
@@ -52,7 +52,6 @@ import Language.PureScript.CoreFn.Utils ( exprType, Context )
 import Data.Map (Map)
 import Language.PureScript.Constants.Prim qualified as C
 import Language.PureScript.CoreFn.Convert.DesugarCore (WithoutObjects, WithObjects, desugarCoreModule, DS, liftErr, bind, getVarIx, IR_Decl)
-import Data.Void (Void, absurd)
 
 
 import Prettyprinter
@@ -70,9 +69,8 @@ import GHC.IO (throwIO)
 import Language.PureScript.CoreFn.Desugar.Utils (properToIdent)
 import Bound.Scope
 import Control.Monad (join)
-import Control.Monad.State (runStateT, evalStateT)
+import Control.Monad.State (evalStateT)
 import Language.PureScript.CoreFn.Convert.Debug
-import Distribution.Utils.Progress (stepProgress)
 
 prettyStr :: Pretty a => a -> String
 prettyStr = T.unpack . renderStrict . layoutPretty defaultLayoutOptions . pretty
@@ -95,8 +93,6 @@ test path decl = do
       Right e -> do
         putStrLn (ppExp e)
         pure e
-
-
 
 prepPIR :: FilePath
         -> Text
@@ -228,12 +224,11 @@ tryConvertExpr' toVar  __expr =  do
         tryConvertLit  lit >>= \case
           Left desObj -> pure desObj
           Right lit' -> pure $ LitE ty' lit'
-      LamE  ty bv  e -> do
-        ty' <- goType ty
+      LamE bv  e -> do
         bv' <- updateBV bv
         let unscoped = join <$> fromScope (toVar <$> e)
         ex <- toScope <$> tryConvertExpr' id  unscoped -- Exp x t (Var (BVar t) (FVar t))
-        pure $ LamE ty' bv' (F <$> ex)
+        pure $ LamE bv' (F <$> ex)
       AppE e1 e2 -> do
         e2' <- tryConvertExpr' toVar e2
         e1' <- tryConvertExpr' toVar e1
@@ -243,8 +238,8 @@ tryConvertExpr' toVar  __expr =  do
         scrutinees' <- tryConvertExpr' toVar scrutinee
         alts' <- traverse goAlt alts
         pure $ CaseE ty' scrutinees' alts'
-      LetE bindings bound e -> do
-        bindings' <- traverse (traverse goType) bindings
+      LetE bindings_ bound e -> do
+        bindings' <- traverse (traverse goType) bindings_
         bound' <- goBinds  bound
         let unscoped = join <$> fromScope (toVar <$> e)
         e' <- toScope  <$> tryConvertExpr' id  unscoped
@@ -259,6 +254,12 @@ tryConvertExpr' toVar  __expr =  do
           t' <- goType t
           pure . V . F $ FVar t' qi
       TyInstE t e -> TyInstE <$> goType t <*> go e
+      TyAbs (BVar bvix bvty bvid)  e -> do
+        case purusTypeToKind bvty of
+          Left err -> error err
+          Right k -> do
+            e' <- go e
+            pure $ TyAbs (BVar bvix k bvid) e'
      where
        -- TODO: Error location w/ scope in alts
        goAlt :: Alt WithObjects SourceType (Exp WithObjects SourceType) a
@@ -301,18 +302,6 @@ tryConvertExpr' toVar  __expr =  do
            bareFields' <- traverse goPat bareFields
            pure . Left $ ConP tupTyName tupCtorName  bareFields'
 
-       -- FIXME: We can have empty objects here, so this function is partial, but I'm not sure what to do w/
-       --        an empty Object in a pattern.
-       tryConvertConstLitP :: Lit WithObjects Void -> DS (Lit WithoutObjects Void)
-       tryConvertConstLitP = \case
-         IntL i -> pure $ IntL i
-         -- NumL d -> pure $ NumL d
-         StringL s -> pure $ StringL s
-         CharL c -> pure $ CharL c
-         -- ArrayL [] -> pure $ ConstArrayL []
-         -- ConstArrayL lits ->  ConstArrayL <$> traverse tryConvertConstLitP lits
-         ObjectL _ [] -> undefined
-         _ -> error "impossible (?) pattern"
 
        goBinds :: [BindE SourceType (Exp WithObjects SourceType) a]
                -> DS [BindE Ty (Exp WithoutObjects Ty) (Var (BVar Ty) (FVar Ty))]
@@ -322,7 +311,7 @@ tryConvertExpr' toVar  __expr =  do
            let unscoped =  join <$> fromScope (toVar <$> expr)
            e' <- tryConvertExpr' id unscoped
            rest <- goBinds bs
-           pure $ NonRecursive ident bvix (fmap F $ toScope e')  : rest
+           pure $ NonRecursive ident bvix (F <$> toScope e')  : rest
          Recursive  xs -> do
            -- TODO: Accurate error reporting
            let xsUnscoped = second (\e -> join <$> fromScope (toVar <$> e)) <$> xs
@@ -344,21 +333,6 @@ tryConvertExpr' toVar  __expr =  do
          -- ConstArrayL lits -> Right . ConstArrayL <$> traverse constArrHelper lits
          ObjectL _ fs'  ->  Left <$> handleObjectLiteral fs'
         where
-         constArrHelper ::  Lit WithObjects Void
-                        -> DS (Lit WithoutObjects Void)
-         constArrHelper = \case
-              IntL i -> pure $ IntL i
-              -- NumL d -> pure $ NumL d
-              StringL s -> pure $ StringL s
-              CharL c   -> pure $ CharL c
-              -- ArrayL [] -> pure $ ConstArrayL []
-              -- ArrayL (x:_) -> absurd x
-              ObjectL _ [] -> error "Empty record inside ConstArrayL. We should forbid this somehow."
-              ObjectL _ ((_,x):_) -> absurd x
-              {- -ConstArrayL lits -> do
-                res <- traverse constArrHelper lits
-                pure $ ConstArrayL res
-              -}
          handleObjectLiteral :: [(PSString,Exp WithObjects SourceType a)]
                              -> DS (Exp WithoutObjects Ty (Var (BVar Ty) (FVar Ty)))
          handleObjectLiteral fs' = do
@@ -541,3 +515,12 @@ tupleDatatypes = Datatypes (M.fromList tupleTypes) (M.fromList tupleCtors)
     mkTupleArgKinds = fmap (,KindType) . vars
 
     mkTupleCtorTvArgs = mkProdFields . map (flip TyVar KindType) . vars
+
+purusTypeToKind :: SourceType  -> Either String Kind
+purusTypeToKind _t = doTraceM "sourceTypeToKind" (prettyStr _t) >> case _t of
+    TypeConstructor _ C.Type -> pure KindType
+    t1 :-> t2 -> do
+      t1' <- purusTypeToKind t1
+      t2' <- purusTypeToKind t2
+      pure $ KindArrow  t1' t2'
+    other -> Left $ "Error: PureScript type '" <> prettyTypeStr other <> " is not a valid Plutus Kind"
