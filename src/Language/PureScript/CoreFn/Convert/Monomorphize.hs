@@ -11,6 +11,7 @@ import Prelude
 import Language.PureScript.CoreFn.Ann (Ann)
 import Language.PureScript.CoreFn.Expr (PurusType)
 import Language.PureScript.CoreFn.Module ( Module(..) )
+import Language.PureScript.Environment (kindType)
 import Language.PureScript.CoreFn.Convert.IR
     ( Exp(..),
       FVar(..),
@@ -26,7 +27,7 @@ import Control.Lens
 import Control.Monad (join)
 import Control.Monad.RWS (RWST(..))
 import Language.PureScript.CoreFn.Convert.DesugarCore
-    ( desugarCoreModule, WithObjects, IR_Decl )
+    ( desugarCoreModule, WithObjects, IR_Decl, type Vars )
 import Bound.Var (Var(..))
 import Bound.Scope (fromScope)
 import Language.PureScript.CoreFn.TypeLike
@@ -37,6 +38,7 @@ import Language.PureScript.CoreFn.Convert.Monomorphize.Utils
       isBuiltinE,
       isConstructorE, 
       unsafeApply,
+      updateTypes,
       MonoError(..),
       MonoState(MonoState) )
 import Data.Text (Text)
@@ -48,7 +50,7 @@ import Language.PureScript.CoreFn.Convert.Debug
     ( doTrace, doTraceM )
 import Language.PureScript.CoreFn.Convert.Monomorphize.Inline (inlineEverything)
 import Language.PureScript.CoreFn.Convert.Monomorphize.Monomorphize (monomorphize)
-
+import Language.PureScript.Names 
 
 {- Function for quickly testing/debugging monomorphization -}
 
@@ -72,11 +74,23 @@ runMonomorphize ::
   Exp WithObjects PurusType (Var (BVar PurusType) (FVar PurusType)) ->
   Either MonoError (Exp WithObjects PurusType (Var (BVar PurusType) (FVar PurusType)))
 runMonomorphize Module{..} _modulesInScope expr =
-  runRWST (transformM monomorphize expr >>= inlineEverything >>= (pure . instantiateAllConstructors)) (moduleName, moduleDecls) (MonoState 100000) & \case -- FIXME: That 0 needs to be a MaxBv or we need to pass the real value from the core desugarer state
+  let res = runRWST (transformM monomorphize expr
+                     >>= inlineEverything
+                     >>= (pure . instantiateAllConstructors)
+                     >>= (pure . reduceRowTypes)
+                     >>= transformM monomorphize) (moduleName, moduleDecls) (MonoState 100000)
+  in case res of -- FIXME: That 0 needs to be a MaxBv or we need to pass the real value from the core desugarer state
     Left err -> Left err
     Right (a,_,_) -> do
       doTraceM "runMonomorphize" ("OUTPUT: \n" <> ppExp a <> "\n" <> replicate 20 '-')
       pure a
+
+
+reduceRowTypes :: Exp WithObjects PurusType (Vars PurusType)
+               -> Exp WithObjects PurusType (Vars PurusType)
+reduceRowTypes = transform $ \case
+  TyInstE t (TyAbs (BVar _ bvTy (Ident bvNm) ) innerE) | bvTy /= kindType -> updateTypes [(bvNm,t)] innerE
+  other -> other 
 
 {- Entry point for inlining monomorphization.
 

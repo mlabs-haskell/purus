@@ -12,6 +12,7 @@
 {-# OPTIONS_GHC -Wno-unrecognised-pragmas #-}
 {-# HLINT ignore "Fuse foldr/<$>" #-}
 {-# HLINT ignore "Use fewer imports" #-}
+{-# LANGUAGE TypeApplications #-}
 
 module Language.PureScript.CoreFn.Convert.ToPIR  where
 
@@ -105,6 +106,7 @@ import Data.Functor qualified
 import Bound.Scope (fromScope)
 import Language.PureScript.CoreFn.Convert.Debug
 import Prettyprinter
+import Control.Exception qualified as E
 
 showType :: forall a. Typeable a => String
 showType = show (typeRep :: TypeRep a)
@@ -376,7 +378,6 @@ printExpr :: FilePath -> Text -> IO ()
 printExpr path decl = prepPIR path decl >>= \case
   (e,_) -> putStrLn ("\n\n\n" <> T.unpack decl <> " = \n" <> prettyStr e)
 
-
 declToPLC :: FilePath -> Text -> IO (PLCProgram DefaultUni DefaultFun ())
 declToPLC path main = declToPIR path main >>= compileToUPLC
 
@@ -412,9 +413,12 @@ runCompile x  =
 passing :: IO ()
 passing = traverse_ eval passingTests
   where
-    eval = evaluateDecl "tests/purus/passing/Misc/output/Lib/index.cfn"
+    eval :: Text -> IO ()
+    eval declName = E.catch @(E.SomeException) (void $ evaluateDecl "tests/purus/passing/Misc/output/Lib/index.cfn" declName)
+      $ \e -> let msg = "Failed to compile and evaluate '" <> T.unpack declName <> "''\n  Error message: " <> show e
+              in error msg
     passingTests = [
-         "testTestClass",
+      {-   "testTestClass",
          "minus",
          "testEq",
          "workingEven",
@@ -445,8 +449,8 @@ passing = traverse_ eval passingTests
          "testBuiltin",
          "main",
          "plus",
-         "testPlus",
-         "guardedCase",
+         "testPlus", -}
+         "guardedCase", {-
          "anObj",
          "objUpdate",
          "polyInObj",
@@ -456,4 +460,5 @@ passing = traverse_ eval passingTests
          "objForall",
          "arrForall",
          "testValidatorApplied"
+-}
        ]

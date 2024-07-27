@@ -35,7 +35,7 @@ import Control.Monad.State ( StateT, modify', gets, runStateT )
 import Data.List (find, sortOn)
 import Language.PureScript.CoreFn.Utils (exprType, Context)
 import Language.PureScript.CoreFn.Binders ( Binder(..) )
-import Data.Maybe (mapMaybe)
+import Data.Maybe (mapMaybe, fromJust)
 import Control.Lens.IndexedPlated (icosmos)
 import Control.Monad.Error.Class (MonadError(throwError))
 import Language.PureScript.AST.SourcePos (spanStart)
@@ -57,6 +57,8 @@ import Prettyprinter (Pretty (..), vcat)
 import Language.PureScript.CoreFn.TypeLike (TypeLike(..))
 import Data.Bifunctor (Bifunctor(first))
 import Data.Text (Text)
+import Data.Char (isUpper)
+import Language.PureScript.CoreFn.Pretty.Common qualified as PC -- jfc move this somewhere more sensible
 
 -- Need the map to keep track of whether a variable has already been used in the scope (e.g. for shadowing)
 type DS = StateT (Int,M.Map Ident Int) (Either String)
@@ -82,18 +84,28 @@ bind ident = do
   doTraceM "bind" ("IDENT: " <> T.unpack (runIdent ident) <> "\n\nINDEX: " <> prettyAsStr i)
   pure i
 
+
+
 getVarIx :: Ident -> DS Int
 getVarIx ident = gets (preview (_2 . ix ident)) >>= \case
   Nothing -> error $ "getVarIx: Free variable " <> showIdent' ident
   Just indx -> pure indx
 
-{- We don't bind anything b/c the type level isn't `Bound` -}
-tyAbs :: forall x t a.  Text -> KindOf t -> Exp x t a -> DS (Exp x t a)
-tyAbs nm k exp = do
-  u <- fresh
-  pure $ TyAbs (BVar u k (Ident nm)) exp
+isBuiltinOrPrim :: Exp x t (Vars t) -> Bool
+isBuiltinOrPrim = \case
+  V (F (FVar _ (Qualified (ByModuleName (ModuleName "Prim")) _) )) -> True
+  V (F (FVar _ (Qualified _ (Ident i)))) -> isUpper (T.head i)
+  _ -> False
 
-tyAbsMany :: forall x t a. [(Text,KindOf t)] -> Exp x t a -> DS (Exp x t a)
+{- We don't bind anything b/c the type level isn't `Bound` -}
+tyAbs :: forall x t.  Text -> KindOf t -> Exp x t (Vars t) -> DS (Exp x t (Vars t))
+tyAbs nm k exp
+  | not (isBuiltinOrPrim exp) = do
+      u <- fresh
+      pure $ TyAbs (BVar u k (Ident nm)) exp
+  | otherwise = pure exp
+
+tyAbsMany :: forall x t. [(Text,KindOf t)] -> Exp x t (Vars t) -> DS (Exp x t (Vars t))
 tyAbsMany vars expr = foldrM (uncurry tyAbs) expr vars
 
 data WithObjects
@@ -115,9 +127,7 @@ type Vars t = Var (BVar t) (FVar t)
 desugarCoreModule :: Module (Bind Ann) PurusType PurusType Ann -> Either String (Module IR_Decl PurusType PurusType Ann,(Int,M.Map Ident Int))
 desugarCoreModule m = case runStateT (desugarCoreModule' m) (0,M.empty) of
   Left err -> Left err
-  Right res -> do
-    doTraceM "desugarCoreModule" ("decls OUTPUT:\n" <> prettyAsStr (moduleDecls $ fst res))
-    pure res
+  Right res -> pure res
 
 desugarCoreModule' :: Module (Bind Ann) PurusType PurusType Ann -> DS (Module IR_Decl PurusType PurusType Ann)
 desugarCoreModule' Module{..} = do
@@ -131,9 +141,10 @@ desugarCoreDecl = \case
      bvix <- bind ident
      s <- gets (view _2)
      let abstr = abstract (matchLet s) . runEtaReduce
-     desugared <- desugarCore' expr
-     let boundVars = freeTypeVariables (expTy id desugared)
-     scoped <-  abstr  <$> tyAbsMany boundVars  desugared
+     desugared <- desugarCore expr
+     -- let boundVars = freeTypeVariables (expTy id desugared)
+     -- scoped <-  abstr  <$> tyAbsMany boundVars desugared
+     let scoped = abstr desugared 
      pure $ NonRecursive ident bvix  scoped
   Rec xs ->  do
     let inMsg = concatMap (\((_,i),x) ->
@@ -145,9 +156,10 @@ desugarCoreDecl = \case
     let abstr = abstract (matchLet s) . runEtaReduce 
     second_pass  <- traverse (\((ident,bvix),expr) -> do
                           wrapTrace ("desugarCoreDecl: " <> showIdent' ident) $ do
-                            desugared <- desugarCore' expr
-                            let boundVars = freeTypeVariables (expTy id desugared)
-                            scoped <- abstr <$> tyAbsMany boundVars desugared
+                            desugared <- desugarCore expr
+                            -- let boundVars = freeTypeVariables (expTy id desugared)
+                            -- scoped <- abstr <$> tyAbsMany boundVars desugared
+                            let scoped = abstr desugared
                             pure ((ident,bvix),scoped)) first_pass
     doTraceM "desugarCoreDecl" ("RESULT (RECURSIVE):\n" <> prettyAsStr (fmap fromScope <$> second_pass))
     pure $ Recursive second_pass
@@ -174,12 +186,11 @@ tuplify es = foldl' (App nullAnn) tupCtor es
 desugarCore :: Expr Ann -> DS (Exp WithObjects PurusType (Vars PurusType))
 desugarCore e = do
   let ty = exprType e
-  e' <- desugarCore' e
-  let (vars',_) = stripQuantifiers ty
-      vars = (\(a,b,c) -> (b,c)) <$> vars'
-  result <- tyAbsMany vars e'
-  let msg = prettify [ "INPUT: " <> renderExprStr e
-                     , "OUTPUT: " <> prettyAsStr result]
+  result  <- desugarCore' e
+  let msg = prettify [ "INPUT:\n" <> renderExprStr e
+                     , "INPUT TY:\n" <> prettyTypeStr ty
+                     , "OUTPUT:\n" <> prettyAsStr result
+                     , "OUTPUT TY:\n" <> prettyAsStr (expTy id result)]
   doTraceM "desugarCore" msg
   pure result 
 
@@ -189,20 +200,27 @@ desugarCore' (Literal _ann ty lit) = LitE ty <$> desugarLit lit
 desugarCore' lam@(Abs _ann ty ident expr) = do
   bvIx  <- bind ident
   s <- gets (view _2)
-  expr' <- desugarCore expr
+  expr' <- desugarCore' expr
   let !ty' = functionArgumentIfFunction $ snd (stripQuantifiers ty)
+      (vars',_) = stripQuantifiers ty
+      vars = (\(_,b,c) -> (b,c)) <$> vars'
       scopedExpr = abstract (matchLet s) expr'
-      result =  LamE (BVar bvIx ty' ident) scopedExpr
-      msg = "ANNOTATED LAM TY:\n" <> prettyAsStr ty
-            <> "\n\nBOUND VAR TY:\n" <> prettyAsStr ty'
-            <> "\n\nINPUT EXPR:\n" <> renderExprStr lam
-            <> "\nRESULT EXPR:\n" <> prettyAsStr result
+  result <- tyAbsMany vars $ LamE (BVar bvIx ty' ident) scopedExpr
+  let msg = prettify [
+              "ANNOTATED LAM TY:\n" <> prettyAsStr ty
+            , "BOUND VAR TY:\n" <> prettyAsStr ty'
+            , "BODY TY:\n" <> prettyAsStr (exprType expr)
+            , "INPUT EXPR:\n" <> renderExprStr lam
+            , "RESULT EXPR:\n" <> prettyAsStr result
+            , "RESULT EXPR TY:\n" <> prettyAsStr (expTy id result)
+            ]
   doTraceM "desugarCoreLam" msg
   pure result 
-desugarCore' (App _ann expr1 expr2) = do
-  expr1' <- desugarCore expr1
-  expr2' <- desugarCore expr2
-  pure $ AppE expr1' expr2'
+desugarCore' appE@(App{}) = case fromJust $ PC.analyzeApp appE of
+  (f,args) -> do
+    f' <- desugarCore f
+    args' <- traverse desugarCore args
+    pure $ foldl' AppE f' args'
 desugarCore' (Var _ann ty qi) = pure $ V . F $ FVar ty qi
 desugarCore' (Let _ann binds cont) = do
   -- afaict their mutual recursion sorter doesn't work properly in let exprs (maybe it's implicit that they're all mutually recursive?)

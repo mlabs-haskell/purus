@@ -19,8 +19,8 @@ import Language.PureScript.CoreFn.Convert.IR
       BVar(..),
       expTy,
       Alt(..),
-      Alt )
-import Language.PureScript.Names (Ident(..), Qualified (..), QualifiedBy (..), showIdent, pattern ByNullSourcePos)
+      Alt, expTy' )
+import Language.PureScript.Names (Ident(..), Qualified (..), QualifiedBy (..), showIdent, pattern ByNullSourcePos, runIdent, showQualified)
 import Language.PureScript.Types
     ( RowListItem(..), SourceType, Type (ForAll) )
 import Language.PureScript.CoreFn.Desugar.Utils ( showIdent' )
@@ -60,7 +60,7 @@ import Language.PureScript.CoreFn.Convert.Monomorphize.Utils
       updateFreeVars,
       updateVarTyS,
       MonoError(MonoError),
-      Monomorphizer, tyAbstractExpr )
+      Monomorphizer, tyAbstractExpr, isBuiltinE, isConstructorE )
 import Language.PureScript.CoreFn.Pretty.Common (prettyAsStr)
 import Data.Bifunctor (first)
 import Language.PureScript.CoreFn.Convert.Debug
@@ -69,6 +69,8 @@ import Language.PureScript.CoreFn.Convert.Monomorphize.Monomorphize
     ( monomorphize, getInstantiations )
 import Prelude
 import Data.Text (Text)
+import Control.Lens.Operators ((^..))
+import Control.Lens.Combinators (cosmos, filtered)
 
 -- FIXME: Rewrite this
 inlineEverything :: Exp WithObjects PurusType (Var (BVar PurusType) (FVar PurusType))
@@ -86,7 +88,15 @@ inlineEverything xp = do
     go :: Exp WithObjects PurusType (Var (BVar PurusType) (FVar PurusType))
        -> Monomorphizer (Exp WithObjects PurusType (Var (BVar PurusType) (FVar PurusType)))
     go = \case
-      (V (F (FVar ty qi))) | not (isBuiltin qi || isConstructor qi) ->  inlineAs ty qi
+      (V (F (FVar ty qi))) | not (isBuiltin qi || isConstructor qi) -> do
+        step1 <- inlineAs ty qi
+        let fvars1 = step1 ^.. cosmos
+                                . filtered (\case {V _ -> True; _ -> False})
+                                . filtered (not . isBuiltinE)
+                                . filtered (not . isConstructorE)
+        case fvars1 of
+          [] -> pure step1
+          _  -> go step1
       AppE e1 e2  -> do
         e1' <- go e1
         e2' <- go e2
@@ -149,8 +159,6 @@ addTypeInstantiations monoType expToInst = go instantiations vars expToInst
 
     (vars,eTy) = first (map (\(_,b,c) -> (b,c))) $ stripQuantifiers eTyQuantified
 
-
-
     monoArgs = splitFunTyParts monoType
 
     polyArgs = splitFunTyParts eTy
@@ -164,8 +172,8 @@ inlineAs ::
   Monomorphizer (Exp WithObjects PurusType (Var (BVar PurusType) (FVar PurusType)))
 inlineAs t ident = do
   res <-  inlineAs' t ident
-  let resInsted = addTypeInstantiations t res
-  let msg = prettify ["IDENT:" <> show ident
+  let resInsted = res -- addTypeInstantiations t res
+  let msg = prettify ["IDENT: " <> T.unpack (showQualified runIdent ident)
                      ,"TY:\n" <> prettyAsStr t
                      ,"RESULT RAW:\n" <> prettyAsStr res
                      ,"RESULT RAW TY:\n" <> prettyAsStr (expTy id res)
@@ -381,11 +389,24 @@ monomorphizeWithTypeRec ty idnt indx expr | containsBVar idnt indx expr = do
   let abstr = abstract (\case {B bv -> Just bv; _ -> Nothing})
       rescoped = abstr body
       result = LetE M.empty [NonRecursive idnt indx rescoped] (toScope (V . B $ BVar indx ty idnt))
-      msg = prettify ["INPUT:\n" <> prettyAsStr (fromScope expr), "OUTPUT:\n" <> prettyAsStr result]
+      msg = prettify [ "TY ARG:\n" <> prettyAsStr ty
+                     , "INPUT:\n" <> prettyAsStr (fromScope expr)
+                     , "INPUT TY:\n" <> prettyAsStr (expTy' id expr)
+                     , "OUTPUT:\n" <> prettyAsStr result
+                     , "OUTPUT TY:\n" <> prettyAsStr (expTy id result)
+                     ]
   doTraceM "monomorphizeWithType" msg
   pure  result
-monomorphizeWithTypeRec ty _ _ expr = monomorphizeWithType ty (join <$> fromScope expr)
-
+monomorphizeWithTypeRec ty _ _ expr = do
+  result <- monomorphizeWithType ty (join <$> fromScope expr)
+  let msg = prettify [ "TY ARG:\n" <> prettyAsStr ty
+            , "INPUT:\n" <> prettyAsStr (fromScope expr)
+            , "INPUT TY:\n" <> prettyAsStr (expTy' id expr)
+            , "OUTPUT:\n" <> prettyAsStr result
+            , "OUTPUT TY:\n" <> prettyAsStr (expTy id result)
+            ]
+  doTraceM "monomorphizeWithType" msg
+  pure result 
 
 {- | "Forcibly" assigns the provided type to the provided expression.
      Works recursively, so that all of the types of all sub-expressions are
@@ -402,10 +423,8 @@ monomorphizeWithType ::
   PurusType ->
   Exp WithObjects PurusType (Var (BVar PurusType) (FVar PurusType)) ->
   Monomorphizer (Exp WithObjects PurusType (Var (BVar PurusType) (FVar PurusType)))
-monomorphizeWithType (ForAll{}) expr = pure expr
-monomorphizeWithType ty expr
-  | expTy id expr == ty = pure expr
-  | otherwise = doTrace "monomorphizeWithType" ("INPUT:\n" <> ppExp expr <> "\n\nINPUT TY:\n" <> prettyTypeStr ty) $ case expr of
+monomorphizeWithType ty expr | expTy id expr == ty = pure expr
+monomorphizeWithType ty expr = doTrace "monomorphizeWithType" ("INPUT:\n" <> ppExp expr <> "\n\nINPUT TY:\n" <> prettyTypeStr ty) $ case expr of
       LitE _ (ObjectL ext fs) -> case ty of
         RecordT fields -> do
           let fieldMap = mkFieldMap fields

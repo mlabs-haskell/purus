@@ -18,7 +18,7 @@ type TraceCfg = S.Set String
 traceCfg :: TraceCfg
 traceCfg = S.fromList [
     -- DesugarCore
-    "desugarCoreModule",
+    {- "desugarCoreModule",
     "desugarCore'",
     "desugarCore",
     "monomorphize",
@@ -27,9 +27,22 @@ traceCfg = S.fromList [
     "monomorphizeWithBoundTyVars",
     "updateTypes",
     "monomorphizeWithType",
-    "monomorphizeWithTypeRec",
+    "monomorphizeWithTypeRec", -}
     "desugarConstructorPattern",
-    "instantiateResTy"
+    "instantiateResTy",
+   --  "monomorphize",
+   --  "eliminateCaseExpressions",
+   --  "mkDestructorFunTy",
+--    "desugarCore",
+--    "desugarCoreDecl",
+    "monomorphize",
+--    "desugarCoreLam",
+--     "inlineAs",
+    "monomorphizeWithType",
+    "monomorphizeWithBoundTyVars",
+    "inlineEverything",
+    "updateTypes",
+     "instantiateResTy"
 
     -- Monomorphize
     {- "runMonomorphize",

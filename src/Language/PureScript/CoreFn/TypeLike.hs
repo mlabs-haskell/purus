@@ -1,6 +1,6 @@
 module Language.PureScript.CoreFn.TypeLike where
 
-import Language.PureScript.Types (TypeVarVisibility (..))
+import Language.PureScript.Types (TypeVarVisibility (..), rowToSortedList, rowFromList)
 import Data.Text (Text)
 import Prelude
 
@@ -15,8 +15,9 @@ import Debug.Trace (trace)
 import Prettyprinter (Pretty)
 import Language.PureScript.CoreFn.Pretty.Common
 import Language.PureScript.CoreFn.Convert.Debug (doTrace)
-import Language.PureScript.Environment (pattern (:->))
+import Language.PureScript.Environment (pattern (:->), pattern RecordT)
 import Language.PureScript.AST.SourcePos (pattern NullSourceAnn)
+import Control.Applicative
 
 class TypeLike t where
   type KindOf t :: GHC.Type
@@ -133,6 +134,8 @@ getAllInstantiations _ _ = []
 unQuantify :: forall t. TypeLike t => t -> t
 unQuantify = snd . stripQuantifiers
 
+toSortedRow  = rowFromList . rowToSortedList
+
 
 instance TypeLike T.SourceType where
   type KindOf T.SourceType = T.SourceType
@@ -156,9 +159,11 @@ instance TypeLike T.SourceType where
   quantify = T.quantify
 
   instantiates var x (T.TypeVar _ y _) | y == var = Just x
-  instantiates var (T.TypeApp _ t1 t2) (T.TypeApp _ t1' t2') = case instantiates var t1 t1' of
-    Just x -> Just x
-    Nothing -> instantiates var t2 t2'
+  instantiates var (T.TypeApp _ t1 t2) (T.TypeApp _ t1' t2') =  instantiates var t1 t1' <|> instantiates var t2 t2'
+  instantiates var (RecordT xs) (RecordT ys) = instantiates var (toSortedRow xs) (toSortedRow ys)
+  instantiates var (T.RCons _ l x xs) (T.RCons _ l' x' xs')
+    | l == l' = instantiates var x x' <|> instantiates var xs xs'
+    | otherwise = instantiates var xs xs' 
   instantiates _ _ _ = Nothing
 
   freeTypeVariables = T.freeTypeVariables

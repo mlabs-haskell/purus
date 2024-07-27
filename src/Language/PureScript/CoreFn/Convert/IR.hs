@@ -262,7 +262,7 @@ instance Eq1 (Lit x) where
   liftEq _ _ _ = False
 
 instance (Eq1 f, Monad f, Eq t) => Eq1 (Pat x t f) where
-  liftEq _ (VarP i1 n1 t1) (VarP i2 n2 t2) = i1 == i2 && n1 == n2 && t1 == t2 
+  liftEq _ (VarP i1 n1 t1) (VarP i2 n2 t2) = i1 == i2 && n1 == n2 && t1 == t2
   liftEq _ WildP WildP = True
   liftEq eq (ConP tn1 cn1 ps1) (ConP tn2 cn2 ps2) = tn1 == tn2 && cn1 == cn2 && liftEq (liftEq eq) ps1 ps2
   liftEq eq (LitP l1) (LitP l2) =  liftEq (liftEq eq) l1 l2
@@ -339,16 +339,18 @@ instance Bound (BindE ty) where
          -> [((Ident,Int), Scope (BVar ty) f a)]
          -> [((Ident,Int), Scope (BVar ty) f c)]
       go _ [] = []
-      go g ((i,e):rest) = 
+      go g ((i,e):rest) =
         let e' = e >>>= g
             rest' = go g rest
         in (i,e') : rest'
 
 instance Pretty ty => Pretty (BVar ty) where
-  pretty (BVar n _t i) =   pretty (showIdent i) <> "#" <> pretty n
+  pretty (BVar n t i) =  align . parens
+    $ pretty (showIdent i) <> "#" <> pretty n <+> "::" <+> pretty t 
 
 instance Pretty ty => Pretty (FVar ty) where
-  pretty (FVar _t i) =   pretty (showQualified showIdent i)  
+  pretty (FVar _t i) =   align . parens
+    $ pretty (showQualified showIdent i) <+> "::" <+> pretty _t
 
 instance Pretty Kind where
   pretty = \case
@@ -399,7 +401,7 @@ instance (Pretty a, Pretty ty, Pretty (KindOf ty), TypeLike ty) => Pretty (Exp x
     LitE ty lit -> parens $ pretty lit <+> "::" <+> pretty ty
     LamE bv body' ->
       let unscoped = fromScope body'
-      in group . align $ "\\" <> parens (align $ pretty bv <+> "::" <+> pretty (bvType bv))
+      in group . align $ "\\" <> parens (align $ pretty bv)
          <+> "->" <> hardline
          <> indent 4 (pretty unscoped)
     appE@(AppE _ _) -> case unsafeAnalyzeApp appE of
@@ -420,8 +422,8 @@ instance (Pretty a, Pretty ty, Pretty (KindOf ty), TypeLike ty) => Pretty (Exp x
           ]
     AccessorE _ _ field expr -> parens (pretty expr) <> dot <> pretty field
     ObjectUpdateE _ _ _ _ _ -> "TODO: Implement ObjectUpdateE printer"
-    TyInstE t e -> pretty e <+> "@" <> parens (pretty t)
-    TyAbs bv e -> "/\\" <+> (align $ pretty bv <+> "::" <+> pretty (bvType bv))
+    TyInstE t e -> vsep [pretty e, "@" <> parens (pretty t)]
+    TyAbs bv e -> "/\\" <+> align (pretty bv)
                   <+> "->" <> hardline
                   <> indent 4 (pretty e)
 
@@ -527,7 +529,7 @@ expTy' f scoped = case instantiateEither (either (V . B) (V . F)) scoped of
   TyAbs (BVar _ k idnt) inner ->
     let e' = join <$> fmap f <$> inner
         innerT = expTy id e'
-    in quantify1 (runIdent idnt) k innerT 
+    in quantify1 (runIdent idnt) k innerT
   TyInstE t e ->
     let e' = join <$> fmap f <$> e
     in instTy t (expTy id e')

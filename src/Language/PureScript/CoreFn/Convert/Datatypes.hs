@@ -520,6 +520,11 @@ eliminateCaseExpressions _datatypes = \case
     case ezMonomorphize $  monomorphizePatterns datatypes ce of
       CaseE resTy _scrut _alts -> do
         let retTy  = case head _alts of {UnguardedAlt _ _ e -> expTy' id e}
+            msg = prettify ["ANN RES TY:\n " <> prettyStr resTy
+                           , "SCRUTINEE:\n" <> prettyStr _scrut
+                           , "ALTS:\n" <> prettyStr _alts
+                           ]
+        doTraceM "eliminateCaseExpressions" msg 
         scrut <- eliminateCaseExpressions datatypes _scrut
         alts  <- traverse eliminateCasesInAlt _alts
         desugarConstructorPattern datatypes retTy (CaseE resTy scrut alts)
@@ -895,8 +900,6 @@ desugarConstructorPattern datatypes altBodyTy _e = let _eTy = expTy id _e in cas
        msg = "INPUT SCRUT TY:\n" <> prettyStr scrutT
              <> "\n\nINPUT TARG TY:\n" <> prettyStr altT
              <> "\n\nOUTPUT TY:\n" <> prettyStr result
-
-
 
    mkIndexedBranch :: Ty
                    -> Alt WithoutObjects Ty (Exp WithoutObjects Ty) (Var (BVar Ty) (FVar Ty))

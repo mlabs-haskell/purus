@@ -26,6 +26,9 @@ import Data.Text (Text)
 import Language.PureScript.CoreFn.Pretty.Common (prettyAsStr)
 import Language.PureScript.CoreFn.Convert.Debug
 import Data.Bifunctor
+import Control.Lens.Combinators (transformM)
+import Data.Traversable (for)
+import Data.Foldable (Foldable(..))
 
 {- Entry point for inlining monomorphization.
 
@@ -38,19 +41,30 @@ import Data.Bifunctor
 monomorphize ::
   Exp WithObjects PurusType (Var (BVar PurusType) (FVar PurusType))  ->
   Monomorphizer (Exp WithObjects PurusType (Var (BVar PurusType) (FVar PurusType)))
-monomorphize  xpr =  case xpr of
+monomorphize  =  transformM $ \case
   appE@(AppE{}) ->  do
-    (f_,args) <- traverse (traverse monomorphize) $ unsafeAnalyzeApp appE
-    let (vars,f) = stripTypeAbstractions f_
-    if isBuiltinE f || isConstructorE f then do
-           let result =  unsafeApply id f args
-           doTraceM "monomorphize" ("INPUT:\n" <> prettyAsStr xpr <> "\n\nINPUT TY:\n" <> prettyAsStr (expTy id xpr) <> "\n\nOUTPUT:\n" <> prettyAsStr result <> "\n\nOUTPUT TY:\n" <> prettyAsStr (expTy id result))
-           pure result
-    else do
-      let result = monomorphizeWithBoundTyVars vars f args
-      doTraceM "monomorphize" ("INPUT:\n" <> prettyAsStr xpr <> "\n\nINPUT TY:\n" <> prettyAsStr (expTy id xpr) <> "\n\nOUTPUT:\n" <> prettyAsStr result <> "\n\nOUTPUT TY:\n" <> prettyAsStr (expTy id result))
-      pure result
-  other -> doTrace "monomorphize" ("UNCHANGED:\n" <> ppExp other) $ pure other
+    (f,args) <- traverse (traverse monomorphize) $ unsafeAnalyzeApp appE
+
+    let qvars' = fmap (\(_,a,b) -> (a,b))
+                 . fst
+                 . stripQuantifiers
+                 $ expTy id f
+    vars <- for qvars' $ \(a,b) -> (,Ident a,b) <$> freshUnique
+    doTraceM "monomorphize" $ prettify [ "f:f:\n" <> prettyAsStr f
+                                       , "vars:\n" <> prettyAsStr vars
+                                       , "args:\n" <> prettyAsStr args]
+    case vars of
+      [] -> pure appE
+      _ ->
+        if isBuiltinE f || isConstructorE f then do
+               let result =  unsafeApply id f args
+               doTraceM "monomorphize" ("INPUT:\n" <> prettyAsStr appE <> "\n\nINPUT TY:\n" <> prettyAsStr (expTy id appE) <> "\n\nOUTPUT:\n" <> prettyAsStr result <> "\n\nOUTPUT TY:\n" <> prettyAsStr (expTy id result))
+               pure result
+        else do
+          let result = monomorphizeWithBoundTyVars vars f args
+          doTraceM "monomorphize" ("INPUT:\n" <> prettyAsStr appE <> "\n\nINPUT TY:\n" <> prettyAsStr (expTy id appE) <> "\n\nOUTPUT:\n" <> prettyAsStr result <> "\n\nOUTPUT TY:\n" <> prettyAsStr (expTy id result))
+          pure result
+  other -> pure other
 
 
 monomorphizeWithBoundTyVars :: [(Int,Ident,PurusType)]
@@ -60,15 +74,18 @@ monomorphizeWithBoundTyVars :: [(Int,Ident,PurusType)]
 monomorphizeWithBoundTyVars [] f args = doTrace "monomorphizeWithBoundTyVars" msg $ unsafeApply id f args
   where
     msg = prettify ["UNCHANGED", "Fun:\n" <> prettyAsStr f, "Args:\n" <> prettyAsStr args]
-monomorphizeWithBoundTyVars bvars f args = doTrace "monomorphizeWithBoundTyVars" msg result 
+monomorphizeWithBoundTyVars bvars _f args = doTrace "monomorphizeWithBoundTyVars" msg result
   where
+    f = snd $ stripTypeAbstractions _f
     msg = prettify [ "CHANGED"
-                   , "Fun:\n" <> prettyAsStr f
+                   , "Fun (raw):\n" <> prettyAsStr _f
+                   , "Fun (TyAbs stripped):\n" <> prettyAsStr f
                    , "Args:\n" <> prettyAsStr args
                    , "Bound Idents:\n" <> prettyAsStr idents
                    , "Fun Ty (stripped):\n" <> prettyAsStr fT
                    , "Arg Types:\n" <> prettyAsStr argTs
                    , "Instantiations:\n" <> prettyAsStr (M.toList instantiations)
+                   , "TyInst args:\n" <> prettyAsStr toInst 
                    , "Monomorphized Function:\n" <> prettyAsStr monoF
                    , "Monomorphized Fun ty:\n" <> prettyAsStr (expTy id monoF)
                    , "Result:\n" <> prettyAsStr result
@@ -76,9 +93,9 @@ monomorphizeWithBoundTyVars bvars f args = doTrace "monomorphizeWithBoundTyVars"
 
     result = unsafeApply id monoF args
 
-    (instThese,monoF') = rebuildMonomorphizedFunction instantiations f bvars
+    (toInst,monoF')  = rebuildMonomorphizedFunction instantiations f bvars
 
-    monoF = foldr TyInstE monoF' (reverse instThese)
+    monoF = foldl' (flip TyInstE) monoF'  toInst
 
     idents = (\(_,b,_) -> runIdent b) <$> bvars
 
@@ -94,8 +111,8 @@ monomorphizeWithBoundTyVars bvars f args = doTrace "monomorphizeWithBoundTyVars"
                                  -> ([PurusType],Exp WithObjects PurusType (Vars PurusType))
     rebuildMonomorphizedFunction varMap fE [] = ([],fE)
     rebuildMonomorphizedFunction varMap fE ((indx,nm,k):rest) = case M.lookup (runIdent nm) varMap of
-      Nothing -> second (TyAbs (BVar indx k nm)) $ rebuildMonomorphizedFunction varMap fE rest
-      Just t -> first (t:) $ rebuildMonomorphizedFunction varMap fE rest
+      Nothing -> rebuildMonomorphizedFunction varMap fE rest
+      Just t -> first (t:)  $ rebuildMonomorphizedFunction varMap fE rest
 
 getInstantiations :: [Text]
                      -> [PurusType]
