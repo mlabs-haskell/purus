@@ -418,7 +418,7 @@ passing = traverse_ eval passingTests
       $ \e -> let msg = "Failed to compile and evaluate '" <> T.unpack declName <> "''\n  Error message: " <> show e
               in error msg
     passingTests = [
-      {-   "testTestClass",
+         "testTestClass",
          "minus",
          "testEq",
          "workingEven",
@@ -449,8 +449,7 @@ passing = traverse_ eval passingTests
          "testBuiltin",
          "main",
          "plus",
-         "testPlus", -}
-         "guardedCase", {-
+         "testPlus",
          "anObj",
          "objUpdate",
          "polyInObj",
@@ -459,6 +458,6 @@ passing = traverse_ eval passingTests
          "testId",
          "objForall",
          "arrForall",
-         "testValidatorApplied"
--}
+         "testValidatorApplied",
+         "guardedCase"
        ]

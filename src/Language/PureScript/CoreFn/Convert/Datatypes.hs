@@ -746,7 +746,7 @@ desugarConstructorPattern datatypes altBodyTy _e = let _eTy = expTy id _e in cas
         let destructor = TyInstE altBodyTy (AppE (instantiateTyCon destructorRaw) scrut)
             result = foldl' AppE destructor (snd <$> indexedBranches)
             msg =  "INPUT TY:\n" <> prettyStr _eTy
-                   <> "\n\nINPUT:\n" <> prettyStr _e
+                  --  <> "\n\nINPUT:\n" <> prettyStr _e
                    <> "\n\nRESULT TY:\n" <> prettyStr (expTy id result)
                    <> "\n\nDESTRUCTOR TY:\n" <> prettyStr (expTy id destructor)
                    <> "\n\nORIGINAL CASE RES TY:\n" <> prettyStr _resTy

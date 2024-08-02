@@ -210,6 +210,13 @@ plus a b = Builtin.addInteger a b
 
 infixr 5 plus as +
 
+infixr 5 Builtin.multiplyInteger as *
+
+fakeLT :: Int -> Int -> Boolean
+fakeLT _ _ = True
+
+infixr 5 fakeLT as <=
+
 testPlus = plus 1 1
 
 -- main = plus 1 1
@@ -305,3 +312,10 @@ testValidator datum redeemer context =  True
 
 testValidatorApplied :: Boolean
 testValidatorApplied = testValidator "datum" "redeemer" "context"
+
+testForLift :: Int -> Boolean
+testForLift x = h x 3
+  where
+    h a b = g a <= j 4 b
+    j c d = c + g d
+    g a = if h a x then j x 1 else x * x

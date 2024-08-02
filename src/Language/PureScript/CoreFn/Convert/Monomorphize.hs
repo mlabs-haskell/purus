@@ -44,14 +44,14 @@ import Language.PureScript.CoreFn.Convert.Monomorphize.Utils
 import Data.Text (Text)
 import GHC.IO (throwIO)
 import Control.Lens.Plated ( transform, transformM )
-import Prettyprinter (Pretty)
+import Prettyprinter (Pretty, pretty)
 import Language.PureScript.CoreFn.Pretty.Common (prettyAsStr)
 import Language.PureScript.CoreFn.Convert.Debug
     ( doTrace, doTraceM )
 import Language.PureScript.CoreFn.Convert.Monomorphize.Inline (inlineEverything)
 import Language.PureScript.CoreFn.Convert.Monomorphize.Monomorphize (monomorphize)
 import Language.PureScript.Names 
-
+import Language.PureScript.CoreFn.Convert.MonomorphizeV3
 {- Function for quickly testing/debugging monomorphization -}
 
 testMono :: FilePath -> Text -> IO ()
@@ -64,6 +64,17 @@ testMono path decl = do
     Right body -> do
       putStrLn $ "MONO RESULT: \n" <>  ppExp body
 
+testLift :: Text -> IO ()
+testLift decl = do
+  myModCoreFn <- decodeModuleIO "tests/purus/passing/Misc/output/Lib/index.cfn"
+  (myMod@Module{..},_) <- either (throwIO . userError) pure $ desugarCoreModule myModCoreFn
+  Just myExp' <- pure $ findDeclBody decl myMod
+  let myExp = join <$> fromScope myExp'
+  case runRWST (lift myExp) (moduleName,moduleDecls) (MonoState 100000) of
+    Left (MonoError msg) -> throwIO $ userError $ "Couldn't lift " <> T.unpack decl <> "\nReason:\n" <> msg
+    Right (res,_,_) -> do
+      print (pretty res)
+      putStrLn "\n----------DONE----------\n"
 {- This is the top-level entry point for monomorphization. Typically,
    you will search the module for a 'main' decl and use its
    body as the Exp argument.

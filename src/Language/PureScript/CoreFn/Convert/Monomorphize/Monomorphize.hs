@@ -30,6 +30,11 @@ import Control.Lens.Combinators (transformM)
 import Data.Traversable (for)
 import Data.Foldable (Foldable(..))
 
+{- TODO: Rewrite this to work agnostically over Exp x t (Vars t)
+         so we can avoid the ad-hoc stupidity in Datatypes
+
+-}
+
 {- Entry point for inlining monomorphization.
 
    Broadly, we deduce the monomorphic type for a polymorphic function
