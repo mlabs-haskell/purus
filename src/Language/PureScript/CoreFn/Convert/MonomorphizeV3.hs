@@ -1,6 +1,6 @@
 {-# OPTIONS_GHC -Wno-orphans #-} -- has to be here (more or less)
 {-# LANGUAGE RecordWildCards #-}
-{-# LANGUAGE ScopedTypeVariables, TypeApplications  #-}
+{-# LANGUAGE ScopedTypeVariables #-}
 {-# OPTIONS_GHC -Wno-unrecognised-pragmas #-}
 {-# HLINT ignore "Use if" #-}
 {-# HLINT ignore "Use <&>" #-}
@@ -9,87 +9,53 @@ module Language.PureScript.CoreFn.Convert.MonomorphizeV3  where
 
 import Prelude
 
-import Language.PureScript.CoreFn.Ann (Ann)
 import Language.PureScript.CoreFn.Expr (PurusType)
-import Language.PureScript.CoreFn.Module ( Module(..) )
 import Language.PureScript.CoreFn.Convert.IR
     ( Exp(..),
       FVar(..),
       Lit(..),
       BindE(..),
-      ppExp,
-      unsafeAnalyzeApp,
       BVar(..),
-      expTy,
       expTy',
-      FuncType(..),
       Alt(..),
-      Alt, Pat(..) )
-import Language.PureScript.Names (Ident(..), Qualified (..), QualifiedBy (..), ModuleName (..), showQualified, showIdent, pattern ByNullSourcePos, runIdent)
-import Language.PureScript.Types
-    ( RowListItem(..), SourceType, Type(..), replaceTypeVars, isMonoType )
-import Language.PureScript.CoreFn.Desugar.Utils ( showIdent' )
-import Language.PureScript.Environment (pattern (:->), pattern RecordT, function, getFunArgTy)
-import Language.PureScript.CoreFn.Pretty (prettyTypeStr)
+      Alt, Pat(..), expTy )
+import Language.PureScript.Names (Ident(..), Qualified (..), QualifiedBy (..))
 import Language.PureScript.CoreFn.FromJSON ()
-import Data.Text qualified as T
-import Data.List (find)
-import Data.Map (Map)
 import Data.Map qualified as M
-import Language.PureScript.PSString (PSString, prettyPrintString)
-import Language.PureScript.AST.SourcePos (SourceAnn)
-import Control.Lens
-    ( (&) )
-import Control.Monad (join, foldM)
-import Control.Monad.RWS.Class (MonadReader(ask), MonadState (..), asks)
-import Control.Monad.RWS (RWST(..))
-import Control.Monad.Except (throwError)
+import Language.PureScript.PSString (PSString)
 import Language.PureScript.CoreFn.Convert.DesugarCore
-    ( desugarCoreModule, WithObjects, IR_Decl, Vars )
+    ( WithObjects, Vars )
 import Bound.Var (Var(..))
-import Bound.Scope (mapBound, fromScope, toScope, Scope(..), abstract)
+import Bound.Scope (fromScope, Scope(..), abstract)
 import Language.PureScript.CoreFn.TypeLike
-    ( TypeLike(..), quantify, getAllInstantiations, instantiateWithArgs )
+    ( TypeLike(..) )
 import Language.PureScript.CoreFn.Convert.Monomorphize.Utils
-
-import Data.Text (Text)
-import GHC.IO (throwIO)
-import Data.Char (isUpper)
-import Control.Lens.Plated
-import Prettyprinter (Pretty)
+    ( findInlineDeclGroup,
+      freshUnique,
+      isBuiltin,
+      isConstructor,
+      Monomorphizer )
+import Control.Lens.Plated ( cosmos, transform )
 import Language.PureScript.CoreFn.Pretty.Common (prettyAsStr)
-import Data.Bifunctor (first)
-import Language.PureScript.CoreFn.Convert.Debug
-import Control.Lens.Operators
+import Control.Lens.Operators ( (^..) )
 import Data.Set qualified as S
 import Data.Set (Set)
-import Data.Bifunctor
+import Data.Bifunctor ( Bifunctor(bimap, first) )
 import Data.Maybe
 import Data.Foldable (foldl')
 import Control.Monad.Reader
 import Prettyprinter
-{-
-f :: Int -> Bool
-f = \x -> h x 3
-  where
-    h a b = g a <= j 4 b
-    j c d = c + g d
-    g a = if h a x then j x 1 else x * x
+import Data.Map (Map)
+import Control.Applicative (Alternative((<|>)))
+import Data.Functor.Identity (runIdentity)
 
--->
-
-let h a b = g a <= j 4 b
-    j c d = c + g d
-    g x a = if h a x then j x 1 else x * x
-in \(x :: Int) -> h x 3
-
--}
 -- sorry koz i really want to be able to fit type sigs on one line
 
 type MonoExp = Exp WithObjects PurusType (Vars PurusType)
 type MonoScoped = Scope (BVar PurusType) (Exp WithObjects PurusType) (Vars PurusType)
 type MonoBind = BindE PurusType (Exp WithObjects PurusType) (Vars PurusType)
 type MonoAlt = Alt WithObjects PurusType (Exp WithObjects PurusType) (Vars PurusType)
+
 
 foldL :: Foldable t => b -> t a -> (b -> a -> b) -> b
 foldL e xs  f = foldl' f e xs
@@ -120,72 +86,214 @@ allBoundVars e = S.toList . S.fromList $ flip mapMaybe everything $ \case
 
 data Analysis
  = Analysis {
-     updateCallSite :: MonoExp ->  MonoExp,
-     declIdent :: BVar PurusType
-   }
+     {- Function that updates the call site of the declaration being analyzed
+        in the *BODY* of the original let- binding where the declaration was found.
 
-data BindType = RecBind | NonRecBind deriving (Show, Eq)
+        In practice this amounts to applying additional arguments for each
+        additional argument to the declaration. Since these additional arguments are
+        just those variables/constants which are *in-scope* in the original expression,
+        we already know what they are.
+     -}
+     declIdent :: BVar PurusType,
+     newOutOfScopeVars :: [BVar PurusType]
+     }
+
+mkBVar :: Ident -> Int -> t -> BVar t
+mkBVar idnt indx ty = BVar indx ty idnt
+
+unBVar :: BVar t -> (Ident,Int)
+unBVar (BVar indx _ idnt) = (idnt,indx)
 
 
 
-analyzeLift :: ToLift -> Monomorphizer ([MonoBind],[Analysis])
-analyzeLift (ToLift varScope _ decls) = foldM go ([],[]) decls
+-- N.B. we're using Set instead of [] mainly to ensure that everything has the same order
+
+allDeclIdentifiers :: [MonoBind] -> Set (Ident,Int)
+allDeclIdentifiers [] = S.empty
+allDeclIdentifiers (b:rest) = case b of
+  NonRecursive nm indx _  -> S.insert (nm,indx) $ allDeclIdentifiers rest
+  Recursive xs -> let rest' = allDeclIdentifiers rest
+                  in foldl' (\acc ((nm,indx),_) -> S.insert (nm,indx) acc) rest' xs
+
+-- term level dependencies
+data Deps = Deps {
+       -- The Bound Variable corresponding to the declaration's identifier/index/type.
+       -- We'll need this to transform the AST in peer-dependencies
+       ddeclIdent :: (Ident,Int),
+       ddeclDeps :: Set (Ident,Int)
+     } deriving (Show, Eq, Ord)
+
+dependencies :: Set (Ident,Int) -> MonoBind -> Set Deps
+dependencies dict = \case
+  NonRecursive nm indx scoped -> S.singleton (go nm indx scoped)
+  Recursive xs -> S.fromList $ (\((nm,indx),scoped) -> go nm indx scoped) <$> xs
+ where
+   go nm indx scoped =
+    let unscoped = join <$> fromScope scoped
+        allComponents = S.fromList $ unBVar <$> allBoundVars unscoped
+        declID = (nm,indx)
+        deps = S.intersection dict allComponents
+    in Deps declID deps
+
+-- TODO: Remove all of the stuff this does that now gets shifted to `updateAllBinds`
+analyzeLift :: ToLift ->  ([MonoBind],[Analysis])
+analyzeLift (ToLift varScope _ decls) = foldl' go ([],[]) decls
   where
-    regenBVar :: forall t. BVar t -> Monomorphizer (BVar t,BVar t -> BVar t)
-    regenBVar (BVar bvOld bvTy bvIdent) = do
-      u <- freshUnique
-      let f = \case
-                BVar bvX bvT bvI | bvX == bvOld -> BVar u bvT bvI
-                other -> other
-      pure (BVar u bvTy bvIdent,f)
-
-
-    go :: ([MonoBind],[Analysis]) -> MonoBind -> Monomorphizer ([MonoBind],[Analysis])
+    go :: ([MonoBind],[Analysis]) -> MonoBind -> ([MonoBind],[Analysis])
     go acc = \case
-      NonRecursive idnt indx scoped -> do
-        (_,_,rescoped,analysis) <- doAnalysis idnt indx scoped
-        pure $ bimap (NonRecursive idnt indx rescoped:) (analysis:) acc
-      Recursive xs -> do
-        analyzed <- traverse (\((idnt,indx),scoped) -> doAnalysis idnt indx scoped) xs
-        let (recbinds,analyses) = foldl' (\acc' (a,b,c,d) -> bimap (((a,b),c):) (d:) acc') ([],[]) analyzed
-        pure $ bimap (Recursive recbinds:) (analyses <>) acc
+      NonRecursive idnt indx scoped ->
+        let (_,_,rescoped,analysis) = doAnalysis idnt indx scoped
+        in bimap (NonRecursive idnt indx rescoped:) (analysis:) acc
+      Recursive xs ->
+        let analyzed = map (\((idnt,indx),scoped) -> doAnalysis idnt indx scoped) xs
+            (recbinds,analyses) = foldl' (\acc' (a,b,c,d) -> bimap (((a,b),c):) (d:) acc') ([],[]) analyzed
+        in bimap (Recursive recbinds:) (analyses <>) acc
 
-    doAnalysis :: Ident -> Int -> MonoScoped -> Monomorphizer (Ident,Int,MonoScoped,Analysis)
-    doAnalysis idnt indx scoped = do
+    doAnalysis :: Ident -> Int -> MonoScoped -> (Ident,Int,MonoScoped,Analysis)
+    doAnalysis idnt indx scoped =
         let unscoped = join <$> fromScope scoped
             newlyOutOfScopeBVars = foldL [] (allBoundVars unscoped) $ \acc' bv ->
               if S.member bv varScope
               then bv:acc'
               else acc'
-        bodyAdjusted <- foldM (\rhs bv -> do
-                                 (new,f) <- regenBVar bv
-                                 let abstr = abstract (\case {B bvX -> Just (f bvX);_ -> Nothing})
-                                 pure $ LamE new (abstr rhs)) unscoped newlyOutOfScopeBVars
 
-        let updateCallSiteFun = \case
-              AppE var@(V (B (BVar bvIndx _ _))) args | bvIndx == indx ->
-                 let newFun = foldl' AppE var (V . B <$> newlyOutOfScopeBVars)
-                 in AppE newFun args
-              other -> other
-            analysis = Analysis updateCallSiteFun (BVar indx (expTy' id scoped) idnt)
-            this = abstract (\case {B bv -> Just bv; _ -> Nothing}) bodyAdjusted
-        pure (idnt,indx,this,analysis)
+            analysis = Analysis  (BVar indx (expTy' id scoped) idnt) newlyOutOfScopeBVars
+        in  (idnt,indx,scoped,analysis)
+
+traverseBind :: forall (f :: * -> *)
+              . Applicative f
+              => ((Ident,Int) -> MonoScoped -> f MonoScoped)
+              -> MonoBind
+              -> f MonoBind
+traverseBind f = \case
+    NonRecursive nm i b  -> curry goNonRec nm i b
+    Recursive xs -> Recursive <$> traverse (\(nm,body) -> (nm,) <$> f nm body) xs
+  where
+    goNonRec i@(nm,indx) body = NonRecursive nm indx <$> f i body
+
+mapBind :: ((Ident, Int) -> MonoScoped -> MonoScoped) -> MonoBind -> MonoBind
+mapBind f = runIdentity . traverseBind (\a b -> pure $ f a b)
 
 
+updateAllBinds :: MonoExp -> [MonoBind] -> [Analysis] -> Monomorphizer ([MonoBind],MonoExp)
+updateAllBinds prunedBody _binds _analyses = do
+    allOldToNew <- traverse  (uncurry mkOldToNew) dict
+    let adjustedBody = transform (foldl' (\accF (nm,(d,a)) -> mkUpdateCallSiteBody nm d a . accF) id (M.toList dict)) prunedBody
+        go nm = abstract (\case {B bv -> Just bv; _ -> Nothing})
+                        . updateLiftedLambdas allOldToNew nm 
+                        . updateCallSiteLifted allOldToNew
+                        . fmap join
+                        . fromScope
+        binds = mapBind go  <$> _binds
+    pure (binds,adjustedBody)
+  where
+    updateLiftedLambdas :: Map (Ident,Int) (Map (BVar PurusType) (BVar PurusType))
+                        -> (Ident,Int)
+                        -> MonoExp
+                        -> MonoExp
+    updateLiftedLambdas allOldToNew nm e =
+      let thisOldToNew = allOldToNew M.! nm
+          (d,a)        = dict M.! nm
+          deep         = S.toList $ getDeep d a -- this is inefficient but we need to make sure the order matches everywhere
+      in mkUpdateLiftedLambdas thisOldToNew deep e 
+
+    updateCallSiteLifted :: Map (Ident,Int) (Map (BVar PurusType) (BVar PurusType))
+                         -> MonoExp
+                         -> MonoExp
+    updateCallSiteLifted allOldToNew =  transform $ \case
+      var@(V (B (BVar bvIx _ bvId))) -> case  M.lookup (bvId,bvIx) dict of
+        Just (d,a) ->
+          let deep = S.toList $ getDeep  d a
+              liftedWithOldVars = mkUpdateCallSiteLifted deep (bvId,bvIx) var
+              thisOldToNew = allOldToNew M.! (bvId,bvIx) -- has to be here if it's in dict
+              bvf v = M.lookup v thisOldToNew <|> Just v
+              updatedVarBind = abstract (\case {B v -> bvf v; _ -> Nothing }) liftedWithOldVars
+          in join <$> fromScope updatedVarBind
+        Nothing -> var
+      other -> other
+
+    allDeclIdents :: Set (Ident,Int)
+    allDeclIdents = allDeclIdentifiers _binds
+
+    allDeps :: Map (Ident,Int) Deps
+    allDeps =
+      let rawDeps = S.unions $ dependencies allDeclIdents <$> _binds
+      in foldl' (\acc d@Deps{..} -> M.insert ddeclIdent d acc) M.empty rawDeps
+
+    allAnalyses :: Map (Ident,Int) Analysis
+    allAnalyses = foldl' (\acc a@Analysis{..} -> M.insert (unBVar declIdent) a acc) M.empty _analyses
+
+    dict :: Map (Ident,Int) (Deps,Analysis)
+    dict = foldl' (\acc idnt -> case M.lookup idnt allDeps of
+                      Just dep -> case M.lookup idnt allAnalyses of
+                        Just analysis -> M.insert idnt (dep,analysis) acc
+                        _ -> acc
+                      _ -> acc) M.empty allDeclIdents
+
+    getDeep ::  Deps -> Analysis -> S.Set (BVar PurusType)
+    getDeep  Deps{..} Analysis{..} =
+      let shallow = newOutOfScopeVars
+      in foldl' (\acc dnm -> case M.lookup dnm dict of
+                                  Just (targDeps,targAna) ->
+                                    S.union acc (getDeep targDeps targAna)
+                                  _ -> acc
+                                ) (S.fromList shallow) ddeclDeps
+
+    regenBVar :: forall t. BVar t -> Monomorphizer (BVar t)
+    regenBVar (BVar _ bvTy bvIdent) = do
+           u <- freshUnique
+           pure (BVar u bvTy bvIdent)
+
+    mkOldToNew ::  Deps -> Analysis -> Monomorphizer (Map (BVar PurusType) (BVar PurusType))
+    mkOldToNew d a = M.fromList
+               <$> foldM
+                     (\acc bv -> do {el <- (bv,) <$> regenBVar bv; pure (el:acc)})
+                     []
+                     (getDeep  d a)
+
+    -- for *any* occurrance of the expression in itself or in another lifted expression
+    mkUpdateCallSiteLifted :: [BVar PurusType] -> (Ident,Int) -> MonoExp -> MonoExp
+    mkUpdateCallSiteLifted new (idnt,indx) = \case
+          var@(V (B (BVar bvIndx _ bvIdent)))
+            | bvIndx == indx && bvIdent == idnt ->
+                foldl' AppE var (V . B <$> new)
+          other -> other
+
+    -- for the expression being lifted
+    mkUpdateLiftedLambdas :: Map (BVar PurusType) (BVar PurusType)
+                          -> [BVar PurusType]
+                          -> MonoExp
+                          -> MonoExp
+    mkUpdateLiftedLambdas oldToNew new e = foldl' (\rhs bv -> LamE bv (abstr rhs)) e new
+          where
+            bvf bv = case M.lookup bv oldToNew of {Just bvnew -> Just bvnew; Nothing -> Just bv;}
+            abstr = abstract $ \case {B bv -> bvf bv;_ -> Nothing}
+
+    -- when updating the call site, we don't need to re-index variables b/c the originals *Must* be
+    -- in scope at the call site
+    mkUpdateCallSiteBody :: (Ident,Int) -> Deps -> Analysis -> MonoExp -> MonoExp
+    mkUpdateCallSiteBody nm@(idnt,indx) d a  = \case
+     var@(V (B (BVar bvIndx _ bvIdent)))
+        | bvIndx == indx && bvIdent == idnt ->
+            let deep = S.toList $ getDeep d a
+            in  foldl' AppE var (V . B <$> deep)
+     other -> other
+
+
+
+{- FIXME: Not adding necessary arguments in
+
+-}
 
 lift :: MonoExp
      -> Monomorphizer LiftResult -- we don't put the expression back together yet b/c it's helpful to keep the pieces separate for monomorphization
 lift e = do
-  (monoBinds1,analyses) <- bimap concat concat . unzip <$> traverse analyzeLift toLift
-  let callSiteFun = runAnalyses analyses
-      resultBody = transform callSiteFun prunedExp
+  (monoBinds1,body) <- updateAllBinds prunedExp monoBinds1' analyses
   monoBinds2 <- usedInScopeDecls
   let monoBinds = monoBinds1 <> monoBinds2
-  pure $ LiftResult monoBinds resultBody
+  pure $ LiftResult monoBinds body
  where
-    -- TODO: Add traces here if it doesn't miraculously Just Work (TM)
-    runAnalyses = foldr (\Analysis{..} acc -> updateCallSite . acc) id
-
+    (monoBinds1',analyses) = bimap concat concat . unzip $   map analyzeLift toLift
     (toLift,prunedExp) = collect S.empty S.empty e
 
     collect :: Set (BVar PurusType)
@@ -275,3 +383,79 @@ lift e = do
       --       Since we don't have a linker at the moment though, there's not much point right now
             inScopeDecls <- asks snd
             pure $ findInlineDeclGroup ident inScopeDecls
+
+
+    {- NOTE 1:
+
+       We need three different functions, each of which is (modulo the Monomorphizer monad)
+       morally a function :: Exp -> Exp
+
+       1) We need a function that updates call sites in the body of the expression(s) inside the
+          scope of the original let- bound declaration we're lifting. This situation is distinct from
+          updating the call sites in *other lifted expressions*, because in the original body context,
+          we are applying variables which *must* be in scope already, and so should use the *original*
+          "was-in-scope-before-lifting-but-is-out-of-scope-after-lifting" BVars (which we have acces to).
+
+       2) We need a function that updates call sites *in other lifted expressions* , i.e. (but not exclusively)
+          other members of the mutually recursive binding group in which the declaration being lifted is defined (this
+          might also occur for other lifted expressions inside the scope of the binding being lifted).
+
+          Here, we need to generate new unique indices for the variables being applied, so this must be a monadic action.
+
+          Furthermore, because the new(ly re-indexed) variables must be added as lambda arguments on the LHS of *each*
+          other lifted declaration, they must (to preserve global uniqueness) be specific to each lifted declaration.
+
+
+       3) We need a function that modifies the declaration being lifted with additional lambdas (at the *front*, I think that's easier)
+          for each new variable which may have been bound in the original context but is free in the lifted declaration
+          (prior to this transformation). We need to ensure that:
+             - a: The newly introduced binders contain variables with *fresh* indices
+             - b: The "stale" variables (which at this point have the original indices from the scope where they
+                  are first bound in the context we are lifting *from*) are updated with the corresponding fresh indices
+             - c: Any self-recursive calls to the function declaration being lifted are supplied with fresh arguments.
+
+
+       This is all somewhat complicated by the fact that we cannot deduce the *deep* set of dependencies
+       from the structure of a particular to-be-lifted declaration. This is confusing, so to illustrate
+       the point, consider:
+
+       ```
+        f :: Int -> Boolean
+        f x = h x 3
+          where
+            h a b = g a <= j 4 b
+            j c d = c + g d
+            g a = if h a x then j x 1 else x * x
+       ```
+
+       In our AST, this desugars to (something like):
+
+       ```
+        f :: Int -> Boolean
+        f = \(x: Int) ->
+          let h a b = g a <= j 4 b
+              j c d = c + g d
+              g a = if h a x then j x 1 else x * x
+          in h x 3
+       ```
+
+       The bound variable 'x' occurs *directly* in the body of `g` and in no other let-bound declaration.
+       A naive attempt at lifting might yield:
+
+       ```
+       let h a b = g a <= j 4 b
+           j c d = c + g d
+           g x a = if h a x then j x 1 else x * x
+       in (...)
+       ```
+
+       But this is wrong! (If you're reading this, try to spot the error for a second before moving to the next paragraph.)
+
+       The problem with this attempt at lifting is that `g` occurs in both `h` and `j`, and so both `h` and `j`
+       need to take an additional argument and apply it to the `g` contained within their declaration body.
+
+       The point of this example is to demonstrate that the full dependencies of a given declaration must be known
+       (where full means: the direct dependencies *and* any dependencies of the direct one, and recursively, etc).
+
+       `getDeep` (...if it works...) fetches those dependencies for us (and this is why we had to construct all of those maps above).
+    -}

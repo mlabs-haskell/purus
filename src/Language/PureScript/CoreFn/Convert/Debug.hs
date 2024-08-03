@@ -19,7 +19,7 @@ traceCfg :: TraceCfg
 traceCfg = S.fromList []
 
 
-doTrace :: String -> String -> x -> x
+doTrace :: forall x. String -> String -> x -> x
 doTrace identifier msg x
  = if identifier `S.member` traceCfg
    then trace prefixed x
