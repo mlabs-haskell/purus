@@ -5,6 +5,7 @@ import Debug.Trace
 import Prelude
 import Control.Monad (when)
 
+
 {- Debug machinery for everything *after* CoreFn conversion.
 
 
@@ -16,7 +17,7 @@ type TraceCfg = S.Set String
 
 
 traceCfg :: TraceCfg
-traceCfg = S.fromList []
+traceCfg = S.fromList ["getDeep", "updateAllBinds", "lift", "desugarCore"]
 
 
 doTrace :: forall x. String -> String -> x -> x

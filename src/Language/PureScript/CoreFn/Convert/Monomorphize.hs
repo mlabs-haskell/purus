@@ -52,6 +52,7 @@ import Language.PureScript.CoreFn.Convert.Monomorphize.Inline (inlineEverything)
 import Language.PureScript.CoreFn.Convert.Monomorphize.Monomorphize (monomorphize)
 import Language.PureScript.Names 
 import Language.PureScript.CoreFn.Convert.MonomorphizeV3
+import Control.Concurrent (threadDelay)
 {- Function for quickly testing/debugging monomorphization -}
 
 testMono :: FilePath -> Text -> IO ()
@@ -73,8 +74,15 @@ testLift decl = do
   case runRWST (lift myExp) (moduleName,moduleDecls) (MonoState 100000) of
     Left (MonoError msg) -> throwIO $ userError $ "Couldn't lift " <> T.unpack decl <> "\nReason:\n" <> msg
     Right (res,_,_) -> do
-      print (pretty res)
-      putStrLn "\n----------DONE----------\n"
+      let !res' = res
+      case res' of
+        LiftResult a b@(LamE{}) | length a >= 1 -> do
+          threadDelay 500000
+          !prettyString <- pure $  prettyAsStr (LiftResult a b)
+          print (length prettyString)
+          putStrLn prettyString
+          putStrLn "\n----------DONE----------\n"
+        _ -> error "boom"
 {- This is the top-level entry point for monomorphization. Typically,
    you will search the module for a 'main' decl and use its
    body as the Exp argument.

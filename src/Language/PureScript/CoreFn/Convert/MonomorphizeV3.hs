@@ -19,7 +19,7 @@ import Language.PureScript.CoreFn.Convert.IR
       expTy',
       Alt(..),
       Alt, Pat(..), expTy )
-import Language.PureScript.Names (Ident(..), Qualified (..), QualifiedBy (..))
+import Language.PureScript.Names (Ident(..), Qualified (..), QualifiedBy (..), runIdent)
 import Language.PureScript.CoreFn.FromJSON ()
 import Data.Map qualified as M
 import Language.PureScript.PSString (PSString)
@@ -48,6 +48,9 @@ import Prettyprinter
 import Data.Map (Map)
 import Control.Applicative (Alternative((<|>)))
 import Data.Functor.Identity (runIdentity)
+import Data.Text qualified as T
+import Language.PureScript.CoreFn.Convert.Debug
+import Data.Foldable (toList)
 
 -- sorry koz i really want to be able to fit type sigs on one line
 
@@ -77,6 +80,14 @@ data ToLift = ToLift { varScopeAtDecl :: Set (BVar PurusType)
                      , declarations :: [MonoBind]}
   deriving (Show, Eq)
 
+instance Pretty ToLift where
+  pretty ToLift{..} = pretty $ prettify [ "------ToLift-------"
+                                        , "Var Scope:\n" <> prettyAsStr (S.toList varScopeAtDecl)
+                                        , "Ty Var Scope:\n " <> prettyAsStr (S.toList tyVarScopeAtDecl)
+                                        , "Decls:\n" <> prettyAsStr declarations
+                                        , "-------------------"
+                                        ]
+
 allBoundVars :: MonoExp -> [BVar PurusType]
 allBoundVars e = S.toList . S.fromList $ flip mapMaybe everything $ \case
     V (B bv) -> Just bv
@@ -84,19 +95,9 @@ allBoundVars e = S.toList . S.fromList $ flip mapMaybe everything $ \case
   where
     everything = e ^.. cosmos
 
-data Analysis
- = Analysis {
-     {- Function that updates the call site of the declaration being analyzed
-        in the *BODY* of the original let- binding where the declaration was found.
 
-        In practice this amounts to applying additional arguments for each
-        additional argument to the declaration. Since these additional arguments are
-        just those variables/constants which are *in-scope* in the original expression,
-        we already know what they are.
-     -}
-     declIdent :: BVar PurusType,
-     newOutOfScopeVars :: [BVar PurusType]
-     }
+instance Pretty Analysis where
+  pretty Analysis{..} = align $ vsep ["ANALYSIS:",pretty newOutOfScopeVars]
 
 mkBVar :: Ident -> Int -> t -> BVar t
 mkBVar idnt indx ty = BVar indx ty idnt
@@ -122,6 +123,28 @@ data Deps = Deps {
        ddeclIdent :: (Ident,Int),
        ddeclDeps :: Set (Ident,Int)
      } deriving (Show, Eq, Ord)
+
+instance Pretty Deps where
+  pretty = prettyDeps
+
+prettyDeps :: Deps -> Doc a
+prettyDeps Deps{..} = list $ map (\(idnt,indx) -> pretty (runIdent idnt) <> "#" <> pretty indx) (S.toList ddeclDeps)
+
+
+data Analysis
+ = Analysis {
+     {- Function that updates the call site of the declaration being analyzed
+        in the *BODY* of the original let- binding where the declaration was found.
+
+        In practice this amounts to applying additional arguments for each
+        additional argument to the declaration. Since these additional arguments are
+        just those variables/constants which are *in-scope* in the original expression,
+        we already know what they are.
+     -}
+     declIdent :: BVar PurusType,
+     newOutOfScopeVars :: [BVar PurusType]
+     } deriving (Show, Eq,Ord)
+
 
 dependencies :: Set (Ident,Int) -> MonoBind -> Set Deps
 dependencies dict = \case
@@ -180,11 +203,19 @@ updateAllBinds prunedBody _binds _analyses = do
     allOldToNew <- traverse  (uncurry mkOldToNew) dict
     let adjustedBody = transform (foldl' (\accF (nm,(d,a)) -> mkUpdateCallSiteBody nm d a . accF) id (M.toList dict)) prunedBody
         go nm = abstract (\case {B bv -> Just bv; _ -> Nothing})
-                        . updateLiftedLambdas allOldToNew nm 
+                        . updateLiftedLambdas allOldToNew nm
                         . updateCallSiteLifted allOldToNew
                         . fmap join
                         . fromScope
         binds = mapBind go  <$> _binds
+
+        msg = prettify
+                [ "Pruned body:\n " <> prettyAsStr prunedBody
+                , "AllDeclIdents:\n " <> prettyAsStr (S.toList allDeclIdents)
+                , "AdjustedBody:\n " <> prettyAsStr adjustedBody
+                , "Binds:\n" <> concatMap (\x -> prettyAsStr x <> "\n\n") binds
+                ]
+    doTraceM "updateAllBinds" msg
     pure (binds,adjustedBody)
   where
     updateLiftedLambdas :: Map (Ident,Int) (Map (BVar PurusType) (BVar PurusType))
@@ -195,7 +226,7 @@ updateAllBinds prunedBody _binds _analyses = do
       let thisOldToNew = allOldToNew M.! nm
           (d,a)        = dict M.! nm
           deep         = S.toList $ getDeep d a -- this is inefficient but we need to make sure the order matches everywhere
-      in mkUpdateLiftedLambdas thisOldToNew deep e 
+      in mkUpdateLiftedLambdas thisOldToNew (M.elems thisOldToNew) e
 
     updateCallSiteLifted :: Map (Ident,Int) (Map (BVar PurusType) (BVar PurusType))
                          -> MonoExp
@@ -203,7 +234,7 @@ updateAllBinds prunedBody _binds _analyses = do
     updateCallSiteLifted allOldToNew =  transform $ \case
       var@(V (B (BVar bvIx _ bvId))) -> case  M.lookup (bvId,bvIx) dict of
         Just (d,a) ->
-          let deep = S.toList $ getDeep  d a
+          let deep = S.toList $ getDeep d a
               liftedWithOldVars = mkUpdateCallSiteLifted deep (bvId,bvIx) var
               thisOldToNew = allOldToNew M.! (bvId,bvIx) -- has to be here if it's in dict
               bvf v = M.lookup v thisOldToNew <|> Just v
@@ -230,15 +261,65 @@ updateAllBinds prunedBody _binds _analyses = do
                         _ -> acc
                       _ -> acc) M.empty allDeclIdents
 
+    getDeep :: Deps -> Analysis -> S.Set (BVar PurusType)
+    getDeep  dps@(Deps thisId childFns) ana@(Analysis thisBv theseUnBoundVars) =
+        S.fromList theseUnBoundVars  <> getResult (resolvedDeepChildren S.empty dps)
+      where
+        getResult :: S.Set (Ident,Int) -> S.Set (BVar PurusType)
+        getResult children = S.fromList
+                           . concatMap (newOutOfScopeVars . snd)
+                           $ lookupMany children dict
+
+
+        lookupMany :: forall k v t. (Ord k, Foldable t) => t k -> Map k v -> [v]
+        lookupMany ks m = mapMaybe (\k -> M.lookup k m) (toList ks)
+
+        resolvedDeepChildren :: S.Set (Ident,Int) -> Deps -> S.Set (Ident,Int)
+        resolvedDeepChildren visited' (Deps nm deps)  =
+          let thisStep =  fst <$> lookupMany deps dict
+              withThis = S.insert nm visited'
+              thisStepWinnowed = filter (\d -> ddeclIdent d `S.notMember` withThis) thisStep
+              newVisited = foldl' (\acc x -> S.insert x acc)  withThis (ddeclIdent <$> thisStep)
+          in case thisStepWinnowed of
+              [] -> deps
+              _ -> deps <> S.unions (resolvedDeepChildren newVisited <$> thisStepWinnowed)
+    {-
+    getDeep :: S.Set (BVar PurusType) -> Deps -> Analysis -> S.Set (BVar PurusType)
+    getDeep visited dps@(Deps thisId childFns) ana@(Analysis thisBv theseUnBoundVars) = doTrace "getDeep" msg result
+      where
+        step1 :: [(Deps,Analysis)]
+        step1 = mapMaybe (\nm -> M.lookup nm dict) (S.toList childFns)
+
+        step2 :: S.Set (BVar PurusType)
+        step2 =
+          let step1Winnowed = filter (\x -> declIdent (snd x) `S.member` visited) step1
+              visiting = declIdent . snd <$> step1Winnowed
+              visited' = visited <> S.fromList visiting
+          in case step1Winnowed of
+              [] -> S.empty
+              _ -> S.unions $ uncurry (getDeep visited') <$> step1Winnowed
+
+        result :: S.Set (BVar PurusType)
+        result = S.fromList theseUnBoundVars <> step2
+
+        msg = prettify [ "Identifier: " <> T.unpack (runIdent (fst thisId))
+                       , "Immediate Dependencies: " <> prettyAsStr dps
+                       , "Immediate Analysis: " <> prettyAsStr ana
+                       , "Result: " <> prettyAsStr (S.toList result)
+                       ]
+
     getDeep ::  Deps -> Analysis -> S.Set (BVar PurusType)
-    getDeep  Deps{..} Analysis{..} =
+    getDeep  dps@Deps{..} ana@Analysis{..} =
       let shallow = newOutOfScopeVars
-      in foldl' (\acc dnm -> case M.lookup dnm dict of
-                                  Just (targDeps,targAna) ->
-                                    S.union acc (getDeep targDeps targAna)
+          result = foldl' (\acc dnm -> case M.lookup dnm dict of
+                                  Just (targDeps,targAna@(Analysis _ newVars)) ->
+                                    acc <> (S.fromList newVars) <>  (getDeep targDeps targAna)
                                   _ -> acc
                                 ) (S.fromList shallow) ddeclDeps
-
+          ident = T.unpack . runIdent . fst . unBVar $ declIdent
+          msg = prettify ["IDENT: " <> ident, "RESULT: " <> prettyAsStr (S.toList result), "DEPS:\n" <> show dps, "ANA:\n" <> prettyAsStr ana]
+      in doTrace "getDeep" msg result
+    -}
     regenBVar :: forall t. BVar t -> Monomorphizer (BVar t)
     regenBVar (BVar _ bvTy bvIdent) = do
            u <- freshUnique
@@ -281,19 +362,22 @@ updateAllBinds prunedBody _binds _analyses = do
 
 
 
-{- FIXME: Not adding necessary arguments in
-
--}
-
 lift :: MonoExp
      -> Monomorphizer LiftResult -- we don't put the expression back together yet b/c it's helpful to keep the pieces separate for monomorphization
 lift e = do
   (monoBinds1,body) <- updateAllBinds prunedExp monoBinds1' analyses
   monoBinds2 <- usedInScopeDecls
   let monoBinds = monoBinds1 <> monoBinds2
+      msg = prettify [ "Input Expr:\n" <> prettyAsStr e
+                     , "Pruned Expr:\n" <> prettyAsStr prunedExp
+                     , "ToLifts:\n" <> prettyAsStr toLift
+                     , "MonoBinds1':\n" <> prettyAsStr monoBinds1'
+                     , "MonoBinds1:\n" <> prettyAsStr monoBinds1
+                     ]
+  doTraceM "lift" msg
   pure $ LiftResult monoBinds body
  where
-    (monoBinds1',analyses) = bimap concat concat . unzip $   map analyzeLift toLift
+    (monoBinds1',analyses) = bimap concat concat . unzip $ map analyzeLift toLift
     (toLift,prunedExp) = collect S.empty S.empty e
 
     collect :: Set (BVar PurusType)

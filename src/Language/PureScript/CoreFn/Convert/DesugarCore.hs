@@ -224,8 +224,8 @@ desugarCore' appE@(App{}) = case fromJust $ PC.analyzeApp appE of
 desugarCore' (Var _ann ty qi) = pure $ V . F $ FVar ty qi
 desugarCore' (Let _ann binds cont) = do
   -- afaict their mutual recursion sorter doesn't work properly in let exprs (maybe it's implicit that they're all mutually recursive?)
-  traverse_ bindAllNames binds
-  bindEs <- traverse desugarCoreDecl binds
+  -- traverse_ bindAllNames binds
+  bindEs <- traverse rebindInScope =<< traverse desugarCoreDecl binds
   s <-  gets (view _2)
   cont' <- desugarCore cont
   let abstr = abstract (matchLet s)
@@ -252,6 +252,14 @@ bindAllNames = \case
   NonRec _ ident _ -> void $ bind ident
   Rec xs -> (traverse_ ((void . bind) . snd . fst) xs)
 
+rebindInScope :: BindE PurusType (Exp WithObjects PurusType) (Vars PurusType)
+              -> DS (BindE PurusType (Exp WithObjects PurusType) (Vars PurusType))
+rebindInScope b = do
+  s <- gets (view _2)
+  let f scoped = abstract (matchLet s) . fmap join . fromScope $ scoped
+  case b of
+    NonRecursive i x scoped -> pure $ NonRecursive i x (f scoped)
+    Recursive xs -> pure . Recursive $ (\(nm,body) -> (nm,f body)) <$> xs
 desugarAlt :: CaseAlternative Ann
            -> DS (Alt WithObjects PurusType (Exp WithObjects PurusType) (Vars PurusType))
 desugarAlt (CaseAlternative [binder] result) = case result of
