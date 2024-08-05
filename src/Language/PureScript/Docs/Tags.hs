@@ -1,8 +1,8 @@
-module Language.PureScript.Docs.Tags
-  ( tags
-  , dumpCtags
-  , dumpEtags
-  ) where
+module Language.PureScript.Docs.Tags (
+  tags,
+  dumpCtags,
+  dumpEtags,
+) where
 
 import Prelude
 
@@ -11,14 +11,14 @@ import Data.List (sort)
 import Data.Maybe (mapMaybe)
 import Data.Text qualified as T
 import Language.PureScript.AST (SourceSpan, sourcePosLine, spanStart)
-import Language.PureScript.Docs.Types (ChildDeclaration(..), Declaration(..), Module(..))
+import Language.PureScript.Docs.Types (ChildDeclaration (..), Declaration (..), Module (..))
 
 tags :: Module -> [(String, Int)]
 tags = map (first T.unpack) . concatMap dtags . modDeclarations
   where
     dtags :: Declaration -> [(T.Text, Int)]
     dtags decl = case declSourceSpan decl of
-      Just ss -> (declTitle decl, pos ss):mapMaybe subtag (declChildren decl)
+      Just ss -> (declTitle decl, pos ss) : mapMaybe subtag (declChildren decl)
       Nothing -> mapMaybe subtag $ declChildren decl
 
     subtag :: ChildDeclaration -> Maybe (T.Text, Int)
@@ -37,9 +37,10 @@ dumpEtags = concatMap renderModEtags . sort
 
 renderModEtags :: (String, Module) -> [String]
 renderModEtags (path, mdl) = ["\x0c", path ++ "," ++ show tagsLen] ++ tagLines
-  where tagsLen = sum $ map length tagLines
-        tagLines = map tagLine $ tags mdl
-        tagLine (name, line) = "\x7f" ++ name ++ "\x01" ++ show line ++ ","
+  where
+    tagsLen = sum $ map length tagLines
+    tagLines = map tagLine $ tags mdl
+    tagLine (name, line) = "\x7f" ++ name ++ "\x01" ++ show line ++ ","
 
 -- ctags files are required to be sorted: http://ctags.sourceforge.net/FORMAT
 -- "The tags file is sorted on {tagname}.  This allows for a binary search in
@@ -49,5 +50,6 @@ dumpCtags = sort . concatMap renderModCtags
 
 renderModCtags :: (String, Module) -> [String]
 renderModCtags (path, mdl) = sort tagLines
-  where tagLines = map tagLine $ tags mdl
-        tagLine (name, line) = name ++ "\t" ++ path ++ "\t" ++ show line
+  where
+    tagLines = map tagLine $ tags mdl
+    tagLine (name, line) = name ++ "\t" ++ path ++ "\t" ++ show line

@@ -8,26 +8,28 @@
 -- Maintainer  : Christoph Hegemann <christoph.hegemann1337@gmail.com>
 -- Stability   : experimental
 --
--- |
--- Getting declarations from PureScript sourcefiles
+
 -----------------------------------------------------------------------------
 
-module Language.PureScript.Ide.SourceFile
-  ( parseModulesFromFiles
-  , extractAstInformation
+{- |
+Getting declarations from PureScript sourcefiles
+-}
+module Language.PureScript.Ide.SourceFile (
+  parseModulesFromFiles,
+  extractAstInformation,
   -- for tests
-  , extractSpans
-  , extractTypeAnnotations
-  ) where
+  extractSpans,
+  extractTypeAnnotations,
+) where
 
 import Protolude
 
-import Control.Parallel.Strategies (withStrategy, parList, rseq)
+import Control.Parallel.Strategies (parList, rseq, withStrategy)
 import Data.Map qualified as Map
 import Language.PureScript qualified as P
 import Language.PureScript.CST qualified as CST
 import Language.PureScript.Ide.Error (IdeError)
-import Language.PureScript.Ide.Types (DefinitionSites, IdeNamespace(..), IdeNamespaced(..), TypeAnnotations)
+import Language.PureScript.Ide.Types (DefinitionSites, IdeNamespace (..), IdeNamespaced (..), TypeAnnotations)
 import Language.PureScript.Ide.Util (ideReadFile)
 
 parseModule :: FilePath -> Text -> Either FilePath (FilePath, P.Module)
@@ -36,10 +38,10 @@ parseModule path file =
     Left _ -> Left path
     Right m -> Right (path, m)
 
-parseModulesFromFiles
-  :: (MonadIO m, MonadError IdeError m)
-  => [FilePath]
-  -> m [Either FilePath (FilePath, P.Module)]
+parseModulesFromFiles ::
+  (MonadIO m, MonadError IdeError m) =>
+  [FilePath] ->
+  m [Either FilePath (FilePath, P.Module)]
 parseModulesFromFiles paths = do
   files <- traverse ideReadFile paths
   pure (inParallel (map (uncurry parseModule) files))
@@ -48,28 +50,30 @@ parseModulesFromFiles paths = do
     inParallel = withStrategy (parList rseq)
 
 -- | Extracts AST information from a parsed module
-extractAstInformation
-  :: P.Module
-  -> (DefinitionSites P.SourceSpan, TypeAnnotations)
+extractAstInformation ::
+  P.Module ->
+  (DefinitionSites P.SourceSpan, TypeAnnotations)
 extractAstInformation (P.Module moduleSpan _ mn decls _) =
   let definitions =
         Map.insert
-          (IdeNamespaced IdeNSModule (P.runModuleName mn)) moduleSpan
+          (IdeNamespaced IdeNSModule (P.runModuleName mn))
+          moduleSpan
           (Map.fromList (concatMap extractSpans decls))
       typeAnnotations = Map.fromList (extractTypeAnnotations decls)
-  in (definitions, typeAnnotations)
+   in (definitions, typeAnnotations)
 
 -- | Extracts type annotations for functions from a given Module
 extractTypeAnnotations :: [P.Declaration] -> [(P.Ident, P.SourceType)]
 extractTypeAnnotations = mapMaybe (map P.unwrapTypeDeclaration . P.getTypeDeclaration)
 
--- | Given a surrounding Sourcespan and a Declaration from the PS AST, extracts
--- definition sites inside that Declaration.
-extractSpans
-  :: P.Declaration
-  -- ^ The declaration to extract spans from
-  -> [(IdeNamespaced, P.SourceSpan)]
-  -- ^ Declarations and their source locations
+{- | Given a surrounding Sourcespan and a Declaration from the PS AST, extracts
+definition sites inside that Declaration.
+-}
+extractSpans ::
+  -- | The declaration to extract spans from
+  P.Declaration ->
+  -- | Declarations and their source locations
+  [(IdeNamespaced, P.SourceSpan)]
 extractSpans d = case d of
   P.ValueDecl (ss, _) i _ _ _ ->
     [(IdeNamespaced IdeNSValue (P.runIdent i), ss)]
@@ -90,7 +94,7 @@ extractSpans d = case d of
   _ -> []
   where
     dtorSpan :: P.DataConstructorDeclaration -> (IdeNamespaced, P.SourceSpan)
-    dtorSpan P.DataConstructorDeclaration{ P.dataCtorName = name, P.dataCtorAnn = (ss, _) } =
+    dtorSpan P.DataConstructorDeclaration {P.dataCtorName = name, P.dataCtorAnn = (ss, _)} =
       (IdeNamespaced IdeNSValue (P.runProperName name), ss)
     -- We need this special case to be able to also get the position info for
     -- typeclass member functions. Typedeclarations would clash with value

@@ -1,54 +1,60 @@
-{-# language PackageImports, BlockArguments #-}
+{-# LANGUAGE BlockArguments #-}
+{-# LANGUAGE PackageImports #-}
 
-module Language.PureScript.Ide.Externs
-  ( readExternFile
-  , convertExterns
-  ) where
+module Language.PureScript.Ide.Externs (
+  readExternFile,
+  convertExterns,
+) where
 
-import Protolude hiding (to, from, (&))
+import Protolude hiding (from, to, (&))
 
 import Codec.CBOR.Term as Term
 import Control.Lens (preview, view, (&), (^.))
-import "monad-logger" Control.Monad.Logger (MonadLogger, logErrorN)
-import Data.Version (showVersion)
 import Data.Text qualified as Text
+import Data.Version (showVersion)
 import Language.PureScript qualified as P
-import Language.PureScript.Make.Monad qualified as Make
 import Language.PureScript.Ide.Error (IdeError (..))
-import Language.PureScript.Ide.Types (IdeDataConstructor(..), IdeDeclaration(..), IdeDeclarationAnn(..), IdeType(..), IdeTypeClass(..), IdeTypeOperator(..), IdeTypeSynonym(..), IdeValue(..), IdeValueOperator(..), _IdeDeclType, anyOf, emptyAnn, ideTypeKind, ideTypeName)
+import Language.PureScript.Ide.Types (IdeDataConstructor (..), IdeDeclaration (..), IdeDeclarationAnn (..), IdeType (..), IdeTypeClass (..), IdeTypeOperator (..), IdeTypeSynonym (..), IdeValue (..), IdeValueOperator (..), anyOf, emptyAnn, ideTypeKind, ideTypeName, _IdeDeclType)
 import Language.PureScript.Ide.Util (properNameT)
+import Language.PureScript.Make.Monad qualified as Make
+import "monad-logger" Control.Monad.Logger (MonadLogger, logErrorN)
 
-readExternFile
-  :: (MonadIO m, MonadError IdeError m, MonadLogger m)
-  => FilePath
-  -> m P.ExternsFile
+readExternFile ::
+  (MonadIO m, MonadError IdeError m, MonadLogger m) =>
+  FilePath ->
+  m P.ExternsFile
 readExternFile fp = do
   externsFile <- liftIO (Make.readCborFileIO fp)
   case externsFile of
-    Just externs | version == P.efVersion externs ->
-      pure externs
+    Just externs
+      | version == P.efVersion externs ->
+          pure externs
     _ ->
       liftIO (Make.readCborFileIO fp) >>= \case
         Just (Term.TList (_tag : Term.TString efVersion : _rest)) -> do
           let errMsg =
                 "Version mismatch for the externs at: "
-                <> toS fp
-                <> " Expected: " <> version
-                <> " Found: " <> efVersion
+                  <> toS fp
+                  <> " Expected: "
+                  <> version
+                  <> " Found: "
+                  <> efVersion
           logErrorN errMsg
           throwError (GeneralError errMsg)
         _ ->
           throwError (GeneralError ("Parsing the extern at: " <> toS fp <> " failed"))
-    where
-      version = toS (showVersion P.version)
+  where
+    version = toS (showVersion P.version)
 
 convertExterns :: P.ExternsFile -> ([IdeDeclarationAnn], [(P.ModuleName, P.DeclarationRef)])
 convertExterns ef =
   (decls, exportDecls)
   where
-    decls = moduleDecl : map
-      (IdeDeclarationAnn emptyAnn)
-      (resolvedDeclarations <> operatorDecls <> tyOperatorDecls)
+    decls =
+      moduleDecl
+        : map
+          (IdeDeclarationAnn emptyAnn)
+          (resolvedDeclarations <> operatorDecls <> tyOperatorDecls)
     exportDecls = mapMaybe convertExport (P.efExports ef)
     operatorDecls = convertOperator <$> P.efFixities ef
     tyOperatorDecls = convertTypeOperator <$> P.efTypeFixities ef
@@ -57,10 +63,10 @@ convertExterns ef =
       second catMaybes (partitionEithers (map convertDecl (P.efDeclarations ef)))
     resolvedDeclarations = resolveSynonymsAndClasses toResolve declarations
 
-resolveSynonymsAndClasses
-  :: [ToResolve]
-  -> [IdeDeclaration]
-  -> [IdeDeclaration]
+resolveSynonymsAndClasses ::
+  [ToResolve] ->
+  [IdeDeclaration] ->
+  [IdeDeclaration]
 resolveSynonymsAndClasses trs decls = foldr go decls trs
   where
     go tr acc = case tr of
@@ -68,16 +74,17 @@ resolveSynonymsAndClasses trs decls = foldr go decls trs
         case findType (P.coerceProperName tcn) acc of
           Nothing ->
             acc
-          Just tyDecl -> IdeDeclTypeClass
-            (IdeTypeClass tcn (tyDecl ^. ideTypeKind) [])
-            : filter (not . anyOf (_IdeDeclType . ideTypeName) (== P.coerceProperName tcn)) acc
+          Just tyDecl ->
+            IdeDeclTypeClass
+              (IdeTypeClass tcn (tyDecl ^. ideTypeKind) [])
+              : filter (not . anyOf (_IdeDeclType . ideTypeName) (== P.coerceProperName tcn)) acc
       SynonymToResolve tn ty ->
         case findType tn acc of
           Nothing ->
             acc
           Just tyDecl ->
             IdeDeclTypeSynonym (IdeTypeSynonym tn ty (tyDecl ^. ideTypeKind))
-            : filter (not . anyOf (_IdeDeclType . ideTypeName) (== tn)) acc
+              : filter (not . anyOf (_IdeDeclType . ideTypeName) (== tn)) acc
 
 findType :: P.ProperName 'P.TypeName -> [IdeDeclaration] -> Maybe IdeType
 findType tn decls =
@@ -102,41 +109,44 @@ convertDecl ed = case ed of
   -- We need to filter all types and synonyms that contain a '$'
   -- because those are typechecker internal definitions that shouldn't
   -- be user facing
-  P.EDType{..} -> Right do
+  P.EDType {..} -> Right do
     guard (isNothing (Text.find (== '$') (edTypeName ^. properNameT)))
     Just (IdeDeclType (IdeType edTypeName edTypeKind []))
-  P.EDTypeSynonym{..} ->
+  P.EDTypeSynonym {..} ->
     if isNothing (Text.find (== '$') (edTypeSynonymName ^. properNameT))
       then Left (SynonymToResolve edTypeSynonymName edTypeSynonymType)
       else Right Nothing
-  P.EDDataConstructor{..} -> Right do
+  P.EDDataConstructor {..} -> Right do
     guard (isNothing (Text.find (== '$') (edDataCtorName ^. properNameT)))
     Just
-      (IdeDeclDataConstructor
-        (IdeDataConstructor edDataCtorName edDataCtorTypeCtor edDataCtorType))
-  P.EDValue{..} ->
+      ( IdeDeclDataConstructor
+          (IdeDataConstructor edDataCtorName edDataCtorTypeCtor edDataCtorType)
+      )
+  P.EDValue {..} ->
     Right (Just (IdeDeclValue (IdeValue edValueName edValueType)))
-  P.EDClass{..} ->
+  P.EDClass {..} ->
     Left (TypeClassToResolve edClassName)
-  P.EDInstance{} ->
+  P.EDInstance {} ->
     Right Nothing
 
 convertOperator :: P.ExternsFixity -> IdeDeclaration
-convertOperator P.ExternsFixity{..} =
+convertOperator P.ExternsFixity {..} =
   IdeDeclValueOperator
-    (IdeValueOperator
-      efOperator
-      efAlias
-      efPrecedence
-      efAssociativity
-      Nothing)
+    ( IdeValueOperator
+        efOperator
+        efAlias
+        efPrecedence
+        efAssociativity
+        Nothing
+    )
 
 convertTypeOperator :: P.ExternsTypeFixity -> IdeDeclaration
-convertTypeOperator P.ExternsTypeFixity{..} =
+convertTypeOperator P.ExternsTypeFixity {..} =
   IdeDeclTypeOperator
-    (IdeTypeOperator
-      efTypeOperator
-      efTypeAlias
-      efTypePrecedence
-      efTypeAssociativity
-      Nothing)
+    ( IdeTypeOperator
+        efTypeOperator
+        efTypeAlias
+        efTypePrecedence
+        efTypeAssociativity
+        Nothing
+    )

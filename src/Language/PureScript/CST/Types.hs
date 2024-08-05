@@ -1,10 +1,10 @@
--- | This module contains data types for the entire PureScript surface language. Every
--- token is represented in the tree, and every token is annotated with
--- whitespace and comments (both leading and trailing). This means one can write
--- an exact printer so that `print . parse = id`. Every constructor is laid out
--- with tokens in left-to-right order. The core productions are given a slot for
--- arbitrary annotations, however this is not used by the parser.
-
+{- | This module contains data types for the entire PureScript surface language. Every
+token is represented in the tree, and every token is annotated with
+whitespace and comments (both leading and trailing). This means one can write
+an exact printer so that `print . parse = id`. Every constructor is laid out
+with tokens in left-to-right order. The core productions are given a slot for
+arbitrary annotations, however this is not used by the parser.
+-}
 module Language.PureScript.CST.Types where
 
 import Prelude
@@ -14,18 +14,20 @@ import Data.Text (Text)
 import Data.Void (Void)
 import GHC.Generics (Generic)
 import Language.PureScript.Names qualified as N
-import Language.PureScript.Roles qualified as R
 import Language.PureScript.PSString (PSString)
+import Language.PureScript.Roles qualified as R
 
 data SourcePos = SourcePos
   { srcLine :: {-# UNPACK #-} !Int
   , srcColumn :: {-# UNPACK #-} !Int
-  } deriving (Show, Eq, Ord, Generic)
+  }
+  deriving (Show, Eq, Ord, Generic)
 
 data SourceRange = SourceRange
   { srcStart :: !SourcePos
   , srcEnd :: !SourcePos
-  } deriving (Show, Eq, Ord, Generic)
+  }
+  deriving (Show, Eq, Ord, Generic)
 
 data Comment l
   = Comment !Text
@@ -40,7 +42,8 @@ data TokenAnn = TokenAnn
   { tokRange :: !SourceRange
   , tokLeadingComments :: ![Comment LineFeed]
   , tokTrailingComments :: ![Comment Void]
-  } deriving (Show, Eq, Ord, Generic)
+  }
+  deriving (Show, Eq, Ord, Generic)
 
 data SourceStyle = ASCII | Unicode
   deriving (Show, Eq, Ord, Generic)
@@ -84,44 +87,52 @@ data Token
 data SourceToken = SourceToken
   { tokAnn :: !TokenAnn
   , tokValue :: !Token
-  } deriving (Show, Eq, Ord, Generic)
+  }
+  deriving (Show, Eq, Ord, Generic)
 
 data Ident = Ident
   { getIdent :: Text
-  } deriving (Show, Eq, Ord, Generic)
+  }
+  deriving (Show, Eq, Ord, Generic)
 
 data Name a = Name
   { nameTok :: SourceToken
   , nameValue :: a
-  } deriving (Show, Eq, Ord, Functor, Foldable, Traversable, Generic)
+  }
+  deriving (Show, Eq, Ord, Functor, Foldable, Traversable, Generic)
 
 data QualifiedName a = QualifiedName
   { qualTok :: SourceToken
   , qualModule :: Maybe N.ModuleName
   , qualName :: a
-  } deriving (Show, Eq, Ord, Functor, Foldable, Traversable, Generic)
+  }
+  deriving (Show, Eq, Ord, Functor, Foldable, Traversable, Generic)
 
 data Label = Label
   { lblTok :: SourceToken
   , lblName :: PSString
-  } deriving (Show, Eq, Ord, Generic)
+  }
+  deriving (Show, Eq, Ord, Generic)
 
 data Wrapped a = Wrapped
   { wrpOpen :: SourceToken
   , wrpValue :: a
   , wrpClose :: SourceToken
-  } deriving (Show, Eq, Ord, Functor, Foldable, Traversable, Generic)
+  }
+  deriving (Show, Eq, Ord, Functor, Foldable, Traversable, Generic)
 
 data Separated a = Separated
   { sepHead :: a
   , sepTail :: [(SourceToken, a)]
-  } deriving (Show, Eq, Ord, Functor, Foldable, Traversable, Generic)
+  }
+  deriving (Show, Eq, Ord, Functor, Foldable, Traversable, Generic)
 
 data Labeled a b = Labeled
   { lblLabel :: a
   , lblSep :: SourceToken
-  , lblValue  :: b
-  } deriving (Show, Eq, Ord, Functor, Foldable, Traversable, Generic)
+  , lblValue :: b
+  }
+  deriving (Show, Eq, Ord, Functor, Foldable, Traversable, Generic)
 
 type Delimited a = Wrapped (Maybe (Separated a))
 type DelimitedNonEmpty a = Wrapped (Separated a)
@@ -165,7 +176,8 @@ data Constraint a
 data Row a = Row
   { rowLabels :: Maybe (Separated (Labeled Label (Type a)))
   , rowTail :: Maybe (SourceToken, Type a)
-  } deriving (Show, Eq, Ord, Functor, Foldable, Traversable, Generic)
+  }
+  deriving (Show, Eq, Ord, Functor, Foldable, Traversable, Generic)
 
 data Module a = Module
   { modAnn :: a
@@ -176,7 +188,8 @@ data Module a = Module
   , modImports :: [ImportDecl a]
   , modDecls :: [Declaration a]
   , modTrailingComments :: [Comment LineFeed]
-  } deriving (Show, Eq, Ord, Functor, Foldable, Traversable, Generic)
+  }
+  deriving (Show, Eq, Ord, Functor, Foldable, Traversable, Generic)
 
 data Export a
   = ExportValue a (Name Ident)
@@ -193,8 +206,7 @@ data DataMembers a
   deriving (Show, Eq, Ord, Functor, Foldable, Traversable, Generic)
 
 data Declaration a
-  =
-    DeclKindSignature a SourceToken (Labeled (Name (N.ProperName 'N.TypeName)) (Type a))
+  = DeclKindSignature a SourceToken (Labeled (Name (N.ProperName 'N.TypeName)) (Type a))
   | DeclSignature a (Labeled (Name Ident) (Type a))
   | DeclData a (DataHead a) (Maybe (SourceToken, Separated (DataCtor a)))
   | DeclType a (DataHead a) SourceToken (Type a)
@@ -211,7 +223,8 @@ data Declaration a
 data Instance a = Instance
   { instHead :: InstanceHead a
   , instBody :: Maybe (SourceToken, NonEmpty (InstanceBinding a))
-  } deriving (Show, Eq, Ord, Functor, Foldable, Traversable, Generic)
+  }
+  deriving (Show, Eq, Ord, Functor, Foldable, Traversable, Generic)
 
 data InstanceBinding a
   = InstanceBindingSignature a (Labeled (Name Ident) (Type a))
@@ -224,7 +237,8 @@ data ImportDecl a = ImportDecl
   , impModule :: Name N.ModuleName
   , impNames :: Maybe (Maybe SourceToken, DelimitedNonEmpty (Import a))
   , impQual :: Maybe (SourceToken, Name N.ModuleName)
-  } deriving (Show, Eq, Ord, Functor, Foldable, Traversable, Generic)
+  }
+  deriving (Show, Eq, Ord, Functor, Foldable, Traversable, Generic)
 
 data Import a
   = ImportValue a (Name Ident)
@@ -238,13 +252,15 @@ data DataHead a = DataHead
   { dataHdKeyword :: SourceToken
   , dataHdName :: Name (N.ProperName 'N.TypeName)
   , dataHdVars :: [TypeVarBinding a]
-  } deriving (Show, Eq, Ord, Functor, Foldable, Traversable, Generic)
+  }
+  deriving (Show, Eq, Ord, Functor, Foldable, Traversable, Generic)
 
 data DataCtor a = DataCtor
   { dataCtorAnn :: a
   , dataCtorName :: Name (N.ProperName 'N.ConstructorName)
   , dataCtorFields :: [Type a]
-  } deriving (Show, Eq, Ord, Functor, Foldable, Traversable, Generic)
+  }
+  deriving (Show, Eq, Ord, Functor, Foldable, Traversable, Generic)
 
 data ClassHead a = ClassHead
   { clsKeyword :: SourceToken
@@ -252,7 +268,8 @@ data ClassHead a = ClassHead
   , clsName :: Name (N.ProperName 'N.ClassName)
   , clsVars :: [TypeVarBinding a]
   , clsFundeps :: Maybe (SourceToken, Separated ClassFundep)
-  } deriving (Show, Eq, Ord, Functor, Foldable, Traversable, Generic)
+  }
+  deriving (Show, Eq, Ord, Functor, Foldable, Traversable, Generic)
 
 data ClassFundep
   = FundepDetermined SourceToken (NonEmpty (Name Ident))
@@ -262,13 +279,14 @@ data ClassFundep
 data InstanceHead a = InstanceHead
   { instKeyword :: SourceToken
   , instForall :: Maybe (SourceToken, NonEmpty (TypeVarBinding a))
-  -- we modified the parser to disallow named instances.
-  -- TODO: remove `instNameSep` field.
-  , instNameSep :: Maybe (Name Ident, SourceToken)
+  , -- we modified the parser to disallow named instances.
+    -- TODO: remove `instNameSep` field.
+    instNameSep :: Maybe (Name Ident, SourceToken)
   , instConstraints :: Maybe (OneOrDelimited (Constraint a), SourceToken)
   , instClass :: QualifiedName (N.ProperName 'N.ClassName)
   , instTypes :: [Type a]
-  } deriving (Show, Eq, Ord, Functor, Foldable, Traversable, Generic)
+  }
+  deriving (Show, Eq, Ord, Functor, Foldable, Traversable, Generic)
 
 data Fixity
   = Infix
@@ -285,13 +303,15 @@ data FixityFields = FixityFields
   { fxtKeyword :: (SourceToken, Fixity)
   , fxtPrec :: (SourceToken, Integer)
   , fxtOp :: FixityOp
-  } deriving (Show, Eq, Ord, Generic)
+  }
+  deriving (Show, Eq, Ord, Generic)
 
 data ValueBindingFields a = ValueBindingFields
   { valName :: Name Ident
   , valBinders :: [Binder a]
   , valGuarded :: Guarded a
-  } deriving (Show, Eq, Ord, Functor, Foldable, Traversable, Generic)
+  }
+  deriving (Show, Eq, Ord, Functor, Foldable, Traversable, Generic)
 
 data Guarded a
   = Unconditional SourceToken (Where a)
@@ -303,12 +323,14 @@ data GuardedExpr a = GuardedExpr
   , grdPatterns :: Separated (PatternGuard a)
   , grdSep :: SourceToken
   , grdWhere :: Where a
-  } deriving (Show, Eq, Ord, Functor, Foldable, Traversable, Generic)
+  }
+  deriving (Show, Eq, Ord, Functor, Foldable, Traversable, Generic)
 
 data PatternGuard a = PatternGuard
   { patBinder :: Maybe (Binder a, SourceToken)
   , patExpr :: Expr a
-  } deriving (Show, Eq, Ord, Functor, Foldable, Traversable, Generic)
+  }
+  deriving (Show, Eq, Ord, Functor, Foldable, Traversable, Generic)
 
 data Foreign a
   = ForeignValue (Labeled (Name Ident) (Type a))
@@ -319,7 +341,8 @@ data Foreign a
 data Role = Role
   { roleTok :: SourceToken
   , roleValue :: R.Role
-  } deriving (Show, Eq, Ord, Generic)
+  }
+  deriving (Show, Eq, Ord, Generic)
 
 data Expr a
   = ExprHole a (Name Ident)
@@ -364,14 +387,16 @@ data RecordAccessor a = RecordAccessor
   { recExpr :: Expr a
   , recDot :: SourceToken
   , recPath :: Separated Label
-  } deriving (Show, Eq, Ord, Functor, Foldable, Traversable, Generic)
+  }
+  deriving (Show, Eq, Ord, Functor, Foldable, Traversable, Generic)
 
 data Lambda a = Lambda
   { lmbSymbol :: SourceToken
   , lmbBinders :: NonEmpty (Binder a)
   , lmbArr :: SourceToken
   , lmbBody :: Expr a
-  } deriving (Show, Eq, Ord, Functor, Foldable, Traversable, Generic)
+  }
+  deriving (Show, Eq, Ord, Functor, Foldable, Traversable, Generic)
 
 data IfThenElse a = IfThenElse
   { iteIf :: SourceToken
@@ -380,26 +405,30 @@ data IfThenElse a = IfThenElse
   , iteTrue :: Expr a
   , iteElse :: SourceToken
   , iteFalse :: Expr a
-  } deriving (Show, Eq, Ord, Functor, Foldable, Traversable, Generic)
+  }
+  deriving (Show, Eq, Ord, Functor, Foldable, Traversable, Generic)
 
 data CaseOf a = CaseOf
   { caseKeyword :: SourceToken
   , caseHead :: Separated (Expr a)
   , caseOf :: SourceToken
   , caseBranches :: NonEmpty (Separated (Binder a), Guarded a)
-  } deriving (Show, Eq, Ord, Functor, Foldable, Traversable, Generic)
+  }
+  deriving (Show, Eq, Ord, Functor, Foldable, Traversable, Generic)
 
 data LetIn a = LetIn
   { letKeyword :: SourceToken
   , letBindings :: NonEmpty (LetBinding a)
   , letIn :: SourceToken
   , letBody :: Expr a
-  } deriving (Show, Eq, Ord, Functor, Foldable, Traversable, Generic)
+  }
+  deriving (Show, Eq, Ord, Functor, Foldable, Traversable, Generic)
 
 data Where a = Where
   { whereExpr :: Expr a
   , whereBindings :: Maybe (SourceToken, NonEmpty (LetBinding a))
-  } deriving (Show, Eq, Ord, Functor, Foldable, Traversable, Generic)
+  }
+  deriving (Show, Eq, Ord, Functor, Foldable, Traversable, Generic)
 
 data LetBinding a
   = LetBindingSignature a (Labeled (Name Ident) (Type a))
@@ -410,7 +439,8 @@ data LetBinding a
 data DoBlock a = DoBlock
   { doKeyword :: SourceToken
   , doStatements :: NonEmpty (DoStatement a)
-  } deriving (Show, Eq, Ord, Functor, Foldable, Traversable, Generic)
+  }
+  deriving (Show, Eq, Ord, Functor, Foldable, Traversable, Generic)
 
 data DoStatement a
   = DoLet SourceToken (NonEmpty (LetBinding a))
@@ -423,7 +453,8 @@ data AdoBlock a = AdoBlock
   , adoStatements :: [DoStatement a]
   , adoIn :: SourceToken
   , adoResult :: Expr a
-  } deriving (Show, Eq, Ord, Functor, Foldable, Traversable, Generic)
+  }
+  deriving (Show, Eq, Ord, Functor, Foldable, Traversable, Generic)
 
 data Binder a
   = BinderWildcard a SourceToken

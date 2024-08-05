@@ -1,19 +1,20 @@
 {-# LANGUAGE DeriveAnyClass #-}
--- |
--- Source position information
---
+
+{- |
+Source position information
+-}
 module Language.PureScript.AST.SourcePos where
 
 import Prelude
 
 import Codec.Serialise (Serialise)
 import Control.DeepSeq (NFData)
-import Data.Aeson ((.=), (.:))
+import Data.Aeson ((.:), (.=))
+import Data.Aeson qualified as A
 import Data.Text (Text)
+import Data.Text qualified as T
 import GHC.Generics (Generic)
 import Language.PureScript.Comments (Comment)
-import Data.Aeson qualified as A
-import Data.Text qualified as T
 import System.FilePath (makeRelative)
 
 -- | Source annotation - position information and comments.
@@ -22,23 +23,27 @@ type SourceAnn = (SourceSpan, [Comment])
 -- | Source position information
 data SourcePos = SourcePos
   { sourcePosLine :: Int
-    -- ^ Line number
+  -- ^ Line number
   , sourcePosColumn :: Int
-    -- ^ Column number
-  } deriving (Show, Eq, Ord, Generic, NFData, Serialise)
+  -- ^ Column number
+  }
+  deriving (Show, Eq, Ord, Generic, NFData, Serialise)
 
 displaySourcePos :: SourcePos -> Text
 displaySourcePos sp =
-  "line " <> T.pack (show (sourcePosLine sp)) <>
-    ", column " <> T.pack (show (sourcePosColumn sp))
+  "line "
+    <> T.pack (show (sourcePosLine sp))
+    <> ", column "
+    <> T.pack (show (sourcePosColumn sp))
 
 displaySourcePosShort :: SourcePos -> Text
 displaySourcePosShort sp =
-  T.pack (show (sourcePosLine sp)) <>
-    ":" <> T.pack (show (sourcePosColumn sp))
+  T.pack (show (sourcePosLine sp))
+    <> ":"
+    <> T.pack (show (sourcePosColumn sp))
 
 instance A.ToJSON SourcePos where
-  toJSON SourcePos{..} =
+  toJSON SourcePos {..} =
     A.toJSON [sourcePosLine, sourcePosColumn]
 
 instance A.FromJSON SourcePos where
@@ -48,43 +53,50 @@ instance A.FromJSON SourcePos where
 
 data SourceSpan = SourceSpan
   { spanName :: String
-    -- ^ Source name
+  -- ^ Source name
   , spanStart :: SourcePos
-    -- ^ Start of the span
+  -- ^ Start of the span
   , spanEnd :: SourcePos
-    -- ^ End of the span
-  } deriving (Show, Eq, Ord, Generic, NFData, Serialise)
+  -- ^ End of the span
+  }
+  deriving (Show, Eq, Ord, Generic, NFData, Serialise)
 
 displayStartEndPos :: SourceSpan -> Text
 displayStartEndPos sp =
-  "(" <>
-  displaySourcePos (spanStart sp) <> " - " <>
-  displaySourcePos (spanEnd sp) <> ")"
+  "("
+    <> displaySourcePos (spanStart sp)
+    <> " - "
+    <> displaySourcePos (spanEnd sp)
+    <> ")"
 
 displayStartEndPosShort :: SourceSpan -> Text
 displayStartEndPosShort sp =
-  displaySourcePosShort (spanStart sp) <> " - " <>
-  displaySourcePosShort (spanEnd sp)
+  displaySourcePosShort (spanStart sp)
+    <> " - "
+    <> displaySourcePosShort (spanEnd sp)
 
 displaySourceSpan :: FilePath -> SourceSpan -> Text
 displaySourceSpan relPath sp =
-  T.pack (makeRelative relPath (spanName sp)) <> ":" <>
-    displayStartEndPosShort sp <> " " <>
-    displayStartEndPos sp
+  T.pack (makeRelative relPath (spanName sp))
+    <> ":"
+    <> displayStartEndPosShort sp
+    <> " "
+    <> displayStartEndPos sp
 
 instance A.ToJSON SourceSpan where
-  toJSON SourceSpan{..} =
-    A.object [ "name"  .= spanName
-             , "start" .= spanStart
-             , "end"   .= spanEnd
-             ]
+  toJSON SourceSpan {..} =
+    A.object
+      [ "name" .= spanName
+      , "start" .= spanStart
+      , "end" .= spanEnd
+      ]
 
 instance A.FromJSON SourceSpan where
   parseJSON = A.withObject "SourceSpan" $ \o ->
-    SourceSpan     <$>
-      o .: "name"  <*>
-      o .: "start" <*>
-      o .: "end"
+    SourceSpan
+      <$> o .: "name"
+      <*> o .: "start"
+      <*> o .: "end"
 
 internalModuleSourceSpan :: String -> SourceSpan
 internalModuleSourceSpan name = SourceSpan name (SourcePos 0 0) (SourcePos 0 0)
@@ -111,8 +123,9 @@ widenSourceSpan a NullSourceSpan = a
 widenSourceSpan (SourceSpan n1 s1 e1) (SourceSpan n2 s2 e2) =
   SourceSpan n (min s1 s2) (max e1 e2)
   where
-  n | n1 == ""  = n2
-    | otherwise = n1
+    n
+      | n1 == "" = n2
+      | otherwise = n1
 
 widenSourceAnn :: SourceAnn -> SourceAnn -> SourceAnn
 widenSourceAnn (s1, _) (s2, _) = (widenSourceSpan s1 s2, [])

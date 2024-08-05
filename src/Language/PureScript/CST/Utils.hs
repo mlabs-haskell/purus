@@ -11,7 +11,7 @@ import Data.Set (Set)
 import Data.Set qualified as Set
 import Data.Text (Text)
 import Data.Text qualified as Text
-import Language.PureScript.CST.Errors (ParserErrorType(..))
+import Language.PureScript.CST.Errors (ParserErrorType (..))
 import Language.PureScript.CST.Monad (Parser, addFailure, parseFail, pushBack)
 import Language.PureScript.CST.Positions (TokenRange, binderRange, importDeclRange, recordUpdateRange, typeRange)
 import Language.PureScript.CST.Traversals.Type (everythingOnTypes)
@@ -19,26 +19,26 @@ import Language.PureScript.CST.Types
 import Language.PureScript.Names qualified as N
 import Language.PureScript.PSString (PSString, mkString)
 
--- |
--- A newtype for a qualified proper name whose ProperNameType has not yet been determined.
--- This is a workaround for Happy's limited support for polymorphism; it is used
--- inside the parser to allow us to write just one parser for qualified proper names
--- which can be used for all of the different ProperNameTypes
--- (via a call to getQualifiedProperName).
-newtype QualifiedProperName =
-  QualifiedProperName { getQualifiedProperName :: forall a. QualifiedName (N.ProperName a) }
+{- |
+A newtype for a qualified proper name whose ProperNameType has not yet been determined.
+This is a workaround for Happy's limited support for polymorphism; it is used
+inside the parser to allow us to write just one parser for qualified proper names
+which can be used for all of the different ProperNameTypes
+(via a call to getQualifiedProperName).
+-}
+newtype QualifiedProperName = QualifiedProperName {getQualifiedProperName :: forall a. QualifiedName (N.ProperName a)}
 
 qualifiedProperName :: QualifiedName (N.ProperName a) -> QualifiedProperName
 qualifiedProperName n = QualifiedProperName (N.coerceProperName <$> n)
 
--- |
--- A newtype for a proper name whose ProperNameType has not yet been determined.
--- This is a workaround for Happy's limited support for polymorphism; it is used
--- inside the parser to allow us to write just one parser for proper names
--- which can be used for all of the different ProperNameTypes
--- (via a call to getProperName).
-newtype ProperName =
-  ProperName { _getProperName :: forall a. Name (N.ProperName a) }
+{- |
+A newtype for a proper name whose ProperNameType has not yet been determined.
+This is a workaround for Happy's limited support for polymorphism; it is used
+inside the parser to allow us to write just one parser for proper names
+which can be used for all of the different ProperNameTypes
+(via a call to getProperName).
+-}
+newtype ProperName = ProperName {_getProperName :: forall a. Name (N.ProperName a)}
 
 properName :: Name (N.ProperName a) -> ProperName
 properName n = ProperName (N.coerceProperName <$> n)
@@ -46,35 +46,36 @@ properName n = ProperName (N.coerceProperName <$> n)
 getProperName :: forall a. ProperName -> Name (N.ProperName a)
 getProperName pn = _getProperName pn -- eta expansion needed here due to simplified subsumption
 
--- |
--- A newtype for a qualified operator name whose OpNameType has not yet been determined.
--- This is a workaround for Happy's limited support for polymorphism; it is used
--- inside the parser to allow us to write just one parser for qualified operator names
--- which can be used for all of the different OpNameTypes
--- (via a call to getQualifiedOpName).
-newtype QualifiedOpName =
-  QualifiedOpName { getQualifiedOpName :: forall a. QualifiedName (N.OpName a) }
+{- |
+A newtype for a qualified operator name whose OpNameType has not yet been determined.
+This is a workaround for Happy's limited support for polymorphism; it is used
+inside the parser to allow us to write just one parser for qualified operator names
+which can be used for all of the different OpNameTypes
+(via a call to getQualifiedOpName).
+-}
+newtype QualifiedOpName = QualifiedOpName {getQualifiedOpName :: forall a. QualifiedName (N.OpName a)}
 
 qualifiedOpName :: QualifiedName (N.OpName a) -> QualifiedOpName
 qualifiedOpName n = QualifiedOpName (N.coerceOpName <$> n)
 
--- |
--- A newtype for a operator name whose OpNameType has not yet been determined.
--- This is a workaround for Happy's limited support for polymorphism; it is used
--- inside the parser to allow us to write just one parser for operator names
--- which can be used for all of the different OpNameTypes
--- (via a call to getOpName).
-newtype OpName =
-  OpName { getOpName :: forall a. Name (N.OpName a) }
+{- |
+A newtype for a operator name whose OpNameType has not yet been determined.
+This is a workaround for Happy's limited support for polymorphism; it is used
+inside the parser to allow us to write just one parser for operator names
+which can be used for all of the different OpNameTypes
+(via a call to getOpName).
+-}
+newtype OpName = OpName {getOpName :: forall a. Name (N.OpName a)}
 
 opName :: Name (N.OpName a) -> OpName
 opName n = OpName (N.coerceOpName <$> n)
 
 placeholder :: SourceToken
-placeholder = SourceToken
-  { tokAnn = TokenAnn (SourceRange (SourcePos 0 0) (SourcePos 0 0)) [] []
-  , tokValue = TokLowerName [] "<placeholder>"
-  }
+placeholder =
+  SourceToken
+    { tokAnn = TokenAnn (SourceRange (SourcePos 0 0) (SourcePos 0 0)) [] []
+    , tokValue = TokLowerName [] "<placeholder>"
+    }
 
 unexpectedName :: SourceToken -> Name Ident
 unexpectedName tok = Name tok (Ident "<unexpected>")
@@ -85,13 +86,13 @@ unexpectedQual tok = QualifiedName tok Nothing (Ident "<unexpected>")
 unexpectedLabel :: SourceToken -> Label
 unexpectedLabel tok = Label tok "<unexpected>"
 
-unexpectedExpr :: Monoid a => [SourceToken] -> Expr a
+unexpectedExpr :: (Monoid a) => [SourceToken] -> Expr a
 unexpectedExpr toks = ExprIdent mempty (unexpectedQual (head toks))
 
-unexpectedBinder :: Monoid a => [SourceToken] -> Binder a
+unexpectedBinder :: (Monoid a) => [SourceToken] -> Binder a
 unexpectedBinder toks = BinderVar mempty (unexpectedName (head toks))
 
-unexpectedRecordUpdate :: Monoid a => [SourceToken] -> RecordUpdate a
+unexpectedRecordUpdate :: (Monoid a) => [SourceToken] -> RecordUpdate a
 unexpectedRecordUpdate toks = RecordUpdateLeaf (unexpectedLabel (head toks)) (head toks) (unexpectedExpr toks)
 
 unexpectedRecordLabeled :: [SourceToken] -> RecordLabeled a
@@ -109,9 +110,9 @@ unexpectedToks toRange toCst err old = do
 separated :: [(SourceToken, a)] -> Separated a
 separated = go []
   where
-  go accum [(_, a)] = Separated a accum
-  go accum (x : xs) = go (x : accum) xs
-  go _ [] = internalError "Separated should not be empty"
+    go accum [(_, a)] = Separated a accum
+    go accum (x : xs) = go (x : accum) xs
+    go _ [] = internalError "Separated should not be empty"
 
 internalError :: String -> a
 internalError = error . ("Internal parser error: " <>)
@@ -135,10 +136,10 @@ toQualifiedName k tok = case tokValue tok of
   TokLowerName q a
     | not (Set.member a reservedNames) -> flip (QualifiedName tok) (k a) <$> toModuleName tok q
     | otherwise -> addFailure [tok] ErrKeywordVar $> QualifiedName tok Nothing (k "<unexpected>")
-  TokUpperName q a  -> flip (QualifiedName tok) (k a) <$> toModuleName tok q
+  TokUpperName q a -> flip (QualifiedName tok) (k a) <$> toModuleName tok q
   TokSymbolName q a -> flip (QualifiedName tok) (k a) <$> toModuleName tok q
-  TokOperator q a   -> flip (QualifiedName tok) (k a) <$> toModuleName tok q
-  _                 -> internalError $ "Invalid qualified name: " <> show tok
+  TokOperator q a -> flip (QualifiedName tok) (k a) <$> toModuleName tok q
+  _ -> internalError $ "Invalid qualified name: " <> show tok
 
 toName :: (Text -> a) -> SourceToken -> Parser (Name a)
 toName k tok = case tokValue tok of
@@ -147,102 +148,102 @@ toName k tok = case tokValue tok of
     | otherwise -> addFailure [tok] ErrKeywordVar $> Name tok (k "<unexpected>")
   TokString _ _ -> parseFail tok ErrQuotedPun
   TokRawString _ -> parseFail tok ErrQuotedPun
-  TokUpperName [] a  -> pure $ Name tok (k a)
+  TokUpperName [] a -> pure $ Name tok (k a)
   TokSymbolName [] a -> pure $ Name tok (k a)
-  TokOperator [] a   -> pure $ Name tok (k a)
-  TokHole a          -> pure $ Name tok (k a)
-  _                  -> internalError $ "Invalid name: " <> show tok
+  TokOperator [] a -> pure $ Name tok (k a)
+  TokHole a -> pure $ Name tok (k a)
+  _ -> internalError $ "Invalid name: " <> show tok
 
 toLabel :: SourceToken -> Label
 toLabel tok = case tokValue tok of
   TokLowerName [] a -> Label tok $ mkString a
-  TokString _ a     -> Label tok a
-  TokRawString a    -> Label tok $ mkString a
-  TokForall ASCII   -> Label tok $ mkString "forall"
-  _                 -> internalError $ "Invalid label: " <> show tok
+  TokString _ a -> Label tok a
+  TokRawString a -> Label tok $ mkString a
+  TokForall ASCII -> Label tok $ mkString "forall"
+  _ -> internalError $ "Invalid label: " <> show tok
 
 toString :: SourceToken -> (SourceToken, PSString)
 toString tok = case tokValue tok of
-  TokString _ a  -> (tok, a)
+  TokString _ a -> (tok, a)
   TokRawString a -> (tok, mkString a)
-  _              -> internalError $ "Invalid string literal: " <> show tok
+  _ -> internalError $ "Invalid string literal: " <> show tok
 
 toChar :: SourceToken -> (SourceToken, Char)
 toChar tok = case tokValue tok of
   TokChar _ a -> (tok, a)
-  _           -> internalError $ "Invalid char literal: " <> show tok
+  _ -> internalError $ "Invalid char literal: " <> show tok
 
 toNumber :: SourceToken -> (SourceToken, Either Integer Double)
 toNumber tok = case tokValue tok of
-  TokInt _ a    -> (tok, Left a)
+  TokInt _ a -> (tok, Left a)
   TokNumber _ a -> (tok, Right a)
-  _             -> internalError $ "Invalid number literal: " <> show tok
+  _ -> internalError $ "Invalid number literal: " <> show tok
 
 toInt :: SourceToken -> (SourceToken, Integer)
 toInt tok = case tokValue tok of
-  TokInt _ a    -> (tok, a)
-  _             -> internalError $ "Invalid integer literal: " <> show tok
+  TokInt _ a -> (tok, a)
+  _ -> internalError $ "Invalid integer literal: " <> show tok
 
 toBoolean :: SourceToken -> (SourceToken, Bool)
 toBoolean tok = case tokValue tok of
-  TokLowerName [] "true"  -> (tok, True)
+  TokLowerName [] "true" -> (tok, True)
   TokLowerName [] "false" -> (tok, False)
-  _                       -> internalError $ "Invalid boolean literal: " <> show tok
+  _ -> internalError $ "Invalid boolean literal: " <> show tok
 
-toConstraint :: forall a. Monoid a => Type a -> Parser (Constraint a)
+toConstraint :: forall a. (Monoid a) => Type a -> Parser (Constraint a)
 toConstraint = convertParens
   where
-  convertParens :: Type a -> Parser (Constraint a)
-  convertParens = \case
-    TypeParens a (Wrapped b c d) -> do
-      c' <- convertParens c
-      pure $ ConstraintParens a (Wrapped b c' d)
-    ty -> convert mempty [] ty
+    convertParens :: Type a -> Parser (Constraint a)
+    convertParens = \case
+      TypeParens a (Wrapped b c d) -> do
+        c' <- convertParens c
+        pure $ ConstraintParens a (Wrapped b c' d)
+      ty -> convert mempty [] ty
 
-  convert :: a -> [Type a] -> Type a -> Parser (Constraint a)
-  convert ann acc = \case
-    TypeApp a lhs rhs -> convert (a <> ann) (rhs : acc) lhs
-    TypeConstructor a name -> do
-      for_ acc checkNoForalls
-      pure $ Constraint (a <> ann) (coerce name) acc
-    ty -> do
-      let (tok1, tok2) = typeRange ty
-      addFailure [tok1, tok2] ErrTypeInConstraint
-      pure $ Constraint mempty (QualifiedName tok1 Nothing (N.ProperName "<unexpected")) []
+    convert :: a -> [Type a] -> Type a -> Parser (Constraint a)
+    convert ann acc = \case
+      TypeApp a lhs rhs -> convert (a <> ann) (rhs : acc) lhs
+      TypeConstructor a name -> do
+        for_ acc checkNoForalls
+        pure $ Constraint (a <> ann) (coerce name) acc
+      ty -> do
+        let (tok1, tok2) = typeRange ty
+        addFailure [tok1, tok2] ErrTypeInConstraint
+        pure $ Constraint mempty (QualifiedName tok1 Nothing (N.ProperName "<unexpected")) []
 
 isConstrained :: Type a -> Bool
 isConstrained = everythingOnTypes (||) $ \case
-  TypeConstrained{} -> True
+  TypeConstrained {} -> True
   _ -> False
 
-toBinderConstructor :: Monoid a => NE.NonEmpty (Binder a) -> Parser (Binder a)
+toBinderConstructor :: (Monoid a) => NE.NonEmpty (Binder a) -> Parser (Binder a)
 toBinderConstructor = \case
   BinderConstructor a name [] NE.:| bs ->
     pure $ BinderConstructor a name bs
   a NE.:| [] -> pure a
   a NE.:| _ -> unexpectedToks binderRange unexpectedBinder ErrExprInBinder a
 
-toRecordFields
-  :: Monoid a
-  => Separated (Either (RecordLabeled (Expr a)) (RecordUpdate a))
-  -> Parser (Either (Separated (RecordLabeled (Expr a))) (Separated (RecordUpdate a)))
+toRecordFields ::
+  (Monoid a) =>
+  Separated (Either (RecordLabeled (Expr a)) (RecordUpdate a)) ->
+  Parser (Either (Separated (RecordLabeled (Expr a))) (Separated (RecordUpdate a)))
 toRecordFields = \case
   Separated (Left a) as ->
     Left . Separated a <$> traverse (traverse unLeft) as
   Separated (Right a) as ->
     Right . Separated a <$> traverse (traverse unRight) as
   where
-  unLeft (Left tok) = pure tok
-  unLeft (Right tok) =
-    unexpectedToks recordUpdateRange unexpectedRecordLabeled ErrRecordUpdateInCtr tok
+    unLeft (Left tok) = pure tok
+    unLeft (Right tok) =
+      unexpectedToks recordUpdateRange unexpectedRecordLabeled ErrRecordUpdateInCtr tok
 
-  unRight (Right tok) = pure tok
-  unRight (Left (RecordPun (Name tok _))) = do
-    addFailure [tok] ErrRecordPunInUpdate
-    pure $ unexpectedRecordUpdate [tok]
-  unRight (Left (RecordField _ tok _)) = do
-    addFailure [tok] ErrRecordCtrInUpdate
-    pure $ unexpectedRecordUpdate [tok]
+    unRight (Right tok) = pure tok
+    unRight (Left (RecordPun (Name tok _))) = do
+      addFailure [tok] ErrRecordPunInUpdate
+      pure $ unexpectedRecordUpdate [tok]
+    unRight (Left (RecordField _ tok _)) = do
+      addFailure [tok] ErrRecordCtrInUpdate
+      pure $ unexpectedRecordUpdate [tok]
 
 checkFundeps :: ClassHead a -> Parser ()
 checkFundeps (ClassHead _ _ _ _ Nothing) = pure ()
@@ -265,36 +266,36 @@ data TmpModuleDecl a
   | TmpChain (Separated (Declaration a))
   deriving (Show)
 
-toModuleDecls :: Monoid a => [TmpModuleDecl a] -> Parser ([ImportDecl a], [Declaration a])
+toModuleDecls :: (Monoid a) => [TmpModuleDecl a] -> Parser ([ImportDecl a], [Declaration a])
 toModuleDecls = goImport []
   where
-  goImport acc (TmpImport x : xs) = goImport (x : acc) xs
-  goImport acc xs = (reverse acc,) <$> goDecl [] xs
+    goImport acc (TmpImport x : xs) = goImport (x : acc) xs
+    goImport acc xs = (reverse acc,) <$> goDecl [] xs
 
-  goDecl acc [] = pure $ reverse acc
-  goDecl acc (TmpChain (Separated x []) : xs) = goDecl (x : acc) xs
-  goDecl acc (TmpChain (Separated (DeclInstanceChain a (Separated h t)) t') : xs) = do
-    (a', instances) <- goChain (getName h) a [] t'
-    goDecl (DeclInstanceChain a' (Separated h (t <> instances)) : acc) xs
-  goDecl acc (TmpChain (Separated _ t) : xs) = do
-    for_ t $ \(tok, _) -> addFailure [tok] ErrElseInDecl
-    goDecl acc xs
-  goDecl acc (TmpImport imp : xs) = do
-    unexpectedToks importDeclRange (const ()) ErrImportInDecl imp
-    goDecl acc xs
+    goDecl acc [] = pure $ reverse acc
+    goDecl acc (TmpChain (Separated x []) : xs) = goDecl (x : acc) xs
+    goDecl acc (TmpChain (Separated (DeclInstanceChain a (Separated h t)) t') : xs) = do
+      (a', instances) <- goChain (getName h) a [] t'
+      goDecl (DeclInstanceChain a' (Separated h (t <> instances)) : acc) xs
+    goDecl acc (TmpChain (Separated _ t) : xs) = do
+      for_ t $ \(tok, _) -> addFailure [tok] ErrElseInDecl
+      goDecl acc xs
+    goDecl acc (TmpImport imp : xs) = do
+      unexpectedToks importDeclRange (const ()) ErrImportInDecl imp
+      goDecl acc xs
 
-  goChain _ ann acc [] = pure (ann, reverse acc)
-  goChain name ann acc ((tok, DeclInstanceChain a (Separated h t)) : xs)
-    | eqName (getName h) name = goChain name (ann <> a) (reverse ((tok, h) : t) <> acc) xs
-    | otherwise = do
-        addFailure [qualTok $ getName h] ErrInstanceNameMismatch
-        goChain name ann acc xs
-  goChain name ann acc ((tok, _) : xs) = do
-    addFailure [tok] ErrElseInDecl
-    goChain name ann acc xs
+    goChain _ ann acc [] = pure (ann, reverse acc)
+    goChain name ann acc ((tok, DeclInstanceChain a (Separated h t)) : xs)
+      | eqName (getName h) name = goChain name (ann <> a) (reverse ((tok, h) : t) <> acc) xs
+      | otherwise = do
+          addFailure [qualTok $ getName h] ErrInstanceNameMismatch
+          goChain name ann acc xs
+    goChain name ann acc ((tok, _) : xs) = do
+      addFailure [tok] ErrElseInDecl
+      goChain name ann acc xs
 
-  getName = instClass . instHead
-  eqName (QualifiedName _ a b) (QualifiedName _ c d) = a == c && b == d
+    getName = instClass . instHead
+    eqName (QualifiedName _ a b) (QualifiedName _ c d) = a == c && b == d
 
 checkNoWildcards :: Type a -> Parser ()
 checkNoWildcards ty = do
@@ -317,39 +318,41 @@ revert :: Parser a -> SourceToken -> Parser a
 revert p lk = pushBack lk *> p
 
 reservedNames :: Set Text
-reservedNames = Set.fromList
-  [ "ado"
-  , "case"
-  , "class"
-  , "data"
-  , "derive"
-  , "do"
-  , "else"
-  , "false"
-  , "forall"
-  , "foreign"
-  , "import"
-  , "if"
-  , "in"
-  , "infix"
-  , "infixl"
-  , "infixr"
-  , "instance"
-  , "let"
-  , "module"
-  , "newtype"
-  , "of"
-  , "true"
-  , "type"
-  , "where"
-  ]
+reservedNames =
+  Set.fromList
+    [ "ado"
+    , "case"
+    , "class"
+    , "data"
+    , "derive"
+    , "do"
+    , "else"
+    , "false"
+    , "forall"
+    , "foreign"
+    , "import"
+    , "if"
+    , "in"
+    , "infix"
+    , "infixl"
+    , "infixr"
+    , "instance"
+    , "let"
+    , "module"
+    , "newtype"
+    , "of"
+    , "true"
+    , "type"
+    , "where"
+    ]
 
 isValidModuleNamespace :: Text -> Bool
 isValidModuleNamespace = Text.null . snd . Text.span (\c -> c /= '_' && c /= '\'')
 
--- | This is to keep the @Parser.y@ file ASCII, otherwise @happy@ will break
--- in non-unicode locales.
---
--- Related GHC issue: https://gitlab.haskell.org/ghc/ghc/issues/8167
+{- | This is to keep the @Parser.y@ file ASCII, otherwise @happy@ will break
+in non-unicode locales.
+
+Related GHC issue: https://gitlab.haskell.org/ghc/ghc/issues/8167
+-}
 isLeftFatArrow :: Text -> Bool
 isLeftFatArrow str = str == "<=" || str == "⇐"

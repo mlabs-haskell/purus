@@ -1,8 +1,8 @@
-module Language.PureScript.Publish.BoxesHelpers
-  ( Boxes.Box
-  , Boxes.nullBox
-  , module Language.PureScript.Publish.BoxesHelpers
-  ) where
+module Language.PureScript.Publish.BoxesHelpers (
+  Boxes.Box,
+  Boxes.nullBox,
+  module Language.PureScript.Publish.BoxesHelpers,
+) where
 
 import Prelude
 
@@ -27,7 +27,7 @@ indented b = Boxes.hcat Boxes.left [Boxes.emptyBox 1 indentWidth, b]
 successivelyIndented :: [String] -> Boxes.Box
 successivelyIndented [] =
   Boxes.nullBox
-successivelyIndented (x:xs) =
+successivelyIndented (x : xs) =
   Boxes.vcat Boxes.left [para x, indented (successivelyIndented xs)]
 
 vcat :: [Boxes.Box] -> Boxes.Box

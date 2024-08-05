@@ -8,28 +8,29 @@
 -- Maintainer  : Christoph Hegemann <christoph.hegemann1337@gmail.com>
 -- Stability   : experimental
 --
--- |
--- Matchers for psc-ide commands
+
 -----------------------------------------------------------------------------
 
-module Language.PureScript.Ide.Matcher
-       ( Matcher
-       , runMatcher
-       -- for tests
-       , flexMatcher
-       ) where
+{- |
+Matchers for psc-ide commands
+-}
+module Language.PureScript.Ide.Matcher (
+  Matcher,
+  runMatcher,
+  -- for tests
+  flexMatcher,
+) where
 
 import Protolude
 
 import Control.Monad.Fail (fail)
-import Data.Aeson (FromJSON(..), withObject, (.:), (.:?))
+import Data.Aeson (FromJSON (..), withObject, (.:), (.:?))
 import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
 import Language.PureScript.Ide.Types (IdeDeclarationAnn, Match)
 import Language.PureScript.Ide.Util (discardAnn, identifierFromIdeDeclaration, unwrapMatch)
 import Text.EditDistance (defaultEditCosts, levenshteinDistance)
 import Text.Regex.TDFA ((=~))
-
 
 type ScoredMatch a = (Match a, Double)
 
@@ -50,13 +51,14 @@ instance FromJSON (Matcher IdeDeclarationAnn) where
       Just s -> fail ("Unknown matcher: " <> show s)
       Nothing -> return mempty
 
--- | Matches any occurrence of the search string with intersections
---
--- The scoring measures how far the matches span the string where
--- closer is better.
--- Examples:
---   flMa matches flexMatcher. Score: 14.28
---   sons matches sortCompletions. Score: 6.25
+{- | Matches any occurrence of the search string with intersections
+
+The scoring measures how far the matches span the string where
+closer is better.
+Examples:
+  flMa matches flexMatcher. Score: 14.28
+  sons matches sortCompletions. Score: 6.25
+-}
 flexMatcher :: Text -> Matcher IdeDeclarationAnn
 flexMatcher p = mkMatcher (flexMatch p)
 
@@ -66,18 +68,19 @@ distanceMatcher q maxDist = mkMatcher (distanceMatcher' q maxDist)
 distanceMatcher' :: Text -> Int -> [Match IdeDeclarationAnn] -> [ScoredMatch IdeDeclarationAnn]
 distanceMatcher' q maxDist = mapMaybe go
   where
-    go m = let d = dist (T.unpack y)
-               y = identifierFromIdeDeclaration (discardAnn (unwrapMatch m))
-          in if d <= maxDist
-             then Just (m, 1 / fromIntegral d)
-             else Nothing
+    go m =
+      let d = dist (T.unpack y)
+          y = identifierFromIdeDeclaration (discardAnn (unwrapMatch m))
+       in if d <= maxDist
+            then Just (m, 1 / fromIntegral d)
+            else Nothing
     dist = levenshteinDistance defaultEditCosts (T.unpack q)
 
 mkMatcher :: ([Match a] -> [ScoredMatch a]) -> Matcher a
-mkMatcher matcher = Matcher . Endo  $ fmap fst . sortCompletions . matcher
+mkMatcher matcher = Matcher . Endo $ fmap fst . sortCompletions . matcher
 
 runMatcher :: Matcher a -> [Match a] -> [Match a]
-runMatcher (Matcher m)= appEndo m
+runMatcher (Matcher m) = appEndo m
 
 sortCompletions :: [ScoredMatch a] -> [ScoredMatch a]
 sortCompletions = sortOn (Down . snd)
@@ -102,8 +105,8 @@ flexScore pat str =
     Nothing -> Nothing
     Just (first', p) ->
       case TE.encodeUtf8 str =~ TE.encodeUtf8 pat' :: (Int, Int) of
-        (-1,0) -> Nothing
-        (start,len) -> Just $ calcScore start (start + len)
+        (-1, 0) -> Nothing
+        (start, len) -> Just $ calcScore start (start + len)
       where
         escapedPattern :: [Text]
         escapedPattern = map escape (T.unpack p)
@@ -111,9 +114,10 @@ flexScore pat str =
         -- escape prepends a backslash to "regexy" characters to prevent the
         -- matcher from crashing when trying to build the regex
         escape :: Char -> Text
-        escape c = if c `elem` T.unpack "[\\^$.|?*+(){}"
-                   then T.pack ['\\', c]
-                   else T.singleton c
+        escape c =
+          if c `elem` T.unpack "[\\^$.|?*+(){}"
+            then T.pack ['\\', c]
+            else T.singleton c
         -- This just interleaves the search pattern with .*
         -- abcd[*] -> a.*b.*c.*d.*[*]
         pat' = escape first' <> foldMap (<> ".*") escapedPattern

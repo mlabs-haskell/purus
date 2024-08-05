@@ -1,46 +1,50 @@
 {-# OPTIONS_GHC -Wno-deferred-out-of-scope-variables #-}
 {-# OPTIONS_GHC -Wno-orphans #-}
+
 module Language.PureScript.CoreFn.Pretty.Common where
 
 import Prelude hiding ((<>))
 
-import Control.Monad.Reader ( MonadReader(ask), runReader, Reader )
+import Control.Monad.Reader (MonadReader (ask), Reader, runReader)
 
-import Language.PureScript.CoreFn.Expr
-    ( Expr(..) )
+import Language.PureScript.CoreFn.Expr (
+  Expr (..),
+ )
 import Language.PureScript.Label (Label (..))
-import Language.PureScript.Names (runModuleName, showIdent, Ident, ModuleName)
+import Language.PureScript.Names (Ident, ModuleName, runModuleName, showIdent)
 import Language.PureScript.PSString (PSString, decodeStringWithReplacement)
 
-import Prettyprinter
-    ( (<>),
-      brackets,
-      hardline,
-      (<+>),
-      rbrace,
-      lbrace,
-      rparen,
-      lparen,
-      pipe,
-      comma,
-      punctuate,
-      indent,
-      line,
-      space,
-      vcat,
-      hcat,
-      vsep,
-      hsep,
-      flatAlt,
-      align,
-      group,
-      Doc,
-      Pretty(pretty), defaultLayoutOptions, layoutPretty )
-import Prettyprinter.Render.Text (renderStrict)
 import Data.Text qualified as T
+import Prettyprinter (
+  Doc,
+  Pretty (pretty),
+  align,
+  brackets,
+  comma,
+  defaultLayoutOptions,
+  flatAlt,
+  group,
+  hardline,
+  hcat,
+  hsep,
+  indent,
+  layoutPretty,
+  lbrace,
+  line,
+  lparen,
+  pipe,
+  punctuate,
+  rbrace,
+  rparen,
+  space,
+  vcat,
+  vsep,
+  (<+>),
+  (<>),
+ )
+import Prettyprinter.Render.Text (renderStrict)
 
-
-prettyAsStr :: Pretty a => a -> String
+prettyAsStr :: (Pretty a) => a -> String
 prettyAsStr = T.unpack . renderStrict . layoutPretty defaultLayoutOptions . pretty
 
 {- One thing that we often wish to do, but cannot easily do either with
@@ -62,7 +66,7 @@ data LineFormat
   deriving (Show, Eq)
 
 -- A document with a structure that depends on a formatting context
-type Printer ann =  Reader LineFormat (Doc ann)
+type Printer ann = Reader LineFormat (Doc ann)
 
 -- Convenience type
 type Formatter = forall a ann. (a -> Printer ann) -> a -> Doc ann
@@ -82,9 +86,10 @@ asDynamic p x = group $ align $ flatAlt (runPrinter MultiLine (p x)) (runPrinter
 -- Applies the supplied function to the Doc if we're in a Multiline context.
 -- Primarily used for correct formatting of Records/Rows/Objects
 onMultiline :: (Doc ann -> Doc ann) -> Doc ann -> Printer ann
-onMultiline f doc = ask >>= \case
-  OneLine -> pure doc
-  MultiLine -> pure . f $ doc
+onMultiline f doc =
+  ask >>= \case
+    OneLine -> pure doc
+    MultiLine -> pure . f $ doc
 
 -- For docs w/ a structure that does not vary based on the line format options
 -- Used primarily for `let` expressions (where we want uniformity)
@@ -93,42 +98,50 @@ ignoreFmt doc = printer doc doc
 
 -- Choose between hsep and vsep based on the context
 fmtSep :: [Doc ann] -> Printer ann
-fmtSep docs = ask >>= \case
-  OneLine -> pure $ hsep docs
-  MultiLine -> pure $ vsep docs
+fmtSep docs =
+  ask >>= \case
+    OneLine -> pure $ hsep docs
+    MultiLine -> pure $ vsep docs
 
 -- Choose between hcat and vcat based on the context
 fmtCat :: [Doc ann] -> Printer ann
-fmtCat docs = ask >>= \case
-  OneLine -> pure $ hcat docs
-  MultiLine -> pure $ vcat docs
+fmtCat docs =
+  ask >>= \case
+    OneLine -> pure $ hcat docs
+    MultiLine -> pure $ vcat docs
 
 -- Choose between newline + indent or no change, depending on the context.
 -- NOTE: This is kind of the whole reason we need LineFormat + the Reader monad.
 --       `group` isn't sufficient here
 fmtIndent :: Doc ann -> Printer ann
-fmtIndent doc = ask >>= \case
-  OneLine -> pure doc
-  MultiLine -> pure $ line <> indent 2 doc
+fmtIndent doc =
+  ask >>= \case
+    OneLine -> pure doc
+    MultiLine -> pure $ line <> indent 2 doc
 
 -- Helper function for constructing a printer expr
 printer :: Doc ann -> Doc ann -> Printer ann
-printer one multi = ask >>= \case
-  OneLine ->  pure one
-  MultiLine ->  pure multi
+printer one multi =
+  ask >>= \case
+    OneLine -> pure one
+    MultiLine -> pure multi
 
 {- Higher-order Printers for Row Types, Record Types, and Object lits -}
 
 -- Helper for open rows. The `| r` part requires special handling.
-withOpenRow :: forall ann. Doc ann -> Doc ann -> ([Doc ann],Doc ann) -> Printer ann
-withOpenRow l r (fields,open) = do
+withOpenRow :: forall ann. Doc ann -> Doc ann -> ([Doc ann], Doc ann) -> Printer ann
+withOpenRow l r (fields, open) = do
   fmtFields <- onMultiline (indent 2) =<< fmtSep (punctuate comma fields')
-  group . align <$> fmtSep [l,fmtFields, r] -- fmtFields
+  group . align <$> fmtSep [l, fmtFields, r] -- fmtFields
   where
-    fields' =  foldr (\x acc -> case acc of
-                      [] -> [hsep [x,pipe <+> open]]
-                      xs -> x : xs
-                    ) [] fields
+    fields' =
+      foldr
+        ( \x acc -> case acc of
+            [] -> [hsep [x, pipe <+> open]]
+            xs -> x : xs
+        )
+        []
+        fields
 
 openRow :: ([Doc ann], Doc ann) -> Printer ann
 openRow = withOpenRow lparen rparen
@@ -137,10 +150,10 @@ openRecord :: ([Doc ann], Doc ann) -> Printer ann
 openRecord = withOpenRow lbrace rbrace
 
 -- Printer for record like things (Object literals, record types)
-recordLike ::  [Doc ann] -> Printer ann
-recordLike  fields  = do
+recordLike :: [Doc ann] -> Printer ann
+recordLike fields = do
   fields' <- onMultiline (indent 2) =<< fmtSep (punctuate comma fields)
-  group . align <$> fmtSep  [lbrace,fields',rbrace]
+  group . align <$> fmtSep [lbrace, fields', rbrace]
 
 {- Misc Utils and custom combinators.
    Most of these are just for readability. (a <:> type),
@@ -152,7 +165,7 @@ commaSep = vsep . punctuate comma
 
 -- Our "special" type annotations are indicated w/ a single colon.
 (<:>) :: Doc ann -> Doc ann -> Doc ann
-a <:> b = hcat [a,":"] <+> b
+a <:> b = hcat [a, ":"] <+> b
 
 -- Actual type annotations & signatures (that are in the source explicitly or
 -- inferred by the compiler before we get the AST) are indicated in the normal way,
@@ -179,24 +192,21 @@ oneLineList :: [Doc ann] -> Doc ann
 oneLineList = brackets . hcat . punctuate (comma <> space)
 
 -- Splits an `App` expr into a function/ctor and a list of arguments.
-analyzeApp :: Expr a -> Maybe (Expr a,[Expr a])
+analyzeApp :: Expr a -> Maybe (Expr a, [Expr a])
 analyzeApp t = (,appArgs t) <$> appFun t
   where
     appArgs :: Expr a -> [Expr a]
-    appArgs (App _  t1 t2) = appArgs t1 <> [t2]
-    appArgs _  = []
+    appArgs (App _ t1 t2) = appArgs t1 <> [t2]
+    appArgs _ = []
 
     appFun :: Expr a -> Maybe (Expr a)
-    appFun (App _  t1 _) = go t1
+    appFun (App _ t1 _) = go t1
       where
-        go (App _  tx _) = case appFun tx of
+        go (App _ tx _) = case appFun tx of
           Nothing -> Just tx
           Just tx' -> Just tx'
         go other = Just other
     appFun _ = Nothing
-
-
-
 
 -- TODO: Move to modules where types are defined
 instance Pretty Ident where

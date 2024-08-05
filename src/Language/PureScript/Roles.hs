@@ -1,12 +1,12 @@
 {-# LANGUAGE TemplateHaskell #-}
 
--- |
--- Data types for roles.
---
-module Language.PureScript.Roles
-  ( Role(..)
-  , displayRole
-  ) where
+{- |
+Data types for roles.
+-}
+module Language.PureScript.Roles (
+  Role (..),
+  displayRole,
+) where
 
 import Prelude
 
@@ -17,18 +17,19 @@ import Data.Aeson.TH qualified as A
 import Data.Text (Text)
 import GHC.Generics (Generic)
 
--- |
--- The role of a type constructor's parameter.
+{- |
+The role of a type constructor's parameter.
+-}
 data Role
-  = Nominal
-  -- ^ This parameter's identity affects the representation of the type it is
-  -- parameterising.
-  | Representational
-  -- ^ This parameter's representation affects the representation of the type it
-  -- is parameterising.
-  | Phantom
-  -- ^ This parameter has no effect on the representation of the type it is
-  -- parameterising.
+  = -- | This parameter's identity affects the representation of the type it is
+    -- parameterising.
+    Nominal
+  | -- | This parameter's representation affects the representation of the type it
+    -- is parameterising.
+    Representational
+  | -- | This parameter has no effect on the representation of the type it is
+    -- parameterising.
+    Phantom
   deriving (Show, Eq, Ord, Generic)
 
 instance NFData Role

@@ -8,15 +8,16 @@
 -- Stability   :  experimental
 -- Portability :
 --
--- |
--- Generate Directed Graphs of PureScript TypeClasses
---
+
 -----------------------------------------------------------------------------
 
+{- |
+Generate Directed Graphs of PureScript TypeClasses
+-}
 module Language.PureScript.Hierarchy where
 
-import Prelude
 import Protolude (ordNub)
+import Prelude
 
 import Data.List (sort)
 import Data.Text qualified as T
@@ -25,7 +26,7 @@ import Language.PureScript qualified as P
 newtype SuperMap = SuperMap
   { _unSuperMap :: Either (P.ProperName 'P.ClassName) (P.ProperName 'P.ClassName, P.ProperName 'P.ClassName)
   }
-  deriving Eq
+  deriving (Eq)
 
 instance Ord SuperMap where
   compare (SuperMap s) (SuperMap s') = getCls s `compare` getCls s'
@@ -57,17 +58,17 @@ runModuleName :: P.ModuleName -> GraphName
 runModuleName (P.ModuleName name) =
   GraphName $ T.replace "." "_" name
 
-typeClasses :: Functor f => f P.Module -> f (Maybe Graph)
+typeClasses :: (Functor f) => f P.Module -> f (Maybe Graph)
 typeClasses =
   fmap typeClassGraph
 
 typeClassGraph :: P.Module -> Maybe Graph
 typeClassGraph (P.Module _ _ moduleName decls _) =
   if null supers then Nothing else Just (Graph name graph)
-    where
-      name = runModuleName moduleName
-      supers = sort . ordNub $ concatMap superClasses decls
-      graph = Digraph $ typeClassPrologue name <> typeClassBody supers <> typeClassEpilogue
+  where
+    name = runModuleName moduleName
+    supers = sort . ordNub $ concatMap superClasses decls
+    graph = Digraph $ typeClassPrologue name <> typeClassBody supers <> typeClassEpilogue
 
 typeClassPrologue :: GraphName -> T.Text
 typeClassPrologue (GraphName name) = "digraph " <> name <> " {\n"
@@ -79,7 +80,7 @@ typeClassEpilogue :: T.Text
 typeClassEpilogue = "\n}"
 
 superClasses :: P.Declaration -> [SuperMap]
-superClasses (P.TypeClassDeclaration _ sub _ supers@(_:_) _ _) =
+superClasses (P.TypeClassDeclaration _ sub _ supers@(_ : _) _ _) =
   fmap (\(P.Constraint _ (P.Qualified _ super) _ _ _) -> SuperMap (Right (super, sub))) supers
 superClasses (P.TypeClassDeclaration _ sub _ _ _ _) = [SuperMap (Left sub)]
 superClasses _ = []

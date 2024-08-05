@@ -9,18 +9,20 @@
 -- Maintainer  : Christoph Hegemann <christoph.hegemann1337@gmail.com>
 -- Stability   : experimental
 --
--- |
--- Resolves reexports for psc-ide
+
 -----------------------------------------------------------------------------
 
-module Language.PureScript.Ide.Reexports
-  ( resolveReexports
-  , prettyPrintReexportResult
-  , reexportHasFailures
-  , ReexportResult(..)
+{- |
+Resolves reexports for psc-ide
+-}
+module Language.PureScript.Ide.Reexports (
+  resolveReexports,
+  prettyPrintReexportResult,
+  reexportHasFailures,
+  ReexportResult (..),
   -- for tests
-  , resolveReexports'
-  ) where
+  resolveReexports',
+) where
 
 import Protolude hiding (moduleName)
 
@@ -31,52 +33,58 @@ import Language.PureScript.Ide.Types
 import Language.PureScript.Ide.Util (discardAnn)
 
 -- | Contains the module with resolved reexports, and possible failures
-data ReexportResult a
-  = ReexportResult
+data ReexportResult a = ReexportResult
   { reResolved :: a
-  , reFailed   :: [(P.ModuleName, P.DeclarationRef)]
-  } deriving (Show, Eq, Functor, Generic)
+  , reFailed :: [(P.ModuleName, P.DeclarationRef)]
+  }
+  deriving (Show, Eq, Functor, Generic)
 
-instance NFData a => NFData (ReexportResult a)
+instance (NFData a) => NFData (ReexportResult a)
 
--- | Uses the passed formatter to format the resolved module, and adds possible
--- failures
-prettyPrintReexportResult
-  :: (a -> Text)
-  -- ^ Formatter for the resolved result
-  -> ReexportResult a
-  -- ^ The Result to be pretty printed
-  -> Text
-prettyPrintReexportResult f ReexportResult{..}
+{- | Uses the passed formatter to format the resolved module, and adds possible
+failures
+-}
+prettyPrintReexportResult ::
+  -- | Formatter for the resolved result
+  (a -> Text) ->
+  -- | The Result to be pretty printed
+  ReexportResult a ->
+  Text
+prettyPrintReexportResult f ReexportResult {..}
   | null reFailed =
       "Successfully resolved reexports for " <> f reResolved
   | otherwise =
       "Failed to resolve reexports for "
-      <> f reResolved
-      <> foldMap (\(mn, ref) -> P.runModuleName mn <> show ref) reFailed
+        <> f reResolved
+        <> foldMap (\(mn, ref) -> P.runModuleName mn <> show ref) reFailed
 
 -- | Whether any Refs couldn't be resolved
 reexportHasFailures :: ReexportResult a -> Bool
 reexportHasFailures = not . null . reFailed
 
--- | Resolves Reexports for the given Modules, by looking up the reexported
--- values from the passed in DeclarationRefs
-resolveReexports
-  :: ModuleMap [(P.ModuleName, P.DeclarationRef)]
-  -- ^ the references to resolve
-  -> ModuleMap [IdeDeclarationAnn]
-  -- ^ Modules to search for the reexported declarations
-  -> ModuleMap (ReexportResult [IdeDeclarationAnn])
+{- | Resolves Reexports for the given Modules, by looking up the reexported
+values from the passed in DeclarationRefs
+-}
+resolveReexports ::
+  -- | the references to resolve
+  ModuleMap [(P.ModuleName, P.DeclarationRef)] ->
+  -- | Modules to search for the reexported declarations
+  ModuleMap [IdeDeclarationAnn] ->
+  ModuleMap (ReexportResult [IdeDeclarationAnn])
 resolveReexports reexportRefs modules =
-  Map.mapWithKey (\moduleName decls ->
-                    maybe (ReexportResult decls [])
-                      (map (decls <>) . resolveReexports' modules)
-                      (Map.lookup moduleName reexportRefs)) modules
+  Map.mapWithKey
+    ( \moduleName decls ->
+        maybe
+          (ReexportResult decls [])
+          (map (decls <>) . resolveReexports' modules)
+          (Map.lookup moduleName reexportRefs)
+    )
+    modules
 
-resolveReexports'
-  :: ModuleMap [IdeDeclarationAnn]
-  -> [(P.ModuleName, P.DeclarationRef)]
-  -> ReexportResult [IdeDeclarationAnn]
+resolveReexports' ::
+  ModuleMap [IdeDeclarationAnn] ->
+  [(P.ModuleName, P.DeclarationRef)] ->
+  ReexportResult [IdeDeclarationAnn]
 resolveReexports' modules refs =
   ReexportResult (concat resolvedRefs) failedRefs
   where
@@ -86,26 +94,28 @@ resolveReexports' modules refs =
       Just decls' ->
         let
           setExportedFrom = set (idaAnnotation . annExportedFrom) . Just
-        in
+         in
           bimap (mn,) (map (setExportedFrom mn)) (resolveRef decls' r)
 
-resolveRef
-  :: [IdeDeclarationAnn]
-  -> P.DeclarationRef
-  -> Either P.DeclarationRef [IdeDeclarationAnn]
+resolveRef ::
+  [IdeDeclarationAnn] ->
+  P.DeclarationRef ->
+  Either P.DeclarationRef [IdeDeclarationAnn]
 resolveRef decls ref = case ref of
   P.TypeRef _ tn mdtors ->
     case findRef (anyOf (_IdeDeclType . ideTypeName) (== tn))
-         <|> findRef (anyOf (_IdeDeclTypeSynonym . ideSynonymName) (== tn)) of
+      <|> findRef (anyOf (_IdeDeclTypeSynonym . ideSynonymName) (== tn)) of
       Nothing ->
         Left ref
-      Just d -> Right $ d : case mdtors of
-          Nothing ->
-            -- If the dataconstructor field inside the TypeRef is Nothing, that
-            -- means that all data constructors are exported, so we need to look
-            -- those up ourselves
-            findDtors tn
-          Just dtors -> mapMaybe lookupDtor dtors
+      Just d ->
+        Right $
+          d : case mdtors of
+            Nothing ->
+              -- If the dataconstructor field inside the TypeRef is Nothing, that
+              -- means that all data constructors are exported, so we need to look
+              -- those up ourselves
+              findDtors tn
+            Just dtors -> mapMaybe lookupDtor dtors
   P.ValueRef _ i ->
     findWrapped (anyOf (_IdeDeclValue . ideValueIdent) (== i))
   P.ValueOpRef _ name ->
@@ -123,7 +133,13 @@ resolveRef decls ref = case ref of
     lookupDtor name =
       findRef (anyOf (_IdeDeclDataConstructor . ideDtorName) (== name))
 
-    findDtors tn = filter (anyOf
-                           (idaDeclaration
-                            . _IdeDeclDataConstructor
-                            . ideDtorTypeName) (== tn)) decls
+    findDtors tn =
+      filter
+        ( anyOf
+            ( idaDeclaration
+                . _IdeDeclDataConstructor
+                . ideDtorTypeName
+            )
+            (== tn)
+        )
+        decls

@@ -1,8 +1,8 @@
--- | This module contains utilities for calculating positions and offsets. While
--- tokens are annotated with ranges, CST nodes are not, but they can be
--- dynamically derived with the functions in this module, which will return the
--- first and last tokens for a given node.
-
+{- | This module contains utilities for calculating positions and offsets. While
+tokens are annotated with ranges, CST nodes are not, but they can be
+dynamically derived with the functions in this module, which will return the
+first and last tokens for a given node.
+-}
 module Language.PureScript.CST.Positions where
 
 import Prelude
@@ -11,8 +11,8 @@ import Data.Foldable (foldl')
 import Data.List.NonEmpty qualified as NE
 import Data.Maybe (fromMaybe)
 import Data.Text (Text)
-import Data.Void (Void)
 import Data.Text qualified as Text
+import Data.Void (Void)
 import Language.PureScript.CST.Types
 
 advanceToken :: SourcePos -> Token -> SourcePos
@@ -26,45 +26,45 @@ advanceTrailing = foldl' $ \a -> applyDelta a . commentDelta (const (0, 0))
 
 tokenDelta :: Token -> (Int, Int)
 tokenDelta = \case
-  TokLeftParen             -> (0, 1)
-  TokRightParen            -> (0, 1)
-  TokLeftBrace             -> (0, 1)
-  TokRightBrace            -> (0, 1)
-  TokLeftSquare            -> (0, 1)
-  TokRightSquare           -> (0, 1)
-  TokLeftArrow ASCII       -> (0, 2)
-  TokLeftArrow Unicode     -> (0, 1)
-  TokRightArrow ASCII      -> (0, 2)
-  TokRightArrow Unicode    -> (0, 1)
-  TokRightFatArrow ASCII   -> (0, 2)
+  TokLeftParen -> (0, 1)
+  TokRightParen -> (0, 1)
+  TokLeftBrace -> (0, 1)
+  TokRightBrace -> (0, 1)
+  TokLeftSquare -> (0, 1)
+  TokRightSquare -> (0, 1)
+  TokLeftArrow ASCII -> (0, 2)
+  TokLeftArrow Unicode -> (0, 1)
+  TokRightArrow ASCII -> (0, 2)
+  TokRightArrow Unicode -> (0, 1)
+  TokRightFatArrow ASCII -> (0, 2)
   TokRightFatArrow Unicode -> (0, 1)
-  TokDoubleColon ASCII     -> (0, 2)
-  TokDoubleColon Unicode   -> (0, 1)
-  TokForall ASCII          -> (0, 6)
-  TokForall Unicode        -> (0, 1)
-  TokEquals                -> (0, 1)
-  TokPipe                  -> (0, 1)
-  TokTick                  -> (0, 1)
-  TokDot                   -> (0, 1)
-  TokComma                 -> (0, 1)
-  TokUnderscore            -> (0, 1)
-  TokBackslash             -> (0, 1)
-  TokLowerName qual name   -> (0, qualDelta qual + Text.length name)
-  TokUpperName qual name   -> (0, qualDelta qual + Text.length name)
-  TokOperator qual sym     -> (0, qualDelta qual + Text.length sym)
-  TokSymbolName qual sym   -> (0, qualDelta qual + Text.length sym + 2)
-  TokSymbolArr Unicode     -> (0, 3)
-  TokSymbolArr ASCII       -> (0, 4)
-  TokHole hole             -> (0, Text.length hole + 1)
-  TokChar raw _            -> (0, Text.length raw + 2)
-  TokInt raw _             -> (0, Text.length raw)
-  TokNumber raw _          -> (0, Text.length raw)
-  TokString raw _          -> multiLine 1 $ textDelta raw
-  TokRawString raw         -> multiLine 3 $ textDelta raw
-  TokLayoutStart           -> (0, 0)
-  TokLayoutSep             -> (0, 0)
-  TokLayoutEnd             -> (0, 0)
-  TokEof                   -> (0, 0)
+  TokDoubleColon ASCII -> (0, 2)
+  TokDoubleColon Unicode -> (0, 1)
+  TokForall ASCII -> (0, 6)
+  TokForall Unicode -> (0, 1)
+  TokEquals -> (0, 1)
+  TokPipe -> (0, 1)
+  TokTick -> (0, 1)
+  TokDot -> (0, 1)
+  TokComma -> (0, 1)
+  TokUnderscore -> (0, 1)
+  TokBackslash -> (0, 1)
+  TokLowerName qual name -> (0, qualDelta qual + Text.length name)
+  TokUpperName qual name -> (0, qualDelta qual + Text.length name)
+  TokOperator qual sym -> (0, qualDelta qual + Text.length sym)
+  TokSymbolName qual sym -> (0, qualDelta qual + Text.length sym + 2)
+  TokSymbolArr Unicode -> (0, 3)
+  TokSymbolArr ASCII -> (0, 4)
+  TokHole hole -> (0, Text.length hole + 1)
+  TokChar raw _ -> (0, Text.length raw + 2)
+  TokInt raw _ -> (0, Text.length raw)
+  TokNumber raw _ -> (0, Text.length raw)
+  TokString raw _ -> multiLine 1 $ textDelta raw
+  TokRawString raw -> multiLine 3 $ textDelta raw
+  TokLayoutStart -> (0, 0)
+  TokLayoutSep -> (0, 0)
+  TokLayoutEnd -> (0, 0)
+  TokEof -> (0, 0)
 
 qualDelta :: [Text] -> Int
 qualDelta = foldr ((+) . (+ 1) . Text.length) 0
@@ -85,9 +85,9 @@ lineDelta _ = (1, 1)
 textDelta :: Text -> (Int, Int)
 textDelta = Text.foldl' go (0, 0)
   where
-  go (!l, !c) = \case
-    '\n' -> (l + 1, 1)
-    _    -> (l, c + 1)
+    go (!l, !c) = \case
+      '\n' -> (l + 1, 1)
+      _ -> (l, c + 1)
 
 applyDelta :: SourcePos -> (Int, Int) -> SourcePos
 applyDelta (SourcePos l c) = \case
@@ -98,8 +98,9 @@ sepLast :: Separated a -> a
 sepLast (Separated hd []) = hd
 sepLast (Separated _ tl) = snd $ last tl
 
--- | Contains the first and the last source token of a definition,
--- used to track line numbers for the error messages.
+{- | Contains the first and the last source token of a definition,
+used to track line numbers for the error messages.
+-}
 type TokenRange = (SourceToken, SourceToken)
 
 toSourceRange :: TokenRange -> SourceRange
@@ -118,14 +119,14 @@ qualRange :: QualifiedName a -> TokenRange
 qualRange a = (qualTok a, qualTok a)
 
 wrappedRange :: Wrapped a -> TokenRange
-wrappedRange Wrapped { wrpOpen, wrpClose } = (wrpOpen, wrpClose)
+wrappedRange Wrapped {wrpOpen, wrpClose} = (wrpOpen, wrpClose)
 
 moduleRange :: Module a -> TokenRange
-moduleRange Module { modKeyword, modWhere, modImports, modDecls } =
+moduleRange Module {modKeyword, modWhere, modImports, modDecls} =
   case (modImports, modDecls) of
     ([], []) -> (modKeyword, modWhere)
     (is, []) -> (modKeyword, snd . importDeclRange $ last is)
-    (_,  ds) -> (modKeyword, snd . declRange $ last ds)
+    (_, ds) -> (modKeyword, snd . declRange $ last ds)
 
 exportRange :: Export a -> TokenRange
 exportRange = \case
@@ -139,7 +140,7 @@ exportRange = \case
   ExportModule _ a b -> (a, nameTok b)
 
 importDeclRange :: ImportDecl a -> TokenRange
-importDeclRange ImportDecl { impKeyword, impModule, impNames, impQual }
+importDeclRange ImportDecl {impKeyword, impModule, impNames, impQual}
   | Just (_, modName) <- impQual = (impKeyword, nameTok modName)
   | Just (_, imports) <- impNames = (impKeyword, wrpClose imports)
   | otherwise = (impKeyword, nameTok impModule)
@@ -164,13 +165,15 @@ declRange = \case
   DeclData _ hd ctors
     | Just (_, cs) <- ctors -> (fst start, snd . dataCtorRange $ sepLast cs)
     | otherwise -> start
-    where start = dataHeadRange hd
-  DeclType _ a _ b -> (fst $ dataHeadRange a,  snd $ typeRange b)
+    where
+      start = dataHeadRange hd
+  DeclType _ a _ b -> (fst $ dataHeadRange a, snd $ typeRange b)
   DeclNewtype _ a _ _ b -> (fst $ dataHeadRange a, snd $ typeRange b)
   DeclClass _ hd body
     | Just (_, ts) <- body -> (fst start, snd . typeRange . lblValue $ NE.last ts)
     | otherwise -> start
-    where start = classHeadRange hd
+    where
+      start = classHeadRange hd
   DeclInstanceChain _ a -> (fst . instanceRange $ sepHead a, snd . instanceRange $ sepLast a)
   DeclDerive _ a _ b -> (a, snd $ instanceHeadRange b)
   DeclKindSignature _ a (Labeled _ _ b) -> (a, snd $ typeRange b)
@@ -206,7 +209,8 @@ instanceRange :: Instance a -> TokenRange
 instanceRange (Instance hd bd)
   | Just (_, ts) <- bd = (fst start, snd . instanceBindingRange $ NE.last ts)
   | otherwise = start
-  where start = instanceHeadRange hd
+  where
+    start = instanceHeadRange hd
 
 instanceHeadRange :: InstanceHead a -> TokenRange
 instanceHeadRange (InstanceHead kw _ _ _ cls types)
@@ -242,7 +246,7 @@ whereRange (Where a bs)
 
 typeRange :: Type a -> TokenRange
 typeRange = \case
-  TypeVar _ a  -> nameRange a
+  TypeVar _ a -> nameRange a
   TypeConstructor _ a -> qualRange a
   TypeWildcard _ a -> (a, a)
   TypeHole _ a -> nameRange a
@@ -299,7 +303,7 @@ exprRange = \case
   ExprIf _ (IfThenElse a _ _ _ _ b) -> (a, snd $ exprRange b)
   ExprCase _ (CaseOf a _ _ c) -> (a, snd . guardedRange . snd $ NE.last c)
   ExprLet _ (LetIn a _ _ b) -> (a, snd $ exprRange b)
-  ExprDo _ (DoBlock a b) -> (a,  snd . doStatementRange $ NE.last b)
+  ExprDo _ (DoBlock a b) -> (a, snd . doStatementRange $ NE.last b)
   ExprAdo _ (AdoBlock a _ _ b) -> (a, snd $ exprRange b)
 
 letBindingRange :: LetBinding a -> TokenRange

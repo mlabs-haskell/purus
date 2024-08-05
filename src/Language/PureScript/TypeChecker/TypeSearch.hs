@@ -1,6 +1,6 @@
-module Language.PureScript.TypeChecker.TypeSearch
-  ( typeSearch
-  ) where
+module Language.PureScript.TypeChecker.TypeSearch (
+  typeSearch,
+) where
 
 import Protolude
 
@@ -10,51 +10,51 @@ import Language.PureScript.TypeChecker.Entailment qualified as Entailment
 
 import Language.PureScript.TypeChecker.Monad qualified as TC
 import Language.PureScript.TypeChecker.Subsumption (subsumes)
-import Language.PureScript.TypeChecker.Unify       as P
+import Language.PureScript.TypeChecker.Unify as P
 
-import Control.Monad.Supply                        as P
-import Language.PureScript.AST                     as P
-import Language.PureScript.Environment             as P
-import Language.PureScript.Errors                  as P
+import Control.Monad.Supply as P
+import Language.PureScript.AST as P
+import Language.PureScript.Environment as P
+import Language.PureScript.Errors as P
 import Language.PureScript.Label (Label)
-import Language.PureScript.Names                   as P
-import Language.PureScript.Pretty.Types            as P
-import Language.PureScript.TypeChecker.Skolems     as Skolem
-import Language.PureScript.TypeChecker.Synonyms    as P
-import Language.PureScript.Types                   as P
+import Language.PureScript.Names as P
+import Language.PureScript.Pretty.Types as P
+import Language.PureScript.TypeChecker.Skolems as Skolem
+import Language.PureScript.TypeChecker.Synonyms as P
+import Language.PureScript.Types as P
 
-checkInEnvironment
-  :: Environment
-  -> TC.CheckState
-  -> StateT TC.CheckState (SupplyT (WriterT b (Except P.MultipleErrors))) a
-  -> Maybe (a, Environment)
+checkInEnvironment ::
+  Environment ->
+  TC.CheckState ->
+  StateT TC.CheckState (SupplyT (WriterT b (Except P.MultipleErrors))) a ->
+  Maybe (a, Environment)
 checkInEnvironment env st =
   either (const Nothing) Just
-  . runExcept
-  . evalWriterT
-  . P.evalSupplyT 0
-  . TC.runCheck (st { TC.checkEnv = env })
+    . runExcept
+    . evalWriterT
+    . P.evalSupplyT 0
+    . TC.runCheck (st {TC.checkEnv = env})
 
-evalWriterT :: Monad m => WriterT b m r -> m r
+evalWriterT :: (Monad m) => WriterT b m r -> m r
 evalWriterT m = fmap fst (runWriterT m)
 
-checkSubsume
-  :: Maybe [(P.Ident, Entailment.InstanceContext, P.SourceConstraint)]
-  -- ^ Additional constraints we need to satisfy
-  -> P.Environment
-  -- ^ The Environment which contains the relevant definitions and typeclasses
-  -> TC.CheckState
-  -- ^ The typechecker state
-  -> P.SourceType
-  -- ^ The user supplied type
-  -> P.SourceType
-  -- ^ The type supplied by the environment
-  -> Maybe ((P.Expr, [(P.Ident, Entailment.InstanceContext, P.SourceConstraint)]), P.Environment)
+checkSubsume ::
+  -- | Additional constraints we need to satisfy
+  Maybe [(P.Ident, Entailment.InstanceContext, P.SourceConstraint)] ->
+  -- | The Environment which contains the relevant definitions and typeclasses
+  P.Environment ->
+  -- | The typechecker state
+  TC.CheckState ->
+  -- | The user supplied type
+  P.SourceType ->
+  -- | The type supplied by the environment
+  P.SourceType ->
+  Maybe ((P.Expr, [(P.Ident, Entailment.InstanceContext, P.SourceConstraint)]), P.Environment)
 checkSubsume unsolved env st userT envT = checkInEnvironment env st $ do
   let initializeSkolems =
         Skolem.introduceSkolemScope
-        <=< P.replaceAllTypeSynonyms
-        <=< P.replaceTypeWildcards
+          <=< P.replaceAllTypeSynonyms
+          <=< P.replaceTypeWildcards
 
   userT' <- initializeSkolems userT
   envT' <- initializeSkolems envT
@@ -66,30 +66,37 @@ checkSubsume unsolved env st userT envT = checkInEnvironment env st $ do
   let expP = P.overTypes (P.substituteType subst) (elab dummyExpression)
 
   -- Now check that any unsolved constraints have not become impossible
-  (traverse_ . traverse_) (\(_, context, constraint) -> do
-    let constraint' = P.mapConstraintArgs (map (P.substituteType subst)) constraint
-    flip evalStateT Map.empty . evalWriterT $
-      Entailment.entails
-        (Entailment.SolverOptions
-          { solverShouldGeneralize = True
-          , solverDeferErrors      = False
-          }) constraint' context []) unsolved
+  (traverse_ . traverse_)
+    ( \(_, context, constraint) -> do
+        let constraint' = P.mapConstraintArgs (map (P.substituteType subst)) constraint
+        flip evalStateT Map.empty . evalWriterT $
+          Entailment.entails
+            ( Entailment.SolverOptions
+                { solverShouldGeneralize = True
+                , solverDeferErrors = False
+                }
+            )
+            constraint'
+            context
+            []
+    )
+    unsolved
 
   -- Finally, check any constraints which were found during elaboration
   Entailment.replaceTypeClassDictionaries (isJust unsolved) expP
 
-accessorSearch
-  :: Maybe [(P.Ident, Entailment.InstanceContext, P.SourceConstraint)]
-  -> P.Environment
-  -> TC.CheckState
-  -> P.SourceType
-  -> ([(Label, P.SourceType)], [(Label, P.SourceType)])
-  -- ^ (all accessors we found, all accessors we found that match the result type)
+accessorSearch ::
+  Maybe [(P.Ident, Entailment.InstanceContext, P.SourceConstraint)] ->
+  P.Environment ->
+  TC.CheckState ->
+  P.SourceType ->
+  -- | (all accessors we found, all accessors we found that match the result type)
+  ([(Label, P.SourceType)], [(Label, P.SourceType)])
 accessorSearch unsolved env st userT = maybe ([], []) fst $ checkInEnvironment env st $ do
   let initializeSkolems =
         Skolem.introduceSkolemScope
-        <=< P.replaceAllTypeSynonyms
-        <=< P.replaceTypeWildcards
+          <=< P.replaceAllTypeSynonyms
+          <=< P.replaceTypeWildcards
 
   userT' <- initializeSkolems userT
 
@@ -105,16 +112,16 @@ accessorSearch unsolved env st userT = maybe ([], []) fst $ checkInEnvironment e
     checkAccessor tcs x (_, type') = isJust (checkSubsume unsolved env tcs x type')
     toRowPair (RowListItem _ lbl ty) = (lbl, ty)
 
-typeSearch
-  :: Maybe [(P.Ident, Entailment.InstanceContext, P.SourceConstraint)]
-  -- ^ Additional constraints we need to satisfy
-  -> P.Environment
-  -- ^ The Environment which contains the relevant definitions and typeclasses
-  -> TC.CheckState
-  -- ^ The typechecker state
-  -> P.SourceType
-  -- ^ The type we are looking for
-  -> ([(P.Qualified Text, P.SourceType)], Maybe [(Label, P.SourceType)])
+typeSearch ::
+  -- | Additional constraints we need to satisfy
+  Maybe [(P.Ident, Entailment.InstanceContext, P.SourceConstraint)] ->
+  -- | The Environment which contains the relevant definitions and typeclasses
+  P.Environment ->
+  -- | The typechecker state
+  TC.CheckState ->
+  -- | The type we are looking for
+  P.SourceType ->
+  ([(P.Qualified Text, P.SourceType)], Maybe [(Label, P.SourceType)])
 typeSearch unsolved env st type' =
   let
     runTypeSearch :: Map k P.SourceType -> Map k P.SourceType
@@ -126,8 +133,9 @@ typeSearch unsolved env st type' =
 
     runPlainIdent (Qualified m (Ident k), v) = Just (Qualified m k, v)
     runPlainIdent _ = Nothing
-  in
+   in
     ( (first (P.Qualified P.ByNullSourcePos . ("_." <>) . P.prettyPrintLabel) <$> matchingLabels)
-      <> mapMaybe runPlainIdent (Map.toList matchingNames)
-      <> (first (map P.runProperName) <$> Map.toList matchingConstructors)
-    , if null allLabels then Nothing else Just allLabels)
+        <> mapMaybe runPlainIdent (Map.toList matchingNames)
+        <> (first (map P.runProperName) <$> Map.toList matchingConstructors)
+    , if null allLabels then Nothing else Just allLabels
+    )

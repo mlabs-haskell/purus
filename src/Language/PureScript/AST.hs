@@ -1,8 +1,8 @@
--- |
--- The initial PureScript AST
---
+{- |
+The initial PureScript AST
+-}
 module Language.PureScript.AST (
-    module AST
+  module AST,
 ) where
 
 import Language.PureScript.AST.Binders as AST

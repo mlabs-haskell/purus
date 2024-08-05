@@ -1,17 +1,17 @@
 {-# LANGUAGE TemplateHaskell #-}
 
--- |
--- Defines the types of source code comments
---
+{- |
+Defines the types of source code comments
+-}
 module Language.PureScript.Comments where
 
-import Prelude
 import Codec.Serialise (Serialise)
 import Control.DeepSeq (NFData)
 import Data.Text (Text)
 import GHC.Generics (Generic)
+import Prelude
 
-import Data.Aeson.TH (Options(..), SumEncoding(..), defaultOptions, deriveJSON)
+import Data.Aeson.TH (Options (..), SumEncoding (..), defaultOptions, deriveJSON)
 
 data Comment
   = LineComment Text
@@ -21,4 +21,4 @@ data Comment
 instance NFData Comment
 instance Serialise Comment
 
-$(deriveJSON (defaultOptions { sumEncoding = ObjectWithSingleField }) ''Comment)
+$(deriveJSON (defaultOptions {sumEncoding = ObjectWithSingleField}) ''Comment)

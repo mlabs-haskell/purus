@@ -1,57 +1,60 @@
-{-# language PackageImports, TemplateHaskell, BlockArguments #-}
+{-# LANGUAGE BlockArguments #-}
+{-# LANGUAGE PackageImports #-}
+{-# LANGUAGE TemplateHaskell #-}
 
-module Language.PureScript.Ide.Rebuild
-  ( rebuildFileSync
-  , rebuildFileAsync
-  , rebuildFile
-  ) where
+module Language.PureScript.Ide.Rebuild (
+  rebuildFileSync,
+  rebuildFileAsync,
+  rebuildFile,
+) where
 
 import Protolude hiding (moduleName)
 
-import "monad-logger" Control.Monad.Logger (LoggingT, MonadLogger, logDebug)
 import Data.List qualified as List
 import Data.Map.Lazy qualified as M
 import Data.Maybe (fromJust)
 import Data.Set qualified as S
-import Data.Time qualified as Time
 import Data.Text qualified as Text
+import Data.Time qualified as Time
 import Language.PureScript qualified as P
-import Language.PureScript.Make.Cache (CacheInfo(..), normaliseForCache)
 import Language.PureScript.CST qualified as CST
+import Language.PureScript.Make.Cache (CacheInfo (..), normaliseForCache)
+import "monad-logger" Control.Monad.Logger (LoggingT, MonadLogger, logDebug)
 
-import Language.PureScript.Ide.Error (IdeError(..))
+import Language.PureScript.Ide.Error (IdeError (..))
 import Language.PureScript.Ide.Logging (labelTimespec, logPerf, runLogger)
 import Language.PureScript.Ide.State (cacheRebuild, getExternFiles, insertExterns, insertModule, populateVolatileState, updateCacheTimestamp)
-import Language.PureScript.Ide.Types (Ide, IdeConfiguration(..), IdeEnvironment(..), ModuleMap, Success(..))
+import Language.PureScript.Ide.Types (Ide, IdeConfiguration (..), IdeEnvironment (..), ModuleMap, Success (..))
 import Language.PureScript.Ide.Util (ideReadFile)
 import System.Directory (getCurrentDirectory)
 
--- | Given a filepath performs the following steps:
---
--- * Reads and parses a PureScript module from the filepath.
---
--- * Builds a dependency graph for the parsed module from the already loaded
--- ExternsFiles.
---
--- * Attempts to find an FFI definition file for the module by looking
--- for a file with the same filepath except for a .js extension.
---
--- * Passes all the created artifacts to @rebuildModule@.
---
--- * If the rebuilding succeeds, returns a @RebuildSuccess@ with the generated
--- warnings, and if rebuilding fails, returns a @RebuildError@ with the
--- generated errors.
-rebuildFile
-  :: (Ide m, MonadLogger m, MonadError IdeError m)
-  => FilePath
-  -- ^ The file to rebuild
-  -> Maybe FilePath
-  -- ^ The file to use as the location for parsing and errors
-  -> Set P.CodegenTarget
-  -- ^ The targets to codegen
-  -> (ReaderT IdeEnvironment (LoggingT IO) () -> m ())
-  -- ^ A runner for the second build with open exports
-  -> m Success
+{- | Given a filepath performs the following steps:
+
+* Reads and parses a PureScript module from the filepath.
+
+* Builds a dependency graph for the parsed module from the already loaded
+ExternsFiles.
+
+* Attempts to find an FFI definition file for the module by looking
+for a file with the same filepath except for a .js extension.
+
+* Passes all the created artifacts to @rebuildModule@.
+
+* If the rebuilding succeeds, returns a @RebuildSuccess@ with the generated
+warnings, and if rebuilding fails, returns a @RebuildError@ with the
+generated errors.
+-}
+rebuildFile ::
+  (Ide m, MonadLogger m, MonadError IdeError m) =>
+  -- | The file to rebuild
+  FilePath ->
+  -- | The file to use as the location for parsing and errors
+  Maybe FilePath ->
+  -- | The targets to codegen
+  Set P.CodegenTarget ->
+  -- | A runner for the second build with open exports
+  (ReaderT IdeEnvironment (LoggingT IO) () -> m ()) ->
+  m Success
 rebuildFile file actualFile codegenTargets runOpenBuild = do
   (fp, input) <-
     case List.stripPrefix "data:" file of
@@ -73,14 +76,15 @@ rebuildFile file actualFile codegenTargets runOpenBuild = do
   let pureRebuild = fp == ""
   let modulePath = if pureRebuild then fp' else file
   foreigns <- P.inferForeignModules (M.singleton moduleName (Right modulePath))
-  let makeEnv = P.buildMakeActions outputDirectory filePathMap foreigns False
-        & shushProgress
+  let makeEnv =
+        P.buildMakeActions outputDirectory filePathMap foreigns False
+          & shushProgress
   -- Rebuild the single module using the cached externs
   (result, warnings) <- logPerf (labelTimespec "Rebuilding Module") $
-    liftIO $ P.runMake (P.defaultOptions { P.optionsCodegenTargets = codegenTargets }) do
+    liftIO $ P.runMake (P.defaultOptions {P.optionsCodegenTargets = codegenTargets}) do
       newExterns <- P.rebuildModule makeEnv externs m
-      unless pureRebuild
-        $ updateCacheDb codegenTargets outputDirectory file actualFile moduleName
+      unless pureRebuild $
+        updateCacheDb codegenTargets outputDirectory file actualFile moduleName
       pure newExterns
   case result of
     Left errors ->
@@ -93,27 +97,28 @@ rebuildFile file actualFile codegenTargets runOpenBuild = do
       runOpenBuild (rebuildModuleOpen makeEnv externs m)
       pure (RebuildSuccess (CST.toMultipleWarnings fp pwarnings <> warnings))
 
--- | When adjusting the cache db file after a rebuild we always pick a
--- non-sensical timestamp ("1858-11-17T00:00:00Z"), and rely on the
--- content hash to tell whether the module needs rebuilding. This is
--- because IDE rebuilds may be triggered on temporary files to not
--- force editors to save the actual source file to get at diagnostics
+{- | When adjusting the cache db file after a rebuild we always pick a
+non-sensical timestamp ("1858-11-17T00:00:00Z"), and rely on the
+content hash to tell whether the module needs rebuilding. This is
+because IDE rebuilds may be triggered on temporary files to not
+force editors to save the actual source file to get at diagnostics
+-}
 dayZero :: Time.UTCTime
 dayZero = Time.UTCTime (Time.ModifiedJulianDay 0) 0
 
-updateCacheDb
-  :: MonadIO m
-  => MonadError P.MultipleErrors m
-  => Set P.CodegenTarget
-  -> FilePath
-  -- ^ The output directory
-  -> FilePath
-  -- ^ The file to read the content hash from
-  -> Maybe FilePath
-  -- ^ The file name to update in the cache
-  -> P.ModuleName
-  -- ^ The module name to update in the cache
-  -> m ()
+updateCacheDb ::
+  (MonadIO m) =>
+  (MonadError P.MultipleErrors m) =>
+  Set P.CodegenTarget ->
+  -- | The output directory
+  FilePath ->
+  -- | The file to read the content hash from
+  FilePath ->
+  -- | The file name to update in the cache
+  Maybe FilePath ->
+  -- | The module name to update in the cache
+  P.ModuleName ->
+  m ()
 updateCacheDb codegenTargets outputDirectory file actualFile moduleName = do
   cwd <- liftIO getCurrentDirectory
   contentHash <- P.hashFile file
@@ -128,45 +133,56 @@ updateCacheDb codegenTargets outputDirectory file actualFile moduleName = do
         pure (normaliseForCache cwd foreignPath, (dayZero, foreignHash))
     else
     -}
-      pure Nothing
+    pure Nothing
 
   let cacheInfo = M.fromList (moduleCacheInfo : maybeToList foreignCacheInfo)
   cacheDb <- P.readCacheDb' outputDirectory
   P.writeCacheDb' outputDirectory (M.insert moduleName (CacheInfo cacheInfo) cacheDb)
 
-rebuildFileAsync
-  :: forall m. (Ide m, MonadLogger m, MonadError IdeError m)
-  => FilePath -> Maybe FilePath -> Set P.CodegenTarget -> m Success
+rebuildFileAsync ::
+  forall m.
+  (Ide m, MonadLogger m, MonadError IdeError m) =>
+  FilePath ->
+  Maybe FilePath ->
+  Set P.CodegenTarget ->
+  m Success
 rebuildFileAsync fp fp' ts = rebuildFile fp fp' ts asyncRun
   where
     asyncRun :: ReaderT IdeEnvironment (LoggingT IO) () -> m ()
     asyncRun action = do
-        env <- ask
-        let ll = confLogLevel (ideConfiguration env)
-        void (liftIO (async (runLogger ll (runReaderT action env))))
+      env <- ask
+      let ll = confLogLevel (ideConfiguration env)
+      void (liftIO (async (runLogger ll (runReaderT action env))))
 
-rebuildFileSync
-  :: forall m. (Ide m, MonadLogger m, MonadError IdeError m)
-  => FilePath -> Maybe FilePath -> Set P.CodegenTarget -> m Success
+rebuildFileSync ::
+  forall m.
+  (Ide m, MonadLogger m, MonadError IdeError m) =>
+  FilePath ->
+  Maybe FilePath ->
+  Set P.CodegenTarget ->
+  m Success
 rebuildFileSync fp fp' ts = rebuildFile fp fp' ts syncRun
   where
     syncRun :: ReaderT IdeEnvironment (LoggingT IO) () -> m ()
     syncRun action = do
-        env <- ask
-        let ll = confLogLevel (ideConfiguration env)
-        void (liftIO (runLogger ll (runReaderT action env)))
+      env <- ask
+      let ll = confLogLevel (ideConfiguration env)
+      void (liftIO (runLogger ll (runReaderT action env)))
 
--- | Rebuilds a module but opens up its export list first and stores the result
--- inside the rebuild cache
-rebuildModuleOpen
-  :: (Ide m, MonadLogger m)
-  => P.MakeActions P.Make
-  -> [P.ExternsFile]
-  -> P.Module
-  -> m ()
+{- | Rebuilds a module but opens up its export list first and stores the result
+inside the rebuild cache
+-}
+rebuildModuleOpen ::
+  (Ide m, MonadLogger m) =>
+  P.MakeActions P.Make ->
+  [P.ExternsFile] ->
+  P.Module ->
+  m ()
 rebuildModuleOpen makeEnv externs m = void $ runExceptT do
-  (openResult, _) <- liftIO $ P.runMake P.defaultOptions $
-    P.rebuildModule (shushProgress (shushCodegen makeEnv)) externs (openModuleExports m)
+  (openResult, _) <-
+    liftIO $
+      P.runMake P.defaultOptions $
+        P.rebuildModule (shushProgress (shushCodegen makeEnv)) externs (openModuleExports m)
   case openResult of
     Left _ ->
       throwError (GeneralError "Failed when rebuilding with open exports")
@@ -176,31 +192,35 @@ rebuildModuleOpen makeEnv externs m = void $ runExceptT do
       cacheRebuild result
 
 -- | Shuts the compiler up about progress messages
-shushProgress :: Monad m => P.MakeActions m -> P.MakeActions m
+shushProgress :: (Monad m) => P.MakeActions m -> P.MakeActions m
 shushProgress ma =
-  ma { P.progress = \_ -> pure () }
+  ma {P.progress = \_ -> pure ()}
 
 -- | Stops any kind of codegen
-shushCodegen :: Monad m => P.MakeActions m -> P.MakeActions m
+shushCodegen :: (Monad m) => P.MakeActions m -> P.MakeActions m
 shushCodegen ma =
-  ma { P.codegen = \_ _ _ -> pure ()
-     }
+  ma
+    { P.codegen = \_ _ _ -> pure ()
+    }
 
--- | Returns a topologically sorted list of dependent ExternsFiles for the given
--- module. Throws an error if there is a cyclic dependency within the
--- ExternsFiles
-sortExterns
-  :: (Ide m, MonadError IdeError m)
-  => P.Module
-  -> ModuleMap P.ExternsFile
-  -> m [P.ExternsFile]
+{- | Returns a topologically sorted list of dependent ExternsFiles for the given
+module. Throws an error if there is a cyclic dependency within the
+ExternsFiles
+-}
+sortExterns ::
+  (Ide m, MonadError IdeError m) =>
+  P.Module ->
+  ModuleMap P.ExternsFile ->
+  m [P.ExternsFile]
 sortExterns m ex = do
-  sorted' <- runExceptT
-           . P.sortModules P.Transitive P.moduleSignature
-           . (:) m
-           . map mkShallowModule
-           . M.elems
-           . M.delete (P.getModuleName m) $ ex
+  sorted' <-
+    runExceptT
+      . P.sortModules P.Transitive P.moduleSignature
+      . (:) m
+      . map mkShallowModule
+      . M.elems
+      . M.delete (P.getModuleName m)
+      $ ex
   case sorted' of
     Left err ->
       throwError (RebuildError [] err)
@@ -208,7 +228,7 @@ sortExterns m ex = do
       let deps = fromJust (List.lookup (P.getModuleName m) graph)
       pure $ mapMaybe getExtern (deps `inOrderOf` map P.getModuleName sorted)
   where
-    mkShallowModule P.ExternsFile{..} =
+    mkShallowModule P.ExternsFile {..} =
       P.Module (P.internalModuleSourceSpan "<rebuild>") [] efModuleName (map mkImport efImports) Nothing
     mkImport (P.ExternsImport mn it iq) =
       P.ImportDeclaration (P.internalModuleSourceSpan "<rebuild>", []) mn it iq

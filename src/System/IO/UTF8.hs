@@ -10,14 +10,15 @@ import Data.Text (Text)
 import Data.Text.Encoding qualified as TE
 import Protolude (ordNub)
 
--- | Unfortunately ByteString's readFile does not convert line endings on
--- Windows, so we have to do it ourselves
+{- | Unfortunately ByteString's readFile does not convert line endings on
+Windows, so we have to do it ourselves
+-}
 fixCRLF :: BS.ByteString -> BS.ByteString
 fixCRLF = BSL.toStrict . BSS.replace "\r\n" ("\n" :: BS.ByteString)
 
 readUTF8FilesT :: [FilePath] -> IO [(FilePath, Text)]
 readUTF8FilesT =
-  traverse (\inFile -> (inFile, ) <$> readUTF8FileT inFile) . ordNub
+  traverse (\inFile -> (inFile,) <$> readUTF8FileT inFile) . ordNub
 
 readUTF8FileT :: FilePath -> IO Text
 readUTF8FileT inFile =
