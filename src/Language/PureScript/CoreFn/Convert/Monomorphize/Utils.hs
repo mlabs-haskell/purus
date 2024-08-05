@@ -28,7 +28,7 @@ import Data.Functor.Identity (runIdentity)
 import Data.List (find)
 import Data.Map (Map)
 import Data.Map qualified as M
-import Data.Maybe (fromMaybe)
+import Data.Maybe (fromMaybe, mapMaybe)
 import Data.Text (Text)
 import Data.Text qualified as T
 import GHC.IO (throwIO)
@@ -58,6 +58,9 @@ import Language.PureScript.Types (
   rowToList,
  )
 import Prettyprinter (Pretty)
+import Data.Set qualified as S
+import Data.Set (Set)
+import Data.Foldable (foldl')
 
 {- Monomorphizer monad & related utilities -}
 
@@ -411,6 +414,13 @@ isConstructor _ = False
 inlineable :: Qualified Ident -> Bool
 inlineable nm = not (isConstructor nm || isBuiltin nm)
 
+mkBVar :: Ident -> Int -> t -> BVar t
+mkBVar idnt indx ty = BVar indx ty idnt
+
+unBVar :: BVar t -> (Ident, Int)
+unBVar (BVar indx _ idnt) = (idnt, indx)
+
+
 traverseBind ::
   forall (f :: * -> *) x t.
   (Applicative f) =>
@@ -462,6 +472,23 @@ viaExp f scoped =
     . fmap join
     . fromScope
     $ scoped
+
+allBoundVars :: forall x t. Ord t => Exp x t (Vars t) -> [BVar t]
+allBoundVars e = S.toList . S.fromList $ flip mapMaybe everything $ \case
+  V (B bv) -> Just bv
+  _ -> Nothing
+  where
+    everything = e ^.. cosmos
+
+-- N.B. we're using Set instead of [] mainly to ensure that everything has the same order
+
+allDeclIdentifiers :: forall x t. Ord t => [BindE t (Exp x t) (Vars t)] -> Set (Ident, Int)
+allDeclIdentifiers [] = S.empty
+allDeclIdentifiers (b : rest) = case b of
+  NonRecursive nm indx _ -> S.insert (nm, indx) $ allDeclIdentifiers rest
+  Recursive xs ->
+    let rest' = allDeclIdentifiers rest
+     in foldl' (\acc ((nm, indx), _) -> S.insert (nm, indx) acc) rest' xs
 
 {- | Does not touch Var *binders*.
 

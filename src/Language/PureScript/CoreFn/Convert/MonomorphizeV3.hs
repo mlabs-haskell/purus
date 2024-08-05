@@ -26,10 +26,20 @@ import Language.PureScript.CoreFn.Convert.IR (
   FVar (..),
   Lit (..),
   Pat (..),
-  expTy,
   expTy',
  )
 import Language.PureScript.CoreFn.Convert.Monomorphize.Utils
+    ( Monomorphizer,
+      freshUnique,
+      findInlineDeclGroup,
+      isBuiltin,
+      isConstructor,
+      unBVar,
+      mapBind,
+      viaExp,
+      allBoundVars,
+      allDeclIdentifiers,
+      deepMapMaybeBound )
 import Language.PureScript.CoreFn.Expr (PurusType)
 import Language.PureScript.CoreFn.FromJSON ()
 import Language.PureScript.CoreFn.TypeLike (
@@ -41,32 +51,35 @@ import Language.PureScript.PSString (PSString)
 import Control.Applicative (Alternative ((<|>)))
 import Control.Lens.Operators ((^..))
 import Control.Lens.Plated (cosmos, transform)
-import Control.Monad.Reader
+import Control.Monad.Reader ( join, foldM, asks )
 import Data.Bifunctor (Bifunctor (bimap, first))
 import Data.Foldable (foldl', toList)
-import Data.Functor.Identity (runIdentity)
 import Data.Map (Map)
-import Data.Maybe
+import Data.Maybe ( catMaybes, mapMaybe )
 import Data.Set (Set)
 import Data.Set qualified as S
-import Data.Text qualified as T
 import Language.PureScript.CoreFn.Convert.Debug
+    ( doTraceM, prettify )
 import Language.PureScript.CoreFn.Pretty.Common (prettyAsStr)
-import Prettyprinter
+import Prettyprinter ( Pretty(pretty), Doc, align, list, vsep )
 
--- sorry koz i really want to be able to fit type sigs on one line
+-- TODO (IMPORTANT!): Add type abstractions to the declarations with free tyvars and
+--                    update the types of the variables which correspond to their
+--                    identifiers.
 
+-- sorry Koz i really want to be able to fit type sigs on one line
 type MonoExp = Exp WithObjects PurusType (Vars PurusType)
 type MonoScoped = Scope (BVar PurusType) (Exp WithObjects PurusType) (Vars PurusType)
 type MonoBind = BindE PurusType (Exp WithObjects PurusType) (Vars PurusType)
 type MonoAlt = Alt WithObjects PurusType (Exp WithObjects PurusType) (Vars PurusType)
 
-foldL :: (Foldable t) => b -> t a -> (b -> a -> b) -> b
-foldL e xs f = foldl' f e xs
+{- The thing that our Lift function gives us.
 
-foldR :: (Foldable t) => b -> t a -> (a -> b -> b) -> b
-foldR e xs f = foldr f e xs
-
+   This is essentially equivalent to a LetE expression,
+   but it's useful to keep the lifted declarations separate from
+   the body expression, since we'll be inlining and monomorphizing
+   with those declarations.
+-}
 data LiftResult = LiftResult
   { liftedDecls :: [MonoBind]
   , trimmedExp :: MonoExp
@@ -75,6 +88,11 @@ data LiftResult = LiftResult
 instance Pretty LiftResult where
   pretty (LiftResult decls expr) = pretty $ LetE M.empty decls (abstract (\case B bv -> Just bv; _ -> Nothing) expr)
 
+{- Intermediate data type for recording the scope at the
+   place where a group of declarations occurs in the AST.
+
+   Without this scope information, lifting is impossible.
+-}
 data ToLift = ToLift
   { varScopeAtDecl :: Set (BVar PurusType)
   , tyVarScopeAtDecl :: Set (BVar (KindOf PurusType))
@@ -93,33 +111,36 @@ instance Pretty ToLift where
         , "-------------------"
         ]
 
-allBoundVars :: MonoExp -> [BVar PurusType]
-allBoundVars e = S.toList . S.fromList $ flip mapMaybe everything $ \case
-  V (B bv) -> Just bv
-  _ -> Nothing
-  where
-    everything = e ^.. cosmos
+{- Dunno what to call this.
+
+   This is the result of our "first pass", where we collect the
+   variables that occur in a declaration which were well-scoped in
+   the original context, but are out of scope in the lifted context.
+
+   Note that this only collects the *immediate/direct* out-of-scope variables. If
+   the declaration being analyzed/lifted contains other expressions which have been
+   (or shall be) lifted, those other expressions may take additional arguments in
+   their lifted translation which will be missed here. (See `getDeep` in `updateAllBinds`
+   for the function that retrieves the *total* set of variables that will need to be bound
+   in the lifted decl)
+-}
+data Analysis = Analysis
+  { declIdent :: BVar PurusType
+  , newOutOfScopeVars :: [BVar PurusType]
+  }
+  deriving (Show, Eq, Ord)
 
 instance Pretty Analysis where
   pretty Analysis {..} = align $ vsep ["ANALYSIS:", pretty newOutOfScopeVars]
 
-mkBVar :: Ident -> Int -> t -> BVar t
-mkBVar idnt indx ty = BVar indx ty idnt
 
-unBVar :: BVar t -> (Ident, Int)
-unBVar (BVar indx _ idnt) = (idnt, indx)
+{- This is the data structure that records the
+   set of *lifted dependencies* of some declaration that we are lifting.
 
--- N.B. we're using Set instead of [] mainly to ensure that everything has the same order
-
-allDeclIdentifiers :: [MonoBind] -> Set (Ident, Int)
-allDeclIdentifiers [] = S.empty
-allDeclIdentifiers (b : rest) = case b of
-  NonRecursive nm indx _ -> S.insert (nm, indx) $ allDeclIdentifiers rest
-  Recursive xs ->
-    let rest' = allDeclIdentifiers rest
-     in foldl' (\acc ((nm, indx), _) -> S.insert (nm, indx) acc) rest' xs
-
--- term level dependencies
+   That is: `ddeclDeps` is the set of every member of the top-level
+   set of bindings (i.e. the set of lifted declarations) that occurs in
+   the body of the declaration identified by the `ddeclIdent` "name"
+-}
 data Deps = Deps
   { -- The Bound Variable corresponding to the declaration's identifier/index/type.
     -- We'll need this to transform the AST in peer-dependencies
@@ -134,20 +155,11 @@ instance Pretty Deps where
 prettyDeps :: Deps -> Doc a
 prettyDeps Deps {..} = list $ map (\(idnt, indx) -> pretty (runIdent idnt) <> "#" <> pretty indx) (S.toList ddeclDeps)
 
-data Analysis = Analysis
-  { {- Function that updates the call site of the declaration being analyzed
-       in the *BODY* of the original let- binding where the declaration was found.
 
-       In practice this amounts to applying additional arguments for each
-       additional argument to the declaration. Since these additional arguments are
-       just those variables/constants which are *in-scope* in the original expression,
-       we already know what they are.
-    -}
-    declIdent :: BVar PurusType
-  , newOutOfScopeVars :: [BVar PurusType]
-  }
-  deriving (Show, Eq, Ord)
-
+{- Given the set of all (identifiers of) lifted declarations and a concrete declaration,
+   return the set of all Deps (which contains the peer-dependencies, see the note
+   at `Deps`)
+-}
 dependencies :: Set (Ident, Int) -> MonoBind -> Set Deps
 dependencies dict = \case
   NonRecursive nm indx scoped -> S.singleton (go nm indx scoped)
@@ -160,7 +172,10 @@ dependencies dict = \case
           deps = S.intersection dict allComponents
        in Deps declID deps
 
--- TODO: Remove all of the stuff this does that now gets shifted to `updateAllBinds`
+{- For a specific declaration group and scope, determine the Analysis
+   (i.e. the set of previously-in-scope-but-out-of-scope-in-the-lifted-context
+    variables)
+-}
 analyzeLift :: ToLift -> ([MonoBind], [Analysis])
 analyzeLift (ToLift varScope _ decls) = foldl' go ([], []) decls
   where
@@ -177,14 +192,15 @@ analyzeLift (ToLift varScope _ decls) = foldl' go ([], []) decls
     doAnalysis :: Ident -> Int -> MonoScoped -> (Ident, Int, MonoScoped, Analysis)
     doAnalysis idnt indx scoped =
       let unscoped = join <$> fromScope scoped
-          newlyOutOfScopeBVars = foldL [] (allBoundVars unscoped) $ \acc' bv ->
+          newlyOutOfScopeBVars = foldl' (\acc' bv ->
             if S.member bv varScope
               then bv : acc'
-              else acc'
+              else acc') []  (allBoundVars unscoped)
 
           analysis = Analysis (BVar indx (expTy' id scoped) idnt) newlyOutOfScopeBVars
-       in (idnt, indx, scoped, analysis)
+      in (idnt, indx, scoped, analysis)
 
+{- See [NOTE: 1] for a rough explanation of what this function does. -}
 updateAllBinds :: MonoExp -> [MonoBind] -> [Analysis] -> Monomorphizer ([MonoBind], MonoExp)
 updateAllBinds prunedBody _binds _analyses = do
   allOldToNew <- traverse (uncurry mkOldToNew) dict
@@ -239,6 +255,7 @@ updateAllBinds prunedBody _binds _analyses = do
             Nothing -> var
           other -> other
         thisOldToNew = allOldToNew M.! declNm -- has to be here if it's in dict
+        
     allDeclIdents :: Set (Ident, Int)
     allDeclIdents = allDeclIdentifiers _binds
 
@@ -290,6 +307,14 @@ updateAllBinds prunedBody _binds _analyses = do
       u <- freshUnique
       pure (BVar u bvTy bvIdent)
 
+    {- Things named `oldToNew` here refer to a Map from variables with their original indices
+       to variables with newly generated indices.
+
+       Because (afaict from talking to the Plutus guys) we need to maintain the *global* uniqueness
+       of indices, we will have one map for each declaration being lifted.
+
+       `allOldToNew` is used to refer to the global map from identifiers to their `oldToNew` map.
+    -}
     mkOldToNew :: Deps -> Analysis -> Monomorphizer (Map (BVar PurusType) (BVar PurusType))
     mkOldToNew d a =
       M.fromList
@@ -298,7 +323,7 @@ updateAllBinds prunedBody _binds _analyses = do
           []
           (getDeep d a)
 
-    -- for *any* occurrance of the expression in itself or in another lifted expression
+    {- Correspond to (2) in [NOTE 1]-}
     mkUpdateCallSiteLifted :: [BVar PurusType] -> (Ident, Int) -> MonoExp -> MonoExp
     mkUpdateCallSiteLifted new (idnt, indx) = \case
       var@(V (B (BVar bvIndx _ bvIdent)))
@@ -306,7 +331,7 @@ updateAllBinds prunedBody _binds _analyses = do
             foldl' AppE var (V . B <$> new)
       other -> other
 
-    -- for the expression being lifted
+    {- For the expression being lifted, corresponds to (3) in [NOTE 1] -} 
     mkUpdateLiftedLambdas ::
       Map (BVar PurusType) (BVar PurusType) ->
       [BVar PurusType] ->
@@ -317,16 +342,28 @@ updateAllBinds prunedBody _binds _analyses = do
         bvf bv = case M.lookup bv oldToNew of Just bvnew -> Just bvnew; Nothing -> Just bv
         abstr = abstract $ \case B bv -> bvf bv; _ -> Nothing
 
-    -- when updating the call site, we don't need to re-index variables b/c the originals *Must* be
-    -- in scope at the call site
+    {-
+       This correspond to (1) in [NOTE 1], i.e., it is used for updating the call sites of the
+       declarations being lifted *in the body where of the expression where the lifted declarations were
+       originally let- bound.
+
+       When updating the call site, we don't need to re-index variables b/c the originals *Must* be
+       in scope at the call site. (This is also the reason why we need a separate function for the
+       original call-sites: We don't care about *new* variables/indices because there aren't any new
+       vars/indices)
+    -}
     mkUpdateCallSiteBody :: (Ident, Int) -> Deps -> Analysis -> MonoExp -> MonoExp
-    mkUpdateCallSiteBody nm@(idnt, indx) d a = \case
+    mkUpdateCallSiteBody (idnt, indx) d a = \case
       var@(V (B (BVar bvIndx _ bvIdent)))
         | bvIndx == indx && bvIdent == idnt ->
             let deep = S.toList $ getDeep d a
              in foldl' AppE var (V . B <$> deep)
       other -> other
 
+{- Given a "main" expression (and implicit access to the module context via the
+   `Monomorphizer` monad), lift all component declarations, transform their bodies,
+   and update all call-sites. 
+-}
 lift ::
   MonoExp ->
   Monomorphizer LiftResult -- we don't put the expression back together yet b/c it's helpful to keep the pieces separate for monomorphization
@@ -423,14 +460,20 @@ lift e = do
 
     everything = e ^.. cosmos
 
-    -- NOTE: Don't forget to abstract the main expression (much later on when we put it back together)
+    {- Action that provides the module-level declarations used in the target "main" expression
+       we're lifting from. I guess these aren't technically "lifted" - we don't perform any of the
+       transformations on these that we perform on the declarations we are lifting *out of*
+       the target expression. However, we need them for monomorphizing and need to include them
+       *somehow* eventually anyway, so we just treat them as members of the set of lifted bindings
+       for future compiler passes.
+    -}
     usedInScopeDecls :: Monomorphizer [BindE PurusType (Exp WithObjects PurusType) (Vars PurusType)]
     usedInScopeDecls = catMaybes <$> traverse lookupDecl (mapMaybe getLiftableIdent everything)
-
-    getLiftableIdent = \case
-      V (F (FVar a qi@(Qualified (ByModuleName mn) ident)))
-        | not (isConstructor qi || isBuiltin qi) -> Just ident
-      _ -> Nothing
+      where
+        getLiftableIdent = \case
+          V (F (FVar _ qi@(Qualified (ByModuleName _) ident)))
+            | not (isConstructor qi || isBuiltin qi) -> Just ident
+          _ -> Nothing
 
     lookupDecl ::
       Ident ->
@@ -453,11 +496,13 @@ lift e = do
       we are applying variables which *must* be in scope already, and so should use the *original*
       "was-in-scope-before-lifting-but-is-out-of-scope-after-lifting" BVars (which we have acces to).
 
-   2) We need a function that updates call sites *in other lifted expressions* , i.e. (but not exclusively)
+   2) We need a function that updates call sites *in all lifted expressions* , i.e. (but not exclusively)
       other members of the mutually recursive binding group in which the declaration being lifted is defined (this
       might also occur for other lifted expressions inside the scope of the binding being lifted).
 
-      Here, we need to generate new unique indices for the variables being applied, so this must be a monadic action.
+      Here, we need to generate new unique indices for the variables being applied, which must be done in the
+      'Monomorphizer' monad. We can generate a Map from the old indices to the new indices "all at once" for the totality of
+      lifted declarations and pass it around.
 
       Furthermore, because the new(ly re-indexed) variables must be added as lambda arguments on the LHS of *each*
       other lifted declaration, they must (to preserve global uniqueness) be specific to each lifted declaration.
@@ -469,6 +514,8 @@ lift e = do
          - b: The "stale" variables (which at this point have the original indices from the scope where they
               are first bound in the context we are lifting *from*) are updated with the corresponding fresh indices
          - c: Any self-recursive calls to the function declaration being lifted are supplied with fresh arguments.
+
+   In practice we combine 2) and 3)
 
    This is all somewhat complicated by the fact that we cannot deduce the *deep* set of dependencies
    from the structure of a particular to-be-lifted declaration. This is confusing, so to illustrate
