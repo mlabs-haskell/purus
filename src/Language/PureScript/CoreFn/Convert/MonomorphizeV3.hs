@@ -30,11 +30,7 @@ import Bound.Scope (fromScope, Scope(..), abstract)
 import Language.PureScript.CoreFn.TypeLike
     ( TypeLike(..) )
 import Language.PureScript.CoreFn.Convert.Monomorphize.Utils
-    ( findInlineDeclGroup,
-      freshUnique,
-      isBuiltin,
-      isConstructor,
-      Monomorphizer )
+
 import Control.Lens.Plated ( cosmos, transform )
 import Language.PureScript.CoreFn.Pretty.Common (prettyAsStr)
 import Control.Lens.Operators ( (^..) )
@@ -183,30 +179,15 @@ analyzeLift (ToLift varScope _ decls) = foldl' go ([],[]) decls
             analysis = Analysis  (BVar indx (expTy' id scoped) idnt) newlyOutOfScopeBVars
         in  (idnt,indx,scoped,analysis)
 
-traverseBind :: forall (f :: * -> *)
-              . Applicative f
-              => ((Ident,Int) -> MonoScoped -> f MonoScoped)
-              -> MonoBind
-              -> f MonoBind
-traverseBind f = \case
-    NonRecursive nm i b  -> curry goNonRec nm i b
-    Recursive xs -> Recursive <$> traverse (\(nm,body) -> (nm,) <$> f nm body) xs
-  where
-    goNonRec i@(nm,indx) body = NonRecursive nm indx <$> f i body
-
-mapBind :: ((Ident, Int) -> MonoScoped -> MonoScoped) -> MonoBind -> MonoBind
-mapBind f = runIdentity . traverseBind (\a b -> pure $ f a b)
 
 
 updateAllBinds :: MonoExp -> [MonoBind] -> [Analysis] -> Monomorphizer ([MonoBind],MonoExp)
 updateAllBinds prunedBody _binds _analyses = do
     allOldToNew <- traverse  (uncurry mkOldToNew) dict
     let adjustedBody = transform (foldl' (\accF (nm,(d,a)) -> mkUpdateCallSiteBody nm d a . accF) id (M.toList dict)) prunedBody
-        go nm = abstract (\case {B bv -> Just bv; _ -> Nothing})
-                        . updateLiftedLambdas allOldToNew nm
-                        . updateCallSiteLifted allOldToNew
-                        . fmap join
-                        . fromScope
+        go nm = viaExp $  updateLiftedLambdas allOldToNew nm
+                        . updateCallSiteLifted allOldToNew nm 
+
         binds = mapBind go  <$> _binds
 
         msg = prettify
@@ -218,30 +199,36 @@ updateAllBinds prunedBody _binds _analyses = do
     doTraceM "updateAllBinds" msg
     pure (binds,adjustedBody)
   where
+    coerceOldToNew :: Map (BVar PurusType) (BVar PurusType)
+                   -> MonoExp
+                   -> MonoExp
+    coerceOldToNew thisOldToNew =  deepMapMaybeBound (\bv -> M.lookup bv thisOldToNew)
+
     updateLiftedLambdas :: Map (Ident,Int) (Map (BVar PurusType) (BVar PurusType))
                         -> (Ident,Int)
                         -> MonoExp
                         -> MonoExp
     updateLiftedLambdas allOldToNew nm e =
       let thisOldToNew = allOldToNew M.! nm
-          (d,a)        = dict M.! nm
-          deep         = S.toList $ getDeep d a -- this is inefficient but we need to make sure the order matches everywhere
       in mkUpdateLiftedLambdas thisOldToNew (M.elems thisOldToNew) e
 
     updateCallSiteLifted :: Map (Ident,Int) (Map (BVar PurusType) (BVar PurusType))
+                         -> (Ident,Int) -- The Name of the *enclosing lifted declaration*. We need this to select the correct "renaming dictionary"
                          -> MonoExp
                          -> MonoExp
-    updateCallSiteLifted allOldToNew =  transform $ \case
-      var@(V (B (BVar bvIx _ bvId))) -> case  M.lookup (bvId,bvIx) dict of
-        Just (d,a) ->
-          let deep = S.toList $ getDeep d a
-              liftedWithOldVars = mkUpdateCallSiteLifted deep (bvId,bvIx) var
-              thisOldToNew = allOldToNew M.! (bvId,bvIx) -- has to be here if it's in dict
-              bvf v = M.lookup v thisOldToNew <|> Just v
-              updatedVarBind = abstract (\case {B v -> bvf v; _ -> Nothing }) liftedWithOldVars
-          in join <$> fromScope updatedVarBind
-        Nothing -> var
-      other -> other
+    updateCallSiteLifted allOldToNew declNm =  coerceOldToNew thisOldToNew . transform go
+     where
+       go = \case
+        var@(V (B (BVar bvIx _ bvId))) -> case  M.lookup (bvId,bvIx) dict of
+          Just (d,a) ->
+            let deep = S.toList $ getDeep d a
+                liftedWithOldVars = mkUpdateCallSiteLifted deep (bvId,bvIx) var
+                bvf v = M.lookup v thisOldToNew <|> Just v
+                updatedVarBind = abstract (\case {B v -> bvf v; _ -> Nothing }) liftedWithOldVars
+            in join <$> fromScope updatedVarBind
+          Nothing -> var
+        other -> other
+       thisOldToNew = allOldToNew M.! declNm -- has to be here if it's in dict
 
     allDeclIdents :: Set (Ident,Int)
     allDeclIdents = allDeclIdentifiers _binds
@@ -262,14 +249,13 @@ updateAllBinds prunedBody _binds _analyses = do
                       _ -> acc) M.empty allDeclIdents
 
     getDeep :: Deps -> Analysis -> S.Set (BVar PurusType)
-    getDeep  dps@(Deps thisId childFns) ana@(Analysis thisBv theseUnBoundVars) =
+    getDeep  dps (Analysis _ theseUnBoundVars) =
         S.fromList theseUnBoundVars  <> getResult (resolvedDeepChildren S.empty dps)
       where
         getResult :: S.Set (Ident,Int) -> S.Set (BVar PurusType)
         getResult children = S.fromList
                            . concatMap (newOutOfScopeVars . snd)
                            $ lookupMany children dict
-
 
         lookupMany :: forall k v t. (Ord k, Foldable t) => t k -> Map k v -> [v]
         lookupMany ks m = mapMaybe (\k -> M.lookup k m) (toList ks)
@@ -283,43 +269,7 @@ updateAllBinds prunedBody _binds _analyses = do
           in case thisStepWinnowed of
               [] -> deps
               _ -> deps <> S.unions (resolvedDeepChildren newVisited <$> thisStepWinnowed)
-    {-
-    getDeep :: S.Set (BVar PurusType) -> Deps -> Analysis -> S.Set (BVar PurusType)
-    getDeep visited dps@(Deps thisId childFns) ana@(Analysis thisBv theseUnBoundVars) = doTrace "getDeep" msg result
-      where
-        step1 :: [(Deps,Analysis)]
-        step1 = mapMaybe (\nm -> M.lookup nm dict) (S.toList childFns)
 
-        step2 :: S.Set (BVar PurusType)
-        step2 =
-          let step1Winnowed = filter (\x -> declIdent (snd x) `S.member` visited) step1
-              visiting = declIdent . snd <$> step1Winnowed
-              visited' = visited <> S.fromList visiting
-          in case step1Winnowed of
-              [] -> S.empty
-              _ -> S.unions $ uncurry (getDeep visited') <$> step1Winnowed
-
-        result :: S.Set (BVar PurusType)
-        result = S.fromList theseUnBoundVars <> step2
-
-        msg = prettify [ "Identifier: " <> T.unpack (runIdent (fst thisId))
-                       , "Immediate Dependencies: " <> prettyAsStr dps
-                       , "Immediate Analysis: " <> prettyAsStr ana
-                       , "Result: " <> prettyAsStr (S.toList result)
-                       ]
-
-    getDeep ::  Deps -> Analysis -> S.Set (BVar PurusType)
-    getDeep  dps@Deps{..} ana@Analysis{..} =
-      let shallow = newOutOfScopeVars
-          result = foldl' (\acc dnm -> case M.lookup dnm dict of
-                                  Just (targDeps,targAna@(Analysis _ newVars)) ->
-                                    acc <> (S.fromList newVars) <>  (getDeep targDeps targAna)
-                                  _ -> acc
-                                ) (S.fromList shallow) ddeclDeps
-          ident = T.unpack . runIdent . fst . unBVar $ declIdent
-          msg = prettify ["IDENT: " <> ident, "RESULT: " <> prettyAsStr (S.toList result), "DEPS:\n" <> show dps, "ANA:\n" <> prettyAsStr ana]
-      in doTrace "getDeep" msg result
-    -}
     regenBVar :: forall t. BVar t -> Monomorphizer (BVar t)
     regenBVar (BVar _ bvTy bvIdent) = do
            u <- freshUnique

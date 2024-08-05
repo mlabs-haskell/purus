@@ -319,3 +319,12 @@ testForLift x = h x 3
     h a b = g a <= j 4 b
     j c d = c + g d
     g a = if h a x then j x 1 else x * x
+
+{-
+
+let g x a = if h x a x then j x x 1 else x * x
+    h x a b = g x a <= j x 4 b
+    j x c d = c + g x d
+in \y -> h y y 3
+
+}

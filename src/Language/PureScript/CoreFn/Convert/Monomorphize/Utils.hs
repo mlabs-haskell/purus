@@ -45,6 +45,8 @@ import Bound (abstract)
 import Language.PureScript.CoreFn.Convert.Debug (doTrace, prettify)
 import Data.Char (isUpper)
 import Data.Bifunctor (first)
+import Data.Maybe (fromMaybe)
+import Data.Functor.Identity (runIdentity)
 
 
 {- Monomorphizer monad & related utilities -}
@@ -371,6 +373,100 @@ inlineable :: Qualified Ident -> Bool
 inlineable nm = not (isConstructor nm || isBuiltin nm )
 
 
+traverseBind :: forall (f :: * -> *) x t
+              . Applicative f
+              => ((Ident,Int)
+                  -> Scope (BVar t) (Exp x t) (Vars t)
+                  -> f (Scope (BVar t) (Exp x t) (Vars t)))
+              -> BindE t (Exp x t) (Vars t)
+              -> f (BindE t (Exp x t) (Vars t))
+traverseBind f = \case
+    NonRecursive nm i b  -> curry goNonRec nm i b
+    Recursive xs -> Recursive <$> traverse (\(nm,body) -> (nm,) <$> f nm body) xs
+  where
+    goNonRec i@(nm,indx) body = NonRecursive nm indx <$> f i body
+
+mapBind :: forall x t
+         . ((Ident, Int)
+             -> Scope (BVar t) (Exp x t) (Vars t)
+             -> Scope (BVar t) (Exp x t) (Vars t))
+           -> BindE t (Exp x t) (Vars t)
+           -> BindE t (Exp x t) (Vars t)
+mapBind f = runIdentity . traverseBind (\a b -> pure $ f a b)
+
+traverseAlt :: forall (f :: * -> *) x t
+             . Functor f
+            => (Scope (BVar t) (Exp x t) (Vars t) -> f (Scope (BVar t) (Exp x t) (Vars t)))
+            -> Alt x t (Exp x t) (Vars t)
+            -> f (Alt x t (Exp x t) (Vars t))
+traverseAlt f (UnguardedAlt _REMOVE pat body) = UnguardedAlt _REMOVE pat <$> f body
+
+mapAlt :: forall x t
+             . (Scope (BVar t) (Exp x t) (Vars t) -> (Scope (BVar t) (Exp x t) (Vars t)))
+            -> Alt x t (Exp x t) (Vars t)
+            -> Alt x t (Exp x t) (Vars t)
+mapAlt f alt = runIdentity . traverseAlt (pure . f) $ alt
+
+viaExp :: forall x t 
+        . (Exp x t (Vars t) -> Exp x t (Vars t))
+       -> Scope (BVar t) (Exp x t) (Vars t)
+       -> Scope (BVar t) (Exp x t) (Vars t)
+viaExp f scoped = abstract (\case {B bv -> Just bv;_ -> Nothing})
+                  . f
+                  . fmap join
+                  . fromScope
+                  $ scoped
+
+
+{- | Does not touch Var *binders*.
+
+     This is primarily useful for updating identifiers or indices of BVar *expressions*
+     when "moving expressions around" the AST, e.g. in lifting.
+
+     A typical use case is: You've extracted an expression from a context where some variables in
+     the expression are bound in that context, but free in the new context, and you need to bind them
+     in the new context. To maintain uniqueness (of names or indices), it is necessary to rename/reindex
+     (or conceivably retype, typically by renaming tyvars) the previously bound vars *wherever*
+     they occur in the extracted expression.
+
+     Note that this passes over the `BVar (KindOf t)` that lives inside a `TyAbs`, i.e., this is for transforming
+     *term-level* bound vars
+-}
+deepMapMaybeBound :: forall x t
+                   . (TypeLike t, Pretty t, Pretty (KindOf t), Show (Exp x t (Vars t)))
+                  => (BVar t -> Maybe (BVar t))
+                  -> Exp x t (Vars t)
+                  -> Exp x t (Vars t)
+deepMapMaybeBound _f = \case
+  V (B bv) -> V . B . f $ bv
+  V (F fv) -> V . F $ fv
+  AppE e1 e2 -> AppE (go e1) (go e2)
+  LamE bv body -> LamE bv $ goScope body
+  LetE _REMOVE bs e ->
+    let bs' = mapBind (const goScope) <$> bs
+        e'  = goScope e 
+    in LetE _REMOVE bs' e'
+  LitE t lit -> LitE t $ go <$> lit
+  AccessorE x t str e -> AccessorE x t str $ go e
+  ObjectUpdateE x t e copy fs ->
+    let e' = go e
+        fs' = fmap go <$> fs
+    in ObjectUpdateE x t e' copy fs'
+  TyInstE t e -> TyInstE t (go e)
+  TyAbs tv e -> TyAbs tv $ go e
+  CaseE t scrut alts ->
+    let scrut' = go scrut
+        alts'  = mapAlt goScope <$> alts
+    in CaseE t scrut' alts'
+ where
+   goScope = abstract (\case {B bv -> Just $ f bv;_ -> Nothing })
+             . go
+             . fmap join
+             . fromScope
+   go = deepMapMaybeBound _f
+   f bv = fromMaybe bv (_f bv)
+
+
 updateTypes :: forall x t
                 . (TypeLike t, Pretty t, Pretty (KindOf t), Show (Exp x t (Vars t)))
                => [(Text,t)]
@@ -459,7 +555,7 @@ updateTypes' vars = \case
      VarP vid vix vty -> VarP vid vix $ f vs vty
      WildP -> WildP
      LitP lit -> LitP $ goPat vs <$> lit
-     ConP tn cn ps -> ConP tn cn $ goPat vs <$> ps 
+     ConP tn cn ps -> ConP tn cn $ goPat vs <$> ps
 
 tyAbstractExpr :: [(TypeVarVisibility, Text, KindOf PurusType)]
                -> Exp WithObjects PurusType (Vars PurusType)

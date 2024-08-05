@@ -401,7 +401,7 @@ instance (Pretty a, Pretty ty, Pretty (KindOf ty), TypeLike ty) => Pretty (Exp x
     LitE ty lit -> parens $ pretty lit <+> "::" <+> pretty ty
     LamE bv body' ->
       let unscoped = fromScope body'
-      in group . align $ "\\" <> parens (align $ pretty bv)
+      in group . align $ "\\" <> align (pretty bv)
          <+> "->" <> hardline
          <> indent 4 (pretty unscoped)
     appE@(AppE _ _) -> case unsafeAnalyzeApp appE of
