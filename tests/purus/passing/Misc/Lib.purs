@@ -320,6 +320,20 @@ testForLift x = h x 3
     j c d = c + g d
     g a = if h a x then j x 1 else x * x
 
+testForLiftPoly :: forall (a :: Type). a -> Boolean
+testForLiftPoly x = h x True
+  where
+    h :: a -> Boolean -> Boolean
+    h a b = if g a then False else j a b
+
+    j :: a -> Boolean -> Boolean
+    j c d = if d then d else g c
+
+    g :: a -> Boolean
+    g y = True
+
+
+
 {-
 
 let g x a = if h x a x then j x x 1 else x * x

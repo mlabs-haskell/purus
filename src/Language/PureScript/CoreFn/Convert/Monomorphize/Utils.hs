@@ -40,7 +40,7 @@ import Language.PureScript.CoreFn.Convert.DesugarCore (
   Vars,
   WithObjects,
  )
-import Language.PureScript.CoreFn.Convert.IR (Alt (..), BVar (..), BindE (..), Exp (..), FVar (..), Pat (..), expTy, expTy', ppExp, _V)
+import Language.PureScript.CoreFn.Convert.IR (Alt (..), BVar (..), BindE (..), Exp (..), FVar (..), Pat (..), expTy, expTy', ppExp, _V, Lit (..))
 import Language.PureScript.CoreFn.Expr (Bind, PurusType)
 import Language.PureScript.CoreFn.FromJSON ()
 import Language.PureScript.CoreFn.Module (Module (..))
@@ -446,6 +446,22 @@ mapBind ::
   BindE t (Exp x t) (Vars t)
 mapBind f = runIdentity . traverseBind (\a b -> pure $ f a b)
 
+-- it's a foldl' if that ever matters
+foldBinds :: forall (f :: * -> *) x t r
+           . (     r
+                -> (Ident,Int)
+                -> Scope (BVar t) (Exp x t) (Vars t)
+                -> r
+             ) -> r
+               -> [BindE t (Exp x t) (Vars t)]
+               -> r
+foldBinds _ e [] = e
+foldBinds f e (x:xs) = case x of
+  NonRecursive nm i b -> foldBinds f (f e (nm,i) b) xs
+  Recursive recBinds ->
+    let e' = foldl' (\acc (nm,b) -> f acc nm b) e recBinds
+    in foldBinds f e' xs 
+
 traverseAlt ::
   forall (f :: * -> *) x t.
   (Functor f) =>
@@ -461,6 +477,13 @@ mapAlt ::
   Alt x t (Exp x t) (Vars t)
 mapAlt f alt = runIdentity . traverseAlt (pure . f) $ alt
 
+asExp ::
+  forall x t r.
+  Scope (BVar t) (Exp x t) (Vars t) ->
+  (Exp x t (Vars t) -> r) ->
+  r
+asExp e f = f . fmap join . fromScope $ e
+
 viaExp ::
   forall x t.
   (Exp x t (Vars t) -> Exp x t (Vars t)) ->
@@ -472,6 +495,17 @@ viaExp f scoped =
     . fmap join
     . fromScope
     $ scoped
+
+viaExpM ::
+  forall x t m.
+  Monad m =>
+  (Exp x t (Vars t) -> m (Exp x t (Vars t))) ->
+  Scope (BVar t) (Exp x t) (Vars t) ->
+  m (Scope (BVar t) (Exp x t) (Vars t))
+viaExpM f scoped = do
+  let unscoped = join <$> fromScope scoped
+  transformed <- f unscoped
+  pure $ abstract (\case B bv -> Just bv;_ -> Nothing) transformed 
 
 allBoundVars :: forall x t. Ord t => Exp x t (Vars t) -> [BVar t]
 allBoundVars e = S.toList . S.fromList $ flip mapMaybe everything $ \case
@@ -539,6 +573,68 @@ deepMapMaybeBound _f = \case
         . fromScope
     go = deepMapMaybeBound _f
     f bv = fromMaybe bv (_f bv)
+
+-- touches everything, *except* the kind annotations in TyAbs (can't write a generic traversal b/c (KindOf t ~ t) is
+-- only true for SourceType and not Ty)
+transformTypesInExp ::
+  forall x t (f :: * -> *).
+  (t -> t) ->
+  Exp x t (Vars t) ->
+  Exp x t (Vars t)
+transformTypesInExp f = \case
+  V (B bv) -> V . B . goBV $ bv
+  V (F (FVar fvTy fvNm)) -> V . F $ FVar (f fvTy) fvNm
+  AppE e1 e2 -> AppE (go e1) (go e2)
+  LitE t lit -> LitE (f t) (go <$> lit)
+  LamE bv body ->
+    let bv' = goBV bv
+        body' = goScope body
+    in LamE bv' body'
+  LetE _REMOVE bs body ->
+    let bs' = mapBind (const goScope) <$> bs
+        body' = goScope body
+    in LetE _REMOVE bs' body'
+  AccessorE x t str e ->
+    let t' = f t
+        e' = go e
+    in AccessorE x t' str e'
+  ObjectUpdateE x t e copy fs ->
+    let t' = f t
+        e' = go e
+        fs' = fmap go <$> fs
+    in ObjectUpdateE x t' e' copy fs'
+  CaseE t scrut alts ->
+    let t' = f t
+        scrut' = go scrut
+        alts' = goAlt <$> alts
+    in CaseE t' scrut' alts'
+  TyInstE t e -> TyInstE (f t) (go e)
+  TyAbs btv e -> TyAbs btv (go e)
+ where
+   -- can't use mapAlt b/c we need to update types in patterns
+   -- (We still have object lit pats before object desugaring)
+   goAlt :: Alt x t (Exp x t) (Vars t) -> Alt x t (Exp x t) (Vars t)
+   goAlt (UnguardedAlt _REMOVE pat body) =
+     let pat' = goPat pat
+         body' = goScope body
+     in UnguardedAlt _REMOVE pat' body'
+
+   goPat :: Pat x t (Exp x t) (Vars t) -> Pat x t (Exp x t) (Vars t)
+   goPat = \case
+     VarP nm indx t -> VarP nm indx (f t)
+     LitP (ObjectL x fs) -> LitP . ObjectL x $ fmap goPat  <$> fs
+     ConP tn cn ps -> ConP tn cn $ goPat <$> ps
+     other -> other
+
+
+   goBV :: BVar t -> BVar t
+   goBV (BVar bvIx bvTy bvNm) = BVar bvIx (f bvTy) bvNm
+
+   goScope :: Scope (BVar t) (Exp x t) (Vars t) -> Scope (BVar t) (Exp x t) (Vars t)
+   goScope = viaExp go
+
+   go = transformTypesInExp f
+
 
 updateTypes ::
   forall x t.
