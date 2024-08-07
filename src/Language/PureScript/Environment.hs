@@ -13,7 +13,7 @@ import Control.DeepSeq (NFData)
 import Control.Monad (unless, void)
 import Data.Aeson ((.:), (.=))
 import Data.Aeson qualified as A
-import Data.Foldable (find, fold)
+import Data.Foldable (find, fold, Foldable (foldl'))
 import Data.Functor ((<&>))
 import Data.IntMap qualified as IM
 import Data.IntSet qualified as IS
@@ -26,13 +26,11 @@ import Data.Text (Text)
 import Data.Text qualified as T
 import GHC.Generics (Generic)
 
-import Codec.CBOR.Write (toLazyByteString)
-import Data.Foldable (Foldable (foldl'))
 import Language.PureScript.AST.SourcePos (nullSourceAnn, pattern NullSourceAnn)
 import Language.PureScript.Constants.Prim qualified as C
 import Language.PureScript.Constants.Purus qualified as PLC
 import Language.PureScript.Crash (internalError)
-import Language.PureScript.Names (Ident, ProperName (..), ProperNameType (..), Qualified (..), QualifiedBy (..), coerceProperName, disqualify)
+import Language.PureScript.Names (Ident, ProperName (..), ProperNameType (..), Qualified (..), QualifiedBy (..), coerceProperName, disqualify, Ident, ModuleName (ModuleName))
 import Language.PureScript.Roles (Role (..))
 import Language.PureScript.TypeClassDictionaries (NamedDict)
 import Language.PureScript.Types (SourceConstraint, SourceType, Type (..), TypeVarVisibility (..), eqType, freeTypeVariables, quantify, srcTypeApp, srcTypeConstructor)
@@ -440,6 +438,7 @@ primCtors =
 mkCtor :: Text -> Qualified (ProperName 'ConstructorName)
 mkCtor nm = Qualified (ByModuleName C.M_Prim) (ProperName nm)
 
+tupleCtors :: [(Qualified (ProperName 'ConstructorName), (DataDeclType, ProperName 'TypeName, SourceType, [a]))]
 tupleCtors =
   [1 .. 100] <&> \n ->
     let ctorNm = mkCtor ("Tuple" <> T.pack (show n))
@@ -479,8 +478,55 @@ primTypes =
       , (C.Int, (kindType, ExternData []))
       , (C.Boolean, (kindType, boolData))
       , (C.Partial <&> coerceProperName, (kindConstraint, ExternData []))
+      -- Ledger API (V2), as per https://github.com/IntersectMBO/plutus/blob/master/plutus-ledger-api/src/PlutusLedgerApi/V2.hs
+      -- Context types
+      , ledgerType "ScriptContext"
+      , ledgerType "ScriptPurpose"
+      -- Bytes
+      , ledgerType "LedgerBytes"
+      -- Certificates
+      , ledgerType "DCert"
+      -- Credentials
+      , ledgerType "StakingCredential"
+      , ledgerType "Credential"
+      -- Value
+      , ledgerType "Value"
+      , ledgerType "CurrencySymbol"
+      , ledgerType "TokenName"
+      , ledgerType "Lovelace"
+      -- Time
+      , ledgerType "POSIXTime"
+      -- No POSIXTimeRange, people can use the actual type instead of a synonym
+      -- Types for representing transactions
+      , ledgerType "Address"
+      , ledgerType "PubKeyHash"
+      , ledgerType "TxId"
+      , ledgerType "TxInfo"
+      , ledgerType "TxOut"
+      , ledgerType "TxOutRef"
+      , ledgerType "TxInInfo"
+      , ledgerType "OutputDatum"
+      -- Intervals
+      , ledgerType "Interval"
+      , ledgerType "Extended"
+      -- No Closure, just use the type its synonymizing
+      , ledgerType "UpperBound"
+      , ledgerType "LowerBound"
+      -- Association maps
+      , ledgerType "AssocMap"
+      -- Newtypes and hash types
+      , ledgerType "ScriptHash"
+      , ledgerType "Redeemer"
+      , ledgerType "RedeemerHash"
+      , ledgerType "Datum"
+      , ledgerType "DatumHash"
+      -- Data
+      , ledgerType "Data"
+      , ledgerType "BuiltinData"
       ]
   where
+    ledgerType :: Text -> (Qualified (ProperName a), (SourceType, TypeKind)) 
+    ledgerType x = (Qualified (ByModuleName (ModuleName "Prim")) (ProperName x), (kindType, ExternData []))
     boolData =
       DataType
         Data
