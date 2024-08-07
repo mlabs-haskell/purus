@@ -496,6 +496,7 @@ primData =
       , (ledgerIdent "Spending", ledgerTyName "ScriptPurpose")
       , (ledgerIdent "Rewarding", ledgerTyName "ScriptPurpose")
       , (ledgerIdent "Staking", ledgerTyName "ScriptPurpose")
+      , _
       ]
     ledgerTyName :: Text -> Qualified (ProperName 'TypeName)
     ledgerTyName x = Qualified (ByModuleName (ModuleName "Prim")) (ProperName x)
