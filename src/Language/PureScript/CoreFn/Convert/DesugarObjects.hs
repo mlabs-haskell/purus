@@ -53,7 +53,7 @@ import Language.PureScript.CoreFn.Pretty (
  )
 import Language.PureScript.CoreFn.Utils (Context, exprType)
 import Language.PureScript.Environment (DataDeclType (Data), kindType, mkTupleTyName, pattern RecordT, pattern (:->))
-import Language.PureScript.Names (Ident (..), ProperName (..), ProperNameType (..), Qualified (..), QualifiedBy (..), coerceProperName, runModuleName)
+import Language.PureScript.Names (Ident (..), ProperName (..), ProperNameType (..), Qualified (..), QualifiedBy (..), coerceProperName, runModuleName, ModuleName (ModuleName))
 import Language.PureScript.PSString (PSString)
 import Language.PureScript.Types (
   RowListItem (rowListType),
@@ -518,8 +518,12 @@ mkProdFields :: [t] -> [(Ident, t)]
 mkProdFields = map (UnusedIdent,)
 
 primData :: Datatypes Kind Ty
-primData = tupleDatatypes <> Datatypes tDict cDict
+primData = 
+  tupleDatatypes <> 
+  Datatypes tDict cDict <> 
+  Datatypes ledgerApiTDict ledgerApiCDict
   where
+    tDict :: Map (Qualified (ProperName 'TypeName)) (DataDecl Kind Ty)
     tDict =
       M.fromList $
         map
@@ -548,6 +552,27 @@ primData = tupleDatatypes <> Datatypes tDict cDict
         , (properToIdent <$> C.C_True, C.Boolean)
         , (properToIdent <$> C.C_False, C.Boolean)
         ]
+    ledgerApiTDict :: Map (Qualified (ProperName 'TypeName)) (DataDecl Kind Ty)
+    ledgerApiTDict = M.fromList [
+        -- Ledger API (V2), as per https://github.com/IntersectMBO/plutus/blob/master/plutus-ledger-api/src/PlutusLedgerApi/V2.hs
+        -- Context types
+        (ledgerTyName "ScriptContext", DataDecl Data (ledgerTyName "ScriptContext") [] [_])
+      , _
+      ]
+    ledgerApiCDict :: Map (Qualified Ident) (Qualified (ProperName 'TypeName))
+    ledgerApiCDict = M.fromList [
+        -- Ledger API (V2), as per https://github.com/IntersectMBO/plutus/blob/master/plutus-ledger-api/src/PlutusLedgerApi/V2.hs
+        -- Context types
+        homonym "ScriptContext"
+      , _
+      ]
+    ledgerTyName :: Text -> Qualified (ProperName 'TypeName)
+    ledgerTyName x = Qualified (ByModuleName (ModuleName "Prim")) (ProperName x)
+    ledgerIdent :: Text -> Qualified Ident
+    ledgerIdent x = Qualified (ByModuleName (ModuleName "Prim")) (Ident x)
+    -- Used to mark a data constructor that matches the type name
+    homonym :: Text -> (Qualified Ident, Qualified (ProperName 'TypeName))
+    homonym x = (ledgerIdent x, ledgerTyName x)
 
 tupleDatatypes :: Datatypes Kind Ty
 tupleDatatypes = Datatypes (M.fromList tupleTypes) (M.fromList tupleCtors)

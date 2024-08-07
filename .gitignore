@@ -43,3 +43,4 @@ tests/purs/make/
 /result*
 
 tests/purus/passing/**/cache-db.json
+.nvimrc
