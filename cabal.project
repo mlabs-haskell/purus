@@ -16,3 +16,6 @@ packages:
 -- HACK: plutus core cannot build without it, remove after bump.
 constraints:
   nothunks < 0.2
+
+index-state:
+  , cardano-haskell-packages 2024-06-27T10:04:00Z
