@@ -54,7 +54,7 @@ import Language.PureScript.CoreFn.Convert.Monomorphize.Utils (
   unsafeApply,
   updateTypes,
  )
-import Language.PureScript.CoreFn.Convert.MonomorphizeV3
+import Language.PureScript.CoreFn.Convert.Inline.Lift
 import Language.PureScript.CoreFn.Expr (PurusType)
 import Language.PureScript.CoreFn.FromJSON ()
 import Language.PureScript.CoreFn.Module (Module (..))

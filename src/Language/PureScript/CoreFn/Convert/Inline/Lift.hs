@@ -6,7 +6,7 @@
 {-# OPTIONS_GHC -Wno-orphans #-}
 {-# OPTIONS_GHC -Wno-unrecognised-pragmas #-}
 
-module Language.PureScript.CoreFn.Convert.MonomorphizeV3 where
+module Language.PureScript.CoreFn.Convert.Inline.Lift where
 
 import Prelude
 
@@ -82,8 +82,9 @@ type MonoAlt = Alt WithObjects PurusType (Exp WithObjects PurusType) (Vars Purus
 -}
 data LiftResult = LiftResult
   { liftedDecls :: [MonoBind]
-  , trimmedExp :: MonoExp
-  }
+  , trimmedExp :: MonoExp -- TODO: Add a field which records the peer dependencies for each decl ident
+  }                       --       (for the inliner, so we don't have to re-calculate that to detect
+                          --       & break cycles)
 
 instance Pretty LiftResult where
   pretty (LiftResult decls expr) =
@@ -260,8 +261,6 @@ cleanupLiftedTypes (LiftResult bs body) = do
                          in M.insert nm bv acc)
                       M.empty
                       binds
-
-
 
 {- See [NOTE: 1] for a rough explanation of what this function does. -}
 updateAllBinds :: Map (Ident,Int) (Set (BVar PurusType))
