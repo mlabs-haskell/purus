@@ -82,9 +82,8 @@ type MonoAlt = Alt WithObjects PurusType (Exp WithObjects PurusType) (Vars Purus
 -}
 data LiftResult = LiftResult
   { liftedDecls :: [MonoBind]
-  , trimmedExp :: MonoExp -- TODO: Add a field which records the peer dependencies for each decl ident
-  }                       --       (for the inliner, so we don't have to re-calculate that to detect
-                          --       & break cycles)
+  , trimmedExp :: MonoExp
+  }
 
 instance Pretty LiftResult where
   pretty (LiftResult decls expr) =

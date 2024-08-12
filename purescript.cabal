@@ -158,6 +158,7 @@ common defaults
     -- specific version.
     aeson >=2.0.3.0 && <2.1,
     aeson-better-errors >=0.9.1.1 && <0.10,
+    algebraic-graphs,
     ansi-terminal >=0.11.3 && <0.12,
     array >=0.5.4.0 && <0.6,
     base >=4.16.2.0 && <4.18,

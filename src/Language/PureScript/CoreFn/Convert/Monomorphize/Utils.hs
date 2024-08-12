@@ -447,7 +447,7 @@ mapBind ::
 mapBind f = runIdentity . traverseBind (\a b -> pure $ f a b)
 
 -- it's a foldl' if that ever matters
-foldBinds :: forall (f :: * -> *) x t r
+foldBinds :: forall x t r
            . (     r
                 -> (Ident,Int)
                 -> Scope (BVar t) (Exp x t) (Vars t)
