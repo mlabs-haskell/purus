@@ -104,7 +104,7 @@ testLift' decl = do
 testLift :: Text -> IO ()
 testLift = void . testLift'
 
-testInline :: Text -> IO MonoExp
+testInline :: Text -> IO ()
 testInline nm = do
   (liftRes,st,modl) <- testLift' nm
   runMonoM modl st (inline liftRes)
@@ -114,14 +114,14 @@ runMonoM :: Pretty a
          => Module IR_Decl PurusType PurusType Ann
          -> MonoState
          -> Monomorphizer a
-         -> IO a
+         -> IO ()
 runMonoM Module{..} st act = case runRWST act (moduleName,moduleDecls) st of
   Left (MonoError msg) -> throwIO . userError $ "Monomorphizer Error: " <> msg
   Right (res,_,_) -> do
     putStrLn "------PRETTY RUNMONO RESULT---------"
     print (pretty res)
     putStrLn "------------------------------------"
-    pure res
+
 
 
 {- This is the top-level entry point for monomorphization. Typically,

@@ -12,7 +12,7 @@ import Prelude
 type TraceCfg = S.Set String
 
 traceCfg :: TraceCfg
-traceCfg = S.fromList ["goRec"]
+traceCfg = S.fromList [] -- ["inlineWithData", "breakLoops", "update"]
 
 doTrace :: forall x. String -> String -> x -> x
 doTrace identifier msg x =
