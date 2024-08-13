@@ -17,7 +17,7 @@ import Control.Lens (
   (&),
  )
 import Control.Lens.Plated (transform, transformM)
-import Control.Monad (join)
+import Control.Monad (join, void)
 import Control.Monad.RWS (RWST (..))
 import Data.Map qualified as M
 import Data.Text (Text)
@@ -52,7 +52,7 @@ import Language.PureScript.CoreFn.Convert.Monomorphize.Utils (
   isBuiltinE,
   isConstructorE,
   unsafeApply,
-  updateTypes,
+  updateTypes, Monomorphizer,
  )
 import Language.PureScript.CoreFn.Convert.Inline.Lift
 import Language.PureScript.CoreFn.Expr (PurusType)
@@ -67,6 +67,8 @@ import Language.PureScript.Environment (kindType)
 import Language.PureScript.Names
 import Prettyprinter (Pretty, pretty)
 
+import Language.PureScript.CoreFn.Convert.Inline.Inline (inline)
+
 {- Function for quickly testing/debugging monomorphization -}
 
 testMono :: FilePath -> Text -> IO ()
@@ -79,15 +81,15 @@ testMono path decl = do
     Right body -> do
       putStrLn $ "MONO RESULT: \n" <> ppExp body
 
-testLift :: Text -> IO ()
-testLift decl = do
+testLift' :: Text -> IO (LiftResult,MonoState,Module IR_Decl PurusType PurusType Ann)
+testLift' decl = do
   myModCoreFn <- decodeModuleIO "tests/purus/passing/Misc/output/Lib/index.cfn"
   (myMod@Module {..}, _) <- either (throwIO . userError) pure $ desugarCoreModule myModCoreFn
   Just myExp' <- pure $ findDeclBody decl myMod
   let myExp = join <$> fromScope myExp'
   case runRWST (lift myExp) (moduleName, moduleDecls) (MonoState 100000) of
     Left (MonoError msg) -> throwIO $ userError $ "Couldn't lift " <> T.unpack decl <> "\nReason:\n" <> msg
-    Right (res, _, _) -> do
+    Right (res, st, _) -> do
       let !res' = res
       case res' of
         LiftResult a b@(LamE {}) | length a >= 1 -> do
@@ -96,7 +98,31 @@ testLift decl = do
           print (length prettyString)
           putStrLn prettyString
           putStrLn "\n----------DONE----------\n"
+          pure (res',st,myMod)
         _ -> error "boom"
+
+testLift :: Text -> IO ()
+testLift = void . testLift'
+
+testInline :: Text -> IO MonoExp
+testInline nm = do
+  (liftRes,st,modl) <- testLift' nm
+  runMonoM modl st (inline liftRes)
+
+
+runMonoM :: Pretty a
+         => Module IR_Decl PurusType PurusType Ann
+         -> MonoState
+         -> Monomorphizer a
+         -> IO a
+runMonoM Module{..} st act = case runRWST act (moduleName,moduleDecls) st of
+  Left (MonoError msg) -> throwIO . userError $ "Monomorphizer Error: " <> msg
+  Right (res,_,_) -> do
+    putStrLn "------PRETTY RUNMONO RESULT---------"
+    print (pretty res)
+    putStrLn "------------------------------------"
+    pure res
+
 
 {- This is the top-level entry point for monomorphization. Typically,
    you will search the module for a 'main' decl and use its

@@ -460,7 +460,21 @@ foldBinds f e (x:xs) = case x of
   NonRecursive nm i b -> foldBinds f (f e (nm,i) b) xs
   Recursive recBinds ->
     let e' = foldl' (\acc (nm,b) -> f acc nm b) e recBinds
-    in foldBinds f e' xs 
+    in foldBinds f e' xs
+
+
+foldMBindsWith :: forall (m :: * -> *) x t r
+               . Monad m
+              => (r -> Ident -> Int -> Scope (BVar t) (Exp x t) (Vars t) -> m r)
+              -> (r -> [((Ident,Int),Scope (BVar t) (Exp x t) (Vars t))] -> m r)
+              -> r
+              -> [BindE t (Exp x t) (Vars t)]
+              -> m r
+foldMBindsWith _ _  e [] = pure e
+foldMBindsWith fNonRec fRec e (x:xs) = case x of
+  NonRecursive nm i b -> fNonRec e nm i b >>= \e' -> foldMBindsWith fNonRec fRec e' xs
+  Recursive recBinds  -> fRec e recBinds >>= \e' -> foldMBindsWith fNonRec fRec e' xs
+
 
 traverseAlt ::
   forall (f :: * -> *) x t.
@@ -514,6 +528,13 @@ allBoundVars e = S.toList . S.fromList $ flip mapMaybe everything $ \case
   where
     everything = e ^.. cosmos
 
+-- stupid, but `\e -> join <$> fromScope e`` is probably the most duplicated code phrase
+-- in this whole project
+toExp :: Scope (BVar t) (Exp x t) (Vars t) -> Exp x t (Vars t)
+toExp = fmap join . fromScope
+
+fromExp :: Exp x t (Vars t) -> Scope (BVar t) (Exp x t) (Vars t)
+fromExp = abstract $ \case B bv -> Just bv; _ -> Nothing
 -- N.B. we're using Set instead of [] mainly to ensure that everything has the same order
 
 allDeclIdentifiers :: forall x t. Ord t => [BindE t (Exp x t) (Vars t)] -> Set (Ident, Int)
