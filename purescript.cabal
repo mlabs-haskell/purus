@@ -247,6 +247,7 @@ library
     Language.PureScript.Constants.Purus
     Language.PureScript.Constants.PLC
     Language.PureScript.Constants.PLC.TH
+    Language.PureScript.LedgerApi
     Language.PureScript.CoreFn
     Language.PureScript.CoreFn.Convert.Debug
     Language.PureScript.CoreFn.Ann
