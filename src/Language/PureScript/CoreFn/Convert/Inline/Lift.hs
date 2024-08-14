@@ -485,6 +485,9 @@ lift e = do
        the target expression. However, we need them for monomorphizing and need to include them
        *somehow* eventually anyway, so we just treat them as members of the set of lifted bindings
        for future compiler passes.
+
+       FIXME: Doesn't properly recursively retrieve the transitive dependencies of the
+              directly used decls.
     -}
     usedInScopeDecls :: Monomorphizer [BindE PurusType (Exp WithObjects PurusType) (Vars PurusType)]
     usedInScopeDecls = catMaybes <$> traverse lookupDecl (mapMaybe getLiftableIdent everything)

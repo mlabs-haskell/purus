@@ -332,6 +332,32 @@ testForLiftPoly x = h x True
     g :: a -> Boolean
     g y = True
 
+or :: Boolean -> Boolean -> Boolean
+or b1 b2 = if b1 then True else b2
+
+infixr 5 or as ||
+
+not :: Boolean -> Boolean
+not b = if b then False else True
+
+and :: Boolean -> Boolean -> Boolean
+and p q = not (not p || not q) -- i think? rly tired atm
+
+infixr 6 and as &&
+
+iff :: Boolean -> Boolean -> Boolean
+iff p q = (p && q) || (not p && not q)
+
+infix 5 iff as ===
+
+ghcInlinerPaperEx :: Boolean
+ghcInlinerPaperEx = q True
+  where
+    p = q False
+    h x = f True && x
+    g x = h x === False
+    f x = g (not x)
+    q x = g (x && g x)
 
 
 {-

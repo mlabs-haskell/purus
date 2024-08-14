@@ -68,6 +68,7 @@ import Language.PureScript.Names
 import Prettyprinter (Pretty, pretty)
 
 import Language.PureScript.CoreFn.Convert.Inline.Inline (inline)
+import Debug.Trace (traceM)
 
 {- Function for quickly testing/debugging monomorphization -}
 
@@ -92,11 +93,11 @@ testLift' decl = do
     Right (res, st, _) -> do
       let !res' = res
       case res' of
-        LiftResult a b@(LamE {}) | length a >= 1 -> do
+        LiftResult a b | length a >= 1 -> do
           threadDelay 500000
           !prettyString <- pure $ prettyAsStr (LiftResult a b)
           print (length prettyString)
-          putStrLn prettyString
+          traceM prettyString
           putStrLn "\n----------DONE----------\n"
           pure (res',st,myMod)
         _ -> error "boom"
@@ -118,9 +119,9 @@ runMonoM :: Pretty a
 runMonoM Module{..} st act = case runRWST act (moduleName,moduleDecls) st of
   Left (MonoError msg) -> throwIO . userError $ "Monomorphizer Error: " <> msg
   Right (res,_,_) -> do
-    putStrLn "------PRETTY RUNMONO RESULT---------"
-    print (pretty res)
-    putStrLn "------------------------------------"
+    traceM $  "------PRETTY RUNMONO RESULT---------\n"
+              <>  (prettyAsStr res)
+              <>  "\n------------------------------------"
 
 
 

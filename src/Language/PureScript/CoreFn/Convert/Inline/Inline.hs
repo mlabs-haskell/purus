@@ -10,12 +10,10 @@ import Language.PureScript.CoreFn.Convert.IR (
 import Language.PureScript.CoreFn.Convert.Monomorphize.Utils
     ( Monomorphizer,
       unBVar,
-      allBoundVars, foldBinds, allDeclIdentifiers, isConstructorE, foldMBindsWith, isSelfRecursiveNR, viaExp, freshUnique, deepMapMaybeBound, toExp, fromExp, viaExpM, traverseAlt, traverseBind )
+      allBoundVars, foldBinds, allDeclIdentifiers, isConstructorE, viaExp, freshUnique, deepMapMaybeBound, toExp, viaExpM, traverseAlt, traverseBind )
 import Language.PureScript.CoreFn.FromJSON ()
-import Language.PureScript.Names (Ident (..))
 
-import Control.Monad.Reader ( join )
-import Data.Foldable (find, foldl', maximumBy, traverse_)
+import Data.Foldable (find, maximumBy)
 import Data.Map (Map)
 import Control.Monad
 import Data.Set (Set)
@@ -23,16 +21,14 @@ import Data.Set qualified as S
 import Language.PureScript.CoreFn.Convert.Inline.Lift
 import Algebra.Graph.AdjacencyMap
     ( gmap, stars, vertexList, AdjacencyMap(..), vertexSet, edgeList, edges )
-import Algebra.Graph.AdjacencyMap.Algorithm (scc)
+import Algebra.Graph.AdjacencyMap.Algorithm (scc, topSort, Cycle)
 import Algebra.Graph.NonEmpty.AdjacencyMap (fromNonEmpty)
-import Data.Maybe (catMaybes, mapMaybe)
-import Control.Lens.Combinators (cosmos, transform, use, transformM, ix)
+import Control.Lens.Combinators (cosmos, transformM, ix)
 import Control.Lens.Operators ((^..), (.=) )
 import Language.PureScript.Types
 import Language.PureScript.CoreFn.Expr (PurusType)
 import Language.PureScript.Constants.Prim qualified as C
 import Language.PureScript.Environment (pattern RecordT)
-import Prettyprinter (Pretty)
 import Bound (Var(..))
 import Data.Text qualified as T
 import Language.PureScript.CoreFn.Convert.Debug
@@ -40,12 +36,14 @@ import Language.PureScript.CoreFn.Pretty.Common (prettyAsStr)
 import Control.Monad.State.Strict
 import Prettyprinter 
 import Language.PureScript.Names 
+import Data.Maybe (mapMaybe)
 
 newtype LoopBreakerScore = LoopBreakerScore {getScore :: ((Ident,Int),Maybe Int)} deriving (Show,Eq,Ord)
 
 newtype LoopBreaker = LoopBreaker {getLoopBreaker :: (Ident,Int)}
   deriving newtype (Show,Eq,Ord,Pretty)
   
+-- NOTE: HANDLE SELF RECURSION LAST
 
 -- We need to keep track of which things are loop breakers and which aren't (so we don't inline the loop breakers).
 -- This doesn't matter when we're inlining *within* the mutually recursive binding group, but will when we try to inline
@@ -82,8 +80,6 @@ inline (LiftResult decls bodyE) = do
                                              _ -> acc) [] declsPrepared
   pure $ LetE M.empty onlyLoopBreakers inlinedBodyE
 
-
-
 -- this probably isn't very performant, we don't memoize or cache
 -- intermediate results, which may end up getting recomputed many times
 -- NOTE: if I fucked up the loop breaker selection then this will loop forever
@@ -92,7 +88,27 @@ inline (LiftResult decls bodyE) = do
 type InlineState a = State (Map (Ident,Int) InlineBodyData) a
 
 inlineWithData' :: Map (Ident,Int) InlineBodyData -> MonoExp -> MonoExp
-inlineWithData' d e = evalState (inlineWithData e) d 
+inlineWithData' d e = evalState (inlineWithData e) d
+
+handleSelfRecursive ::  (Ident,Int) -> MonoScoped -> Monomorphizer (Map (Ident,Int) InlineBodyData)
+handleSelfRecursive (nm,indx) body = do
+      u <- freshUnique
+      let uTxt = T.pack (show u)
+          newNm = case nm of
+                    Ident t -> Ident $ t <> "$" <> uTxt
+                    GenIdent (Just t) i -> GenIdent (Just $ t <> "$" <> uTxt) i -- we only care about a unique ord property for the maps
+                    GenIdent Nothing i ->  GenIdent (Just $ "$" <> uTxt) i
+                    other ->  other
+          bodyTy = expTy' id body
+          f = \case (BVar bvIx bvTy bvNm) ->
+                      if  bvIx == indx && bvNm == nm
+                      then Just (BVar u bvTy newNm)
+                      else Nothing
+          updatedOriginalBody = viaExp (deepMapMaybeBound f) body
+          updatedOriginalDecl = ((nm,indx),NotALoopBreaker updatedOriginalBody)
+          abstr = abstract $ \case {B bv -> Just bv; _ -> Nothing}
+          newBreakerDecl      = ((newNm,u),IsALoopBreaker (abstr . V . B $ BVar indx bodyTy nm))
+      pure $ M.fromList [updatedOriginalDecl,newBreakerDecl]
 
 inlineWithData :: MonoExp -> InlineState MonoExp
 inlineWithData  =  transformM go''
@@ -111,9 +127,7 @@ inlineWithData  =  transformM go''
                              ]
            doTraceM "inlineWithData" msg
            pure e
-        Just (IsALoopBreaker (toExp -> e)) -> do
-          pure bv
-        Nothing -> pure bv
+        _ -> pure bv
       AppE e1 e2  -> AppE <$> go e1 <*> go e2
       CaseE t scrut alts -> do
         scrut' <- go scrut
@@ -166,7 +180,7 @@ prettyDict = show
     
 inlineInLifted :: [MonoBind] ->  Monomorphizer (Map (Ident,Int) InlineBodyData)
 inlineInLifted decls = do
-  let breakers = S.map getLoopBreaker . breakLoops $ M.toList (flatBinds decls)
+  let breakers = S.map getLoopBreaker . breakLoops $ allLiftedDependencies
       dict = foldBinds (\acc nm b ->
                           if nm `S.member` breakers 
                           then M.insert nm (IsALoopBreaker b) acc
@@ -194,42 +208,24 @@ inlineInLifted decls = do
       ix i .= e'
       update (i:retry) is
      when done1 $ do
-       update retry is
+       update retry is 
     where
       go :: InlineBodyData -> InlineState InlineBodyData
       go = traverseBodyData (viaExpM inlineWithData) 
 
-   handleSelfRecursive ::  (Ident,Int) -> MonoScoped -> Monomorphizer (Map (Ident,Int) InlineBodyData)
-   handleSelfRecursive (nm,indx) body = do
-         u <- freshUnique
-         let uTxt = T.pack (show u)
-             newNm = case nm of
-                       Ident t -> Ident $ t <> "$" <> uTxt
-                       GenIdent (Just t) i -> GenIdent (Just $ t <> "$" <> uTxt) i -- we only care about a unique ord property for the maps
-                       GenIdent Nothing i ->  GenIdent (Just $ "$" <> uTxt) i
-                       other ->  other
-             bodyTy = expTy' id body
-             f = \case (BVar bvIx bvTy bvNm) ->
-                         if  bvIx == indx && bvNm == nm
-                         then Just (BVar u bvTy newNm)
-                         else Nothing
-             updatedOriginalBody = viaExp (deepMapMaybeBound f) body
-             updatedOriginalDecl = ((nm,indx),NotALoopBreaker updatedOriginalBody)
-             abstr = abstract $ \case {B bv -> Just bv; _ -> Nothing}
-             newBreakerDecl      = ((newNm,u),IsALoopBreaker (abstr . V . B $ BVar indx bodyTy nm))
-         pure $ M.fromList [updatedOriginalDecl,newBreakerDecl]
+   allLiftedDeclarations :: Map (Ident,Int) MonoScoped
+   allLiftedDeclarations = flatBinds decls
 
-
-   mkCycleGraph :: [MonoBind] -> AdjacencyMap (Ident,Int)
-   mkCycleGraph decls' = stars
-                      . M.toList
-                      . fmap S.toList
-                      $ mapRepr
+   allLiftedDependencies :: AdjacencyMap (Ident,Int)
+   allLiftedDependencies = stars
+                           . M.toList
+                           . fmap S.toList
+                           $ mapRepr
      where
-       mapRepr = foldBinds go M.empty decls'
+       mapRepr = foldBinds go M.empty decls
 
        allDeclIDs :: Set (Ident,Int)
-       allDeclIDs = allDeclIdentifiers decls'
+       allDeclIDs = allDeclIdentifiers decls
 
        go :: Map (Ident,Int) (Set (Ident,Int))
           -> (Ident,Int)
@@ -244,7 +240,7 @@ inlineInLifted decls = do
    flatBinds :: [MonoBind] -> Map (Ident,Int) MonoScoped
    flatBinds = foldBinds (\acc nm scoped -> M.insert nm scoped acc) M.empty
 
-
+   -- Example for testing: Design a call graph that has two SCCs in it
 
    {- I.e. select the necessary number of loop breakers and
            return the set of declarations that will actually be
@@ -253,45 +249,51 @@ inlineInLifted decls = do
             to construct a static map from declaration identifiers to their inlineable
             declaration groups 
    -}
-   breakLoops :: [((Ident,Int),MonoScoped)]
+   breakLoops :: AdjacencyMap (Ident,Int)
               -> Set LoopBreaker
-   breakLoops xs = 
-     let stronglyConnected = scc $ mkCycleGraph [Recursive xs]
-         declMap = flatBinds [Recursive xs]
-     in case S.toList $ vertexSet stronglyConnected of
-         [] -> S.empty
-         -- [q] ->  breakEm declMap . fromNonEmpty $ q  -- might be wrong, might not work right w/ self-recursive declarations
-         _ ->
-           let broken :: AdjacencyMap (Set LoopBreaker)
-               broken  = gmap (breakEm declMap . fromNonEmpty) stronglyConnected
-
-               result = S.unions $ vertexSet broken
-               msg = prettify [ "SCCs:\n" <> prettyAsStr (vertexList . fromNonEmpty <$> vertexList stronglyConnected)
-                              , "BREAKERS:\n" <> prettyAsStr (S.toList result)
-                              ]
-           in doTrace "breakLoops" msg result 
+   breakLoops adjMap = doTrace "breakLoops" msg result
     where
-      typeContainsRow :: MonoExp -> Bool
-      typeContainsRow e = any isRow allTypeComponents
+      result = evalState breakEm adjMap
+
+      msg = "RESULT:\n" <> prettyAsStr (S.toList result)
+
+      breakEm :: State (AdjacencyMap (Ident,Int)) (Set LoopBreaker)
+      breakEm = do
+        adjaMap <- get
+        let stronglyConnected = gmap fromNonEmpty $ scc adjaMap
+            revTopoSorted :: [AdjacencyMap (Ident,Int)]
+            revTopoSorted = reverse $ either cycleErr id $ topSort stronglyConnected
+        doTraceM "breakEm" ("RevTopoSorted:\n" <> prettyAsStr (vertexList <$> revTopoSorted))
+        case find nonTrivialGroup revTopoSorted of
+          Nothing -> pure S.empty
+          Just target -> do
+            let targIdentifiers = vertexList target
+                scored          = score <$> targIdentifiers
+                highScore       = maximumBy (\a b -> let f = snd . getScore in compare (f a) (f b)) scored
+            case highScore of
+              LoopBreakerScore (nm,Nothing) -> error $ "Could not select a loop breaker for decl group:\n" <> show targIdentifiers
+              LoopBreakerScore (nm,_) -> do
+                removeEdgesTerminatingAt nm
+                S.insert (LoopBreaker nm) <$> breakEm
         where
-          allTypeComponents :: [PurusType]
-          allTypeComponents = expTy id e ^.. cosmos
+          removeEdgesTerminatingAt :: (Ident,Int) -> State (AdjacencyMap (Ident,Int)) ()
+          removeEdgesTerminatingAt nm = do
+            s <- get
+            let depsEdges    = edgeList s
+                depsWinnowed = filter (\x -> snd x /= nm) depsEdges
+                newState     = edges depsWinnowed
+            put newState
 
-          isRow = \case
-            TypeConstructor _ C.Row -> True
-            RecordT _ -> True
-            TypeVar _ _ k -> isRow k
-            RCons{} -> True
-            REmpty{}  -> True
-            KindedType _ t1 t2 -> isRow t1 || isRow t2
-            TypeApp _ t1 t2 -> isRow t1 || isRow t2 
-            _ -> False
+          nonTrivialGroup :: forall x. AdjacencyMap x -> Bool
+          nonTrivialGroup x = S.size (vertexSet x) > 1
 
-      score :: Map (Ident,Int) MonoScoped
-            -> (Ident,Int)
+          cycleErr :: Cycle (AdjacencyMap (Ident,Int)) -> a
+          cycleErr cyc      = error $ "Fatal Error: Cannot inline, topologically sorted graph of dependencies contains cycles:\n" <> show cyc
+
+      score :: (Ident,Int)
             -> LoopBreakerScore
-      score declMap nm = case M.lookup nm declMap of
-              Just (fmap join . fromScope -> e)
+      score nm = case M.lookup nm allLiftedDeclarations of
+              Just (toExp -> e)
                 | typeContainsRow e -> LoopBreakerScore (nm,Nothing)
                 | otherwise -> case e of
                     V _ -> LoopBreakerScore (nm,Just 3)
@@ -301,27 +303,22 @@ inlineInLifted decls = do
                             | otherwise -> LoopBreakerScore (nm,Just 0)
                     _ -> LoopBreakerScore (nm,Just 0)
               Nothing -> LoopBreakerScore (nm,Nothing)
-
-      breakEm :: Map (Ident,Int) MonoScoped
-              -> AdjacencyMap (Ident,Int)
-              -> Set LoopBreaker
-      breakEm declMap analyzed
-        | stop = S.empty
-        | otherwise = case highScore of
-          LoopBreakerScore (nm,Nothing) -> error $ "Could not select a loop breaker for decl group:\n" <> show allNodes
-          LoopBreakerScore (nm,_) ->
-            let nextRound = edges $ filter (\(a,b) -> a /= nm && b /= nm) $ edgeList analyzed
-            in S.insert (LoopBreaker nm) $  breakEm declMap  nextRound
         where
-          stop = case S.toList $ vertexSet analyzed of
-            [] -> True
-            -- \/ FIXME: ALMOST CERTAINLY WRONG for self-recursive bindings 
-            [q] -> True
-            _ -> False 
-          allNodes = vertexList analyzed
-          scored   = score declMap <$> allNodes
-          highScore = maximumBy (\a b -> let f = snd . getScore in compare (f a) (f b)) scored
+          typeContainsRow :: MonoExp -> Bool
+          typeContainsRow e = any isRow allTypeComponents
+            where
+              allTypeComponents :: [PurusType]
+              allTypeComponents = expTy id e ^.. cosmos
 
+              isRow = \case
+                TypeConstructor _ C.Row -> True
+                RecordT _ -> True
+                TypeVar _ _ k -> isRow k
+                RCons{} -> True
+                REmpty{}  -> True
+                KindedType _ t1 t2 -> isRow t1 || isRow t2
+                TypeApp _ t1 t2 -> isRow t1 || isRow t2
+                _ -> False
 findDeclGroup  ::
   (Ident,Int) ->
   [BindE ty (Exp x ty) a] ->

@@ -83,6 +83,11 @@ Exports:
   testValidatorApplied,
   testForLift,
   testForLiftPoly,
+  or,
+  not,
+  and,
+  iff,
+  ghcInlinerPaperEx,
   testClassInt,
   eqInt,
   eq2IntBoolean,
@@ -374,6 +379,14 @@ testPlus :: Prim.Int
 testPlus = 
   (plus: (Prim.Int -> ((Prim.Int -> (Prim.Int))))) (1: Prim.Int) (1: Prim.Int)
 
+or :: (Prim.Boolean -> ((Prim.Boolean -> (Prim.Boolean))))
+or = 
+  \(b1: Prim.Boolean) -> 
+    \(b2: Prim.Boolean) -> 
+      case (b1: Prim.Boolean) of 
+         True -> (True: Prim.Boolean)
+         _ -> (b2: Prim.Boolean)
+
 opt2Int :: ((Lib.Option (Prim.Int)) -> (Prim.Int))
 opt2Int = 
   \(v: (Lib.Option (Prim.Int))) -> 
@@ -387,6 +400,13 @@ testOpt2Int =
   ((Some: forall (@a :: Prim.Type). ((a :: Prim.Type) ->
    ((Lib.Option ((a :: Prim.Type))))))
    (3: Prim.Int))
+
+not :: (Prim.Boolean -> (Prim.Boolean))
+not = 
+  \(b: Prim.Boolean) -> 
+    case (b: Prim.Boolean) of 
+       True -> (False: Prim.Boolean)
+       _ -> (True: Prim.Boolean)
 
 nestedBinds :: Prim.Int
 nestedBinds = 
@@ -638,6 +658,58 @@ arrForall =
   (Nil: Array (forall (a :: Prim.Type). ((a :: Prim.Type) ->
   ((a :: Prim.Type)))))
 
+and :: (Prim.Boolean -> ((Prim.Boolean -> (Prim.Boolean))))
+and = 
+  \(p: Prim.Boolean) -> 
+    \(q: Prim.Boolean) -> 
+      (not: (Prim.Boolean -> (Prim.Boolean)))
+      ((or: (Prim.Boolean -> ((Prim.Boolean -> (Prim.Boolean)))))
+       ((not: (Prim.Boolean -> (Prim.Boolean))) (p: Prim.Boolean))
+       ((not: (Prim.Boolean -> (Prim.Boolean))) (q: Prim.Boolean)))
+
+iff :: (Prim.Boolean -> ((Prim.Boolean -> (Prim.Boolean))))
+iff = 
+  \(p: Prim.Boolean) -> 
+    \(q: Prim.Boolean) -> 
+      (or: (Prim.Boolean -> ((Prim.Boolean -> (Prim.Boolean)))))
+      ((and: (Prim.Boolean -> ((Prim.Boolean -> (Prim.Boolean)))))
+       (p: Prim.Boolean)
+       (q: Prim.Boolean))
+      ((and: (Prim.Boolean -> ((Prim.Boolean -> (Prim.Boolean)))))
+       ((not: (Prim.Boolean -> (Prim.Boolean))) (p: Prim.Boolean))
+       ((not: (Prim.Boolean -> (Prim.Boolean))) (q: Prim.Boolean)))
+
+ghcInlinerPaperEx :: Prim.Boolean
+ghcInlinerPaperEx = 
+  let
+    h :: (Prim.Boolean -> (Prim.Boolean))
+    h = 
+      \(x: Prim.Boolean) -> 
+        (and: (Prim.Boolean -> ((Prim.Boolean -> (Prim.Boolean)))))
+        ((f: (Prim.Boolean -> (Prim.Boolean))) (True: Prim.Boolean))
+        (x: Prim.Boolean)
+    g :: (Prim.Boolean -> (Prim.Boolean))
+    g = 
+      \(x: Prim.Boolean) -> 
+        (iff: (Prim.Boolean -> ((Prim.Boolean -> (Prim.Boolean)))))
+        ((h: (Prim.Boolean -> (Prim.Boolean))) (x: Prim.Boolean))
+        (False: Prim.Boolean)
+    f :: (Prim.Boolean -> (Prim.Boolean))
+    f = 
+      \(x: Prim.Boolean) -> 
+        (g: (Prim.Boolean -> (Prim.Boolean)))
+        ((not: (Prim.Boolean -> (Prim.Boolean))) (x: Prim.Boolean))
+    q :: (Prim.Boolean -> (Prim.Boolean))
+    q = 
+      \(x: Prim.Boolean) -> 
+        (g: (Prim.Boolean -> (Prim.Boolean)))
+        ((and: (Prim.Boolean -> ((Prim.Boolean -> (Prim.Boolean)))))
+         (x: Prim.Boolean)
+         ((g: (Prim.Boolean -> (Prim.Boolean))) (x: Prim.Boolean)))
+    p :: Prim.Boolean
+    p = (q: (Prim.Boolean -> (Prim.Boolean))) (False: Prim.Boolean)
+  in (q: (Prim.Boolean -> (Prim.Boolean))) (True: Prim.Boolean)
+
 anObj :: { foo :: Prim.Int }
 anObj = ({ foo: (3: Prim.Int) }: { foo :: Prim.Int })
 
@@ -803,7 +875,7 @@ aFunction6 =
   in (aFunction: forall (x :: Prim.Type). ((x :: Prim.Type) ->
      ((forall (y :: Prim.Type). ((y :: Prim.Type) -> (Prim.Int)) ->
      (Prim.Int)))))
-     (Nil: Array (t157))
+     (Nil: Array (t167))
      (go: forall (z :: Prim.Type). ((z :: Prim.Type) -> (Prim.Int)))
 
 aBool :: Prim.Boolean
