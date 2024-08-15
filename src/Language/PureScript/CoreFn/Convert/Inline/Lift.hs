@@ -5,6 +5,7 @@
 -- has to be here (more or less)
 {-# OPTIONS_GHC -Wno-orphans #-}
 {-# OPTIONS_GHC -Wno-unrecognised-pragmas #-}
+{-# HLINT ignore "Move concatMap out" #-}
 
 module Language.PureScript.CoreFn.Convert.Inline.Lift where
 
@@ -13,10 +14,7 @@ import Prelude
 import Bound.Scope (Scope (..), abstract, fromScope)
 import Bound.Var (Var (..))
 import Data.Map qualified as M
-import Language.PureScript.CoreFn.Convert.DesugarCore (
-  Vars,
-  WithObjects,
- )
+import Language.PureScript.CoreFn.Convert.IR.Utils
 import Language.PureScript.CoreFn.Convert.IR (
   Alt (..),
   BVar (..),
@@ -31,13 +29,7 @@ import Language.PureScript.CoreFn.Convert.Monomorphize.Utils
     ( Monomorphizer,
       freshUnique,
       findInlineDeclGroup,
-      isBuiltin,
-      isConstructor,
-      unBVar,
-      mapBind,
-      viaExp,
-      allBoundVars,
-      deepMapMaybeBound, traverseBind, viaExpM, foldBinds, transformTypesInExp, asExp )
+    )
 import Language.PureScript.CoreFn.Expr (PurusType)
 import Language.PureScript.CoreFn.FromJSON ()
 import Language.PureScript.CoreFn.TypeLike (
@@ -62,7 +54,7 @@ import Language.PureScript.CoreFn.Pretty.Common (prettyAsStr, (<::>))
 import Prettyprinter ( Pretty(pretty), align, vcat, hardline, indent, (<+>) )
 import Control.Monad (void)
 import Language.PureScript.Types (Type(..))
-
+import Control.Lens (view, _2, toListOf)
 -- TODO (IMPORTANT!): Add type abstractions to the declarations with free tyvars and
 --                    update the types of the variables which correspond to their
 --                    identifiers.
@@ -388,7 +380,7 @@ lift ::
   Monomorphizer LiftResult -- we don't put the expression back together yet b/c it's helpful to keep the pieces separate for monomorphization
 lift e = do
   (binds1, body) <- updateAllBinds deepDict prunedExp liftThese
-  binds2 <- usedInScopeDecls
+  binds2 <- usedModuleDecls e 
   let monoBinds = binds1 <> binds2
       msg =
         prettify
@@ -477,35 +469,33 @@ lift e = do
           LitP (ObjectL _ ps) -> concatMap (extractPatVarBinders . snd) ps
           _ -> []
 
-    everything = e ^.. cosmos
+usedModuleDecls :: MonoExp -> Monomorphizer [MonoBind]
+usedModuleDecls e = do
+    modDict <- mkModDict
+    let deps = S.fromList
+               . filter (`M.member` modDict)
+               . mapMaybe (\case (V (B bv)) -> Just (unBVar bv);_ -> Nothing)
+               $ directDeps
+    let usedIdents = S.toList $ go modDict deps
+    pure $ (\nm@(idn,ind) -> NonRecursive idn ind (modDict M.! nm)) <$> usedIdents
+  where
+    go :: Map (Ident,Int) MonoScoped -> Set (Ident,Int) -> Set (Ident,Int)
+    go dict visited =
+      let nextRound = S.foldl' (\acc nm -> dict M.! nm:acc) [] visited
+          nextRoundDeps = S.fromList
+                          . filter (\x -> S.notMember x visited && M.member x dict)
+                          . mapMaybe (\case (V (B bv)) -> Just (unBVar bv);_ -> Nothing)
+                          $ concatMap (toListOf cosmos . toExp)  nextRound  
+      in case S.null nextRoundDeps of
+           True -> visited
+           False  -> go dict (visited <> nextRoundDeps)
 
-    {- Action that provides the module-level declarations used in the target "main" expression
-       we're lifting from. I guess these aren't technically "lifted" - we don't perform any of the
-       transformations on these that we perform on the declarations we are lifting *out of*
-       the target expression. However, we need them for monomorphizing and need to include them
-       *somehow* eventually anyway, so we just treat them as members of the set of lifted bindings
-       for future compiler passes.
+    directDeps = e ^.. cosmos
 
-       FIXME: Doesn't properly recursively retrieve the transitive dependencies of the
-              directly used decls.
-    -}
-    usedInScopeDecls :: Monomorphizer [BindE PurusType (Exp WithObjects PurusType) (Vars PurusType)]
-    usedInScopeDecls = catMaybes <$> traverse lookupDecl (mapMaybe getLiftableIdent everything)
-      where
-        getLiftableIdent = \case
-          V (F (FVar _ qi@(Qualified (ByModuleName _) ident)))
-            | not (isConstructor qi || isBuiltin qi) -> Just ident
-          _ -> Nothing
-
-    lookupDecl ::
-      Ident ->
-      Monomorphizer (Maybe (BindE PurusType (Exp WithObjects PurusType) (Vars PurusType)))
-    lookupDecl ident = do
-      -- TODO: Ideally we should have a `Map ModuleName [BindE (...)]`
-      --       so we know we're looking in the correct module.
-      --       Since we don't have a linker at the moment though, there's not much point right now
-      inScopeDecls <- asks snd
-      pure $ findInlineDeclGroup ident inScopeDecls
+    mkModDict :: Monomorphizer (Map (Ident,Int) MonoScoped)
+    mkModDict = do
+      decls <- view _2
+      pure $ foldBinds (\acc nm b  -> M.insert nm b acc) M.empty decls
 
 {- NOTE 1:
 

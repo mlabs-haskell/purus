@@ -8,7 +8,7 @@ import Language.PureScript.CoreFn.Convert.IR (
   Exp (..), expTy, unsafeAnalyzeApp, BVar (..), expTy',
  )
 import Language.PureScript.CoreFn.Convert.Monomorphize.Utils
-import Language.PureScript.CoreFn.Convert.IR.Utils
+import Language.PureScript.CoreFn.Convert.IR.Utils 
 import Language.PureScript.CoreFn.FromJSON ()
 
 import Data.Foldable (find, maximumBy)
@@ -35,6 +35,7 @@ import Control.Monad.State.Strict
 import Prettyprinter 
 import Language.PureScript.Names 
 import Data.Maybe (mapMaybe)
+import Control.Lens (view,_2)
 
 newtype LoopBreakerScore = LoopBreakerScore {getScore :: ((Ident,Int),Maybe Int)} deriving (Show,Eq,Ord)
 
@@ -48,6 +49,12 @@ data InlineBodyData
      = NotALoopBreaker MonoScoped
      | IsALoopBreaker MonoScoped deriving (Show, Eq)
 
+-- idk this is ugly. also isn't there some category theory magic for this?
+unBodyData :: InlineBodyData -> (MonoScoped -> InlineBodyData,MonoScoped)
+unBodyData = \case
+  NotALoopBreaker ms -> (NotALoopBreaker,ms)
+  IsALoopBreaker ms  -> (IsALoopBreaker,ms)
+  
 getInlineBody :: InlineBodyData -> MonoScoped
 getInlineBody = \case
   NotALoopBreaker s -> s
@@ -74,7 +81,14 @@ inline (LiftResult decls bodyE) = do
                                              IsALoopBreaker b ->
                                                NonRecursive n i b:acc
                                              _ -> acc) [] declsPrepared
-  pure $ LetE M.empty onlyLoopBreakers inlinedBodyE
+      flatLB = M.toList $ flatBinds onlyLoopBreakers
+  res <-  map (\((n,i),b) -> NonRecursive n i b) 
+          . M.toList
+          . M.unions
+          <$>  traverse (uncurry handleSelfRecursive) flatLB
+  case res of
+    [] -> pure (toExp inlinedBodyE)
+    _  ->  pure $ LetE M.empty res inlinedBodyE
 
 -- this probably isn't very performant, we don't memoize or cache
 -- intermediate results, which may end up getting recomputed many times
@@ -86,8 +100,10 @@ type InlineState a = State (Map (Ident,Int) InlineBodyData) a
 inlineWithData' :: Map (Ident,Int) InlineBodyData -> MonoExp -> MonoExp
 inlineWithData' d e = evalState (inlineWithData e) d
 
-handleSelfRecursive ::  (Ident,Int) -> MonoScoped -> Monomorphizer (Map (Ident,Int) InlineBodyData)
-handleSelfRecursive (nm,indx) body = do
+handleSelfRecursive ::  (Ident,Int) -> MonoScoped -> Monomorphizer (Map (Ident,Int) MonoScoped)
+handleSelfRecursive (nm,indx) body
+  | not (containsBVar nm indx body) = pure $ M.singleton (nm,indx) body
+  | otherwise = do
       u <- freshUnique
       let uTxt = T.pack (show u)
           newNm = case nm of
@@ -101,9 +117,9 @@ handleSelfRecursive (nm,indx) body = do
                       then Just (BVar u bvTy newNm)
                       else Nothing
           updatedOriginalBody = viaExp (deepMapMaybeBound f) body
-          updatedOriginalDecl = ((nm,indx),NotALoopBreaker updatedOriginalBody)
+          updatedOriginalDecl = ((nm,indx), updatedOriginalBody)
           abstr = abstract $ \case {B bv -> Just bv; _ -> Nothing}
-          newBreakerDecl      = ((newNm,u),IsALoopBreaker (abstr . V . B $ BVar indx bodyTy nm))
+          newBreakerDecl      = ((newNm,u), (abstr . V . B $ BVar indx bodyTy nm))
       pure $ M.fromList [updatedOriginalDecl,newBreakerDecl]
 
 inlineWithData :: MonoExp -> InlineState MonoExp
@@ -233,8 +249,6 @@ inlineInLifted decls = do
              theseUsedBinds = S.intersection allDeclIDs allComponentBinds
          in M.insert nm theseUsedBinds acc
 
-   flatBinds :: [MonoBind] -> Map (Ident,Int) MonoScoped
-   flatBinds = foldBinds (\acc nm scoped -> M.insert nm scoped acc) M.empty
 
    -- Example for testing: Design a call graph that has two SCCs in it
 
