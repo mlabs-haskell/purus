@@ -19,7 +19,7 @@ import Data.Text (Text)
 import Data.Text qualified as T
 import Language.PureScript.Constants.Prim qualified as C
 import Language.PureScript.CoreFn.Ann (Ann)
-import Language.PureScript.CoreFn.Convert.DesugarCore (DS, IR_Decl, WithObjects, WithoutObjects, bind, desugarCoreModule, getVarIx, liftErr)
+import Language.PureScript.CoreFn.Convert.DesugarCore (DS, desugarCoreModule, liftErr, bind, getVarIx)
 import Language.PureScript.CoreFn.Convert.IR (
   Alt (..),
   BVar (..),
@@ -34,6 +34,7 @@ import Language.PureScript.CoreFn.Convert.IR (
   ppExp,
   pattern (:~>),
  )
+import Language.PureScript.CoreFn.Convert.IR.Utils 
 import Language.PureScript.CoreFn.Convert.Monomorphize (
   instantiateAllConstructors,
   runMonomorphize,

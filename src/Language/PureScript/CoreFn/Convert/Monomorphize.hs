@@ -29,10 +29,7 @@ import Language.PureScript.CoreFn.Convert.Debug (
   doTraceM,
  )
 import Language.PureScript.CoreFn.Convert.DesugarCore (
-  IR_Decl,
-  WithObjects,
-  desugarCoreModule,
-  type Vars,
+  desugarCoreModule
  )
 import Language.PureScript.CoreFn.Convert.IR (
   BVar (..),
@@ -49,11 +46,10 @@ import Language.PureScript.CoreFn.Convert.Monomorphize.Utils (
   MonoState (MonoState),
   decodeModuleIO,
   findDeclBody,
-  isBuiltinE,
-  isConstructorE,
   unsafeApply,
-  updateTypes, Monomorphizer,
+  Monomorphizer,
  )
+import Language.PureScript.CoreFn.Convert.IR.Utils 
 import Language.PureScript.CoreFn.Convert.Inline.Lift
 import Language.PureScript.CoreFn.Expr (PurusType)
 import Language.PureScript.CoreFn.FromJSON ()
@@ -156,7 +152,9 @@ reduceRowTypes ::
   Exp WithObjects PurusType (Vars PurusType) ->
   Exp WithObjects PurusType (Vars PurusType)
 reduceRowTypes = transform $ \case
-  TyInstE t (TyAbs (BVar _ bvTy (Ident bvNm)) innerE) | bvTy /= kindType -> updateTypes [(bvNm, t)] innerE
+  TyInstE t (TyAbs (BVar _ bvTy (Ident bvNm)) innerE) | bvTy /= kindType ->
+    let f =  replaceAllTypeVars [(bvNm,t)]
+    in transformTypesInExp f innerE --  [(bvNm, t)] innerE
   other -> other
 
 {- Entry point for inlining monomorphization.

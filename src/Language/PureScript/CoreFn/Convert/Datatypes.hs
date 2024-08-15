@@ -98,15 +98,13 @@ import Language.PureScript.Constants.Prim qualified as C
 import Language.PureScript.Constants.Purus qualified as C
 import Language.PureScript.CoreFn.Convert.Debug
 import Language.PureScript.CoreFn.Convert.DesugarCore (
-  Vars,
-  WithoutObjects,
   matchVarLamAbs,
  )
 import Language.PureScript.CoreFn.Convert.DesugarObjects
 import Language.PureScript.CoreFn.Convert.Monomorphize.Utils (
-  isConstructor,
   unsafeApply,
  )
+import Language.PureScript.CoreFn.Convert.IR.Utils
 import Language.PureScript.CoreFn.Module (
   CtorDecl (..),
   Datatypes,

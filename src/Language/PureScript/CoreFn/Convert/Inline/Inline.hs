@@ -8,9 +8,7 @@ import Language.PureScript.CoreFn.Convert.IR (
   Exp (..), expTy, unsafeAnalyzeApp, BVar (..), expTy',
  )
 import Language.PureScript.CoreFn.Convert.Monomorphize.Utils
-    ( Monomorphizer,
-      unBVar,
-      allBoundVars, foldBinds, allDeclIdentifiers, isConstructorE, viaExp, freshUnique, deepMapMaybeBound, toExp, viaExpM, traverseAlt, traverseBind )
+import Language.PureScript.CoreFn.Convert.IR.Utils
 import Language.PureScript.CoreFn.FromJSON ()
 
 import Data.Foldable (find, maximumBy)
@@ -46,8 +44,6 @@ newtype LoopBreaker = LoopBreaker {getLoopBreaker :: (Ident,Int)}
 -- NOTE: HANDLE SELF RECURSION LAST
 
 -- We need to keep track of which things are loop breakers and which aren't (so we don't inline the loop breakers).
--- This doesn't matter when we're inlining *within* the mutually recursive binding group, but will when we try to inline
--- expressions in the top-level body scoped by the lifted `let-` bindings
 data InlineBodyData
      = NotALoopBreaker MonoScoped
      | IsALoopBreaker MonoScoped deriving (Show, Eq)
@@ -171,14 +167,14 @@ remainingInlineTargets me = do
         allBoundVarsSet = S.fromList . fmap unBVar . allBoundVars $ me
     pure $ S.intersection allBoundVarsSet allInlineable
 
-prettyDict :: (Map (Ident,Int) InlineBodyData) -> String
+prettyDict :: Map (Ident,Int) InlineBodyData -> String
 prettyDict = show
              . align
              . vcat
              . map (\((i,n),b) -> pretty (runIdent i) <+> "#" <+> pretty n <+> "=" <+> pretty (toExp $ getInlineBody b) <+> hardline)
              . M.toList 
     
-inlineInLifted :: [MonoBind] ->  Monomorphizer (Map (Ident,Int) InlineBodyData)
+inlineInLifted :: [MonoBind] -> Monomorphizer (Map (Ident,Int) InlineBodyData)
 inlineInLifted decls = do
   let breakers = S.map getLoopBreaker . breakLoops $ allLiftedDependencies
       dict = foldBinds (\acc nm b ->
@@ -251,10 +247,9 @@ inlineInLifted decls = do
    -}
    breakLoops :: AdjacencyMap (Ident,Int)
               -> Set LoopBreaker
-   breakLoops adjMap = doTrace "breakLoops" msg result
+   breakLoops adjMap = doTrace "breakLoops" msg result 
     where
       result = evalState breakEm adjMap
-
       msg = "RESULT:\n" <> prettyAsStr (S.toList result)
 
       breakEm :: State (AdjacencyMap (Ident,Int)) (Set LoopBreaker)
@@ -271,7 +266,7 @@ inlineInLifted decls = do
                 scored          = score <$> targIdentifiers
                 highScore       = maximumBy (\a b -> let f = snd . getScore in compare (f a) (f b)) scored
             case highScore of
-              LoopBreakerScore (nm,Nothing) -> error $ "Could not select a loop breaker for decl group:\n" <> show targIdentifiers
+              LoopBreakerScore (_,Nothing) -> error $ "Could not select a loop breaker for decl group:\n" <> show targIdentifiers
               LoopBreakerScore (nm,_) -> do
                 removeEdgesTerminatingAt nm
                 S.insert (LoopBreaker nm) <$> breakEm

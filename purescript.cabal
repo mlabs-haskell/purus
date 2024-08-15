@@ -263,6 +263,7 @@ library
     Language.PureScript.CoreFn.Convert.Inline.Lift
     Language.PureScript.CoreFn.Convert.Inline.Inline
     Language.PureScript.CoreFn.Convert.IR
+    Language.PureScript.CoreFn.Convert.IR.Utils
     Language.PureScript.CoreFn.Convert.ToPIR
     Language.PureScript.CoreFn.CSE
     Language.PureScript.CoreFn.Desugar

@@ -28,10 +28,6 @@ import Language.PureScript.CoreFn.Convert.Debug (
   doTraceM,
   prettify,
  )
-import Language.PureScript.CoreFn.Convert.DesugarCore (
-  Vars,
-  WithObjects,
- )
 import Language.PureScript.CoreFn.Convert.IR (
   Alt (..),
   BVar (..),
@@ -48,29 +44,7 @@ import Language.PureScript.CoreFn.Convert.Monomorphize.Monomorphize (
   getInstantiations,
   monomorphize,
  )
-import Language.PureScript.CoreFn.Convert.Monomorphize.Utils (
-  MonoError (MonoError),
-  Monomorphizer,
-  containsBVar,
-  extractAndFlattenAlts,
-  findInlineDeclGroup,
-  freshBVar,
-  freshUnique,
-  freshen,
-  gLet,
-  getModBinds,
-  inlineable,
-  isBuiltin,
-  isBuiltinE,
-  isConstructor,
-  isConstructorE,
-  mkFieldMap,
-  note,
-  stripTypeAbstractions,
-  tyAbstractExpr,
-  updateFreeVars,
-  updateVarTyS,
- )
+import Language.PureScript.CoreFn.Convert.Monomorphize.Utils
 import Language.PureScript.CoreFn.Desugar.Utils (showIdent')
 import Language.PureScript.CoreFn.Expr (PurusType)
 import Language.PureScript.CoreFn.FromJSON ()
@@ -88,6 +62,7 @@ import Language.PureScript.Types (
   Type (ForAll),
  )
 import Prelude
+import Language.PureScript.CoreFn.Convert.IR.Utils 
 
 -- FIXME: Rewrite this
 inlineEverything ::
@@ -358,7 +333,7 @@ inlineAs' ty inNm
         Just _ -> pure visited -- might not be right, might need to check that the types are equal? ugh keeping track of scope is a nightmare
       V (F (FVar _ (Qualified _ nm))) -> doTrace "collectRecBinds" ("crbVAR_: " <> showIdent' nm) $ pure visited
       CaseE _ _ alts -> doTrace "collectRecBinds" "crbCASE" $ do
-        let flatAlts = concatMap extractAndFlattenAlts alts
+        let flatAlts =  (\(UnguardedAlt _ _ b) -> b) <$> alts
         foldM (collectRecBinds t) visited flatAlts
       LetE _ _ ex -> collectRecBinds t visited ex
       TyInstE _ inner -> collectRecBinds t visited (toScope . fmap F $ inner)
@@ -471,13 +446,15 @@ monomorphizeWithType ty expr = doTrace "monomorphizeWithType" ("INPUT:\n" <> ppE
       pure $ ObjectUpdateE ext ty orig copyFields updateFields'
     _ -> throwError $ MonoError ("Failed to collect recursive binds: " <> prettyTypeStr ty <> " is not a Record type")
   AccessorE ext _ str e -> pure $ AccessorE ext ty str e -- idk?
-  fun@(LamE bv body) -> doTrace "monomorphizeWithType" ("ABS:\n  " <> ppExp fun <> "\n\nTARGET TY:\n" <> prettyTypeStr ty <> "\n\nABS TY:\n" <> prettyAsStr (expTy id fun)) $
+  fun@(LamE bv@(BVar bvix bvty bvident) body) -> doTrace "monomorphizeWithType" ("ABS:\n  " <> ppExp fun <> "\n\nTARGET TY:\n" <> prettyTypeStr ty <> "\n\nABS TY:\n" <> prettyAsStr (expTy id fun)) $
     case ty of
       (a :-> b) -> do
         let
-          -- replaceBVar = mapBound $ \x -> if x == bv then freshBV else x
-          body' = fmap join . fromScope $ {- -replaceBVar $-} updateVarTyS bv a body
-        body'' <- fmap F . toScope <$> monomorphizeWithType b body'
+          f = \case
+                 BVar bvix' _ bvident' | bvix' == bvix && bvident' == bvident -> Just (BVar bvix' a bvident')
+                 _ -> Nothing
+          body' =  deepMapMaybeBound f . toExp $ body
+        body'' <- fromExp <$>  monomorphizeWithType b body'
         pure $ LamE bv body''
       _ -> case stripQuantifiers ty of
         (bvars, innerT) -> do

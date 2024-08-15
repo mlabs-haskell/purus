@@ -28,9 +28,7 @@ import Prelude
 
 -- mainly for the module (we might need it for constructors? idk)
 
-import Language.PureScript.CoreFn.Convert.DesugarCore (
-  WithoutObjects,
- )
+import Language.PureScript.CoreFn.Convert.IR.Utils
 import Language.PureScript.CoreFn.Convert.IR qualified as IR
 import PlutusCore (Unique (..), latestVersion, runQuoteT)
 import PlutusCore qualified as PLC

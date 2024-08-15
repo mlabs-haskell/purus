@@ -76,6 +76,8 @@ import Language.PureScript.CoreFn.Convert.Debug
 import Language.PureScript.CoreFn.Pretty.Common qualified as PC -- jfc move this somewhere more sensible
 import Language.PureScript.CoreFn.TypeLike (TypeLike (..))
 import Prettyprinter (Pretty (..), vcat)
+import Language.PureScript.CoreFn.Convert.IR.Utils
+
 
 -- Need the map to keep track of whether a variable has already been used in the scope (e.g. for shadowing)
 type DS = StateT (Int, M.Map Ident Int) (Either String)
@@ -101,6 +103,9 @@ bind ident = do
   doTraceM "bind" ("IDENT: " <> T.unpack (runIdent ident) <> "\n\nINDEX: " <> prettyAsStr i)
   pure i
 
+forceBind :: Ident -> Int -> DS ()
+forceBind i indx   = modify' $ over _2 (M.insert i indx)
+
 getVarIx :: Ident -> DS Int
 getVarIx ident =
   gets (preview (_2 . ix ident)) >>= \case
@@ -124,22 +129,6 @@ tyAbs nm k exp
 tyAbsMany :: forall x t. [(Text, KindOf t)] -> Exp x t (Vars t) -> DS (Exp x t (Vars t))
 tyAbsMany vars expr = foldrM (uncurry tyAbs) expr vars
 
-data WithObjects
-
-type instance XAccessor WithObjects = ()
-type instance XObjectUpdate WithObjects = ()
-type instance XObjectLiteral WithObjects = ()
-
-data WithoutObjects
-
-type instance XAccessor WithoutObjects = Void
-type instance XObjectUpdate WithoutObjects = Void
-type instance XObjectLiteral WithoutObjects = Void
-
-type IR_Decl = BindE PurusType (Exp WithObjects PurusType) (Vars PurusType)
-
-type Vars t = Var (BVar t) (FVar t)
-
 desugarCoreModule :: Module (Bind Ann) PurusType PurusType Ann -> Either String (Module IR_Decl PurusType PurusType Ann, (Int, M.Map Ident Int))
 desugarCoreModule m = case runStateT (desugarCoreModule' m) (0, M.empty) of
   Left err -> Left err
@@ -147,8 +136,30 @@ desugarCoreModule m = case runStateT (desugarCoreModule' m) (0, M.empty) of
 
 desugarCoreModule' :: Module (Bind Ann) PurusType PurusType Ann -> DS (Module IR_Decl PurusType PurusType Ann)
 desugarCoreModule' Module {..} = do
-  decls <- traverse (freshly . desugarCoreDecl) moduleDecls
+  decls' <- traverse (freshly . desugarCoreDecl) moduleDecls
+  decls  <- bindLocalTopLevelDeclarations decls'
   pure $ Module {moduleDecls = decls, ..}
+ where
+   {- Need to do this to ensure that all  -}
+   bindLocalTopLevelDeclarations :: [BindE PurusType (Exp WithObjects PurusType) (Vars PurusType)]
+                                 -> DS [BindE PurusType (Exp WithObjects PurusType) (Vars PurusType)]
+   bindLocalTopLevelDeclarations ds = do
+     let topLevelIdents = foldBinds (\acc nm _ -> nm:acc ) [] ds
+     traverse_ (uncurry forceBind) topLevelIdents
+     s <- gets (view _2)
+     doTraceM "bindLocalTopLevelDeclarations" $ prettify [ "Input (Module Decls):\n" <> prettify (prettyAsStr <$> ds)
+                                                         , "Top level binds:\n" <> prettyAsStr (M.toList s)
+                                                         , "Top level idents:\n" <> prettify (prettyAsStr <$> topLevelIdents)
+                                                         ]
+     -- this is only safe because every locally-scoped (i.e. inside a decl) variable should be
+     -- bound by this point
+     let upd = \case
+               V (B bv) -> V $ B bv
+               V (F fv@(FVar t (Qualified _ ident))) -> case M.lookup ident s of
+                 Nothing -> V $ F fv
+                 Just indx -> V $ B $ BVar indx t ident
+               other -> other 
+     pure $ mapBind (const $ viaExp (transform upd))  <$> ds
 
 desugarCoreDecl ::
   Bind Ann ->
@@ -530,59 +541,3 @@ etaReduce input = case partitionLam input of
       LamE bv body -> first (bv :) $ stripLambdas (join <$> fromScope body)
       TyInstE _ inner -> stripLambdas inner
       other -> ([], other)
-
-{- Useful for transform/rewrite/cosmos/etc -}
-instance Plated (Exp x t (Vars t)) where
-  plate = go
-    where
-      go ::
-        forall f.
-        (Applicative f) =>
-        (Exp x t (Vars t) -> f (Exp x t (Vars t))) ->
-        Exp x t (Vars t) ->
-        f (Exp x t (Vars t))
-      go tfun = \case
-        LamE bv e -> LamE bv <$> scopeHelper e
-        CaseE t es alts ->
-          let goAlt :: Alt x t (Exp x t) (Vars t) -> f (Alt x t (Exp x t) (Vars t))
-              goAlt (UnguardedAlt bs pats scoped) =
-                UnguardedAlt bs pats <$> scopeHelper scoped
-           in CaseE t <$> tfun es <*> traverse goAlt alts
-        LetE binds decls scoped ->
-          let goDecls :: BindE t (Exp x t) (Vars t) -> f (BindE t (Exp x t) (Vars t))
-              goDecls = \case
-                NonRecursive ident bvix expr ->
-                  NonRecursive ident bvix <$> scopeHelper expr
-                Recursive xs ->
-                  Recursive <$> traverse (\(i, x) -> (i,) <$> scopeHelper x) xs
-           in LetE binds <$> traverse goDecls decls <*> scopeHelper scoped
-        AppE e1 e2 -> AppE <$> tfun e1 <*> tfun e2
-        AccessorE x t pss e -> AccessorE x t pss <$> tfun e
-        ObjectUpdateE x t e cf fs ->
-          (\e' fs' -> ObjectUpdateE x t e' cf fs')
-            <$> tfun e
-            <*> traverse (\(nm, expr) -> (nm,) <$> tfun expr) fs
-        LitE t lit -> LitE t <$> traverseLit lit
-        V a -> pure (V a)
-        TyAbs bv e -> TyAbs bv <$> tfun e
-        TyInstE t e -> TyInstE t <$> tfun e
-        where
-          scopeHelper ::
-            Scope (BVar t) (Exp x t) (Vars t) ->
-            f (Scope (BVar t) (Exp x t) (Vars t))
-          scopeHelper scoped =
-            let unscoped = join <$> fromScope scoped
-                effed = tfun unscoped
-                abstr = abstract $ \case
-                  B bv -> Just bv
-                  _ -> Nothing
-             in abstr <$> effed
-
-          traverseLit = \case
-            IntL i -> pure $ IntL i
-            -- NumL d -> pure $ NumL d
-            StringL str -> pure $ StringL str
-            CharL char -> pure $ CharL char
-            -- ArrayL xs -> ArrayL <$> traverse tfun  xs
-            -- ConstArrayL xs -> ConstArrayL <$> pure xs
-            ObjectL x fs -> ObjectL x <$> traverse (\(str, e) -> (str,) <$> tfun e) fs

@@ -15,10 +15,6 @@ import Data.Map qualified as M
 import Data.Text (Text)
 import Data.Traversable (for)
 import Language.PureScript.CoreFn.Convert.Debug
-import Language.PureScript.CoreFn.Convert.DesugarCore (
-  Vars,
-  WithObjects,
- )
 import Language.PureScript.CoreFn.Convert.IR (
   BVar (..),
   Exp (..),
@@ -35,7 +31,7 @@ import Language.PureScript.CoreFn.TypeLike (
   TypeLike (..),
  )
 import Language.PureScript.Names (Ident (..), runIdent)
-
+import Language.PureScript.CoreFn.Convert.IR.Utils
 {- TODO: Rewrite this to work agnostically over Exp x t (Vars t)
          so we can avoid the ad-hoc stupidity in Datatypes
 
