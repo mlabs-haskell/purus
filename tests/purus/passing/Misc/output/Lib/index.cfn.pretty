@@ -88,6 +88,7 @@ Exports:
   and,
   iff,
   ghcInlinerPaperEx,
+  kozsTwoSCCEx,
   testClassInt,
   eqInt,
   eq2IntBoolean,
@@ -703,12 +704,67 @@ ghcInlinerPaperEx =
     q = 
       \(x: Prim.Boolean) -> 
         (g: (Prim.Boolean -> (Prim.Boolean)))
-        ((and: (Prim.Boolean -> ((Prim.Boolean -> (Prim.Boolean)))))
+        ((iff: (Prim.Boolean -> ((Prim.Boolean -> (Prim.Boolean)))))
          (x: Prim.Boolean)
-         ((g: (Prim.Boolean -> (Prim.Boolean))) (x: Prim.Boolean)))
+         ((not: (Prim.Boolean -> (Prim.Boolean))) (x: Prim.Boolean)))
     p :: Prim.Boolean
     p = (q: (Prim.Boolean -> (Prim.Boolean))) (False: Prim.Boolean)
-  in (q: (Prim.Boolean -> (Prim.Boolean))) (True: Prim.Boolean)
+  in (p: Prim.Boolean)
+
+kozsTwoSCCEx :: Prim.Boolean
+kozsTwoSCCEx = 
+  let
+    z :: Prim.Boolean
+    z = (True: Prim.Boolean)
+    h :: (Prim.Boolean -> (Prim.Boolean))
+    h = 
+      \(x: Prim.Boolean) -> 
+        (not: (Prim.Boolean -> (Prim.Boolean)))
+        ((f: (Prim.Boolean -> (Prim.Boolean))) (x: Prim.Boolean))
+    g :: (Prim.Boolean -> (Prim.Boolean))
+    g = 
+      \(x: Prim.Boolean) -> 
+        (and: (Prim.Boolean -> ((Prim.Boolean -> (Prim.Boolean)))))
+        ((not: (Prim.Boolean -> (Prim.Boolean)))
+         ((h: (Prim.Boolean -> (Prim.Boolean))) (x: Prim.Boolean)))
+        ((not: (Prim.Boolean -> (Prim.Boolean))) (x: Prim.Boolean))
+    f :: (Prim.Boolean -> (Prim.Boolean))
+    f = 
+      \(x: Prim.Boolean) -> 
+        (not: (Prim.Boolean -> (Prim.Boolean)))
+        ((g: (Prim.Boolean -> (Prim.Boolean))) (x: Prim.Boolean))
+    c :: (Prim.Boolean -> (Prim.Boolean))
+    c = 
+      \(x: Prim.Boolean) -> 
+        (not: (Prim.Boolean -> (Prim.Boolean)))
+        ((and: (Prim.Boolean -> ((Prim.Boolean -> (Prim.Boolean)))))
+         ((f: (Prim.Boolean -> (Prim.Boolean))) (x: Prim.Boolean))
+         ((b: (Prim.Boolean -> (Prim.Boolean))) (x: Prim.Boolean)))
+    b :: (Prim.Boolean -> (Prim.Boolean))
+    b = 
+      \(x: Prim.Boolean) -> 
+        (and: (Prim.Boolean -> ((Prim.Boolean -> (Prim.Boolean)))))
+        (x: Prim.Boolean)
+        ((and: (Prim.Boolean -> ((Prim.Boolean -> (Prim.Boolean)))))
+         ((c: (Prim.Boolean -> (Prim.Boolean))) (x: Prim.Boolean))
+         ((h: (Prim.Boolean -> (Prim.Boolean))) (x: Prim.Boolean)))
+    a :: (Prim.Boolean -> (Prim.Boolean))
+    a = 
+      \(x: Prim.Boolean) -> 
+        (and: (Prim.Boolean -> ((Prim.Boolean -> (Prim.Boolean)))))
+        ((b: (Prim.Boolean -> (Prim.Boolean))) (x: Prim.Boolean))
+        (x: Prim.Boolean)
+  in (and: (Prim.Boolean -> ((Prim.Boolean -> (Prim.Boolean)))))
+     ((a: (Prim.Boolean -> (Prim.Boolean))) (z: Prim.Boolean))
+     ((and: (Prim.Boolean -> ((Prim.Boolean -> (Prim.Boolean)))))
+      ((b: (Prim.Boolean -> (Prim.Boolean))) (z: Prim.Boolean))
+      ((and: (Prim.Boolean -> ((Prim.Boolean -> (Prim.Boolean)))))
+       ((c: (Prim.Boolean -> (Prim.Boolean))) (z: Prim.Boolean))
+       ((and: (Prim.Boolean -> ((Prim.Boolean -> (Prim.Boolean)))))
+        ((f: (Prim.Boolean -> (Prim.Boolean))) (z: Prim.Boolean))
+        ((and: (Prim.Boolean -> ((Prim.Boolean -> (Prim.Boolean)))))
+         ((g: (Prim.Boolean -> (Prim.Boolean))) (z: Prim.Boolean))
+         ((h: (Prim.Boolean -> (Prim.Boolean))) (z: Prim.Boolean))))))
 
 anObj :: { foo :: Prim.Int }
 anObj = ({ foo: (3: Prim.Int) }: { foo :: Prim.Int })
@@ -875,7 +931,7 @@ aFunction6 =
   in (aFunction: forall (x :: Prim.Type). ((x :: Prim.Type) ->
      ((forall (y :: Prim.Type). ((y :: Prim.Type) -> (Prim.Int)) ->
      (Prim.Int)))))
-     (Nil: Array (t167))
+     (Nil: Array (t182))
      (go: forall (z :: Prim.Type). ((z :: Prim.Type) -> (Prim.Int)))
 
 aBool :: Prim.Boolean

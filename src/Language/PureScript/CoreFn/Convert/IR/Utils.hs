@@ -331,6 +331,8 @@ flatBinds :: [BindE t (Exp x t) (Vars t)] -> Map (Ident,Int) (Scope (BVar t) (Ex
 flatBinds = foldBinds (\acc nm scoped -> M.insert nm scoped acc) M.empty
 
 
+
+
 bindIdIxs :: BindE t (Exp x t) (Vars t) -> Set (Ident,Int)
 bindIdIxs = \case
   NonRecursive i x _ -> S.singleton (i,x)

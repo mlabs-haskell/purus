@@ -105,7 +105,6 @@ testBinders x = case x of
 testBindersCase :: Int
 testBindersCase = testBinders (ConInt 2)
 
-
 {- Binding groups (with and w/o type anns) -}
 mutuallyRecursiveBindingGroup :: Int
 mutuallyRecursiveBindingGroup =
@@ -116,7 +115,6 @@ mutuallyRecursiveBindingGroup =
       g :: Int -> Int
       g y = h (f y) 3
   in g 3
-
 
 mutuallyRecursiveBindingGroupNoTypes :: Int
 mutuallyRecursiveBindingGroupNoTypes =
@@ -351,13 +349,25 @@ iff p q = (p && q) || (not p && not q)
 infix 5 iff as ===
 
 ghcInlinerPaperEx :: Boolean
-ghcInlinerPaperEx = q True
+ghcInlinerPaperEx = p
   where
     p = q False
     h x = f True && x
     g x = h x === False
     f x = g (not x)
-    q x = g (x && g x)
+    q x = g (x=== not x)
+
+kozsTwoSCCEx :: Boolean
+kozsTwoSCCEx =
+  let z = True
+      a x =  b x && x
+      b x =  x &&  c x && h x
+      c x =  not (f x && b x)
+      f x = not (g x)
+      g x =  not (h x) && not x
+      h x = not (f x)
+  in a z && b z && c z && f z && g z && h z 
+
 
 
 {-
@@ -367,4 +377,4 @@ let g x a = if h x a x then j x x 1 else x * x
     j x c d = c + g x d
 in \y -> h y y 3
 
-}
+-}
