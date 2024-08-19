@@ -248,7 +248,6 @@ library
     Language.PureScript.Constants.Purus
     Language.PureScript.Constants.PLC
     Language.PureScript.Constants.PLC.TH
-    Language.PureScript.LedgerApi
     Language.PureScript.CoreFn
     Language.PureScript.CoreFn.Ann
     Language.PureScript.CoreFn.Binders
@@ -430,6 +429,7 @@ library
     Language.Purus.Pretty.Expr
     Language.Purus.Pretty.Types
     Language.Purus.Prim.Data
+    Language.Purus.Prim.Ledger
     Language.Purus.Types
     Language.Purus.Utils
 
