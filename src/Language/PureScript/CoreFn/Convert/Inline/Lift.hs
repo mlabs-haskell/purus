@@ -222,10 +222,7 @@ cleanupLiftedTypes (LiftResult bs body) = do
   addTypeAbstractions :: [MonoBind] -> Monomorphizer [MonoBind]
   addTypeAbstractions = traverse (traverseBind (const go))
     where
-      stripSkolems :: PurusType -> PurusType
-      stripSkolems = transform $ \case
-        Skolem a nm ki _ _ -> TypeVar a nm ki
-        other -> other
+
 
       go :: MonoScoped -> Monomorphizer MonoScoped
       go = viaExpM $ \e -> do
@@ -379,30 +376,41 @@ lift ::
   MonoExp ->
   Monomorphizer LiftResult -- we don't put the expression back together yet b/c it's helpful to keep the pieces separate for monomorphization
 lift e = do
-  (binds1, body) <- updateAllBinds deepDict prunedExp liftThese
-  binds2 <- usedModuleDecls e 
-  let monoBinds = binds1 <> binds2
-      msg =
+  modDict <- mkModDict
+  let (toLift, prunedExp) = collect modDict S.empty S.empty e
+      deepDict = deepAnalysis toLift
+      liftThese = concatMap declarations toLift
+  (binds, body) <- updateAllBinds deepDict prunedExp liftThese
+  result <- cleanupLiftedTypes $ LiftResult binds body
+  let msg =
         prettify
           [ "Input Expr:\n" <> prettyAsStr e
           , "Pruned Expr:\n" <> prettyAsStr prunedExp
           , "ToLifts:\n" <> prettyAsStr toLift
-          , "Binds1:\n" <> prettyAsStr binds1
-          ]
+          , "Binds1:\n" <> prettyAsStr binds
+          , "Result\n" <> prettyAsStr result
+           ]
   doTraceM "lift" msg
-  cleanupLiftedTypes $ LiftResult monoBinds body
+  pure result 
  where
-    (toLift, prunedExp) = collect S.empty S.empty e
-    deepDict = deepAnalysis toLift
-    liftThese = concatMap declarations toLift
 
     collect ::
+      Map (Ident,Int) MonoScoped ->
       Set (BVar PurusType) ->
       Set (BVar (KindOf PurusType)) ->
       MonoExp ->
       ([ToLift], MonoExp)
-    collect boundVars boundTyVars = \case
-      V x -> ([], V x)
+    collect dict boundVars boundTyVars = \case
+      -- we ignore free variables. For us, a free variable more or less represents "shouldn't/can't be inlined"
+      V fv@F{} -> ([], V fv)
+      V b@(B  bv) -> case M.lookup (unBVar bv)  dict of
+        Nothing -> ([], V b)
+        Just declbody ->
+          let BVar bvIx _ bvIdent = bv
+              (collectedToLift,collectedBody) = collect dict S.empty S.empty (toExp declbody)
+              collectedDecl = NonRecursive bvIdent bvIx (fromExp collectedBody)
+              here = ToLift S.empty S.empty [collectedDecl]
+          in (here:collectedToLift, V b)
       LitE t lit -> case lit of
         IntL i -> ([], LitE t (IntL i))
         StringL s -> ([], LitE t (StringL s))
@@ -410,29 +418,29 @@ lift e = do
         ObjectL x fs -> case foldl' goField ([], []) fs of
           (bnds, flds) -> (bnds, LitE t $ ObjectL x flds)
       AppE e1 e2 ->
-        let (bnds1, e1') = collect boundVars boundTyVars e1
-            (bnds2, e2') = collect boundVars boundTyVars e2
+        let (bnds1, e1') = collect dict boundVars boundTyVars e1
+            (bnds2, e2') = collect dict boundVars boundTyVars e2
          in (bnds1 <> bnds2, AppE e1' e2')
       CaseE ty scrut alts ->
-        let (sBnds, scrut') = collect boundVars boundTyVars scrut
+        let (sBnds, scrut') = collect dict boundVars boundTyVars scrut
             (aBnds, alts') = collectFromAlts ([], []) alts
          in (sBnds <> aBnds, CaseE ty scrut' alts')
       AccessorE x ty fld arg ->
-        let (fldBnds, arg') = collect boundVars boundTyVars arg
+        let (fldBnds, arg') = collect dict boundVars boundTyVars arg
          in (fldBnds, AccessorE x ty fld arg')
       ObjectUpdateE x ty ex copy flds ->
-        let (eBnds, e') = collect boundVars boundTyVars ex
+        let (eBnds, e') = collect dict boundVars boundTyVars ex
             (fldBnds, flds') = foldl' goField ([], []) flds
             bnds = eBnds <> fldBnds
          in (bnds, ObjectUpdateE x ty e' copy flds')
-      TyAbs tv ex -> collect boundVars (S.insert tv boundTyVars) ex
+      TyAbs tv ex -> collect dict boundVars (S.insert tv boundTyVars) ex
       LamE bv scoped ->
-        let (bnds, unscoped) = collect (S.insert bv boundVars) boundTyVars (join <$> fromScope scoped)
+        let (bnds, unscoped) = collect dict (S.insert bv boundVars) boundTyVars (join <$> fromScope scoped)
             rescoped = abstract (\case B bvx -> Just bvx; _ -> Nothing) unscoped
          in (bnds, LamE bv rescoped)
       LetE _ decls scoped ->
         let here = ToLift boundVars boundTyVars decls
-         in first (here :) $ collect boundVars boundTyVars (join <$> fromScope scoped)
+         in first (here :) $ collect dict boundVars boundTyVars (join <$> fromScope scoped)
       -- If we run this directly after core desugaring then there should be any TyInstEs in the AST
       tInst@TyInstE {} ->
         error $
@@ -443,7 +451,7 @@ lift e = do
           ([ToLift], [(PSString, MonoExp)]) ->
           (PSString, MonoExp) ->
           ([ToLift], [(PSString, MonoExp)])
-        goField acc (nm, fld) = case collect boundVars boundTyVars fld of
+        goField acc (nm, fld) = case collect dict boundVars boundTyVars fld of
           (bnds, fld') -> bimap (<> bnds) ((nm, fld') :) acc
 
         collectFromAlts ::
@@ -454,7 +462,7 @@ lift e = do
         collectFromAlts acc (UnguardedAlt _bs pat scoped : rest) =
           let boundInPat = extractPatVarBinders pat
               boundVars' = foldr S.insert boundVars boundInPat
-              (bnds, unscoped) = collect boundVars' boundTyVars (join <$> fromScope scoped)
+              (bnds, unscoped) = collect dict boundVars' boundTyVars (join <$> fromScope scoped)
               rescoped = abstract (\case B bvx -> Just bvx; _ -> Nothing) unscoped
               thisAlt = UnguardedAlt _bs pat rescoped
               acc' = bimap (<> bnds) (<> [thisAlt]) acc
@@ -492,10 +500,10 @@ usedModuleDecls e = do
 
     directDeps = e ^.. cosmos
 
-    mkModDict :: Monomorphizer (Map (Ident,Int) MonoScoped)
-    mkModDict = do
-      decls <- view _2
-      pure $ foldBinds (\acc nm b  -> M.insert nm b acc) M.empty decls
+mkModDict :: Monomorphizer (Map (Ident,Int) MonoScoped)
+mkModDict = do
+  decls <- view _2
+  pure $ foldBinds (\acc nm b  -> M.insert nm b acc) M.empty decls
 
 {- NOTE 1:
 

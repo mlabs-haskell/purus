@@ -330,6 +330,8 @@ testForLiftPoly x = h x True
     g :: a -> Boolean
     g y = True
 
+testForLiftPolyApplied = testForLiftPoly "hello"
+
 or :: Boolean -> Boolean -> Boolean
 or b1 b2 = if b1 then True else b2
 
@@ -366,15 +368,4 @@ kozsTwoSCCEx =
       f x = not (g x)
       g x =  not (h x) && not x
       h x = not (f x)
-  in a z && b z && c z && f z && g z && h z 
-
-
-
-{-
-
-let g x a = if h x a x then j x x 1 else x * x
-    h x a b = g x a <= j x 4 b
-    j x c d = c + g x d
-in \y -> h y y 3
-
--}
+  in a z && b z && c z && f z && g z && h z

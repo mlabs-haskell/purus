@@ -16,7 +16,7 @@ import Control.Monad.Error.Class (MonadError (throwError))
 import Control.Monad.State (StateT, gets, modify', runStateT)
 import Control.Monad.Trans (lift)
 import Data.Foldable (Foldable (foldl'), foldrM, traverse_)
-import Data.List (find, sortOn)
+import Data.List (find, sort, sortOn)
 import Data.Map qualified as M
 import Data.Maybe (fromJust, mapMaybe)
 import Data.Text qualified as T
@@ -73,11 +73,17 @@ import Data.Bifunctor (Bifunctor (first))
 import Data.Char (isUpper)
 import Data.Text (Text)
 import Language.PureScript.CoreFn.Convert.Debug
+    ( doTrace, doTraceM, prettify )
 import Language.PureScript.CoreFn.Pretty.Common qualified as PC -- jfc move this somewhere more sensible
 import Language.PureScript.CoreFn.TypeLike (TypeLike (..))
 import Prettyprinter (Pretty (..), vcat)
 import Language.PureScript.CoreFn.Convert.IR.Utils
+import Foreign (free)
+import Data.Set qualified as S
 
+{- TODO: Need to bind type variables & introduce type abstractions
+         at each lambda. Seems like we're missing some abstractions and that should fix it?
+-}
 
 -- Need the map to keep track of whether a variable has already been used in the scope (e.g. for shadowing)
 type DS = StateT (Int, M.Map Ident Int) (Either String)
@@ -130,22 +136,53 @@ tyAbsMany :: forall x t. [(Text, KindOf t)] -> Exp x t (Vars t) -> DS (Exp x t (
 tyAbsMany vars expr = foldrM (uncurry tyAbs) expr vars
 
 desugarCoreModule :: Module (Bind Ann) PurusType PurusType Ann -> Either String (Module IR_Decl PurusType PurusType Ann, (Int, M.Map Ident Int))
-desugarCoreModule m = case runStateT (desugarCoreModule' m) (0, M.empty) of
+desugarCoreModule m = case runStateT (desugarCoreModule' [] m) (0, M.empty) of
   Left err -> Left err
   Right res -> pure res
 
-desugarCoreModule' :: Module (Bind Ann) PurusType PurusType Ann -> DS (Module IR_Decl PurusType PurusType Ann)
-desugarCoreModule' Module {..} = do
-  decls' <- traverse (freshly . desugarCoreDecl) moduleDecls
+{- NOTE: We need access to the declarations for all imports here in order to correctly abstract (i.e. bind)
+         all variables that should be represented as BVars.
+
+         For all subsequent compiler passes, a free variable (an IR.FVar) indicates a variable which is
+         *absolutely free* until the final code generation pass, i.e., a variable that either *cannot* be bound
+         at all, or one which can only be sensibly bound by some PIR-specific construct.
+
+         In practice these variables fall into three catogories:
+
+           - Constructors, which acquire binders in PIR datatype declarations. Those declarations cannot be
+             created until (at least) the object desugaring pass, which necessarily occurs somewhat late in
+             the compilation pipeline. Only the winnowed IR, which we create in that pass, has types which are
+             guaranteed to be representable in PIR.
+
+           - Actual PLC (well, PLC DefaultFun) Builtins. These are true primitives and are replaced with the
+             PIR AST `Builtin` construct during code generation.
+
+           - "Morally" Builtin functions that have declarations which are baked into the Purus compiler.
+             We have to provide some of these for (e.g.) serializing and deserializing ledger API types.
+
+        Note that variables which represent the identifiers of imported declarations do not fall into
+        one of those categories! We have to bind those declarations *here*, so we need to collect those
+        declarations from this modules dependencies and pass them as an argument here.
+
+        FIXME: We don't have a linker yet so in `desugarCoreModule` we just pass an empty list.
+
+-}
+
+desugarCoreModule' :: [IR_Decl] -> Module (Bind Ann) PurusType PurusType Ann -> DS (Module IR_Decl PurusType PurusType Ann)
+desugarCoreModule' imports Module {..} = do
+  decls' <- traverse (freshly . desugarCoreDecl . doEtaReduce) moduleDecls
   decls  <- bindLocalTopLevelDeclarations decls'
   pure $ Module {moduleDecls = decls, ..}
  where
+   doEtaReduce = \case
+     NonRec a nm body -> NonRec a nm (runEtaReduce body)
+     Rec xs -> Rec $ fmap runEtaReduce <$> xs
    {- Need to do this to ensure that all  -}
    bindLocalTopLevelDeclarations :: [BindE PurusType (Exp WithObjects PurusType) (Vars PurusType)]
                                  -> DS [BindE PurusType (Exp WithObjects PurusType) (Vars PurusType)]
    bindLocalTopLevelDeclarations ds = do
-     let topLevelIdents = foldBinds (\acc nm _ -> nm:acc ) [] ds
-     traverse_ (uncurry forceBind) topLevelIdents
+     let topLevelIdents = foldBinds (\acc nm _ -> nm:acc ) [] (ds <> imports)
+     traverse_ (uncurry forceBind) topLevelIdents -- IDK if this is really necessary?
      s <- gets (view _2)
      doTraceM "bindLocalTopLevelDeclarations" $ prettify [ "Input (Module Decls):\n" <> prettify (prettyAsStr <$> ds)
                                                          , "Top level binds:\n" <> prettyAsStr (M.toList s)
@@ -168,7 +205,7 @@ desugarCoreDecl = \case
   NonRec _ ident expr -> wrapTrace ("desugarCoreDecl: " <> showIdent' ident) $ do
     bvix <- bind ident
     s <- gets (view _2)
-    let abstr = abstract (matchLet s) . runEtaReduce
+    let abstr = abstract (matchLet s)
     desugared <- desugarCore expr
     -- let boundVars = freeTypeVariables (expTy id desugared)
     -- scoped <-  abstr  <$> tyAbsMany boundVars desugared
@@ -191,7 +228,7 @@ desugarCoreDecl = \case
     doTraceM "desugarCoreDecl" inMsg
     first_pass <- traverse (\((_, ident), e) -> bind ident >>= \u -> pure ((ident, u), e)) xs
     s <- gets (view _2)
-    let abstr = abstract (matchLet s) . runEtaReduce
+    let abstr = abstract (matchLet s)
     second_pass <-
       traverse
         ( \((ident, bvix), expr) -> do
@@ -491,53 +528,47 @@ assembleBindEs (xsRec : rest) = do
   rest' <- assembleBindEs rest
   pure $ Recursive recBinds : rest'
 
-runEtaReduce ::
-  forall x t.
-  (Eq (Exp x t (Var (BVar t) (FVar t))), Pretty t, Pretty (KindOf t), TypeLike t) =>
-  Exp x t (Var (BVar t) (FVar t)) ->
-  Exp x t (Var (BVar t) (FVar t))
-runEtaReduce e = doTrace "runEtaReduce" msg result
-  where
-    result = transform etaReduce e
-    msg =
-      "INPUT:\n"
-        <> prettyAsStr e
-        <> "\n\nOUTPUT:\n"
-        <> prettyAsStr result
+runEtaReduce :: Expr ann -> Expr ann
+runEtaReduce = transform etaReduce
 
 etaReduce ::
-  forall x t.
-  (Eq (Exp x t (Var (BVar t) (FVar t))), Pretty t, Pretty (KindOf t), TypeLike t) =>
-  Exp x t (Var (BVar t) (FVar t)) ->
-  Exp x t (Var (BVar t) (FVar t))
+  forall ann.
+  Expr ann -> Expr ann
 etaReduce input = case partitionLam input of
   Just (boundVars, fun, args) ->
-    let result = if boundVars == args then fun else input
-        msg =
-          "INPUT:\n"
-            <> prettyAsStr input
-            <> "\n\nBOUND VARS:\n"
-            <> show (vcat $ pretty <$> boundVars)
-            <> "\n\nARGS:\n"
-            <> show (vcat $ pretty <$> args)
-            <> "\n\nFUN:\n"
-            <> prettyAsStr fun
-            <> "\n\nFUN TY:\n"
-            <> prettyAsStr (expTy id fun)
-            <> "\n\nARG TYS:\n"
-            <> prettyAsStr (expTy id <$> args)
-     in doTrace "etaReduce" msg result
+    if sort boundVars == sort args then fun else input
   Nothing -> input
   where
     partitionLam ::
-      Exp x t (Var (BVar t) (FVar t)) ->
-      Maybe ([Exp x t (Var (BVar t) (FVar t))], Exp x t (Var (BVar t) (FVar t)), [Exp x t (Var (BVar t) (FVar t))])
+      Expr ann  ->
+      Maybe ([Ident], Expr ann, [Ident])
     partitionLam e = do
       let (bvars, inner) = stripLambdas e
-      (f, args) <- analyzeApp inner
-      pure $ (V . B <$> bvars, f, args)
+      (f, args) <- analyzeAppCfn inner
+      argBVars  <- traverse argToBVar args
+      pure $ (bvars, f, argBVars)
+
+    argToBVar :: Expr ann -> Maybe Ident
+    argToBVar = \case
+      Var _ _ qualified-> Just . disqualify  $ qualified
+      _ -> Nothing
 
     stripLambdas = \case
-      LamE bv body -> first (bv :) $ stripLambdas (join <$> fromScope body)
-      TyInstE _ inner -> stripLambdas inner
+      Abs _ t bv body -> first (bv :) $ stripLambdas body
       other -> ([], other)
+
+analyzeAppCfn :: Expr ann -> Maybe (Expr ann, [Expr ann])
+analyzeAppCfn e = (,appArgs e) <$> appFun e
+  where
+    appArgs :: Expr ann -> [Expr ann]
+    appArgs (App _ t1 t2) = appArgs t1 <> [t2]
+    appArgs _ = []
+
+    appFun :: Expr ann -> Maybe (Expr ann)
+    appFun (App _ t1 _) = go t1
+      where
+        go (App _ tx _) = case appFun tx of
+          Nothing -> Just tx
+          Just tx' -> Just tx'
+        go other = Just other
+    appFun _ = Nothing

@@ -89,7 +89,7 @@ monomorphizeWithBoundTyVars [] f args = doTrace "monomorphizeWithBoundTyVars" ms
 monomorphizeWithBoundTyVars bvars _f args = doTrace "monomorphizeWithBoundTyVars" msg result
   where
     f = snd $ stripTypeAbstractions _f
-    msg =
+    msg=
       prettify
         [ "CHANGED"
         , "Fun (raw):\n" <> prettyAsStr _f

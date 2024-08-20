@@ -6,6 +6,7 @@
 
 {-# HLINT ignore "Use if" #-}
 {-# HLINT ignore "Use <&>" #-}
+{-# LANGUAGE NumericUnderscores #-}
 module Language.PureScript.CoreFn.Convert.Monomorphize where
 
 import Prelude
@@ -64,6 +65,7 @@ import Language.PureScript.Names
 import Prettyprinter (Pretty, pretty)
 
 import Language.PureScript.CoreFn.Convert.Inline.Inline (inline)
+import Language.PureScript.CoreFn.Convert.Inline.Instantiate 
 import Debug.Trace (traceM)
 
 {- Function for quickly testing/debugging monomorphization -}
@@ -101,24 +103,46 @@ testLift' decl = do
 testLift :: Text -> IO ()
 testLift = void . testLift'
 
-testInline :: Text -> IO ()
-testInline nm = do
+testInline' :: Text -> IO MonoExp
+testInline' nm = do
   (liftRes,st,modl) <- testLift' nm
-  runMonoM modl st (inline liftRes)
+  runMonoM' modl st (inline liftRes)
 
+testInline :: Text -> IO ()
+testInline = void . testInline'
 
+testInstantiate :: Text -> IO ()
+testInstantiate decl = do
+  myModCoreFn <- decodeModuleIO "tests/purus/passing/Misc/output/Lib/index.cfn"
+  (myMod@Module {..}, _) <- either (throwIO . userError) pure $ desugarCoreModule myModCoreFn
+  Just myExp' <- pure $ findDeclBody decl myMod
+  res <- runMonoM'  myMod (MonoState 1_000_000) $ do
+             liftResult <- lift (toExp myExp')
+             inlined    <- inline liftResult
+             pure $ monoMorph inlined
+  traceM $  "------TestInstantiate Result---------\n"
+         <> show (expTy id res)
+         <> "\n------------------------------------"
+         
 runMonoM :: Pretty a
          => Module IR_Decl PurusType PurusType Ann
          -> MonoState
          -> Monomorphizer a
          -> IO ()
-runMonoM Module{..} st act = case runRWST act (moduleName,moduleDecls) st of
+runMonoM mod st act = void $  runMonoM' mod st act
+
+runMonoM' :: Pretty a
+         => Module IR_Decl PurusType PurusType Ann
+         -> MonoState
+         -> Monomorphizer a
+         -> IO a
+runMonoM' Module{..} st act = case runRWST act (moduleName,moduleDecls) st of
   Left (MonoError msg) -> throwIO . userError $ "Monomorphizer Error: " <> msg
   Right (res,_,_) -> do
     traceM $  "------PRETTY RUNMONO RESULT---------\n"
               <>  (prettyAsStr res)
               <>  "\n------------------------------------"
-
+    pure res
 
 
 {- This is the top-level entry point for monomorphization. Typically,

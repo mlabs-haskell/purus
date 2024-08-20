@@ -29,7 +29,7 @@ import Data.Functor.Identity (Identity(..))
 
 import Data.Foldable (foldl')
 import Language.PureScript.Types (Type(..), SourceType, Constraint (..))
-import Control.Lens.Plated ( cosmos, Plated(..) )
+import Control.Lens.Plated ( cosmos, Plated(..), transform )
 import Control.Lens.Operators ( (^..) )
 import Language.PureScript.AST.SourcePos (SourceAnn)
 
@@ -330,9 +330,6 @@ foldMBindsWith fNonRec fRec e (x:xs) = case x of
 flatBinds :: [BindE t (Exp x t) (Vars t)] -> Map (Ident,Int) (Scope (BVar t) (Exp x t) (Vars t))
 flatBinds = foldBinds (\acc nm scoped -> M.insert nm scoped acc) M.empty
 
-
-
-
 bindIdIxs :: BindE t (Exp x t) (Vars t) -> Set (Ident,Int)
 bindIdIxs = \case
   NonRecursive i x _ -> S.singleton (i,x)
@@ -423,6 +420,14 @@ allBoundVars e = S.toList . S.fromList $ flip mapMaybe everything $ \case
   _ -> Nothing
   where
     everything = e ^.. cosmos
+
+stripSkolems :: PurusType -> PurusType
+stripSkolems = transform $ \case
+  Skolem a nm ki _ _ -> TypeVar a nm ki
+  other -> other
+
+stripSkolemsFromExpr :: Exp x PurusType (Vars PurusType) -> Exp x PurusType (Vars PurusType)
+stripSkolemsFromExpr = transformTypesInExp stripSkolems
 
 
 {-

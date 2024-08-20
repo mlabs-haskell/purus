@@ -12,6 +12,12 @@ import Data.Text (Text)
 import GHC.Natural (Natural)
 import Language.PureScript.CoreFn.Desugar.Utils (showIdent', traverseLit)
 import Language.PureScript.CoreFn.Expr
+    ( _Var,
+      PurusType,
+      Guard,
+      Bind(..),
+      Expr(..),
+      CaseAlternative(CaseAlternative) )
 import Language.PureScript.Names (Ident, Qualified (..), QualifiedBy (..))
 import Language.PureScript.Types
 import Prelude hiding (error)
@@ -21,6 +27,7 @@ import Control.Lens.Type (Lens')
 import Language.PureScript.CoreFn.Ann (Ann)
 import Language.PureScript.Environment (function, pattern (:->))
 import Language.PureScript.Pretty.Types (prettyPrintType)
+import Control.Lens.Plated
 
 foldl1x :: (Foldable t) => String -> (a -> a -> a) -> t a -> a
 foldl1x msg f xs
@@ -214,3 +221,30 @@ exprType = \case
   Var _ ty __ -> ty
   Case _ ty _ _ -> ty
   Let _ _ e -> exprType e
+
+
+instance Plated (Expr a) where
+  plate f = \case
+    Literal a t lit -> Literal a t <$> traverseLit f lit
+    Accessor a t s e -> Accessor a t s <$> f e
+    ObjectUpdate a t e cf fs ->
+      (\e' fs' -> ObjectUpdate a t e' cf fs')
+      <$> f e
+      <*> traverse (traverse f) fs
+    Abs a t bv e -> Abs a t bv <$> f e
+    App a e1 e2 -> App a <$> f e1 <*> f e2
+    Var a t qi -> pure $ Var a t qi
+    Case a t scruts alts ->
+      Case a t
+      <$> traverse f scruts
+      <*> traverse goAlt alts
+    Let a decls body ->
+      Let a <$> traverse goDecl decls <*> f body
+   where
+    goAlt (CaseAlternative caBinders caResult) =
+      CaseAlternative caBinders
+      <$> bitraverse (traverse (traverse f)) f caResult
+
+    goDecl = \case
+      NonRec a nm body -> NonRec a nm <$> f body
+      Rec xs -> Rec <$> traverse (traverse f) xs 
