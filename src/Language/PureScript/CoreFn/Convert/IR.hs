@@ -491,7 +491,7 @@ instance (Pretty a, Pretty t) => Pretty (Pat x t (Exp x ty) a) where
       -- ConstArrayL xs -> list $ pretty <$> xs
       -- ArrayL xs -> list $ pretty <$> xs
       ObjectL _ _obj -> "TODO: Implement ObjectL pattern printer"
-    ConP cn _ ps -> pretty (runProperName . disqualify $ cn) <+> hsep (pretty <$> ps)
+    ConP tn cn ps -> pretty (runProperName . disqualify $ cn) <+> hsep (pretty <$> ps)
 
 instance (Pretty a, Pretty (KindOf ty), Pretty ty, TypeLike ty, Pretty (Exp x ty a)) => Pretty (BindE ty (Exp x ty) a) where
   pretty = \case

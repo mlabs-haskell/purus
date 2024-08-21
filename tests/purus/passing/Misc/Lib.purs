@@ -321,8 +321,14 @@ testForLift x = h x 3
 testForLiftPoly :: forall (a :: Type). a -> Boolean
 testForLiftPoly x = h x True
   where
+    q :: a
+    q = x
+
     h :: a -> Boolean -> Boolean
-    h a b = if g a then False else j a b
+    h a b = if g a then i q  else j a b
+      where
+        i :: forall (b :: Type). b -> Boolean
+        i z  = False
 
     j :: a -> Boolean -> Boolean
     j c d = if d then d else g c
@@ -369,3 +375,5 @@ kozsTwoSCCEx =
       g x =  not (h x) && not x
       h x = not (f x)
   in a z && b z && c z && f z && g z && h z
+
+
