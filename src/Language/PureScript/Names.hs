@@ -106,7 +106,7 @@ unusedIdent = "$__unused"
 runIdent :: Ident -> Text
 runIdent (Ident i) = i
 runIdent (GenIdent Nothing n) = "$" <> T.pack (show n)
-runIdent (GenIdent (Just name) n) = "$" <> name <> T.pack (show n)
+runIdent (GenIdent (Just name) n) = "$" <> name <> "%" <> T.pack (show n)
 runIdent UnusedIdent = unusedIdent
 runIdent InternalIdent {} = error "unexpected InternalIdent"
 

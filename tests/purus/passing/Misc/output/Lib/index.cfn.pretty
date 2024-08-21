@@ -83,6 +83,7 @@ Exports:
   testValidatorApplied,
   testForLift,
   testForLiftPoly,
+  testForLiftPolyApplied,
   or,
   not,
   and,
@@ -286,6 +287,12 @@ testForLiftPoly =
     in (h: (a#3 -> ((Prim.Boolean -> (Prim.Boolean)))))
        (x: (a :: Prim.Type))
        (True: Prim.Boolean)
+
+testForLiftPolyApplied :: Prim.Boolean
+testForLiftPolyApplied = 
+  (testForLiftPoly: forall (a :: Prim.Type). ((a :: Prim.Type) ->
+  (Prim.Boolean)))
+  ("hello": Prim.String)
 
 testCons :: Array (Prim.Int)
 testCons = 
@@ -601,8 +608,8 @@ workingEven =
        True -> (1: Prim.Int)
        _ -> (42: Prim.Int)
 
-emptyList :: Array ((t128 :: Prim.Type))
-emptyList = (Nil: Array ((t128 :: Prim.Type)))
+emptyList :: Array ((t130 :: Prim.Type))
+emptyList = (Nil: Array ((t130 :: Prim.Type)))
 
 cons :: forall (a :: Prim.Type). ((a :: Prim.Type) -> ((Array ((a :: Prim.Type)) -> (Array ((a :: Prim.Type))))))
 cons = 
@@ -618,14 +625,14 @@ consEmptyList1 =
   (cons: forall (a :: Prim.Type). ((a :: Prim.Type) ->
   ((Array ((a :: Prim.Type)) -> (Array ((a :: Prim.Type)))))))
   (1: Prim.Int)
-  (emptyList: forall (t128 :: Prim.Type). Array ((t128 :: Prim.Type)))
+  (emptyList: forall (t130 :: Prim.Type). Array ((t130 :: Prim.Type)))
 
 consEmptyList2 :: Array (Prim.String)
 consEmptyList2 = 
   (cons: forall (a :: Prim.Type). ((a :: Prim.Type) ->
   ((Array ((a :: Prim.Type)) -> (Array ((a :: Prim.Type)))))))
   ("hello": Prim.String)
-  (emptyList: forall (t128 :: Prim.Type). Array ((t128 :: Prim.Type)))
+  (emptyList: forall (t130 :: Prim.Type). Array ((t130 :: Prim.Type)))
 
 compare :: forall (@a :: Prim.Type). ((Lib.Ord$Dict ((a :: Prim.Type))) -> (((a :: Prim.Type) -> (((a :: Prim.Type) -> (Prim.Int))))))
 compare = 
@@ -931,7 +938,7 @@ aFunction6 =
   in (aFunction: forall (x :: Prim.Type). ((x :: Prim.Type) ->
      ((forall (y :: Prim.Type). ((y :: Prim.Type) -> (Prim.Int)) ->
      (Prim.Int)))))
-     (Nil: Array (t182))
+     (Nil: Array (t184))
      (go: forall (z :: Prim.Type). ((z :: Prim.Type) -> (Prim.Int)))
 
 aBool :: Prim.Boolean

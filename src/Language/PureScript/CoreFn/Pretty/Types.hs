@@ -77,7 +77,7 @@ prettyType t =
       cstrnt' <- prettyConstraint cstrnt
       inner' <- prettyType innertype
       pure . group $ cstrnt' <+> "=>" <+> inner'
-    Skolem _ var _ i _ -> pure $ pretty var <> "#" <> pretty i
+    Skolem _ var _ i _ -> pure $ pretty var <> "*" <> pretty i
     REmpty _ -> pure "{}"
     rcons@RCons {} -> either openRow (pure . tupled) =<< rowFields rcons
     -- this might be backwards

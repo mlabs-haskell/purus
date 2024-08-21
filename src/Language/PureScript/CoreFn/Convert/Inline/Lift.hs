@@ -35,7 +35,7 @@ import Language.PureScript.CoreFn.FromJSON ()
 import Language.PureScript.CoreFn.TypeLike (
   TypeLike (..),
  )
-import Language.PureScript.Names (Ident (..), Qualified (..), QualifiedBy (..))
+import Language.PureScript.Names (Ident (..), Qualified (..), QualifiedBy (..), ModuleName (..), runIdent)
 import Language.PureScript.PSString (PSString)
 
 import Control.Applicative (Alternative ((<|>)))
@@ -55,6 +55,9 @@ import Prettyprinter ( Pretty(pretty), align, vcat, hardline, indent, (<+>) )
 import Control.Monad (void)
 import Language.PureScript.Types (Type(..))
 import Control.Lens (view, _2, toListOf)
+import Data.Text (Text)
+import Debug.Trace (trace)
+import Control.Lens (over,_1)
 -- TODO (IMPORTANT!): Add type abstractions to the declarations with free tyvars and
 --                    update the types of the variables which correspond to their
 --                    identifiers.
@@ -76,6 +79,74 @@ data LiftResult = LiftResult
   { liftedDecls :: [MonoBind]
   , trimmedExp :: MonoExp
   }
+
+{- When we lift expressions, we have to abstract any types mentioned in the
+   expressions which are well-scoped in the original context we are lifting from,
+   but are no longer in scope in the lifted expression.
+
+   This will usually turn a non-quantified expression into a quantified expression.
+
+   This is bad. It can (e.g.) cause case expressions that return functions to have
+   branches with *different* types. E.g.
+
+   ```haskell
+   -- Assume there's a (y :: a) for some a in scope
+   let f :: Int -> a -> a
+       f x t = (...)
+   in case (z :: Maybe Int) of
+         Just w -> f w
+         Nothing -> \_ -> y
+
+   -- f gets lifted to:
+   f :: forall (t1 :: Type). Int -> t1 -> t1
+   f = /\(t1 :: Type) -> (...)
+   ```
+
+   In a situation like that, we lack sufficient information to "force" the type to its "original"
+   form. In this particular example, it is not even clear how we could possibly know what
+   `t1` needs to be instantiated to (well ok *we*, i.e., competent human beings, can know it
+   but it's not clear that a general procedure for recovering the information from the context exists)
+
+   The easiest solution here is to pack that information into variables. Either bound or free variables
+   would work here, but we can use the ModuleName field in the Qualified Ident inside of an FVar to
+   very clearly indicate that a "hole" representing an inline target exists.
+
+   This pattern synonym (it's bidirectional btw) allows us to construct and deconstruct a
+   representation of those "holes".
+
+   NOTE: This will break a bunch of stuff, as up to this point we haven't been using FVars for anything
+         meaningful. But that should be OK, since all of these FVars will be eliminated during inlining
+         (and it's very easy to throw a *useful* error if we made a mistake and missed one)
+-}
+pattern LiftedHole :: Text -> Integer -> t -> FVar t
+pattern LiftedHole nm indx ty
+  = FVar ty
+   ( Qualified
+     (ByModuleName (ModuleName "$LIFTED")) -- just has to be an arbitrary illegal module name
+     (GenIdent (Just nm) indx)
+   )
+
+pattern LiftedHoleTerm :: Text -> Integer -> t -> Exp x t (Vars t)
+pattern LiftedHoleTerm nm indx ty = V (F (LiftedHole nm indx ty))
+
+-- concrete representation, avoid manual Text<->Ident & Integer<->Int conversion
+data Hole t = Hole Ident Int t
+
+toHole :: Exp x t (Vars t) -> Maybe (Hole t)
+toHole (LiftedHoleTerm nm indx ty) = Just $ Hole (Ident nm) (fromIntegral indx) ty
+toHole _ = Nothing
+
+fromHole :: Hole t -> Exp x t (Vars t)
+fromHole (Hole hId hIx hTy) = LiftedHoleTerm (runIdent hId) (fromIntegral hIx) hTy 
+
+-- dunno if we should ignore the type?
+fillsHole :: BVar t -> Exp x t (Vars t) -> Bool
+fillsHole (BVar bvIx bvTy bvIdent) = \case
+  LiftedHoleTerm (Ident -> i) (fromIntegral -> indx) t -> bvIx == indx && bvIdent == i
+  _ -> False
+
+unHole :: Hole t -> (Ident,Int)
+unHole (Hole hId hIx _) = (hId,hIx)
 
 instance Pretty LiftResult where
   pretty (LiftResult decls expr) =
@@ -183,11 +254,12 @@ deepAnalysis toLifts = M.mapWithKey go analyses
             M.empty
             allLiftedBinds
 
+    -- FIXME: I think the problem is here? yup it was, keeping this as a reminder i changed it in case breaks
     getLiftedPeerDeps :: MonoScoped ->  Set (Ident,Int)
     getLiftedPeerDeps scoped =
           let unscoped = join <$> fromScope scoped
-              allComponentBoundIdents = S.fromList $ unBVar <$> allBoundVars unscoped
-          in  S.intersection allLiftedDeclIdents allComponentBoundIdents
+              allComponentHoleIdents = S.fromList $ mapMaybe (fmap unHole . toHole)  (unscoped ^.. cosmos)
+          in  S.intersection allLiftedDeclIdents allComponentHoleIdents
 
     allLiftedDeclIdents = M.keysSet allNewlyOutOfScopeVars
 
@@ -222,8 +294,6 @@ cleanupLiftedTypes (LiftResult bs body) = do
   addTypeAbstractions :: [MonoBind] -> Monomorphizer [MonoBind]
   addTypeAbstractions = traverse (traverseBind (const go))
     where
-
-
       go :: MonoScoped -> Monomorphizer MonoScoped
       go = viaExpM $ \e -> do
         let e' = transformTypesInExp stripSkolems e
@@ -272,6 +342,7 @@ updateAllBinds deepDict prunedBody _binds  = do
           , "AllDeclIdents:\n " <> prettyAsStr allLiftedIdents
           , "AdjustedBody:\n " <> prettyAsStr adjustedBody
           , "Binds:\n" <> concatMap (\x -> prettyAsStr x <> "\n\n") binds
+          , "Deep Dict:\n" <> prettyAsStr (M.toList (S.toList <$> deepDict))
           ]
   doTraceM "updateAllBinds" msg
   pure (binds, adjustedBody)
@@ -298,15 +369,15 @@ updateAllBinds deepDict prunedBody _binds  = do
       MonoExp
     updateCallSiteLifted allOldToNew declNm = coerceOldToNew thisOldToNew . transform go
       where
-        go = \case
-          var@(V (B (BVar bvIx _ bvId))) -> case M.lookup (bvId, bvIx) deepDict of
+        go x = case toHole x of
+          Just hole@(Hole hId hIx hTy) -> case M.lookup (hId, hIx) deepDict of
             Just deep ->
-              let liftedWithOldVars = mkUpdateCallSiteLifted deep (bvId, bvIx) var
+              let liftedWithOldVars = mkUpdateCallSiteLifted deep (hId, hIx) x
                   bvf v = M.lookup v thisOldToNew <|> Just v
                   updatedVarBind = abstract (\case B v -> bvf v; _ -> Nothing) liftedWithOldVars
                in join <$> fromScope updatedVarBind
-            Nothing -> var
-          other -> other
+            Nothing -> x
+          _ -> x
         thisOldToNew = allOldToNew M.! declNm -- has to be here if it's in dict
 
 
@@ -331,13 +402,14 @@ updateAllBinds deepDict prunedBody _binds  = do
           []
           (deepDict M.! nm)
 
-    {- Correspond to (2) in [NOTE 1]-}
+    {- Corresponds to (2) in [NOTE 1]-}
     mkUpdateCallSiteLifted :: Set (BVar PurusType) -> (Ident, Int) -> MonoExp -> MonoExp
-    mkUpdateCallSiteLifted new (idnt, indx) = \case
-      var@(V (B (BVar bvIndx _ bvIdent)))
-        | bvIndx == indx && bvIdent == idnt ->
-            foldl' AppE var (V . B <$> S.toList new)
-      other -> other
+    mkUpdateCallSiteLifted new (idnt, indx) me = case toHole me of
+      Just (Hole hId hIx hTy)
+        | hIx == indx && hId == idnt -> foldl' AppE me (V . B <$> S.toList new)
+        | otherwise -> me
+      Nothing -> me
+
 
     {- For the expression being lifted, corresponds to (3) in [NOTE 1] -}
     mkUpdateLiftedLambdas ::
@@ -361,12 +433,13 @@ updateAllBinds deepDict prunedBody _binds  = do
        vars/indices)
     -}
     mkUpdateCallSiteBody :: (Ident, Int) ->  MonoExp -> MonoExp
-    mkUpdateCallSiteBody nm@(idnt, indx) = \case
-      var@(V (B (BVar bvIndx _ bvIdent)))
-        | bvIndx == indx && bvIdent == idnt ->
+    mkUpdateCallSiteBody nm@(idnt, indx) x = case toHole x of
+      Just hole@(Hole hId hIx hTy)
+        | hIx == indx && hId == idnt ->
             let deep = S.toList $ deepDict M.! nm
-             in foldl' AppE var (V . B <$> deep)
-      other -> other
+             in foldl' AppE (fromHole hole) (V . B <$> deep)
+        | otherwise -> x 
+      Nothing -> x 
 
 {- Given a "main" expression (and implicit access to the module context via the
    `Monomorphizer` monad), lift all component declarations, transform their bodies,
@@ -377,11 +450,12 @@ lift ::
   Monomorphizer LiftResult -- we don't put the expression back together yet b/c it's helpful to keep the pieces separate for monomorphization
 lift e = do
   modDict <- mkModDict
-  let (toLift, prunedExp) = collect modDict S.empty S.empty e
+  let collectDict = mkDict modDict e
+      (toLift, prunedExp,_) = collect S.empty collectDict S.empty S.empty e
       deepDict = deepAnalysis toLift
       liftThese = concatMap declarations toLift
   (binds, body) <- updateAllBinds deepDict prunedExp liftThese
-  result <- cleanupLiftedTypes $ LiftResult binds body
+  result <- pure $ LiftResult binds body {- cleanupLiftedTypes $ --  LiftResult binds body -}
   let msg =
         prettify
           [ "Input Expr:\n" <> prettyAsStr e
@@ -394,78 +468,156 @@ lift e = do
   pure result 
  where
 
+    doneLifting :: Set (Ident,Int) -> Map (Ident,Int) MonoScoped -> MonoExp -> Bool
+    doneLifting s d expr = trace "doneLifting" $ go s  eCosmos
+      where
+        go :: Set (Ident,Int) -> [MonoExp] -> Bool
+        go _ [] = True
+        go visited (ex:es) =  case ex of
+          LetE{} -> False
+          V (B (BVar bvIx _ bvId)) ->
+            if S.member (bvId,bvIx) visited
+            then go visited es
+            else case M.lookup (bvId,bvIx) d of
+                   Nothing -> True
+                   Just declBody ->
+                     let visited' = S.insert (bvId,bvIx) visited
+                     in doneLifting visited' d (toExp declBody) && go visited' es
+          _ -> True
+
+        eCosmos = expr ^.. cosmos
+
+    mkDict :: Map (Ident,Int) MonoScoped
+           -> MonoExp
+           -> Map (Ident,Int) MonoScoped
+    mkDict acc me = trace "mkDict" $ case me of
+      V F{} -> acc
+      bvE@(V (B (BVar bvIx _ bvId))) -> case doneLifting S.empty acc bvE of
+        True -> acc
+        False -> case M.lookup (bvId,bvIx) acc of
+          Nothing -> acc
+          Just declBody -> mkDict acc (toExp declBody)
+      LitE _ (ObjectL _ fs) -> foldl' (\ac fld -> mkDict ac (snd fld)) acc fs
+      LitE _ _ -> acc
+      AppE e1 e2 -> mkDict acc e1 <> mkDict acc e2
+      CaseE _ scrut alts ->
+        let wScrut = mkDict acc scrut
+        in foldl' (\ac (UnguardedAlt _ _ body) -> mkDict ac (toExp body)) wScrut alts
+      AccessorE _ _ _ arg -> mkDict acc arg
+      ObjectUpdateE _ _ ex _ flds ->
+        let wEx = mkDict acc ex
+        in foldl' (\ac fld -> mkDict ac (snd fld)) wEx flds
+      TyAbs _ ex -> mkDict acc ex
+      LamE _ scoped -> mkDict acc (toExp scoped)
+      LetE _ decls scoped ->
+        let wDeclsTopLevel = foldBinds (\ac nm body -> M.insert nm body ac) acc decls
+            wDeclsDeep     = foldBinds (\ac _ body -> mkDict ac (toExp body)) wDeclsTopLevel decls
+        in mkDict wDeclsDeep (toExp scoped)
+      TyInstE{} -> acc -- TyInst shouldn't exist
+
     collect ::
+      Set (Ident,Int) ->
       Map (Ident,Int) MonoScoped ->
       Set (BVar PurusType) ->
       Set (BVar (KindOf PurusType)) ->
       MonoExp ->
-      ([ToLift], MonoExp)
-    collect dict boundVars boundTyVars = \case
+      ([ToLift], MonoExp, Set (Ident,Int))
+    collect visited dict boundVars boundTyVars me = trace "collect" $ case me of
       -- we ignore free variables. For us, a free variable more or less represents "shouldn't/can't be inlined"
-      V fv@F{} -> ([], V fv)
-      V b@(B  bv) -> case M.lookup (unBVar bv)  dict of
-        Nothing -> ([], V b)
-        Just declbody ->
-          let BVar bvIx _ bvIdent = bv
-              (collectedToLift,collectedBody) = collect dict S.empty S.empty (toExp declbody)
-              collectedDecl = NonRecursive bvIdent bvIx (fromExp collectedBody)
+      V fv@F{} -> ([], V fv, visited)
+      V b@(B (BVar bvIx (stripSkolems -> bvTy) bvIdent)) -> case M.lookup (bvIdent,bvIx) dict of
+        Nothing -> ([], V b, visited)
+        Just declbody
+          | S.member (bvIdent,bvIx) visited -> ([],fromHole $ Hole bvIdent bvIx bvTy,visited)
+          | otherwise ->
+          let visited' = S.insert (bvIdent,bvIx) visited
+              (collectedToLift,collectedBody,visited'') = collect visited' dict S.empty S.empty (toExp declbody)
+              collectedDecl = NonRecursive bvIdent bvIx (fromExp . stripSkolemsFromExpr $ collectedBody)
               here = ToLift S.empty S.empty [collectedDecl]
-          in (here:collectedToLift, V b)
+              hole = LiftedHoleTerm (runIdent bvIdent) (fromIntegral bvIx) bvTy
+          in (here:collectedToLift, hole, visited'')
       LitE t lit -> case lit of
-        IntL i -> ([], LitE t (IntL i))
-        StringL s -> ([], LitE t (StringL s))
-        CharL c -> ([], LitE t (CharL c))
-        ObjectL x fs -> case foldl' goField ([], []) fs of
-          (bnds, flds) -> (bnds, LitE t $ ObjectL x flds)
+        IntL i -> ([], LitE t (IntL i),visited)
+        StringL s -> ([], LitE t (StringL s),visited)
+        CharL c -> ([], LitE t (CharL c),visited)
+        ObjectL x fs -> case foldl' goField ([], [], visited) fs of
+          (bnds, flds, visited') -> (bnds, LitE t $ ObjectL x flds,visited')
       AppE e1 e2 ->
-        let (bnds1, e1') = collect dict boundVars boundTyVars e1
-            (bnds2, e2') = collect dict boundVars boundTyVars e2
-         in (bnds1 <> bnds2, AppE e1' e2')
+        let (bnds1, e1', vis1) = collect visited dict boundVars boundTyVars e1
+            (bnds2, e2', vis2) = collect vis1 dict boundVars boundTyVars e2
+         in (bnds1 <> bnds2, AppE e1' e2', vis2)
       CaseE ty scrut alts ->
-        let (sBnds, scrut') = collect dict boundVars boundTyVars scrut
-            (aBnds, alts') = collectFromAlts ([], []) alts
-         in (sBnds <> aBnds, CaseE ty scrut' alts')
+        let (sBnds, scrut',vis1) = collect visited dict boundVars boundTyVars scrut
+            (aBnds, alts',vis2) = collectFromAlts ([], [], vis1) alts
+         in (sBnds <> aBnds, CaseE ty scrut' alts',vis2)
       AccessorE x ty fld arg ->
-        let (fldBnds, arg') = collect dict boundVars boundTyVars arg
-         in (fldBnds, AccessorE x ty fld arg')
+        let (fldBnds, arg',vis1) = collect visited dict boundVars boundTyVars arg
+         in (fldBnds, AccessorE x ty fld arg',vis1)
       ObjectUpdateE x ty ex copy flds ->
-        let (eBnds, e') = collect dict boundVars boundTyVars ex
-            (fldBnds, flds') = foldl' goField ([], []) flds
+        let (eBnds, e', vis1) = collect visited dict boundVars boundTyVars ex
+            (fldBnds, flds', vis2) = foldl' goField ([], [], vis1) flds
             bnds = eBnds <> fldBnds
-         in (bnds, ObjectUpdateE x ty e' copy flds')
-      TyAbs tv ex -> collect dict boundVars (S.insert tv boundTyVars) ex
+         in (bnds, ObjectUpdateE x ty e' copy flds', vis2)
+      TyAbs tv ex -> case collect visited dict boundVars (S.insert tv boundTyVars) ex of
+        (l,m,r) -> (l,TyAbs tv m, r)
       LamE bv scoped ->
-        let (bnds, unscoped) = collect dict (S.insert bv boundVars) boundTyVars (join <$> fromScope scoped)
+        let (bnds, unscoped,vis1) = collect visited dict (S.insert bv boundVars) boundTyVars (join <$> fromScope scoped)
             rescoped = abstract (\case B bvx -> Just bvx; _ -> Nothing) unscoped
-         in (bnds, LamE bv rescoped)
-      LetE _ decls scoped ->
-        let here = ToLift boundVars boundTyVars decls
-         in first (here :) $ collect dict boundVars boundTyVars (join <$> fromScope scoped)
-      -- If we run this directly after core desugaring then there should be any TyInstEs in the AST
+         in (bnds, LamE bv rescoped,vis1)
+      LetE _ _decls scoped ->
+        let decls = mapBind (const $ viaExp stripSkolemsFromExpr) <$> _decls
+            boundVarsPlusDecls = foldBinds (\acc (nm,indx) body -> S.insert (BVar indx (expTy' id body) nm) acc) boundVars decls
+            vis1 = foldBinds (\vis nm _ -> S.insert nm vis) visited decls
+            (liftedDecls,vis2) = collectFromNestedDeclarations vis1 boundVarsPlusDecls boundTyVars decls
+         in over _1 (liftedDecls <>) $ collect vis2 dict  boundVarsPlusDecls boundTyVars (join <$> fromScope scoped)
+      -- If we run this directly after core desugaring then there should not be any TyInstEs in the AST
       tInst@TyInstE {} ->
         error $
           "Don't know what to do with a TyInst. Seems like it requires backtracking to handle correctly? Ughhhh\n"
             <> prettyAsStr tInst
       where
+        {- We need to "sanitize" the declarations being collected so that any Vars that reference a
+           declaration being lifted are transformed into a LiftedHole with the proper type annotation.
+
+           ...also we never properly handled nested `let-` binding groups in the first place and this
+           ought to fix that.
+
+           These are all declarations that will be *removed* from their original context, so we don't
+           need to return an Exp of any sort (the relevant expressions will be embedded into the decls
+           inside the resulting `ToLift`)
+        -}
+        collectFromNestedDeclarations :: Set (Ident,Int)
+                                      -> Set (BVar PurusType)
+                                      -> Set (BVar (KindOf PurusType))
+                                      -> [MonoBind]
+                                      -> ([ToLift],Set (Ident,Int))
+        collectFromNestedDeclarations vis termBound typeBound liftThese = trace "collectFromNested" $ foldBinds go ([],vis) liftThese
+          where
+            go :: ([ToLift],Set (Ident,Int)) -> (Ident,Int) -> MonoScoped -> ([ToLift],Set (Ident,Int))
+            go (liftAcc,visAcc) (nm,indx) scoped =
+              let (insideLifted,insideBody,visAcc') = collect visAcc dict termBound typeBound (stripSkolemsFromExpr $ toExp scoped)
+                  here = ToLift termBound typeBound [NonRecursive nm indx (fromExp insideBody)]
+              in (here:(insideLifted <> liftAcc),visAcc')
+
         goField ::
-          ([ToLift], [(PSString, MonoExp)]) ->
+          ([ToLift], [(PSString, MonoExp)], Set (Ident,Int)) ->
           (PSString, MonoExp) ->
-          ([ToLift], [(PSString, MonoExp)])
-        goField acc (nm, fld) = case collect dict boundVars boundTyVars fld of
-          (bnds, fld') -> bimap (<> bnds) ((nm, fld') :) acc
+          ([ToLift], [(PSString, MonoExp)], Set (Ident,Int))
+        goField (liftAcc, fieldAcc, vis) (nm, fld) = case collect vis dict boundVars boundTyVars fld of
+          (bnds, fld',vis1) -> (bnds <> liftAcc,(nm,fld'):fieldAcc,vis1)
 
         collectFromAlts ::
-          ([ToLift], [MonoAlt]) ->
+          ([ToLift], [MonoAlt], Set (Ident,Int)) ->
           [MonoAlt] ->
-          ([ToLift], [MonoAlt])
+          ([ToLift], [MonoAlt], Set (Ident,Int))
         collectFromAlts acc [] = acc
-        collectFromAlts acc (UnguardedAlt _bs pat scoped : rest) =
+        collectFromAlts (liftAcc, altAcc, visAcc) (UnguardedAlt _bs pat scoped : rest) =
           let boundInPat = extractPatVarBinders pat
               boundVars' = foldr S.insert boundVars boundInPat
-              (bnds, unscoped) = collect dict boundVars' boundTyVars (join <$> fromScope scoped)
+              (bnds, unscoped,vis1) = collect visAcc dict boundVars' boundTyVars (stripSkolemsFromExpr . toExp $  scoped)
               rescoped = abstract (\case B bvx -> Just bvx; _ -> Nothing) unscoped
               thisAlt = UnguardedAlt _bs pat rescoped
-              acc' = bimap (<> bnds) (<> [thisAlt]) acc
+              acc' = (liftAcc <> bnds, altAcc <> [thisAlt], vis1)
            in collectFromAlts acc' rest
 
         extractPatVarBinders ::
@@ -581,6 +733,4 @@ mkModDict = do
 
    `getDeep` (...if it works...) fetches those dependencies for us (and this is why we had to construct all of those maps above).
 -}
-
-
 
