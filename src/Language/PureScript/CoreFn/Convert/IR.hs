@@ -252,23 +252,163 @@ data Exp x ty a
 deriving instance (Eq ty, Eq a, Eq (KindOf ty), Eq (XAccessor x), Eq (XObjectUpdate x), Eq (XObjectLiteral x)) => Eq (Exp x ty a)
 
 instance (Eq ty, Eq (KindOf ty)) => Eq1 (Exp x ty) where
-  liftEq eq (V a) (V b) = eq a b
-  liftEq eq (LitE t1 l1) (LitE t2 l2) = t1 == t2 && liftEq (liftEq eq) l1 l2
-  liftEq eq (LamE n1 e1) (LamE n2 e2) = n1 == n2 && liftEq eq e1 e2
-  liftEq eq (AppE l1 l2) (AppE r1 r2) = liftEq eq l1 r1 && liftEq eq l2 r2
-  liftEq eq (CaseE t1 es1 as1) (CaseE t2 es2 as2) = t1 == t2 && liftEq eq es1 es2 && liftEq (liftEq eq) as1 as2
-  liftEq eq (LetE n1 bs1 e1) (LetE n2 bs2 e2) = n1 == n2 && liftEq (liftEq eq) bs1 bs2 && liftEq eq e1 e2
-  liftEq eq (TyInstE t1 e1) (TyInstE t2 e2) = t1 == t2 && liftEq eq e1 e2
-  liftEq eq (TyAbs bv1 e1) (TyAbs bv2 e2) = bv1 == bv2 && liftEq eq e1 e2
-  liftEq _ _ _ = False
+  {-# INLINEABLE liftEq #-}
+  liftEq eq = \case
+    V a -> \case
+      V b -> eq a b
+      _ -> False
+    LitE t1 l1 -> \case
+      LitE t2 l2 -> t1 == t2 && liftEq (liftEq eq) l1 l2
+      _ -> False
+    LamE n1 e1 -> \case
+      LamE n2 e2 -> n1 == n2 && liftEq eq e1 e2
+      _ -> False
+    AppE l1 l2 -> \case
+      AppE r1 r2 -> liftEq eq l1 r1 && liftEq eq l2 r2
+      _ -> False
+    CaseE t1 es1 as1 -> \case
+      CaseE t2 es2 as2 -> t1 == t2 && 
+                          liftEq eq es1 es2 && 
+                          liftEq (liftEq eq) as1 as2
+      _ -> False
+    LetE n1 bs1 e1 -> \case
+      LetE n2 bs2 e2 -> n1 == n2 && 
+                        liftEq (liftEq eq) bs1 bs2 && 
+                        liftEq eq e1 e2
+      _ -> False
+    AccessorE _ t1 s1 e1 -> \case
+      AccessorE _ t2 s2 e2 -> t1 == t2 && 
+                              s1 == s2 && 
+                              liftEq eq e1 e2
+      _ -> False
+    ObjectUpdateE _ t1 e1 ms1 upd1 -> \case
+      ObjectUpdateE _ t2 e2 ms2 upd2 -> t1 == t2 && 
+                                        liftEq eq e1 e2 && 
+                                        ms1 == ms2 && 
+                                        liftEq (\(s1, e1') (s2, e2') -> s1 == s2 && liftEq eq e1' e2') upd1 upd2
+      _ -> False
+    TyInstE t1 e1 -> \case
+      TyInstE t2 e2 -> t1 == t2 && liftEq eq e1 e2
+      _ -> False
+    TyAbs bv1 e1 -> \case
+      TyAbs bv2 e2 -> bv1 == bv2 && liftEq eq e1 e2
+      _ -> False
+
+instance (Ord ty, Ord (KindOf ty)) => Ord1 (Exp x ty) where
+  {-# INLINEABLE liftCompare #-}
+  liftCompare comp = \case
+    V x -> \case
+      V y -> comp x y
+      _ -> LT
+    LitE t lit -> \case
+      V _ -> GT
+      LitE t' lit' -> compare t t' <> liftCompare (liftCompare comp) lit lit'
+      _ -> LT
+    LamE bvar scope -> \case
+      V _ -> GT
+      LitE _ _ -> GT
+      LamE bvar' scope' -> compare bvar bvar' <> liftCompare comp scope scope'
+      _ -> LT
+    AppE exp1 exp2 -> \case
+      V _ -> GT
+      LitE _ _ -> GT
+      LamE _ _ -> GT
+      AppE exp1' exp2' -> liftCompare comp exp1 exp1' <> liftCompare comp exp2 exp2'
+      _ -> LT
+    CaseE t exp cases -> \case
+      V _ -> GT
+      LitE _ _ -> GT
+      LamE _ _ -> GT
+      AppE _ _ -> GT
+      CaseE t' exp' cases' -> compare t t' <>
+                              liftCompare comp exp exp' <> 
+                              liftCompare (liftCompare comp) cases cases'
+      _ -> LT
+    LetE binds bindApps scope -> \case
+      V _ -> GT
+      LitE _ _ -> GT
+      LamE _ _ -> GT
+      AppE _ _ -> GT
+      CaseE _ _ _ -> GT
+      LetE binds' bindApps' scope' -> compare binds binds' <>
+                                      liftCompare (liftCompare comp) bindApps bindApps' <> 
+                                      liftCompare comp scope scope'
+      _ -> LT
+    AccessorE _ t str exp -> \case
+      V _ -> GT
+      LitE _ _ -> GT
+      LamE _ _ -> GT
+      AppE _ _ -> GT
+      CaseE _ _ _ -> GT
+      LetE _ _ _ -> GT
+      AccessorE _ t' str' exp' -> compare t t' <> 
+                                  compare str str' <> 
+                                  liftCompare comp exp exp'
+      _ -> LT
+    ObjectUpdateE _ t exp mStr updates -> \case
+      V _ -> GT
+      LitE _ _ -> GT
+      LamE _ _ -> GT
+      AppE _ _ -> GT
+      CaseE _ _ _ -> GT
+      LetE _ _ _ -> GT
+      AccessorE _ _ _ _ -> GT
+      ObjectUpdateE _ t' exp' mStr' updates' -> compare t t' <> 
+                                                liftCompare comp exp exp' <> 
+                                                compare mStr mStr' <> 
+                                                liftCompare (\(s, e) (s', e') -> compare s s' <> liftCompare comp e e') updates updates'
+      _ -> LT
+    TyInstE t exp -> \case
+      V _ -> GT
+      LitE _ _ -> GT
+      LamE _ _ -> GT
+      AppE _ _ -> GT
+      CaseE _ _ _ -> GT
+      LetE _ _ _ -> GT
+      AccessorE _ _ _ _ -> GT
+      ObjectUpdateE _ _ _ _ _ -> GT
+      TyInstE t' exp' -> compare t t' <> 
+                         liftCompare comp exp exp'
+      _ -> LT
+    TyAbs bvar exp -> \case
+      TyAbs bvar' exp' -> compare bvar bvar' <> 
+                          liftCompare comp exp exp'
+      _ -> GT
 
 instance Eq1 (Lit x) where
-  liftEq _ (IntL i1) (IntL i2) = i1 == i2
-  -- liftEq _ (NumL i1) (NumL i2) = i1 == i2
-  liftEq _ (StringL i1) (StringL i2) = i1 == i2
-  liftEq _ (CharL i1) (CharL i2) = i1 == i2
-  -- liftEq eq (ArrayL xs) (ArrayL ys) = liftEq eq xs ys
-  liftEq _ _ _ = False
+  {-# INLINEABLE liftEq #-}
+  liftEq eq = \case
+    IntL i1 -> \case
+      IntL i2 -> i1 == i2
+      _ -> False
+    StringL i1 -> \case
+      StringL i2 -> i1 == i2
+      _ -> False
+    CharL i1 -> \case
+      CharL i2 -> i1 == i2
+      _ -> False
+    ObjectL _ fs1 -> \case
+      ObjectL _ fs2 -> liftEq (liftEq eq) fs1 fs2
+      _ -> False
+
+instance Ord1 (Lit x) where
+  {-# INLINEABLE liftCompare #-}
+  liftCompare comp = \case
+    IntL i -> \case
+      IntL i' -> compare i i'
+      _ -> LT
+    StringL str -> \case
+      IntL _ -> GT
+      StringL str' -> compare str str'
+      _ -> LT
+    CharL c -> \case
+      IntL _ -> GT
+      StringL _ -> GT
+      CharL c' -> compare c c'
+      _ -> LT
+    ObjectL _ fields -> \case
+      ObjectL _ fields' -> liftCompare (liftCompare comp) fields fields'
+      _ -> GT
 
 instance (Eq1 f, Monad f, Eq t) => Eq1 (Pat x t f) where
   liftEq _ (VarP i1 n1 t1) (VarP i2 n2 t2) = i1 == i2 && n1 == n2 && t1 == t2
@@ -276,6 +416,29 @@ instance (Eq1 f, Monad f, Eq t) => Eq1 (Pat x t f) where
   liftEq eq (ConP tn1 cn1 ps1) (ConP tn2 cn2 ps2) = tn1 == tn2 && cn1 == cn2 && liftEq (liftEq eq) ps1 ps2
   liftEq eq (LitP l1) (LitP l2) = liftEq (liftEq eq) l1 l2
   liftEq _ _ _ = False
+
+instance (Ord1 f, Monad f, Ord t) => Ord1 (Pat x t f) where
+  {-# INLINEABLE liftCompare #-}
+  liftCompare comp = \case
+    VarP i1 n1 t1 -> \case
+      VarP i2 n2 t2 -> compare i1 i2 <> 
+                       compare n1 n2 <> 
+                       compare t1 t2
+      _ -> LT
+    WildP -> \case
+      VarP _ _ _ -> GT
+      WildP -> EQ
+      _ -> LT
+    LitP l1 -> \case
+      VarP _ _ _ -> GT
+      WildP -> GT
+      LitP l2 -> liftCompare (liftCompare comp) l1 l2
+      _ -> LT
+    ConP tn1 cn1 ps1 -> \case
+      ConP tn2 cn2 ps2 -> compare tn1 tn2 <> 
+                          compare cn1 cn2 <> 
+                          liftCompare (liftCompare comp) ps1 ps2
+      _ -> GT
 
 instance (Eq1 f, Monad f, Eq ty) => Eq1 (BindE ty f) where
   liftEq eq (NonRecursive i1 ix1 b1) (NonRecursive i2 ix2 b2) = ix1 == ix2 && i1 == i2 && liftEq eq b1 b2
@@ -292,8 +455,42 @@ instance (Eq1 f, Monad f, Eq ty) => Eq1 (BindE ty f) where
       go _ _ _ = False
   liftEq _ _ _ = False
 
+instance (Ord1 f, Monad f, Ord ty) => Ord1 (BindE ty f) where
+  {-# INLINEABLE liftCompare #-}
+  liftCompare comp = \case
+    NonRecursive i1 ix1 b1 -> \case
+      NonRecursive i2 ix2 b2 -> compare i1 i2 <> 
+                                compare ix1 ix2 <> 
+                                liftCompare comp b1 b2
+      _ -> LT
+    Recursive xs -> \case
+      NonRecursive _ _ _ -> GT
+      Recursive ys -> go comp xs ys
+      where
+        go :: forall a b . 
+              (a -> b -> Ordering) ->
+              [((Ident, Int), Scope (BVar ty) f a)] -> 
+              [((Ident, Int), Scope (BVar ty) f b)] -> 
+              Ordering
+        go comp' = \case
+          [] -> \case
+            [] -> EQ
+            _ -> LT
+          ((i1, x) : xs) -> \case
+            [] -> GT
+            ((i2, y) : ys) -> compare i1 i2 <> 
+                              liftCompare comp' x y <> 
+                              go comp' xs ys
+
 instance (Eq1 f, Monad f, Eq ty) => Eq1 (Alt x ty f) where
   liftEq eq (UnguardedAlt n1 ps1 e1) (UnguardedAlt n2 ps2 e2) = n1 == n2 && liftEq eq ps1 ps2 && liftEq eq e1 e2
+
+instance (Ord1 f, Monad f, Ord ty) => Ord1 (Alt x ty f) where
+  {-# INLINEABLE liftCompare #-}
+  liftCompare comp (UnguardedAlt n1 ps1 e1) (UnguardedAlt n2 ps2 e2) = 
+    compare n1 n2 <> 
+    liftCompare comp ps1 ps2 <> 
+    liftCompare comp e1 e2
 
 instance Applicative (Exp x ty) where
   pure = V
