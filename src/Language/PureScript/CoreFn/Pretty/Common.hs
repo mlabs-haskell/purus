@@ -47,6 +47,9 @@ import Prettyprinter.Render.Text (renderStrict)
 prettyAsStr :: (Pretty a) => a -> String
 prettyAsStr = T.unpack . renderStrict . layoutPretty defaultLayoutOptions . pretty
 
+docString :: Doc a -> String
+docString = T.unpack . renderStrict . layoutPretty defaultLayoutOptions
+
 {- One thing that we often wish to do, but cannot easily do either with
    the Prettyprinter library or the ancient lib PureScript uses, is to
    *force* particular sub-expressions to print on a single line.

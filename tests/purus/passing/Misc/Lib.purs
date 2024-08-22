@@ -111,7 +111,7 @@ mutuallyRecursiveBindingGroup =
   let f :: Int -> Int
       f x = g 2
       h :: Int -> Int -> Int
-      h x y = y
+      h x y = f y
       g :: Int -> Int
       g y = h (f y) 3
   in g 3
@@ -321,7 +321,7 @@ testForLift x = h x 3
 testForLiftPoly :: forall (a :: Type). a -> Boolean
 testForLiftPoly x = h x True
   where
-    q :: a
+    q :: a 
     q = x
 
     h :: a -> Boolean -> Boolean

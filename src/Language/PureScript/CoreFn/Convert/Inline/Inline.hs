@@ -74,11 +74,17 @@ notALoopBreaker = \case NotALoopBreaker{} -> True;_ -> False
 inline :: LiftResult -> Monomorphizer MonoExp
 inline (LiftResult decls bodyE) = do
   declsPrepared <- inlineInLifted decls
-  let inlinedBodyE = abstract (\case B bv -> Just bv;_ -> Nothing)
+  let plugHoles :: forall (f :: * -> *). Functor f => f (Vars PurusType) -> f (Vars PurusType)
+      plugHoles = fmap $ \case
+        F (LiftedHole hNm hIndx hTy) -> B (BVar (fromInteger hIndx) hTy (Ident hNm))
+        other -> other
+
+      inlinedBodyE = abstract (\case B bv -> Just bv;_ -> Nothing)
+                     . plugHoles
                      . inlineWithData' declsPrepared
                      $ bodyE
       onlyLoopBreakers = M.foldlWithKey' (\acc (n,i) v -> case v of
-                                             IsALoopBreaker b ->
+                                             IsALoopBreaker (plugHoles -> b) ->
                                                NonRecursive n i b:acc
                                              _ -> acc) [] declsPrepared
       flatLB = M.toList $ flatBinds onlyLoopBreakers
@@ -132,14 +138,16 @@ inlineWithData  =  transformM go''
       pure res 
     go :: MonoExp ->  InlineState MonoExp
     go ex = get >>= \dict -> case ex of
-      bv@(V (B (BVar bvix _ bvident))) -> case M.lookup (bvident,bvix) dict of
-        Just (NotALoopBreaker (toExp -> e)) -> do
-           let msg = prettify [ "INPUT:\n" <> prettyAsStr bv
-                             , "RESULT:\n" <> prettyAsStr e
-                             ]
-           doTraceM "inlineWithData" msg
-           pure e
-        _ -> pure bv
+      fv@(V (F{})) -> case toHole fv of
+        Just (Hole hId hIx _) -> case M.lookup (hId,hIx) dict of
+          Just (NotALoopBreaker (toExp -> e)) -> do
+             let msg = prettify [ "INPUT:\n" <> prettyAsStr fv
+                               , "RESULT:\n" <> prettyAsStr e
+                               ]
+             doTraceM "inlineWithData" msg
+             pure e
+          _ -> pure fv
+        _ -> pure fv
       AppE e1 e2  -> AppE <$> go e1 <*> go e2
       CaseE t scrut alts -> do
         scrut' <- go scrut
@@ -165,12 +173,12 @@ doneInlining ::  MonoExp -> InlineState Bool
 doneInlining me = do
   dct <- get
   let allInlineable = M.keysSet $ M.filter notALoopBreaker dct
-      allBoundVarsSet = S.fromList . fmap unBVar . allBoundVars $ me
-      result = S.null $ S.intersection allBoundVarsSet allInlineable
+      allHoles = S.fromList $ mapMaybe (fmap unHole . toHole)  (me ^.. cosmos)
+      result = S.null $ S.intersection allHoles allInlineable
       msg = prettify [ "Input Expr:\n" <> prettyAsStr me
                      , "All Inlineable Vars:\n" <> prettyAsStr (S.toList allInlineable)
-                     , "All Bound Vars in expr:\n" <> prettyAsStr (S.toList allBoundVarsSet)
-                     , "Not yet inlined:\n" <> prettyAsStr (S.toList $ S.intersection allBoundVarsSet allInlineable)
+                     , "All Holes in expr:\n" <> prettyAsStr (S.toList allHoles)
+                     , "Not yet inlined:\n" <> prettyAsStr (S.toList $ S.intersection allHoles allInlineable)
                      , "Are we done?: " <> show result
                      ]
   doTraceM "doneInlining" msg
@@ -180,8 +188,8 @@ remainingInlineTargets :: MonoExp -> InlineState (Set (Ident,Int))
 remainingInlineTargets me = do
     dct <- get
     let allInlineable = M.keysSet $ M.filter notALoopBreaker dct
-        allBoundVarsSet = S.fromList . fmap unBVar . allBoundVars $ me
-    pure $ S.intersection allBoundVarsSet allInlineable
+        allHoles = S.fromList $ mapMaybe (fmap unHole . toHole)  (me ^.. cosmos)
+    pure $ S.intersection allHoles allInlineable
 
 prettyDict :: Map (Ident,Int) InlineBodyData -> String
 prettyDict = show
@@ -199,7 +207,7 @@ inlineInLifted decls = do
                           else M.insert nm (NotALoopBreaker b) acc)
                        M.empty
                        decls
-  let res = flip execState dict $  update [] (M.keys dict)
+  let res = flip execState dict $ update [] (M.keys dict)
       msg = prettify ["Input:\n" <> prettyAsStr decls, "Result:\n" <> prettyDict res, "Breakers:\n" <> prettyAsStr (S.toList breakers)]
   doTraceM "inlineLifted" msg 
   pure res
@@ -232,10 +240,11 @@ inlineInLifted decls = do
    allLiftedDependencies = stars
                            . M.toList
                            . fmap S.toList
-                           $ mapRepr
-     where
-       mapRepr = foldBinds go M.empty decls
+                           $ allLiftedDependenciesMap
 
+   allLiftedDependenciesMap :: Map (Ident,Int) (Set (Ident,Int))
+   allLiftedDependenciesMap = foldBinds go M.empty decls
+     where
        allDeclIDs :: Set (Ident,Int)
        allDeclIDs = allDeclIdentifiers decls
 
@@ -244,11 +253,10 @@ inlineInLifted decls = do
           -> MonoScoped
           -> Map (Ident,Int) (Set (Ident,Int))
        go acc nm scoped =
-         let unscoped = join <$> fromScope scoped
-             allComponentBinds = S.fromList $ unBVar <$> allBoundVars unscoped
-             theseUsedBinds = S.intersection allDeclIDs allComponentBinds
+         let unscoped = toExp scoped
+             allComponentHoleIdents = S.fromList $ mapMaybe (fmap unHole . toHole)  (unscoped ^.. cosmos)
+             theseUsedBinds = S.intersection allDeclIDs allComponentHoleIdents
          in M.insert nm theseUsedBinds acc
-
 
    -- Example for testing: Design a call graph that has two SCCs in it
 
@@ -277,7 +285,7 @@ inlineInLifted decls = do
           Nothing -> pure S.empty
           Just target -> do
             let targIdentifiers = vertexList target
-                scored          = score <$> targIdentifiers
+                scored          = score adjaMap <$> targIdentifiers
                 highScore       = maximumBy (\a b -> let f = snd . getScore in compare (f a) (f b)) scored
             case highScore of
               LoopBreakerScore (_,Nothing) -> error $ "Could not select a loop breaker for decl group:\n" <> show targIdentifiers
@@ -299,20 +307,29 @@ inlineInLifted decls = do
           cycleErr :: Cycle (AdjacencyMap (Ident,Int)) -> a
           cycleErr cyc      = error $ "Fatal Error: Cannot inline, topologically sorted graph of dependencies contains cycles:\n" <> show cyc
 
-      score :: (Ident,Int)
+      score :: AdjacencyMap (Ident,Int)
+            -> (Ident,Int)
             -> LoopBreakerScore
-      score nm = case M.lookup nm allLiftedDeclarations of
+      score adjaMap nm = adjustScore $ case M.lookup nm allLiftedDeclarations of
               Just (toExp -> e)
                 | typeContainsRow e -> LoopBreakerScore (nm,Nothing)
+                | not (isMonoType (expTy id e)) -> LoopBreakerScore (nm,Just 0)
                 | otherwise -> case e of
                     V _ -> LoopBreakerScore (nm,Just 3)
                     LitE{} -> LoopBreakerScore (nm,Just 3)
                     appE@(AppE{}) -> case unsafeAnalyzeApp appE of
                       (f,_) | isConstructorE f -> LoopBreakerScore (nm,Just 2)
-                            | otherwise -> LoopBreakerScore (nm,Just 0)
-                    _ -> LoopBreakerScore (nm,Just 0)
+                            | otherwise -> LoopBreakerScore (nm,Just 1)
+
+                    _ -> LoopBreakerScore (nm,Just 1)
               Nothing -> LoopBreakerScore (nm,Nothing)
         where
+          adjustScore (LoopBreakerScore (nm', Just sc))
+            = let nE = length $ filter (\x -> snd x == nm') (edgeList adjaMap)
+                  newScore = sc + nE
+              in LoopBreakerScore (nm',Just newScore) 
+          adjustScore lb = lb 
+
           typeContainsRow :: MonoExp -> Bool
           typeContainsRow e = any isRow allTypeComponents
             where

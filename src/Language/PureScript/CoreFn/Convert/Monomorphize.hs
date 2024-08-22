@@ -91,14 +91,14 @@ testLift' decl = do
     Right (res, st, _) -> do
       let !res' = res
       case res' of
-        LiftResult a b | length a >= 1 -> do
+        LiftResult a b -> do
           threadDelay 500000
           !prettyString <- pure $ prettyAsStr (LiftResult a b)
           print (length prettyString)
           traceM prettyString
           putStrLn "\n----------DONE----------\n"
           pure (res',st,myMod)
-        _ -> error "boom"
+
 
 testLift :: Text -> IO ()
 testLift = void . testLift'

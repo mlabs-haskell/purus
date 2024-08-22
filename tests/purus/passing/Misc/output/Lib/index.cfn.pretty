@@ -483,7 +483,10 @@ mutuallyRecursiveBindingGroup :: Prim.Int
 mutuallyRecursiveBindingGroup = 
   let
     h :: (Prim.Int -> ((Prim.Int -> (Prim.Int))))
-    h = \(x: Prim.Int) -> \(y: Prim.Int) -> (y: Prim.Int)
+    h = 
+      \(x: Prim.Int) -> 
+        \(y: Prim.Int) -> 
+          (f: (Prim.Int -> (Prim.Int))) (y: Prim.Int)
     g :: (Prim.Int -> (Prim.Int))
     g = 
       \(y: Prim.Int) -> 

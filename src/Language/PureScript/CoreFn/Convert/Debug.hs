@@ -12,7 +12,7 @@ import Prelude
 type TraceCfg = S.Set String
 
 traceCfg :: TraceCfg
-traceCfg = S.fromList ["updateAllBinds", "instantiateTypes", "desugarCoreLam", "lift"] -- ["inlineWithData", "breakLoops", "update"]
+traceCfg = S.fromList  [ "breakLoops", "breakEm", "doneInlining", "lift"]
 
 doTrace :: forall x. String -> String -> x -> x
 doTrace identifier msg x =
