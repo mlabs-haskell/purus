@@ -27,6 +27,7 @@ tests/support/package-lock.json
 .psc-package/
 tags
 TAGS
+.nvimrc
 
 # Gather source map files from golden tests
 .source-maps
