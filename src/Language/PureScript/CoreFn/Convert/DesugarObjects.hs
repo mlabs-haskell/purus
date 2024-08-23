@@ -35,10 +35,7 @@ import Language.PureScript.CoreFn.Convert.IR (
   pattern (:~>),
  )
 import Language.PureScript.CoreFn.Convert.IR.Utils 
-import Language.PureScript.CoreFn.Convert.Monomorphize (
-  instantiateAllConstructors,
-  runMonomorphize,
- )
+
 import Language.PureScript.CoreFn.Convert.Monomorphize.Utils (
   MonoError (MonoError),
   decodeModuleIO,
@@ -98,11 +95,11 @@ decodeModuleIR path = do
   case desugarCoreModule myMod of
     Left err -> throwIO $ userError err
     Right myModIR -> pure myModIR
-
-test :: FilePath -> Text -> IO (Exp WithoutObjects Ty (Var (BVar Ty) (FVar Ty)))
-test path decl = do
+{-
+testDesugarObjects :: FilePath -> Text -> IO (Exp WithoutObjects Ty (Var (BVar Ty) (FVar Ty)))
+testDesugarObjects path decl = do
   (myMod, ds) <- decodeModuleIR path
-  Just myDecl <- pure $ findDeclBody decl myMod
+  Just myDecl <- pure . fmap snd $ findDeclBody decl myMod
   case runMonomorphize myMod [] (join <$> fromScope myDecl) of
     Left (MonoError msg) -> throwIO $ userError $ "Couldn't monomorphize " <> T.unpack decl <> "\nReason:\n" <> msg
     Right body -> case evalStateT (tryConvertExpr body) ds of
@@ -118,7 +115,7 @@ prepPIR ::
 prepPIR path decl = do
   (myMod@Module {..}, ds) <- decodeModuleIR path
 
-  desugaredExpr <- case findDeclBody decl myMod of
+  desugaredExpr <- case snd <$> findDeclBody decl myMod of
     Nothing -> throwIO $ userError "findDeclBody"
     Just expr -> pure expr
   case runMonomorphize myMod [] (join <$> fromScope desugaredExpr) of
@@ -142,6 +139,7 @@ prepPIR path decl = do
                 moduleDataTypes
           putStrLn $ "tryConvertExpr result:\n" <> ppExp e <> "\n" <> replicate 20 '-'
           pure (e, moduleDataTypes')
+-}
 
 -- This gives us a way to report the exact location of the error (which may no longer correspond *at all* to
 -- the location given in the SourcePos annotations due to inlining and monomorphization)
@@ -222,7 +220,7 @@ tryConvertExpr =
            in one place (i.e. by unifying the disparate functionality of the several monads we have
            & representing the pipeline as a sequence of kleisli arrows)
   -}
-  fmap instantiateAllConstructors . tryConvertExpr' id
+  {- FIXME: We need to replace this with something `fmap instantiateAllConstructors .` -} tryConvertExpr' id
 
 tryConvertExpr' ::
   forall a.

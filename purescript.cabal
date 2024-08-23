@@ -256,8 +256,6 @@ library
     Language.PureScript.CoreFn.Convert.Datatypes
     Language.PureScript.CoreFn.Convert.Monomorphize
     Language.PureScript.CoreFn.Convert.Monomorphize.Utils
-    Language.PureScript.CoreFn.Convert.Monomorphize.Monomorphize
-    Language.PureScript.CoreFn.Convert.Monomorphize.Inline
     Language.PureScript.CoreFn.Convert.DesugarObjects
     Language.PureScript.CoreFn.Convert.DesugarCore
     Language.PureScript.CoreFn.Convert.Inline.Lift

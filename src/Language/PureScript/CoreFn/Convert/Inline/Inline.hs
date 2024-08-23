@@ -8,6 +8,7 @@ import Language.PureScript.CoreFn.Convert.IR (
   Exp (..), expTy, unsafeAnalyzeApp, BVar (..), expTy',
  )
 import Language.PureScript.CoreFn.Convert.Monomorphize.Utils
+    ( freshUnique, Monomorphizer )
 import Language.PureScript.CoreFn.Convert.IR.Utils 
 import Language.PureScript.CoreFn.FromJSON ()
 
@@ -88,17 +89,65 @@ inline (LiftResult decls bodyE) = do
                                                NonRecursive n i b:acc
                                              _ -> acc) [] declsPrepared
       flatLB = M.toList $ flatBinds onlyLoopBreakers
-  res <-  map (\((n,i),b) -> NonRecursive n i b) 
+  declsSelfRecHandled  <-  map (\((n,i),b) -> NonRecursive n i b)
           . M.toList
           . M.unions
           <$>  traverse (uncurry handleSelfRecursive) flatLB
-  case res of
-    [] -> pure (toExp inlinedBodyE)
-    _  ->  pure $ LetE M.empty res inlinedBodyE
+  cleanup declsSelfRecHandled inlinedBodyE 
+ where
+   {- If we just returned the set of lifted declarations as-is, they might have
+      ill-formed types. In particular, they may have out of scope type variables
+      (which were in scope in the context that they were originally defined).
 
--- this probably isn't very performant, we don't memoize or cache
--- intermediate results, which may end up getting recomputed many times
--- NOTE: if I fucked up the loop breaker selection then this will loop forever
+      To fix this, we need to introduce type abstractions for any loop breakers that
+      haven't been inlined & update the types of those declarations in both their
+      lifted peers & in the body of the "main" expression being compiled.
+
+      We are warranted in deferring these abstractions until this stage (and indeed
+      need to do so in order to avoid an ocean of superfluous abstractions and instantiations)
+      by the fact that a lifted declaration will always be inlined into a context where
+      those free type variables are well-scoped (since the definition context always contains
+      the call-site contexts). But we have to do it now, or PIR will yell at us.
+
+      As a NOTE to myself: Here, all of the "holes" have been filled, so the variables we need to
+      update are BVars, not "Hole-ey" FVars.
+   -}
+   cleanup :: [MonoBind] -> MonoScoped -> Monomorphizer MonoExp
+   cleanup [] body = pure $ toExp body
+   cleanup breakers body = do
+     abstracted <- addTypeAbstractions breakers
+     let newTypeDict = foldBinds (\acc nm b -> M.insert nm (expTy' id b) acc) M.empty abstracted
+         updateTypes = deepMapMaybeBound $ \(unBVar -> bv) -> case M.lookup bv newTypeDict of
+                         Nothing -> Nothing
+                         Just t  -> Just $ uncurry mkBVar bv t
+         finalDecls = mapBind (const $ viaExp updateTypes) <$> abstracted
+         finalBody  = viaExp updateTypes body
+     case finalDecls of
+       [] -> pure . toExp $ finalBody
+       _  -> pure $ LetE M.empty finalDecls finalBody
+
+
+
+   addTypeAbstractions :: [MonoBind] -> Monomorphizer [MonoBind]
+   addTypeAbstractions = traverse (traverseBind (const go))
+     where
+       go :: MonoScoped -> Monomorphizer MonoScoped
+       go = viaExpM $ \e -> do
+         let e' = transformTypesInExp stripSkolems e
+             t = expTy id e'
+             free = freeTypeVariables t
+         bvars <- traverse (\(nm,ki) -> freshUnique >>= \u -> pure $ BVar u ki (Ident nm)) free
+         let result =  foldr TyAbs e' bvars
+             msg = prettify [ "INPUT EXPR:\n" <> prettyAsStr e
+                            , "INPUT EXPR TY:\n" <> prettyAsStr t <> "\n\n" <> show (void t)
+                            , "FREE TY VARS IN INPUT:\n" <> prettyAsStr free
+                            , "RESULT:\n" <> prettyAsStr result
+                            , "RESULT TY:\n" <> prettyAsStr (expTy id result)
+                            ]
+         doTraceM "addTypeAbstractions" msg
+         pure result
+
+
 
 -- sorry koz. in my heart i know you're right about type synonyms, but...
 type InlineState a = State (Map (Ident,Int) InlineBodyData) a
@@ -324,6 +373,7 @@ inlineInLifted decls = do
                     _ -> LoopBreakerScore (nm,Just 1)
               Nothing -> LoopBreakerScore (nm,Nothing)
         where
+          {- We want to give higher priority potential loop breakers that "do more breaking" -}
           adjustScore (LoopBreakerScore (nm', Just sc))
             = let nE = length $ filter (\x -> snd x == nm') (edgeList adjaMap)
                   newScore = sc + nE

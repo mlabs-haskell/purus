@@ -50,6 +50,7 @@ Exports:
   testasum,
   aBool,
   aList,
+  aList2,
   aFunction,
   aFunction2,
   aFunction3,
@@ -874,6 +875,16 @@ guardedCase =
                       (Prim.Int)))
                       (True: Prim.Boolean)
 
+aList2 :: Array (Prim.Int)
+aList2 = 
+  (Cons: forall (x :: Prim.Type). ((x :: Prim.Type) ->
+  ((Array ((x :: Prim.Type)) -> (Array ((x :: Prim.Type)))))))
+  (1: Prim.Int)
+  ((Cons: forall (x :: Prim.Type). ((x :: Prim.Type) ->
+   ((Array ((x :: Prim.Type)) -> (Array ((x :: Prim.Type)))))))
+   (2: Prim.Int)
+   (Nil: Array (Prim.Int)))
+
 aList :: Array (Prim.Int)
 aList = 
   (Cons: forall (x :: Prim.Type). ((x :: Prim.Type) ->
@@ -949,7 +960,7 @@ aFunction6 =
   in (aFunction: forall (x :: Prim.Type). ((x :: Prim.Type) ->
      ((forall (y :: Prim.Type). ((y :: Prim.Type) -> (Prim.Int)) ->
      (Prim.Int)))))
-     (Nil: Array (t185))
+     (Nil: Array (t188))
      (go: forall (z :: Prim.Type). ((z :: Prim.Type) -> (Prim.Int)))
 
 aBool :: Prim.Boolean

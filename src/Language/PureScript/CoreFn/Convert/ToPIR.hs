@@ -90,8 +90,7 @@ import Data.Functor qualified
 import Language.PureScript.Constants.PLC (defaultFunMap)
 import Language.PureScript.CoreFn.Convert.Debug
 import Language.PureScript.CoreFn.Convert.DesugarObjects (
-  prepPIR,
-  prettyStr,
+  prettyStr, -- FIXME/TODO: Move both this and primData somewhere more useful 
   primData,
  )
 import Language.PureScript.CoreFn.Convert.IR (
@@ -378,6 +377,11 @@ monoCtorFields tn cn t datatypes = (thisCtorIx, monoCtorArgs)
     monoCtorArgs = safeFunArgTypes monoCtorTy
 
 ---- Compilation helpers/utilities
+
+-- FIXME/TODO re-implement this when we have the pipeline reorganized and rebuilt
+prepPIR :: String -> Text -> IO (Exp WithoutObjects Ty (Var (BVar Ty) (FVar Ty)), Datatypes IR.Kind Ty)
+prepPIR = undefined 
+
 
 runPLCProgram :: PLCProgram DefaultUni DefaultFun () -> (EvaluationResult (PLC.Term PLC.TyName Name DefaultUni DefaultFun ()), [Text])
 runPLCProgram (PLC.Program _ _ c) = unsafeEvaluateCk PLC.defaultBuiltinsRuntime $ void c

@@ -7,45 +7,23 @@ module Language.PureScript.CoreFn.Convert.Inline.Instantiate where
 
 
 import Prelude
-import Bound.Scope (fromScope, abstract)
 import Data.Map qualified as M
 import Language.PureScript.CoreFn.Convert.IR (
-  BindE (..),
-  Exp (..), expTy, unsafeAnalyzeApp, BVar (..), expTy',
+  Exp (..), expTy,
  )
-import Language.PureScript.CoreFn.Convert.Monomorphize.Utils
 import Language.PureScript.CoreFn.Convert.IR.Utils
 import Language.PureScript.CoreFn.FromJSON ()
 
 import Data.Text (Text)
 import Language.PureScript.CoreFn.TypeLike (instantiates, TypeLike (..))
-import Data.Foldable (find, maximumBy, foldl')
+import Data.Foldable (foldl')
 import Data.Map (Map)
-import Control.Monad
-import Data.Set (Set)
-import Data.Set qualified as S
 import Language.PureScript.CoreFn.Convert.Inline.Lift
-import Algebra.Graph.AdjacencyMap
-    ( gmap, stars, vertexList, AdjacencyMap(..), vertexSet, edgeList, edges )
-import Algebra.Graph.AdjacencyMap.Algorithm (scc, topSort, Cycle)
-import Algebra.Graph.NonEmpty.AdjacencyMap (fromNonEmpty)
-import Control.Lens.Combinators (cosmos, transformM, ix)
-import Control.Lens.Operators ((^..), (.=) )
-import Language.PureScript.Types
 import Language.PureScript.CoreFn.Expr (PurusType)
-import Language.PureScript.Constants.Prim qualified as C
-import Language.PureScript.Environment (pattern RecordT)
-import Bound (Var(..))
-import Data.Text qualified as T
 import Language.PureScript.CoreFn.Convert.Debug
 import Language.PureScript.CoreFn.Pretty.Common (prettyAsStr)
-import Control.Monad.State.Strict
-import Prettyprinter
-import Language.PureScript.Names
-import Data.Maybe (mapMaybe)
 import Control.Lens (view,_2)
 import Language.PureScript.CoreFn.Convert.IR (analyzeApp)
-import Control.Lens.Plated (transform)
 
 
 
@@ -54,7 +32,10 @@ monoMorph = \case
   V v -> V v
   LitE t lit -> LitE t $ monoMorph <$> lit
   LamE bv scope -> LamE bv $ viaExp monoMorph scope
-  appE@(AppE f a) ->  instantiateTypes $ AppE (monoMorph f) (monoMorph a)
+  appE@(AppE f a) ->
+    let a' = monoMorph a
+        f' = monoMorph f
+    in instantiateTypes $ AppE f' a'
   CaseE t scrut alts -> CaseE t (monoMorph scrut) (mapAlt (viaExp monoMorph) <$> alts)
   LetE _REMOVE decls body -> LetE _REMOVE (mapBind (const (viaExp monoMorph)) <$> decls) (viaExp monoMorph body)
   AccessorE x t lbl obj -> AccessorE x t lbl (monoMorph obj)
@@ -64,9 +45,9 @@ monoMorph = \case
   other -> other 
 
 instantiateTypes :: MonoExp -> MonoExp
-instantiateTypes e = case fmap (map monoMorph) <$> analyzeApp e of
+instantiateTypes e = case analyzeApp e of
   Nothing -> e
-  Just (f,args) ->
+  Just (f,args)  ->
     let (fTyVars,fInner) = stripQuantifiers (expTy id f)
         fTypes           = splitFunTyParts fInner
         argTypes         = expTy id <$> args
@@ -74,7 +55,7 @@ instantiateTypes e = case fmap (map monoMorph) <$> analyzeApp e of
         instantiations   = getInstantiations quantifiedTyVars fTypes argTypes
         f'               = go instantiations quantifiedTyVars f
         msg              = prettify [ "Function:\n" <> prettyAsStr f
-                                    , "Arguments:\n" <> prettyAsStr  args
+                                    , "Arguments:\n" <> prettyAsStr args
                                     , "Split Fun Types:\n" <> prettyAsStr fTypes
                                     , "Split Arg Types:\n" <> prettyAsStr argTypes
                                     , "Quantified TyVars:\n" <> prettyAsStr quantifiedTyVars
@@ -86,7 +67,9 @@ instantiateTypes e = case fmap (map monoMorph) <$> analyzeApp e of
  where
    go :: Map Text PurusType -> [Text] -> MonoExp -> MonoExp
    go _ [] ex = ex
-   go dict (v:vs) ex = go dict vs (TyInstE (dict M.! v) ex)
+   go dict (v:vs) ex = case M.lookup v dict of
+     Nothing -> ex
+     Just t -> go dict vs (TyInstE t ex)
 
 
 
@@ -106,3 +89,17 @@ getInstantiations (var : vars) fs@(fE : fEs) as@(aE : aEs) = case instantiates v
     getInstantiations [var] fEs aEs
       <> getInstantiations vars fs as
   Just t -> M.insert var t $ getInstantiations vars fs as
+
+
+{- NOTE: Nullnary constructors
+
+   The instantiation functions above *should* work (or can at least be fixed in theory to work) on every
+   polymorphic *function* or *function-like-construct* (i.e. non-nullary data constructors).
+
+   It will not work for polymorphic nullary constructors, such as (from Haskell) Proxy or Nothing, which
+   require type instantiations to typecheck in PIR, but do not accept any value-level arguments from which the
+   types might be deduced.
+
+
+
+-}

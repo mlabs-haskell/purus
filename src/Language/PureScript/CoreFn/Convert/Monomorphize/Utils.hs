@@ -8,7 +8,16 @@
 
 {-# HLINT ignore "Use camelCase" #-}
 
-module Language.PureScript.CoreFn.Convert.Monomorphize.Utils where
+module Language.PureScript.CoreFn.Convert.Monomorphize.Utils (
+  Monomorphizer,
+  MonoError(..),
+  freshUnique,
+  unsafeApply,
+  mkFieldMap,
+  decodeModuleIO,
+  findDeclBody,
+  MonoState(..)
+  ) where
 
 import Prelude
 
@@ -216,7 +225,7 @@ findDeclBody ::
   forall k.
   Text ->
   Module IR_Decl k PurusType Ann ->
-  Maybe (Scope (BVar PurusType) (Exp WithObjects PurusType) (Vars PurusType))
+  Maybe ((Ident,Int),Scope (BVar PurusType) (Exp WithObjects PurusType) (Vars PurusType))
 findDeclBody nm Module {..} = doTrace "findDeclBody" ("NAME: " <> T.unpack nm) $ findDeclBody' (Ident nm) moduleDecls
 
 findDeclBody' ::
@@ -224,14 +233,14 @@ findDeclBody' ::
   (TypeLike ty, Pretty ty, Pretty (KindOf ty)) =>
   Ident ->
   [BindE ty (Exp x ty) (Vars ty)] ->
-  Maybe (Scope (BVar ty) (Exp x ty) (Vars ty))
+  Maybe ((Ident,Int),Scope (BVar ty) (Exp x ty) (Vars ty))
 findDeclBody' ident binds = case findInlineDeclGroup ident binds of
   Nothing -> Nothing
   Just decl -> case decl of
-    NonRecursive nrid nrix e -> Just $ letBindRecursive id nrid nrix e
+    NonRecursive nrid nrix e -> Just ((nrid,nrix),e)
     Recursive xs -> case find (\x -> fst (fst x) == ident) xs of
       Nothing -> Nothing
-      Just ((idnt, indx), e) -> Just $ letBindRecursive id idnt indx e
+      Just ((idnt, indx), e) -> Just ((idnt,indx), e)
 
 {- Turns a Row Type into a Map of field names to Row item data.
 

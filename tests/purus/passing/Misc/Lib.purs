@@ -165,6 +165,9 @@ aBool = true
 aList :: Array Int
 aList = [1,2,3,4,5]
 
+aList2 :: Array Int
+aList2 = Cons 1 (Cons 2 Nil)
+
 {- Functions -}
 
 aFunction :: forall (x :: Type). x -> (forall (y :: Type). y -> Int) -> Int
