@@ -33,8 +33,8 @@ import Data.Void (Void)
 import Language.PureScript.Constants.Prim qualified as C
 import Language.PureScript.CoreFn.Convert.Debug (doTrace)
 import Language.PureScript.CoreFn.FromJSON ()
-import Language.PureScript.CoreFn.Pretty ((<::>))
-import Language.PureScript.CoreFn.Pretty.Common (prettyAsStr)
+import Language.Purus.Pretty ((<::>))
+import Language.Purus.Pretty.Common (prettyAsStr)
 import Language.PureScript.CoreFn.TypeLike
 import Language.PureScript.Names (Ident (..), ProperName (..), ProperNameType (..), Qualified (..), QualifiedBy (..), disqualify, runIdent, runModuleName, showIdent, showQualified)
 import Language.PureScript.PSString (PSString, decodeStringWithReplacement, prettyPrintString)

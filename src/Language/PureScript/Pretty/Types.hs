@@ -35,7 +35,7 @@ import Language.PureScript.PSString (PSString, decodeString, prettyPrintString)
 import Language.PureScript.Pretty.Common (before, objectKeyRequiresQuoting)
 import Language.PureScript.Types (Constraint (..), RowListItem (..), Type (..), TypeVarVisibility (..), WildcardData (..), eqType, rowToSortedList, typeVarVisibilityPrefix, pattern REmptyKinded)
 
-import Language.PureScript.CoreFn.Pretty.Types (prettyTypeStr)
+import Language.Purus.Pretty.Types (prettyTypeStr)
 import Text.PrettyPrint.Boxes (Box (..), hcat, hsep, left, moveRight, nullBox, render, text, top, vcat, (<>))
 
 data PrettyPrintType

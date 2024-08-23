@@ -43,12 +43,12 @@ import Data.Text qualified as T
 import GHC.IO (throwIO)
 import Language.PureScript.AST.SourcePos (SourceAnn)
 import Language.PureScript.CoreFn.Ann (Ann)
-import Language.PureScript.CoreFn.Convert.Debug (doTrace, prettify)
-import Language.PureScript.CoreFn.Convert.IR (Alt (..), BVar (..), BindE (..), Exp (..), FVar (..), Pat (..), expTy, expTy', ppExp, _V, Lit (..))
+import Language.Purus.Debug (doTrace, prettify)
+import Language.Purus.IR (Alt (..), BVar (..), BindE (..), Exp (..), FVar (..), Pat (..), expTy, expTy', ppExp, _V, Lit (..))
 import Language.PureScript.CoreFn.Expr (Bind, PurusType)
 import Language.PureScript.CoreFn.FromJSON ()
 import Language.PureScript.CoreFn.Module (Module (..))
-import Language.PureScript.CoreFn.Pretty (prettyAsStr)
+import Language.Purus.Pretty (prettyAsStr)
 import Language.PureScript.CoreFn.TypeLike (TypeLike (..), unQuantify)
 import Language.PureScript.Label (Label (..))
 import Language.PureScript.Names (Ident (..), ModuleName (..), Qualified (..), QualifiedBy (..), runIdent, pattern ByNullSourcePos)
@@ -65,7 +65,7 @@ import Prettyprinter (Pretty)
 import Data.Set qualified as S
 import Data.Set (Set)
 import Data.Foldable (foldl')
-import Language.PureScript.CoreFn.Convert.IR.Utils
+import Language.Purus.IR.Utils
 
 {- Monomorphizer monad & related utilities -}
 
@@ -122,8 +122,6 @@ freshBVar t = do
    Misc utils for constructing/analyzing expressions
 -}
 
-qualifyNull :: a -> Qualified a
-qualifyNull = Qualified ByNullSourcePos
 
 -- REVIEW: IDK if this is right? Do we need to abstract here?
 -- Construct a Let expression from a list of BindEs and a scoped body
@@ -173,19 +171,7 @@ unsafeApply f e (arg : args) = case unFunction . snd . stripQuantifiers . expTy 
         <> prettyAsStr (expTy f arg)
 unsafeApply _ e [] = e
 
-{- Find the declaration *group* to which a given identifier belongs.
--}
-findInlineDeclGroup ::
-  Ident ->
-  [BindE ty (Exp x ty) a] ->
-  Maybe (BindE ty (Exp x ty) a)
-findInlineDeclGroup _ [] = Nothing
-findInlineDeclGroup ident (NonRecursive ident' bvix expr : rest)
-  | ident == ident' = Just $ NonRecursive ident' bvix expr
-  | otherwise = findInlineDeclGroup ident rest
-findInlineDeclGroup ident (Recursive xs : rest) = case find (\x -> fst (fst x) == ident) xs of
-  Nothing -> findInlineDeclGroup ident rest
-  Just _ -> Just (Recursive xs)
+
 
 letBindRecursive ::
   (TypeLike t, Pretty t, Pretty (KindOf t)) =>
@@ -218,29 +204,7 @@ letBindRecursive f idnt indx _scoped
       B bv -> Just bv
       _ -> Nothing
 
-{- Find the body of a declaration with the given name in the given module.
 
--}
-findDeclBody ::
-  forall k.
-  Text ->
-  Module IR_Decl k PurusType Ann ->
-  Maybe ((Ident,Int),Scope (BVar PurusType) (Exp WithObjects PurusType) (Vars PurusType))
-findDeclBody nm Module {..} = doTrace "findDeclBody" ("NAME: " <> T.unpack nm) $ findDeclBody' (Ident nm) moduleDecls
-
-findDeclBody' ::
-  forall x ty.
-  (TypeLike ty, Pretty ty, Pretty (KindOf ty)) =>
-  Ident ->
-  [BindE ty (Exp x ty) (Vars ty)] ->
-  Maybe ((Ident,Int),Scope (BVar ty) (Exp x ty) (Vars ty))
-findDeclBody' ident binds = case findInlineDeclGroup ident binds of
-  Nothing -> Nothing
-  Just decl -> case decl of
-    NonRecursive nrid nrix e -> Just ((nrid,nrix),e)
-    Recursive xs -> case find (\x -> fst (fst x) == ident) xs of
-      Nothing -> Nothing
-      Just ((idnt, indx), e) -> Just ((idnt,indx), e)
 
 {- Turns a Row Type into a Map of field names to Row item data.
 

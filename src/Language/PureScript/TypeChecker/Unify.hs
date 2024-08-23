@@ -36,7 +36,7 @@ import Language.PureScript.Types (Constraint (..), RowListItem (..), SourceType,
 
 import Data.Bifunctor (bimap)
 import Debug.Trace
-import Language.PureScript.CoreFn.Pretty.Types (prettyTypeStr)
+import Language.Purus.Pretty.Types (prettyTypeStr)
 
 moduleTraces :: Bool
 moduleTraces = True

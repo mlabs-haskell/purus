@@ -14,8 +14,8 @@ import Data.Kind qualified as GHC
 import Data.Maybe (catMaybes)
 import Debug.Trace (trace)
 import Language.PureScript.AST.SourcePos (pattern NullSourceAnn)
-import Language.PureScript.CoreFn.Convert.Debug (doTrace)
-import Language.PureScript.CoreFn.Pretty.Common
+import Language.Purus.Debug (doTrace)
+import Language.Purus.Pretty.Common
 import Language.PureScript.Environment (pattern RecordT, pattern (:->))
 import Prettyprinter (Pretty)
 

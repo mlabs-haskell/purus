@@ -1,4 +1,4 @@
-module Language.PureScript.CoreFn.Pretty (
+module Language.Purus.Pretty (
   module PRETTY,
   ppType,
   smartRender,
@@ -24,9 +24,9 @@ import Language.PureScript.CoreFn.Expr (
 import Language.PureScript.CoreFn.Module (Module)
 import Language.PureScript.Types (Type (..))
 
-import Language.PureScript.CoreFn.Pretty.Common as PRETTY
-import Language.PureScript.CoreFn.Pretty.Expr as PRETTY
-import Language.PureScript.CoreFn.Pretty.Types as PRETTY
+import Language.Purus.Pretty.Common as PRETTY
+import Language.Purus.Pretty.Expr as PRETTY
+import Language.Purus.Pretty.Types as PRETTY
 
 import Prettyprinter (
   Doc,

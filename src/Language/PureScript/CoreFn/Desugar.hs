@@ -66,7 +66,7 @@ import Language.PureScript.CoreFn.Desugar.Utils (
 import Language.PureScript.CoreFn.Expr (Bind (..), CaseAlternative (..), Expr (..), Guard)
 import Language.PureScript.CoreFn.Meta (Meta (..))
 import Language.PureScript.CoreFn.Module
-import Language.PureScript.CoreFn.Pretty (ppType, prettyAsStr, prettyDatatypes, renderExprStr)
+import Language.Purus.Pretty (ppType, prettyAsStr, prettyDatatypes, renderExprStr)
 import Language.PureScript.CoreFn.Utils (exprType, stripQuantifiers)
 import Language.PureScript.Crash (internalError)
 import Language.PureScript.Environment (

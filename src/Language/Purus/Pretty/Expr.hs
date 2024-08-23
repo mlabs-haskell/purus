@@ -1,7 +1,7 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TypeApplications #-}
 
-module Language.PureScript.CoreFn.Pretty.Expr where
+module Language.Purus.Pretty.Expr where
 
 import Prelude hiding ((<>))
 
@@ -28,7 +28,7 @@ import Language.PureScript.Environment (
 import Language.PureScript.Names (Ident, ModuleName, ProperName (..), disqualify, runIdent, showIdent, showQualified)
 import Language.PureScript.PSString (PSString, decodeStringWithReplacement, prettyPrintString)
 
-import Language.PureScript.CoreFn.Pretty.Common (
+import Language.Purus.Pretty.Common (
   LineFormat (MultiLine, OneLine),
   Printer,
   analyzeApp,
@@ -49,7 +49,7 @@ import Language.PureScript.CoreFn.Pretty.Common (
   (<:>),
   (<=>),
  )
-import Language.PureScript.CoreFn.Pretty.Types (prettyType)
+import Language.Purus.Pretty.Types (prettyType)
 import Prettyprinter (
   Doc,
   Pretty (pretty),

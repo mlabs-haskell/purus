@@ -1,4 +1,4 @@
-module Language.PureScript.CoreFn.Pretty.Types (prettyType, prettyTypeStr, prettyTypeTxt) where
+module Language.Purus.Pretty.Types (prettyType, prettyTypeStr, prettyTypeTxt) where
 
 import Prelude hiding ((<>))
 
@@ -15,7 +15,7 @@ import Language.PureScript.Names (OpName (..), ProperName (..), showQualified)
 import Language.PureScript.PSString (prettyPrintString)
 import Language.PureScript.Types (Constraint (..), Type (..), TypeVarVisibility (..), WildcardData (..), eqType)
 
-import Language.PureScript.CoreFn.Pretty.Common (
+import Language.Purus.Pretty.Common (
   LineFormat,
   Printer,
   arrow,

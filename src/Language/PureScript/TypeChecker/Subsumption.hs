@@ -26,7 +26,7 @@ import Language.PureScript.TypeChecker.Unify (alignRowsWith, freshTypeWithKind, 
 import Language.PureScript.Types (RowListItem (..), SourceType, Type (..), eqType, isREmpty, replaceTypeVars, rowFromList)
 
 import Debug.Trace (trace, traceM)
-import Language.PureScript.CoreFn.Pretty.Types (prettyTypeStr)
+import Language.Purus.Pretty.Types (prettyTypeStr)
 
 moduleTraces :: Bool
 moduleTraces = True

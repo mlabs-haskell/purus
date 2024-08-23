@@ -249,21 +249,8 @@ library
     Language.PureScript.Constants.PLC
     Language.PureScript.Constants.PLC.TH
     Language.PureScript.CoreFn
-    Language.PureScript.CoreFn.Convert.Debug
     Language.PureScript.CoreFn.Ann
     Language.PureScript.CoreFn.Binders
-    Language.PureScript.CoreFn.Convert
-    Language.PureScript.CoreFn.Convert.Datatypes
-    Language.PureScript.CoreFn.Convert.Monomorphize
-    Language.PureScript.CoreFn.Convert.Monomorphize.Utils
-    Language.PureScript.CoreFn.Convert.DesugarObjects
-    Language.PureScript.CoreFn.Convert.DesugarCore
-    Language.PureScript.CoreFn.Convert.Inline.Lift
-    Language.PureScript.CoreFn.Convert.Inline.Inline
-    Language.PureScript.CoreFn.Convert.Inline.Instantiate
-    Language.PureScript.CoreFn.Convert.IR
-    Language.PureScript.CoreFn.Convert.IR.Utils
-    Language.PureScript.CoreFn.Convert.ToPIR
     Language.PureScript.CoreFn.CSE
     Language.PureScript.CoreFn.Desugar
     Language.PureScript.CoreFn.Desugar.Utils
@@ -272,10 +259,6 @@ library
     Language.PureScript.CoreFn.Meta
     Language.PureScript.CoreFn.Module
     Language.PureScript.CoreFn.Optimizer
-    Language.PureScript.CoreFn.Pretty
-    Language.PureScript.CoreFn.Pretty.Common
-    Language.PureScript.CoreFn.Pretty.Expr
-    Language.PureScript.CoreFn.Pretty.Types
     Language.PureScript.CoreFn.ToJSON
     Language.PureScript.CoreFn.Traversals
     Language.PureScript.CoreFn.TypeLike
@@ -422,6 +405,28 @@ library
     Language.PureScript.TypeClassDictionaries
     Language.PureScript.Types
     System.IO.UTF8
+
+    Language.Purus.Debug
+    Language.Purus.IR
+    Language.Purus.IR.Utils
+    Language.Purus.Pipeline.Monad
+    Language.Purus.Pipeline.CompileToPIR
+    Language.Purus.Pipeline.DesugarCore
+    Language.Purus.Pipeline.DesugarObjects
+    Language.Purus.Pipeline.EliminateCases
+    Language.Purus.Pipeline.GenerateDatatypes
+    Language.Purus.Pipeline.Inline
+    Language.Purus.Pipeline.Instantiate
+    Language.Purus.Pipeline.Lift
+    Language.Purus.Pretty
+    Language.Purus.Pretty.Common
+    Language.Purus.Pretty.Expr
+    Language.Purus.Pretty.Types
+    Language.Purus.Prim.Data
+    Language.Purus.Utils
+
+
+
   other-modules:
     Data.Text.PureScript
     Language.PureScript.Constants.TH
