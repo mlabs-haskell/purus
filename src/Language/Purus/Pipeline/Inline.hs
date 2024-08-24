@@ -255,6 +255,7 @@ inlineWithData = transformM go''
               pure e
             _ -> pure fv
           _ -> pure fv
+        V b@B{} -> pure $ V b
         AppE e1 e2 -> AppE <$> go e1 <*> go e2
         CaseE t scrut alts -> do
           scrut' <- go scrut
@@ -273,7 +274,6 @@ inlineWithData = transformM go''
         LitE t lit -> LitE t <$> traverse go lit
         TyInstE t e -> TyInstE t <$> go e
         TyAbs bv e -> TyAbs bv <$> go e
-        other -> pure other
 
 doneInlining :: MonoExp -> InlineState Bool
 doneInlining me = do

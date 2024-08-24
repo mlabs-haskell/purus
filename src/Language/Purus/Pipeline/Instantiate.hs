@@ -5,30 +5,26 @@
 
 module Language.Purus.Pipeline.Instantiate where
 
-import Data.Map qualified as M
-import Language.PureScript.CoreFn.FromJSON ()
-import Language.Purus.IR (
-  Exp (..),
-  expTy,
- )
-import Language.Purus.IR.Utils
 import Prelude
 
-import Data.Foldable (foldl')
 import Data.Map (Map)
+import Data.Map qualified as M
+
+import Data.Foldable (foldl')
+
 import Data.Text (Text)
+
 import Language.PureScript.CoreFn.TypeLike (TypeLike (..), instantiates)
 
-import Language.PureScript.CoreFn.Expr (PurusType)
-
-import Control.Lens (view, _2)
-
+import Language.Purus.IR.Utils
 import Language.Purus.Debug
-import Language.Purus.IR (analyzeApp)
-import Language.Purus.Pipeline.Lift.Types
+import Language.Purus.IR ( analyzeApp, Exp(..), expTy )
 import Language.Purus.Pretty.Common (prettyStr)
 
-instantiateTypes :: MonoExp -> MonoExp
+import Control.Lens (view, _2)
+import Prettyprinter (Pretty)
+
+instantiateTypes :: forall x (t :: *). (TypeLike t, Pretty t, Pretty (KindOf t)) => Exp x t (Vars t)  -> Exp x t (Vars t)
 instantiateTypes = \case
   V v -> V v
   LitE t lit -> LitE t $ instantiateTypes <$> lit
@@ -41,11 +37,10 @@ instantiateTypes = \case
   LetE decls body -> LetE (mapBind (const (viaExp instantiateTypes)) <$> decls) (viaExp instantiateTypes body)
   AccessorE x t lbl obj -> AccessorE x t lbl (instantiateTypes obj)
   ObjectUpdateE x t e copy fs -> ObjectUpdateE x t (instantiateTypes e) copy (fmap instantiateTypes <$> fs)
-  -- I'm not sure what to do for TyInstE or TyAbs TODO: Ask Koz
   TyAbs t inner -> TyAbs t (instantiateTypes inner)
-  other -> other
+  TyInstE t inner -> TyInstE t (instantiateTypes inner)
 
-instantiateApp :: MonoExp -> MonoExp
+instantiateApp :: forall x (t :: *). (Pretty t, TypeLike t, Pretty (KindOf t)) => Exp x t (Vars t) -> Exp x t (Vars t)
 instantiateApp e = case analyzeApp e of
   Nothing -> e
   Just (f, args) ->
@@ -68,7 +63,7 @@ instantiateApp e = case analyzeApp e of
             ]
      in doTrace "instantiateTypes" msg $ foldl' AppE f' args
   where
-    go :: Map Text PurusType -> [Text] -> MonoExp -> MonoExp
+    go :: Map Text t -> [Text] -> Exp x t (Vars t) -> Exp x t (Vars t)
     go _ [] ex = ex
     go dict (v : vs) ex = case M.lookup v dict of
       Nothing -> ex
@@ -78,10 +73,11 @@ instantiateApp e = case analyzeApp e of
    and returns a Map of type variable substitutions.
 -}
 getInstantiations ::
+  TypeLike t =>
   [Text] ->
-  [PurusType] ->
-  [PurusType] ->
-  M.Map Text PurusType
+  [t] ->
+  [t] ->
+  M.Map Text t
 getInstantiations [] _ _ = M.empty
 getInstantiations _ [] _ = M.empty
 getInstantiations _ _ [] = M.empty

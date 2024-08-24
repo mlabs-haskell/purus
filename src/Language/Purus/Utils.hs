@@ -54,20 +54,20 @@ mkFieldMap fs = M.fromList $ (\x -> (runLabel (rowListLabel x), x)) <$> (fst . r
 {- Find the body of a declaration with the given name in the given module.
 
 -}
-findDeclBody ::
+findMain ::
   forall k.
   Text ->
   Module IR_Decl k PurusType Ann ->
   Maybe ((Ident, Int), Scope (BVar PurusType) (Exp WithObjects PurusType) (Vars PurusType))
-findDeclBody nm Module {..} = doTrace "findDeclBody" ("NAME: " <> T.unpack nm) $ findDeclBody' (Ident nm) moduleDecls
+findMain nm Module {..} = doTrace "findDeclBody" ("NAME: " <> T.unpack nm) $ findMain' (Ident nm) moduleDecls
 
-findDeclBody' ::
+findMain' ::
   forall x ty.
   (TypeLike ty, Pretty ty, Pretty (KindOf ty)) =>
   Ident ->
   [BindE ty (Exp x ty) (Vars ty)] ->
   Maybe ((Ident, Int), Scope (BVar ty) (Exp x ty) (Vars ty))
-findDeclBody' ident binds = case findInlineDeclGroup ident binds of
+findMain' ident binds = case findInlineDeclGroup ident binds of
   Nothing -> Nothing
   Just decl -> case decl of
     NonRecursive nrid nrix e -> Just ((nrid, nrix), e)

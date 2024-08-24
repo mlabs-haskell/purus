@@ -3,7 +3,7 @@
 {-# OPTIONS_GHC -Wno-unrecognised-pragmas #-}
 
 {-# HLINT ignore "Use camelCase" #-}
-module Language.Purus.Pipeline.DesugarCore where
+module Language.Purus.Pipeline.DesugarCore (desugarCoreModule, matchVarLamAbs) where
 
 import Prelude
 
@@ -37,7 +37,7 @@ import Language.PureScript.CoreFn.Expr (
   PurusType,
   _Var,
  )
-import Language.PureScript.CoreFn.Module (Module (..))
+import Language.PureScript.CoreFn.Module (Module (..), Datatypes)
 import Language.PureScript.CoreFn.TypeLike (TypeLike (..))
 import Language.PureScript.CoreFn.Utils (exprType)
 import Language.PureScript.Environment (mkCtorTy, mkTupleTyName)
@@ -152,11 +152,12 @@ tyAbsMany vars expr = foldrM (uncurry tyAbs) expr vars
         FIXME: We don't have a linker yet so in `desugarCoreModule` we just pass an empty list.
 -}
 
-desugarCoreModule' :: [IR_Decl] -> Module (Bind Ann) PurusType PurusType Ann -> DesugarCore (Module IR_Decl PurusType PurusType Ann)
-desugarCoreModule' imports Module {..} = do
+desugarCoreModule :: Datatypes PurusType PurusType -> [IR_Decl] -> Module (Bind Ann) PurusType PurusType Ann -> DesugarCore (Module IR_Decl PurusType PurusType Ann)
+desugarCoreModule inScope imports Module {..} = do
   decls' <- traverse (freshly . desugarCoreDecl . doEtaReduce) moduleDecls
   decls <- bindLocalTopLevelDeclarations decls'
-  pure $ Module {moduleDecls = decls, ..}
+  let allDatatypes = moduleDataTypes <> inScope
+  pure $ Module {moduleDecls = decls, moduleDataTypes = allDatatypes, ..}
   where
     doEtaReduce = \case
       NonRec a nm body -> NonRec a nm (runEtaReduce body)
@@ -312,11 +313,6 @@ desugarCore' (Case _ann ty scrutinees alts) = do
   scrutinees' <- desugarCore $ tuplify scrutinees
   alts' <- traverse desugarAlt alts
   pure $ CaseE ty scrutinees' alts'
-
-bindAllNames :: Bind Ann -> DesugarCore ()
-bindAllNames = \case
-  NonRec _ ident _ -> void $ bind ident
-  Rec xs -> (traverse_ ((void . bind) . snd . fst) xs)
 
 rebindInScope ::
   BindE PurusType (Exp WithObjects PurusType) (Vars PurusType) ->

@@ -6,8 +6,17 @@
 
 module Language.Purus.Pipeline.CompileToPIR (compileToPIR) where
 
+import Prelude
+
 import Data.Map qualified as M
 import Data.Text qualified as T
+
+import Control.Monad (
+  foldM,
+ )
+import Control.Monad.Except (MonadError (..))
+import Data.Bifunctor (Bifunctor (..))
+import Data.List.NonEmpty qualified as NE
 
 import Language.PureScript.CoreFn.FromJSON ()
 import Language.PureScript.Names (
@@ -16,37 +25,12 @@ import Language.PureScript.Names (
   runIdent,
  )
 import Language.PureScript.PSString (prettyPrintString)
-import Prelude
-
-import Language.Purus.IR qualified as IR
-import Language.Purus.IR.Utils (Vars, WithoutObjects, toExp)
-import PlutusCore (Unique (..))
-import PlutusCore qualified as PLC
-import PlutusIR qualified as PIR
-
-import Bound (Var (..))
-import Control.Monad (
-  foldM,
- )
-import Control.Monad.Except (MonadError (..))
-import Data.Bifunctor (Bifunctor (..))
-import Data.List.NonEmpty qualified as NE
 import Language.PureScript.CoreFn.Module (
   Datatypes,
  )
 import Language.PureScript.CoreFn.TypeLike (TypeLike (..))
-import Language.Purus.Pipeline.GenerateDatatypes (
-  mkKind,
-  toPIRType,
- )
-import Language.Purus.Pipeline.GenerateDatatypes.Utils (
-  bindTV,
-  getConstructorName,
- )
-
--- mainly for the module (we might need it for constructors? idk)
-
 import Language.PureScript.Constants.PLC (defaultFunMap)
+
 import Language.Purus.Debug (doTraceM)
 import Language.Purus.IR (
   BVar (..),
@@ -58,6 +42,8 @@ import Language.Purus.IR (
   expTy,
   expTy',
  )
+import Language.Purus.IR qualified as IR
+import Language.Purus.IR.Utils (Vars, WithoutObjects, toExp)
 import Language.Purus.Pipeline.Monad (PlutusContext)
 import Language.Purus.Pretty.Common (prettyStr)
 import Language.Purus.Types (PIRTerm)
@@ -65,8 +51,22 @@ import PlutusCore.Default (
   DefaultFun,
   DefaultUni,
  )
+import Language.Purus.Pipeline.GenerateDatatypes.Utils (
+  bindTV,
+  getConstructorName,
+ )
+import Language.Purus.Pipeline.GenerateDatatypes (
+  mkKind,
+  toPIRType,
+ )
+
 import PlutusIR (Binding (TermBind), Name (Name), Strictness (..), Term (Builtin), VarDecl (VarDecl))
 import PlutusIR.MkPir (mkConstant)
+import PlutusCore (Unique (..))
+import PlutusCore qualified as PLC
+import PlutusIR qualified as PIR
+
+import Bound (Var (..))
 
 type PIRTermBind = Binding PLC.TyName Name DefaultUni DefaultFun ()
 
