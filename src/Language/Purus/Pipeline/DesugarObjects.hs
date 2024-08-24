@@ -21,10 +21,12 @@ import Control.Monad (foldM)
 import Language.PureScript.Constants.Prim qualified as C
 import Language.PureScript.CoreFn.Ann (Ann)
 
+import Language.PureScript.CoreFn.Desugar.Utils (properToIdent)
 import Language.PureScript.CoreFn.Expr (
   Expr (..),
  )
 import Language.PureScript.CoreFn.FromJSON ()
+import Language.PureScript.CoreFn.TypeLike (TypeLike (..))
 import Language.PureScript.CoreFn.Utils (exprType)
 import Language.PureScript.Environment (kindType, mkTupleTyName, pattern RecordT, pattern (:->))
 import Language.PureScript.Names (Ident (..), coerceProperName)
@@ -38,9 +40,8 @@ import Language.PureScript.Types (
   srcTypeApp,
   srcTypeConstructor,
  )
-import Language.PureScript.CoreFn.Desugar.Utils (properToIdent)
-import Language.PureScript.CoreFn.TypeLike (TypeLike (..))
 
+import Language.Purus.Debug
 import Language.Purus.IR (
   Alt (..),
   BVar (..),
@@ -56,18 +57,17 @@ import Language.Purus.IR (
   pattern (:~>),
  )
 import Language.Purus.IR.Utils
-import Language.Purus.Debug
-import Language.Purus.Pretty (
-  prettyTypeStr,
-  prettyStr,
- )
 import Language.Purus.Pipeline.Monad
+import Language.Purus.Pretty (
+  prettyStr,
+  prettyTypeStr,
+ )
 import Language.Purus.Utils (mkFieldMap)
 
 import Bound (Var (..))
 import Bound.Scope
 
-import Control.Lens (ix, to, (&), (.~), (^..), cosmos)
+import Control.Lens (cosmos, ix, to, (&), (.~), (^..))
 
 import Control.Monad.Except (throwError)
 
@@ -141,13 +141,13 @@ allTypes e = e ^.. cosmos . to exprType
 desugarObjects ::
   Exp WithObjects SourceType (Vars SourceType) ->
   Counter (Exp WithoutObjects Ty (Vars Ty))
-desugarObjects  __expr = do
+desugarObjects __expr = do
   result <- go __expr
   let msg =
         "INPUT:\n"
           <> ppExp __expr
           <> "\n\nINPUT TY:\n"
-          <> prettyStr (expTy id  __expr)
+          <> prettyStr (expTy id __expr)
           <> "\n\nRESULT:\n"
           <> ppExp result
           <> "\n\nRESULT TY:\n"
@@ -155,8 +155,9 @@ desugarObjects  __expr = do
   doTraceM "desugarObjects" msg
   pure result
   where
-    go :: Exp WithObjects SourceType (Vars SourceType)
-       -> Counter (Exp WithoutObjects Ty (Vars Ty))
+    go ::
+      Exp WithObjects SourceType (Vars SourceType) ->
+      Counter (Exp WithoutObjects Ty (Vars Ty))
     go expression = case expression of
       LitE ty lit -> do
         ty' <- goType ty
@@ -166,7 +167,7 @@ desugarObjects  __expr = do
       LamE bv e -> do
         bv' <- updateBV bv
         let unscoped = toExp e
-        ex <-  fromExp <$>  desugarObjects unscoped
+        ex <- fromExp <$> desugarObjects unscoped
         pure $ LamE bv' ex
       AppE e1 e2 -> do
         e2' <- desugarObjects e2
@@ -177,7 +178,7 @@ desugarObjects  __expr = do
         scrutinees' <- desugarObjects scrutinee
         alts' <- traverse goAlt alts
         pure $ CaseE ty' scrutinees' alts'
-      LetE  bound e -> do
+      LetE bound e -> do
         bound' <- goBinds bound
         let unscoped = toExp e
         e' <- toScope <$> desugarObjects unscoped
@@ -285,7 +286,7 @@ desugarObjects  __expr = do
               let fs = sortOn fst fs'
                   len = length fs
                   tupTyName = mkTupleTyName len
-                  bareFields =  snd <$> fs
+                  bareFields = snd <$> fs
               bareFields' <- traverse desugarObjects bareFields
               let types' = expTy id <$> bareFields'
                   types = types' <> [foldl' applyType (TyCon tupTyName) types']
@@ -296,7 +297,7 @@ desugarObjects  __expr = do
               assembleDesugaredObjectLit ctorExp ctorType bareFields'
 
         goType :: SourceType -> Counter Ty
-        goType =  tryConvertType
+        goType = tryConvertType
 
         updateBV :: BVar SourceType -> Counter (BVar Ty)
         updateBV (BVar bvIx bvTy bvNm) = do
@@ -362,7 +363,7 @@ desugarObjects  __expr = do
           resultExpr <- assembleDesugaredObjectLit ctorExp ctorType =<< resultTemplate
           e' <- go e
           let scoped = toScope resultExpr
-              altBranch = F <$> UnguardedAlt  ctorBndr scoped
+              altBranch = F <$> UnguardedAlt ctorBndr scoped
           pure $ CaseE ctorType e' [altBranch]
 
         desugarObjectAccessor ::
@@ -394,7 +395,7 @@ desugarObjects  __expr = do
               rhs :: Exp WithoutObjects Ty (Vars Ty)
               rhs = V . B $ BVar n fieldTy dummyNm
               altBranch = F <$> UnguardedAlt ctorBndr (toScope rhs)
-          e' <- desugarObjects  e
+          e' <- desugarObjects e
           let result = CaseE fieldTy e' [altBranch]
               msg =
                 "INPUT EXP:\n"

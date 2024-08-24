@@ -9,10 +9,10 @@ import Data.Text (Text)
 
 import Language.PureScript.Names
 
-import PlutusIR qualified as PIR
 import PlutusCore qualified as PLC
+import PlutusIR qualified as PIR
 
-import Control.Lens.TH 
+import Control.Lens.TH
 
 type PIRDatatype =
   PIR.Datatype

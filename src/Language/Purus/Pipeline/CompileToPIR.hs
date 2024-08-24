@@ -18,9 +18,8 @@ import Language.PureScript.Names (
 import Language.PureScript.PSString (prettyPrintString)
 import Prelude
 
-
-import Language.Purus.IR.Utils ( Vars, WithoutObjects, toExp )
 import Language.Purus.IR qualified as IR
+import Language.Purus.IR.Utils (Vars, WithoutObjects, toExp)
 import PlutusCore (Unique (..))
 import PlutusCore qualified as PLC
 import PlutusIR qualified as PIR
@@ -32,21 +31,23 @@ import Control.Monad (
 import Control.Monad.Except (MonadError (..))
 import Data.Bifunctor (Bifunctor (..))
 import Data.List.NonEmpty qualified as NE
-import Language.Purus.Pipeline.GenerateDatatypes
-    ( toPIRType, mkKind )
-import Language.Purus.Pipeline.GenerateDatatypes.Utils
-    ( bindTV, getConstructorName ) 
 import Language.PureScript.CoreFn.Module (
   Datatypes,
  )
 import Language.PureScript.CoreFn.TypeLike (TypeLike (..))
+import Language.Purus.Pipeline.GenerateDatatypes (
+  mkKind,
+  toPIRType,
+ )
+import Language.Purus.Pipeline.GenerateDatatypes.Utils (
+  bindTV,
+  getConstructorName,
+ )
 
 -- mainly for the module (we might need it for constructors? idk)
 
 import Language.PureScript.Constants.PLC (defaultFunMap)
-import Language.Purus.Types ( PIRTerm )
-import Language.Purus.Pipeline.Monad ( PlutusContext )
-import Language.Purus.Debug ( doTraceM )
+import Language.Purus.Debug (doTraceM)
 import Language.Purus.IR (
   BVar (..),
   BindE (..),
@@ -57,22 +58,24 @@ import Language.Purus.IR (
   expTy,
   expTy',
  )
+import Language.Purus.Pipeline.Monad (PlutusContext)
+import Language.Purus.Pretty.Common (prettyStr)
+import Language.Purus.Types (PIRTerm)
 import PlutusCore.Default (
   DefaultFun,
   DefaultUni,
  )
 import PlutusIR (Binding (TermBind), Name (Name), Strictness (..), Term (Builtin), VarDecl (VarDecl))
 import PlutusIR.MkPir (mkConstant)
-import Language.Purus.Pretty.Common (prettyStr)
 
 type PIRTermBind = Binding PLC.TyName Name DefaultUni DefaultFun ()
 
 compileToPIR ::
   Datatypes IR.Kind Ty ->
   Exp WithoutObjects Ty (Vars Ty) ->
-  PlutusContext  PIRTerm
-compileToPIR _datatypes  _exp = do
-  res <- compileToPIR' _datatypes  _exp
+  PlutusContext PIRTerm
+compileToPIR _datatypes _exp = do
+  res <- compileToPIR' _datatypes _exp
   let msg =
         "INPUT:\n"
           <> prettyStr _exp
@@ -85,7 +88,7 @@ compileToPIR _datatypes  _exp = do
 compileToPIR' ::
   Datatypes IR.Kind Ty ->
   Exp WithoutObjects Ty (Vars Ty) ->
-  PlutusContext  PIRTerm
+  PlutusContext PIRTerm
 compileToPIR' datatypes _exp =
   doTraceM "compileToPIR'" (prettyStr _exp) >> case _exp of
     V x -> case x of
@@ -103,7 +106,7 @@ compileToPIR' datatypes _exp =
       B (BVar bvix _ (runIdent -> nm)) -> pure $ PIR.Var () (Name nm $ Unique bvix)
     LitE _ lit -> compileToPIRLit lit
     lam@(LamE (BVar bvIx bvT bvNm) body) -> do
-      let lty = funTy bvT (expTy' id  body)
+      let lty = funTy bvT (expTy' id body)
       ty' <- toPIRType bvT
       let nm = Name (runIdent bvNm) $ Unique bvIx
           body' = toExp body
@@ -125,7 +128,7 @@ compileToPIR' datatypes _exp =
       e2' <- compileToPIR datatypes e2
       pure $ PIR.Apply () e1' e2'
     LetE binds body -> do
-      boundTerms <- foldM convertBind [] binds 
+      boundTerms <- foldM convertBind [] binds
       body' <- compileToPIR datatypes $ toExp body
       case NE.nonEmpty boundTerms of
         -- REVIEW: For simplicity we assume here that all let bindings are mutually recursive.
@@ -148,7 +151,7 @@ compileToPIR' datatypes _exp =
     convertBind ::
       [PIRTermBind] ->
       BindE Ty (Exp WithoutObjects Ty) (Vars Ty) ->
-      PlutusContext  [PIRTermBind]
+      PlutusContext [PIRTermBind]
     convertBind acc = \case
       NonRecursive ident bvix expr -> do
         let unscoped = toExp expr
@@ -158,7 +161,7 @@ compileToPIR' datatypes _exp =
         xs' <- traverse (uncurry goBind . second toExp) xs
         pure $ xs' <> acc
       where
-        goBind :: (Ident, Int) -> Exp WithoutObjects Ty (Var (BVar Ty) (FVar Ty)) -> PlutusContext  PIRTermBind
+        goBind :: (Ident, Int) -> Exp WithoutObjects Ty (Var (BVar Ty) (FVar Ty)) -> PlutusContext PIRTermBind
         goBind (ident, i) expr = do
           let nm = Name (runIdent ident) $ Unique i
           ty <- toPIRType (expTy id expr)
@@ -168,7 +171,7 @@ compileToPIR' datatypes _exp =
 
     compileToPIRLit ::
       Lit WithoutObjects (Exp WithoutObjects Ty (Vars Ty)) ->
-      PlutusContext  PIRTerm
+      PlutusContext PIRTerm
     compileToPIRLit = \case
       IntL i -> pure $ mkConstant () i
       StringL str ->

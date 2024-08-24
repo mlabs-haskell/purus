@@ -1,24 +1,25 @@
 {-# LANGUAGE StandaloneDeriving #-}
-{-# LANGUAGE UndecidableInstances #-}
 {-# LANGUAGE StarIsType #-}
+{-# LANGUAGE UndecidableInstances #-}
+
 module Language.Purus.Pipeline.Monad where
 
-import Prelude
 import Control.Monad.State
+import Prelude
 
 import Control.Lens.Operators
-import Control.Monad.Trans.Except (ExceptT)
-import Language.PureScript.Names
-import Language.PureScript.CoreFn.Module
-import Language.PureScript.CoreFn.Expr
-import Language.Purus.IR.Utils
-import Data.Map (Map)
-import Data.Map qualified as M
 import Control.Monad.Except (MonadError)
 import Control.Monad.Reader
+import Control.Monad.Trans.Except (ExceptT)
+import Data.Map (Map)
+import Data.Map qualified as M
 import Language.PureScript.CoreFn (Ann)
+import Language.PureScript.CoreFn.Expr
+import Language.PureScript.CoreFn.Module
+import Language.PureScript.Names
+import Language.Purus.IR.Utils
 import Language.Purus.Types
- 
+
 {- [Current Compilation Pipeline Structure]
      - That is, "current" before the `Language.Purus` reorganization.
      - It's a bit of a mess so I gotta remember how it all works before cleaning it up :p
@@ -53,7 +54,6 @@ NOTE: I'm "factoring out" the Supply part of the types. *Everything* here needs
 -- NOTE: After core desugaring, we're only ever concerned with a single module
          (and its scope). We should make sure that dependencies (including datatypes)
          are resolved after this point.
-
 
 2. Lift :: (Ident,Int)
         -> Exp WithObjects PurusType
@@ -115,7 +115,6 @@ NOTE: I'm "factoring out" the Supply part of the types. *Everything* here needs
  - This needs updated to use the Exp x t (Vars t) concrete style (which is vastly superior)
  - Need to split some of the PIR utils out into their own utility
 
-
 Major changes to make while fixing all this:
   - Delete the "IR.Bindings" maps from let expressions and anywhere else I left them
   - Refactor using the new IR utils, especially toExp/fromExp/viaExp and foldBind/Alt/etc
@@ -135,37 +134,37 @@ So there are basically 4 different phases:
 -}
 
 newtype CounterT m a = CounterT {runCounterT :: StateT Int m a}
-  deriving newtype (Functor, Applicative, Monad,  MonadTrans)
+  deriving newtype (Functor, Applicative, Monad, MonadTrans)
 
-deriving instance MonadError e m => MonadError e (CounterT m)
-deriving instance MonadReader r m => MonadReader r (CounterT m)
+deriving instance (MonadError e m) => MonadError e (CounterT m)
+deriving instance (MonadReader r m) => MonadReader r (CounterT m)
 
-instance MonadState s m => MonadState s (CounterT m) where
+instance (MonadState s m) => MonadState s (CounterT m) where
   get = CounterT $ runCounterT (lift get)
   put x = CounterT $ runCounterT (put x)
 
 class MonadCounter (m :: * -> *) where
   next :: m Int
 
-instance Monad m => MonadCounter (CounterT m) where
+instance (Monad m) => MonadCounter (CounterT m) where
   next = CounterT $ do
     s <- get
     id += 1
     pure s
 
-instance Monad m => MonadCounter (StateT s (CounterT m)) where
+instance (Monad m) => MonadCounter (StateT s (CounterT m)) where
   next = lift next
 
-newtype PurusM s a = PurusM {runPurusM :: StateT s (CounterT (Either String))  a}
+newtype PurusM s a = PurusM {runPurusM :: StateT s (CounterT (Either String)) a}
   deriving newtype (Functor, Applicative, Monad, MonadCounter, MonadError String, MonadState s)
 
 instance MonadReader r (PurusM r) where
-  ask =  get
+  ask = get
 
   local f act = do
     s <- get
     id %= f
-    res <-  act
+    res <- act
     id .= s
     pure res
 
@@ -190,7 +189,7 @@ newtype PlutusContext a = PlutusContext (PurusM DatatypeDictionary a)
   deriving newtype (Functor, Applicative, Monad, MonadError String, MonadCounter, MonadState DatatypeDictionary, MonadReader DatatypeDictionary)
 
 runPlutusContext :: DatatypeDictionary -> PlutusContext a -> CounterT (Either String) a
-runPlutusContext dtdict (PlutusContext psm) = evalPurusM dtdict psm 
+runPlutusContext dtdict (PlutusContext psm) = evalPurusM dtdict psm
 
 newtype Counter a = Counter (PurusM () a)
   deriving newtype (Functor, Applicative, Monad, MonadError String, MonadCounter)

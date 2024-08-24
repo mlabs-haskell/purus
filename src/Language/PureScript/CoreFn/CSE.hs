@@ -245,11 +245,12 @@ generateIdentFor d e =
   at d . non mempty . at e %%<~ \case
     Nothing -> freshIdent (nameHint e) <&> \ident -> ((True, ident), Just ident)
     Just ident -> pure ((False, ident), Just ident)
+  where
     -- A reminder: as with %%=, the first element of the returned pair is the
     -- final result of the expression, and the second element is the value to
     -- stuff back through the lens into the state. (The difference is that %%<~
     -- enables doing monadic work in the RHS, namely `freshIdent` here.)
-  where
+
     nameHint = \case
       App _ v1 v2
         | Var _ _ n <- v1

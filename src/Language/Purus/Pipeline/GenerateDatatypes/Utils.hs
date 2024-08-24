@@ -1,4 +1,5 @@
 {-# OPTIONS_GHC -Wno-orphans #-}
+
 module Language.Purus.Pipeline.GenerateDatatypes.Utils where
 
 import Prelude
@@ -10,9 +11,12 @@ import Data.Text qualified as T
 
 import Control.Monad.State (gets, modify)
 import Data.Foldable (foldl')
-import Debug.Trace ( traceM )
+import Debug.Trace (traceM)
 
 import Language.PureScript.Constants.Prim qualified as C
+import Language.PureScript.CoreFn.TypeLike (
+  TypeLike (splitFunTyParts),
+ )
 import Language.PureScript.Names (
   Ident (..),
   ProperName (..),
@@ -24,24 +28,25 @@ import Language.PureScript.Names (
   showIdent,
   showQualified,
  )
-import Language.PureScript.CoreFn.TypeLike
-    ( TypeLike(splitFunTyParts) )
 
+import Language.Purus.Debug (doTraceM)
 import Language.Purus.IR (
   BVar (BVar),
   Ty (..),
  )
 import Language.Purus.IR qualified as IR
-import Language.Purus.Debug ( doTraceM )
-import Language.Purus.Pipeline.Monad
-    ( MonadCounter(next), PlutusContext )
-import Language.Purus.Types
-    ( constrNames,
-      destructors,
-      tyNames,
-      tyVars,
-      vars,
-      DatatypeDictionary(_tyVars) )
+import Language.Purus.Pipeline.Monad (
+  MonadCounter (next),
+  PlutusContext,
+ )
+import Language.Purus.Types (
+  DatatypeDictionary (_tyVars),
+  constrNames,
+  destructors,
+  tyNames,
+  tyVars,
+  vars,
+ )
 
 import PlutusCore qualified as PLC
 import PlutusIR (
@@ -53,8 +58,8 @@ import PlutusIR qualified as PIR
 import Control.Lens (
   ix,
   over,
-  view,
   preview,
+  view,
   (^?),
   _1,
  )
@@ -63,7 +68,6 @@ import Control.Monad.Except (
  )
 import Prettyprinter (Pretty (..))
 import System.Random (mkStdGen, randomR)
-
 
 foldr1Err :: (Foldable t) => String -> (a -> a -> a) -> t a -> a
 foldr1Err msg f ta

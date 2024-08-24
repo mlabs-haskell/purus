@@ -17,13 +17,6 @@ import Data.Maybe (fromJust, isJust)
 
 import Language.PureScript.Constants.Prim qualified as C
 import Language.PureScript.Constants.Purus qualified as C
-import Language.PureScript.Names (
-  ProperName (..),
-  ProperNameType (..),
-  Qualified (..),
-  showQualified,
-  pattern ByThisModuleName,
- )
 import Language.PureScript.CoreFn.Module (
   CtorDecl (..),
   Datatypes,
@@ -36,34 +29,44 @@ import Language.PureScript.CoreFn.Module (
  )
 import Language.PureScript.CoreFn.TypeLike
 import Language.PureScript.Environment (pattern (:->))
+import Language.PureScript.Names (
+  ProperName (..),
+  ProperNameType (..),
+  Qualified (..),
+  showQualified,
+  pattern ByThisModuleName,
+ )
 import Language.PureScript.Types (
   SourceType,
   Type (TypeConstructor),
  )
 
+import Language.Purus.Debug (doTraceM)
 import Language.Purus.IR (
-  FVar,
   BVar,
   Exp (..),
+  FVar,
   Ty (..),
   ppTy,
  )
 import Language.Purus.IR qualified as IR
-import Language.Purus.Debug ( doTraceM )
-import Language.Purus.Pretty.Common ( prettyStr )
-import Language.Purus.Pretty.Types ( prettyTypeStr )
-import Language.Purus.IR.Utils ( WithoutObjects )
-import Language.Purus.Pipeline.Monad
-    ( MonadCounter(next), PlutusContext )
-import Language.Purus.Types ( destructors, pirDatatypes, PIRType )
-import Language.Purus.Pipeline.GenerateDatatypes.Utils
-    ( foldr1Err,
-      mkTyName,
-      mkConstrName,
-      mkNewTyVar,
-      getBoundTyVarName,
-      bindTV,
-      prettyQPN )
+import Language.Purus.IR.Utils (WithoutObjects)
+import Language.Purus.Pipeline.GenerateDatatypes.Utils (
+  bindTV,
+  foldr1Err,
+  getBoundTyVarName,
+  mkConstrName,
+  mkNewTyVar,
+  mkTyName,
+  prettyQPN,
+ )
+import Language.Purus.Pipeline.Monad (
+  MonadCounter (next),
+  PlutusContext,
+ )
+import Language.Purus.Pretty.Common (prettyStr)
+import Language.Purus.Pretty.Types (prettyTypeStr)
+import Language.Purus.Types (PIRType, destructors, pirDatatypes)
 
 import PlutusCore qualified as PLC
 import PlutusIR (
@@ -87,7 +90,7 @@ generateDatatypes ::
   Datatypes IR.Kind Ty ->
   Exp WithoutObjects Ty (Var (BVar Ty) (FVar Ty)) ->
   PlutusContext ()
-generateDatatypes datatypes main =  mkPIRDatatypes datatypes (allTypeConstructors main)
+generateDatatypes datatypes main = mkPIRDatatypes datatypes (allTypeConstructors main)
   where
     allTypeConstructors :: Exp WithoutObjects Ty (Var (BVar Ty) (FVar Ty)) -> S.Set (Qualified (ProperName 'TypeName))
     allTypeConstructors _ = datatypes ^. tyDict . to M.keys . to S.fromList
@@ -218,6 +221,3 @@ sourceTypeToKind _t =
       t2' <- sourceTypeToKind t2
       pure $ PIR.KindArrow () t1' t2'
     other -> Left $ "Error: PureScript type '" <> prettyTypeStr other <> " is not a valid Plutus Kind"
-
-
-

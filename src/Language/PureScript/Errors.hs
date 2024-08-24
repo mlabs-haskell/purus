@@ -39,7 +39,6 @@ import Language.PureScript.CST.Errors qualified as CST
 import Language.PureScript.CST.Print qualified as CST
 import Language.PureScript.Constants.Libs qualified as C
 import Language.PureScript.Constants.Prim qualified as C
-import Language.Purus.Pretty.Types (prettyTypeStr)
 import Language.PureScript.Crash (internalError)
 import Language.PureScript.Label (Label (..))
 import Language.PureScript.Names
@@ -50,6 +49,7 @@ import Language.PureScript.Publish.BoxesHelpers qualified as BoxHelpers
 import Language.PureScript.Roles (Role, displayRole)
 import Language.PureScript.Traversals (sndM)
 import Language.PureScript.Types (Constraint (..), ConstraintData (..), RowListItem (..), SourceConstraint, SourceType, Type (..), eraseKindApps, everywhereOnTypesTopDownM, getAnnForType, isMonoType, overConstraintArgs, rowFromList, rowToList, srcTUnknown)
+import Language.Purus.Pretty.Types (prettyTypeStr)
 import System.Console.ANSI qualified as ANSI
 import System.FilePath (makeRelative)
 import Text.PrettyPrint.Boxes qualified as Box

@@ -8,20 +8,21 @@ import Data.Text (Text)
 import Data.Set qualified as S
 
 import Language.PureScript.CoreFn.Expr (PurusType)
-import Language.PureScript.Names
-    ( runIdent,
-      ModuleName(ModuleName),
-      QualifiedBy(ByModuleName),
-      Qualified(Qualified),
-      Ident(Ident, GenIdent) )
-import Language.PureScript.CoreFn.TypeLike 
+import Language.PureScript.CoreFn.TypeLike
+import Language.PureScript.Names (
+  Ident (GenIdent, Ident),
+  ModuleName (ModuleName),
+  Qualified (Qualified),
+  QualifiedBy (ByModuleName),
+  runIdent,
+ )
 
+import Language.Purus.Debug (prettify)
 import Language.Purus.IR
 import Language.Purus.IR.Utils
 import Language.Purus.Pretty.Common
-import Language.Purus.Debug (prettify)
 
-import Bound ( Scope, Var(F) )
+import Bound (Scope, Var (F))
 import Prettyprinter
 
 -- sorry Koz i really want to be able to fit type sigs on one line
@@ -81,12 +82,13 @@ data LiftResult = LiftResult
          (and it's very easy to throw a *useful* error if we made a mistake and missed one)
 -}
 pattern LiftedHole :: Text -> Integer -> t -> FVar t
-pattern LiftedHole nm indx ty
-  = FVar ty
-   ( Qualified
-     (ByModuleName (ModuleName "$LIFTED")) -- just has to be an arbitrary illegal module name
-     (GenIdent (Just nm) indx)
-   )
+pattern LiftedHole nm indx ty =
+  FVar
+    ty
+    ( Qualified
+        (ByModuleName (ModuleName "$LIFTED")) -- just has to be an arbitrary illegal module name
+        (GenIdent (Just nm) indx)
+      )
 
 pattern LiftedHoleTerm :: Text -> Integer -> t -> Exp x t (Vars t)
 pattern LiftedHoleTerm nm indx ty = V (F (LiftedHole nm indx ty))
@@ -107,27 +109,26 @@ fillsHole (BVar bvIx _ bvIdent) = \case
   LiftedHoleTerm (Ident -> i) (fromIntegral -> indx) _ -> bvIx == indx && bvIdent == i
   _ -> False
 
-unHole :: Hole t -> (Ident,Int)
-unHole (Hole hId hIx _) = (hId,hIx)
-
+unHole :: Hole t -> (Ident, Int)
+unHole (Hole hId hIx _) = (hId, hIx)
 
 instance Pretty LiftResult where
   pretty (LiftResult decls expr) =
-    let mkPrettyDeclWithTySig acc (i,u) scoped =
+    let mkPrettyDeclWithTySig acc (i, u) scoped =
           let unscoped = toExp scoped
-              ty       = expTy id unscoped
+              ty = expTy id unscoped
               prettyBody = pretty (NonRecursive i u scoped)
-              prettySig  = pretty i <::> pretty ty
-              prettyWithSig = align $ vcat [prettySig,prettyBody,hardline]
-          in prettyWithSig : acc
+              prettySig = pretty i <::> pretty ty
+              prettyWithSig = align $ vcat [prettySig, prettyBody, hardline]
+           in prettyWithSig : acc
 
         prettyDecls = foldBinds mkPrettyDeclWithTySig [] decls
-
-    in align $ vcat
-         [ "let"
-         , indent 2 . align . vcat $ prettyDecls
-         , "in" <+> align (pretty expr)
-         ]
+     in align $
+          vcat
+            [ "let"
+            , indent 2 . align . vcat $ prettyDecls
+            , "in" <+> align (pretty expr)
+            ]
 
 {- Intermediate data type for recording the scope at the
    place where a group of declarations occurs in the AST.

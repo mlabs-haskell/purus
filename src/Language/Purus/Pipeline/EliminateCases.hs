@@ -12,15 +12,6 @@ import Data.List (sortOn)
 import Data.Maybe (fromJust)
 import Data.Traversable (for)
 
-
-import Language.PureScript.Names (
-  Ident (..),
-  ProperName (..),
-  ProperNameType (..),
-  Qualified (..),
-  runIdent,
-  showQualified,
- )
 import Language.PureScript.Constants.Prim qualified as C
 import Language.PureScript.Constants.Purus qualified as C
 import Language.PureScript.CoreFn.Module (
@@ -37,10 +28,19 @@ import Language.PureScript.CoreFn.Module (
   tyDict,
  )
 import Language.PureScript.CoreFn.TypeLike
+import Language.PureScript.Names (
+  Ident (..),
+  ProperName (..),
+  ProperNameType (..),
+  Qualified (..),
+  runIdent,
+  showQualified,
+ )
 import Language.PureScript.Types (
   TypeVarVisibility (TypeVarVisible),
  )
 
+import Language.Purus.Debug
 import Language.Purus.IR (
   Alt (..),
   BVar (BVar),
@@ -57,21 +57,14 @@ import Language.Purus.IR (
   pattern (:~>),
  )
 import Language.Purus.IR qualified as IR
-import Language.Purus.Pretty (prettyStr)
-import Language.Purus.Pipeline.GenerateDatatypes.Utils
-import Language.Purus.Pipeline.Monad
 import Language.Purus.IR.Utils
-import Language.Purus.Debug
 import Language.Purus.Pipeline.DesugarCore (
   matchVarLamAbs,
  )
+import Language.Purus.Pipeline.GenerateDatatypes.Utils
+import Language.Purus.Pipeline.Monad
+import Language.Purus.Pretty (prettyStr)
 
-import Control.Lens (
-  ix,
-  view,
-  (^.),
-  (^?),
- )
 import Bound (Var (..))
 import Bound.Scope (
   Scope,
@@ -80,6 +73,12 @@ import Bound.Scope (
   mapBound,
   toScope,
  )
+import Control.Lens (
+  ix,
+  view,
+  (^.),
+  (^?),
+ )
 import Control.Lens.Combinators (transform)
 import Control.Lens.Plated (transformM)
 
@@ -87,10 +86,10 @@ import Control.Monad.Except (
   MonadError (throwError),
  )
 
+import PlutusCore.Name (Unique (Unique))
 import PlutusIR (
   Name (Name),
  )
-import PlutusCore.Name (Unique (Unique))
 
 {-
 eliminateCaseExpressions' :: Datatypes IR.Kind Ty
@@ -158,11 +157,11 @@ eliminateCaseExpressions datatypes = \case
         alts <- traverse eliminateCasesInAlt _alts
         desugarConstructorPattern datatypes retTy (CaseE resTy scrut alts)
       other -> throwError ("eliminateCaseExpressions: IMPOSSIBLE:\n" <> prettyStr other)
-  LetE  _bindEs _scoped -> do
+  LetE _bindEs _scoped -> do
     let unscoped = toExp _scoped
     scoped <- toScope . fmap F <$> eliminateCaseExpressions datatypes unscoped
     bindEs <- traverse eliminateCasesInBind _bindEs
-    pure $ LetE  bindEs scoped
+    pure $ LetE bindEs scoped
   TyInstE ty inner -> TyInstE ty <$> eliminateCaseExpressions datatypes inner
   TyAbs bv inner -> TyAbs bv <$> eliminateCaseExpressions datatypes inner
   where
@@ -205,11 +204,12 @@ mkDestructorFunTy datatypes tn = do
       let result = funTyLHS funTyRHS
       doTraceM
         "mkDestructorFunTy"
-          $ prettify ["TYPE NAME:\n" <> prettyStr tn
-                     , "TY CTOR FIELDS:\n" <> prettyStr ctorfs
-                     , "TY RHS:\n" <> prettyStr funTyRHS
-                     , "RESULT:\n" <> prettyStr result
-                     ]
+        $ prettify
+          [ "TYPE NAME:\n" <> prettyStr tn
+          , "TY CTOR FIELDS:\n" <> prettyStr ctorfs
+          , "TY RHS:\n" <> prettyStr funTyRHS
+          , "RESULT:\n" <> prettyStr result
+          ]
       pure (null tyArgs, result)
   where
     mkFunTyRHS outVar [] = outVar
@@ -250,19 +250,21 @@ desugarConstructorPattern datatypes altBodyTy _e =
               -- In this branch we know we have exhaustive constructor patterns in the alts
               let destructor = TyInstE altBodyTy (AppE (instantiateTyCon destructorRaw) scrut)
                   result = foldl' AppE destructor (snd <$> indexedBranches)
-                  msg = prettify [ "INPUT TY:\n" <> prettyStr _eTy
-                                 , "RESULT TY:\n" <> prettyStr (expTy id result)
-                                 , "DESTRUCTOR TY:\n" <> prettyStr (expTy id destructor)
-                                 , "ORIGINAL CASE RES TY:\n" <> prettyStr _resTy
-                                 , "DEDUCED BRANCH RES TY:\n" <> prettyStr branchRetTy
-                                 , "SPLIT BRANCH TY:\n" <> prettyStr branchSplit
-                                 , "FULL BRANCH TY:\n" <> prettyStr branchTy
-                                 , "SCRUT TY:\n" <> prettyStr scrutTy
-                                 , "SCRUT EXPR:\n" <> prettyStr scrut
-                                 , "RESULT:\n" <> prettyStr result
-                                 , "ALT BODY TY:\n" <> prettyStr altBodyTy
-                                 , "INSTANTIATED ALT BODY TY:\n" <> prettyStr retTy'
-                                 ]
+                  msg =
+                    prettify
+                      [ "INPUT TY:\n" <> prettyStr _eTy
+                      , "RESULT TY:\n" <> prettyStr (expTy id result)
+                      , "DESTRUCTOR TY:\n" <> prettyStr (expTy id destructor)
+                      , "ORIGINAL CASE RES TY:\n" <> prettyStr _resTy
+                      , "DEDUCED BRANCH RES TY:\n" <> prettyStr branchRetTy
+                      , "SPLIT BRANCH TY:\n" <> prettyStr branchSplit
+                      , "FULL BRANCH TY:\n" <> prettyStr branchTy
+                      , "SCRUT TY:\n" <> prettyStr scrutTy
+                      , "SCRUT EXPR:\n" <> prettyStr scrut
+                      , "RESULT:\n" <> prettyStr result
+                      , "ALT BODY TY:\n" <> prettyStr altBodyTy
+                      , "INSTANTIATED ALT BODY TY:\n" <> prettyStr retTy'
+                      ]
               doTraceM "desugarConstructorPattern" msg
               pure result
             irrefutables -> do
@@ -502,7 +504,6 @@ instantiateCtor datatypes expr = case expr of
     _ -> expr
   _ -> expr
 
-
 instantiateNullaryWithAnnotatedType ::
   forall x.
   Datatypes IR.Kind Ty ->
@@ -599,8 +600,6 @@ monoCtorFields tn cn t datatypes = doTrace "monoCtorFields" msg (thisCtorIx, mon
     -- if it's a unary constructor, we want to skip the error from funArgTypes being partial
     monoCtorArgs = safeFunArgTypes monoCtorTy
 
-
-
 {-
 
 We can't easily do this in the monomorphizer itself
@@ -659,7 +658,6 @@ monomorphizePatterns datatypes _e' = case _e' of
 desugarLiteralPatterns :: Exp WithoutObjects Ty (Var (BVar Ty) (FVar Ty)) -> PlutusContext (Exp WithoutObjects Ty (Var (BVar Ty) (FVar Ty)))
 desugarLiteralPatterns = transformM desugarLiteralPattern
 
-
 desugarLiteralPattern ::
   Exp WithoutObjects Ty (Var (BVar Ty) (FVar Ty)) ->
   PlutusContext (Exp WithoutObjects Ty (Var (BVar Ty) (FVar Ty)))
@@ -710,7 +708,6 @@ desugarLiteralPattern = \case
 
 desugarIrrefutables :: Exp WithoutObjects Ty (Var (BVar Ty) (FVar Ty)) -> PlutusContext (Exp WithoutObjects Ty (Var (BVar Ty) (FVar Ty)))
 desugarIrrefutables = transformM desugarIrrefutable
-
 
 -- This is for case expressions where the first alternative contains an irrefutable pattern (WildP, VarP)
 -- (we need this b/c the other two won't catch and eliminate those expressions)

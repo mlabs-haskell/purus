@@ -50,13 +50,13 @@ import Language.PureScript.Make.Monad (Make, getTimestamp, getTimestampMaybe, ha
 import Language.PureScript.Names (Ident (..), ModuleName, runModuleName)
 import Language.PureScript.Options (CodegenTarget (..), Options (..))
 import Language.PureScript.Pretty.Common (SMap (..))
+import Language.Purus.Pretty (writeModule)
 import SourceMap (generate)
 import SourceMap.Types (Mapping (..), Pos (..), SourceMapping (..))
 import System.Directory (getCurrentDirectory)
 import System.FilePath (makeRelative, normalise, splitDirectories, splitPath, (</>))
 import System.FilePath.Posix qualified as Posix
 import System.IO (IOMode (WriteMode), stderr, withFile)
-import Language.Purus.Pretty (writeModule)
 
 -- | Determines when to rebuild a module
 data RebuildPolicy

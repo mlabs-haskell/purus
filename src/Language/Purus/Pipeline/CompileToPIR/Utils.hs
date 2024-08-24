@@ -1,5 +1,5 @@
 {-# LANGUAGE GADTs #-}
-module Language.Purus.CompileToPIR.Utils where
+module Language.Purus.Pipeline.CompileToPIR.Utils where
 
 import Prelude
 

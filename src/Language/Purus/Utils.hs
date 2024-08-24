@@ -2,21 +2,21 @@ module Language.Purus.Utils where
 
 import Prelude
 
+import Language.PureScript.AST.SourcePos (SourceAnn)
+import Language.PureScript.Label (Label (runLabel))
 import Language.PureScript.PSString (PSString)
 import Language.PureScript.Types (RowListItem (rowListLabel), rowToList)
-import Language.PureScript.AST.SourcePos (SourceAnn)
-import Language.PureScript.Label (Label(runLabel))
 
-import Language.PureScript.CoreFn.Module ( Module(..) )
-import Language.PureScript.CoreFn.Expr ( Bind, PurusType )
-import Language.PureScript.CoreFn.Ann ( Ann )
+import Language.PureScript.CoreFn.Ann (Ann)
+import Language.PureScript.CoreFn.Expr (Bind, PurusType)
 import Language.PureScript.CoreFn.FromJSON ()
+import Language.PureScript.CoreFn.Module (Module (..))
+import Language.PureScript.CoreFn.TypeLike
 import Language.PureScript.Names
-import Language.PureScript.CoreFn.TypeLike 
 
-import Language.Purus.IR
-import Language.Purus.IR.Utils (IR_Decl, WithObjects, Vars)
 import Language.Purus.Debug
+import Language.Purus.IR
+import Language.Purus.IR.Utils (IR_Decl, Vars, WithObjects)
 
 import Control.Exception
 
@@ -33,8 +33,6 @@ import Data.Aeson qualified as Aeson
 import Bound
 
 import Prettyprinter
-
-
 
 {- IO utility. Reads a CoreFn module from a source file.
 
@@ -60,7 +58,7 @@ findDeclBody ::
   forall k.
   Text ->
   Module IR_Decl k PurusType Ann ->
-  Maybe ((Ident,Int),Scope (BVar PurusType) (Exp WithObjects PurusType) (Vars PurusType))
+  Maybe ((Ident, Int), Scope (BVar PurusType) (Exp WithObjects PurusType) (Vars PurusType))
 findDeclBody nm Module {..} = doTrace "findDeclBody" ("NAME: " <> T.unpack nm) $ findDeclBody' (Ident nm) moduleDecls
 
 findDeclBody' ::
@@ -68,14 +66,14 @@ findDeclBody' ::
   (TypeLike ty, Pretty ty, Pretty (KindOf ty)) =>
   Ident ->
   [BindE ty (Exp x ty) (Vars ty)] ->
-  Maybe ((Ident,Int),Scope (BVar ty) (Exp x ty) (Vars ty))
+  Maybe ((Ident, Int), Scope (BVar ty) (Exp x ty) (Vars ty))
 findDeclBody' ident binds = case findInlineDeclGroup ident binds of
   Nothing -> Nothing
   Just decl -> case decl of
-    NonRecursive nrid nrix e -> Just ((nrid,nrix),e)
+    NonRecursive nrid nrix e -> Just ((nrid, nrix), e)
     Recursive xs -> case find (\x -> fst (fst x) == ident) xs of
       Nothing -> Nothing
-      Just ((idnt, indx), e) -> Just ((idnt,indx), e)
+      Just ((idnt, indx), e) -> Just ((idnt, indx), e)
 
 {- Find the declaration *group* to which a given identifier belongs.
 -}

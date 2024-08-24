@@ -13,7 +13,7 @@ import System.FilePath.Glob qualified as Glob
 import Data.Function (on)
 import Data.List (sort, sortBy, stripPrefix, groupBy, find)
 import Control.Exception.Base
-import Language.PureScript.CoreFn.Convert.ToPIR
+import Language.Purus.Pipeline.CompileToPIR
 import PlutusCore.Core
 import Test.Tasty
 import PlutusCore.Evaluation.Machine.Ck (EvaluationResult(..))

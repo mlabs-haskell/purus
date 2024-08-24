@@ -1,5 +1,5 @@
 {-# LANGUAGE TypeApplications #-}
-module Language.Purus.CompileToPIR.Eval where
+module Language.Purus.Pipeline.CompileToPIR.Eval where
 
 import Prelude
 

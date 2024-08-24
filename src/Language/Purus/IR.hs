@@ -18,18 +18,18 @@ import Prelude
 
 import Protolude.List (ordNub)
 
-import Data.Kind qualified as GHC
-import Data.List (elemIndex, sortOn)
 import Control.Monad
 import Data.Bifunctor (Bifunctor (first))
-import Data.Void (Void)
+import Data.Kind qualified as GHC
+import Data.List (elemIndex, sortOn)
 import Data.Maybe (fromJust, fromMaybe)
+import Data.Void (Void)
 
 import Data.Text (Text)
 import Data.Text qualified as T
 
-
 import Language.PureScript.Constants.Prim qualified as C
+import Language.PureScript.CoreFn.FromJSON ()
 import Language.PureScript.CoreFn.TypeLike
 import Language.PureScript.Names (Ident (..), ProperName (..), ProperNameType (..), Qualified (..), QualifiedBy (..), disqualify, runIdent, runModuleName, showIdent, showQualified)
 import Language.PureScript.PSString (PSString, decodeStringWithReplacement, prettyPrintString)
@@ -38,11 +38,10 @@ import Language.PureScript.Types (
   TypeVarVisibility (..),
   genPureName,
  )
-import Language.PureScript.CoreFn.FromJSON ()
 
+import Language.Purus.Debug (doTrace)
 import Language.Purus.Pretty ((<::>))
 import Language.Purus.Pretty.Common (prettyStr)
-import Language.Purus.Debug (doTrace)
 
 import Bound
 import Bound.Scope (instantiateEither)
@@ -52,13 +51,10 @@ import Control.Lens.TH (makePrisms)
 
 import Data.Functor.Classes
 
-
 import Prettyprinter
 import Prettyprinter.Render.Text (renderStrict)
 
 import Text.Show.Deriving
-
-
 
 -- The final representation of types and terms, where all constructions that
 
@@ -187,7 +183,6 @@ instance FuncType Ty where
     (a :~> _) -> a
     other -> other
 
-
 -- A Bound variable. Serves as a bridge between the textual representation and the named de bruijn we'll need for PIR
 data BVar ty = BVar Int ty Ident deriving (Show, Eq, Ord) -- maybe BVar Int (FVar ty) ??
 
@@ -225,7 +220,7 @@ deriving instance (Eq t, Eq a, Eq (XObjectLiteral x)) => Eq (Pat x t f a)
 deriving instance (Ord t, Ord a, Ord (XObjectLiteral x)) => Ord (Pat x t f a)
 
 data Alt x ty f a
-  = UnguardedAlt  (Pat x ty f a) (Scope (BVar ty) f a)
+  = UnguardedAlt (Pat x ty f a) (Scope (BVar ty) f a)
   deriving (Functor, Foldable, Traversable)
 
 deriving instance (Monad f, Show1 f, Show a, Show ty, Show (XObjectLiteral x)) => Show (Alt x ty f a)
@@ -234,7 +229,7 @@ deriving instance (Monad f, Ord1 f, Ord a, Ord ty, Ord (XObjectLiteral x)) => Or
 
 getPat :: Alt x ty f a -> Pat x ty f a
 getPat = \case
-  UnguardedAlt  ps _ -> ps
+  UnguardedAlt ps _ -> ps
 
 -- idk if we really need the identifiers?
 data BindE ty (f :: GHC.Type -> GHC.Type) a
@@ -277,24 +272,28 @@ instance (Eq ty, Eq (KindOf ty)) => Eq1 (Exp x ty) where
       AppE r1 r2 -> liftEq eq l1 r1 && liftEq eq l2 r2
       _ -> False
     CaseE t1 es1 as1 -> \case
-      CaseE t2 es2 as2 -> t1 == t2 &&
-                          liftEq eq es1 es2 &&
-                          liftEq (liftEq eq) as1 as2
+      CaseE t2 es2 as2 ->
+        t1 == t2
+          && liftEq eq es1 es2
+          && liftEq (liftEq eq) as1 as2
       _ -> False
     LetE bs1 e1 -> \case
-      LetE bs2 e2 -> liftEq (liftEq eq) bs1 bs2 &&
-                     liftEq eq e1 e2
+      LetE bs2 e2 ->
+        liftEq (liftEq eq) bs1 bs2
+          && liftEq eq e1 e2
       _ -> False
     AccessorE _ t1 s1 e1 -> \case
-      AccessorE _ t2 s2 e2 -> t1 == t2 &&
-                              s1 == s2 &&
-                              liftEq eq e1 e2
+      AccessorE _ t2 s2 e2 ->
+        t1 == t2
+          && s1 == s2
+          && liftEq eq e1 e2
       _ -> False
     ObjectUpdateE _ t1 e1 ms1 upd1 -> \case
-      ObjectUpdateE _ t2 e2 ms2 upd2 -> t1 == t2 &&
-                                        liftEq eq e1 e2 &&
-                                        ms1 == ms2 &&
-                                        liftEq (\(s1, e1') (s2, e2') -> s1 == s2 && liftEq eq e1' e2') upd1 upd2
+      ObjectUpdateE _ t2 e2 ms2 upd2 ->
+        t1 == t2
+          && liftEq eq e1 e2
+          && ms1 == ms2
+          && liftEq (\(s1, e1') (s2, e2') -> s1 == s2 && liftEq eq e1' e2') upd1 upd2
       _ -> False
     TyInstE t1 e1 -> \case
       TyInstE t2 e2 -> t1 == t2 && liftEq eq e1 e2
@@ -329,18 +328,20 @@ instance (Ord ty, Ord (KindOf ty)) => Ord1 (Exp x ty) where
       LitE _ _ -> GT
       LamE _ _ -> GT
       AppE _ _ -> GT
-      CaseE t' exp' cases' -> compare t t' <>
-                              liftCompare comp exp1 exp' <>
-                              liftCompare (liftCompare comp) cases cases'
+      CaseE t' exp' cases' ->
+        compare t t'
+          <> liftCompare comp exp1 exp'
+          <> liftCompare (liftCompare comp) cases cases'
       _ -> LT
-    LetE  bindApps scope -> \case
+    LetE bindApps scope -> \case
       V _ -> GT
       LitE _ _ -> GT
       LamE _ _ -> GT
       AppE _ _ -> GT
       CaseE _ _ _ -> GT
-      LetE bindApps' scope' -> liftCompare (liftCompare comp) bindApps bindApps' <>
-                               liftCompare comp scope scope'
+      LetE bindApps' scope' ->
+        liftCompare (liftCompare comp) bindApps bindApps'
+          <> liftCompare comp scope scope'
       _ -> LT
     AccessorE _ t str exp1 -> \case
       V _ -> GT
@@ -349,9 +350,10 @@ instance (Ord ty, Ord (KindOf ty)) => Ord1 (Exp x ty) where
       AppE _ _ -> GT
       CaseE _ _ _ -> GT
       LetE _ _ -> GT
-      AccessorE _ t' str' exp' -> compare t t' <>
-                                  compare str str' <>
-                                  liftCompare comp exp1 exp'
+      AccessorE _ t' str' exp' ->
+        compare t t'
+          <> compare str str'
+          <> liftCompare comp exp1 exp'
       _ -> LT
     ObjectUpdateE _ t exp1 mStr updates -> \case
       V _ -> GT
@@ -361,10 +363,11 @@ instance (Ord ty, Ord (KindOf ty)) => Ord1 (Exp x ty) where
       CaseE _ _ _ -> GT
       LetE _ _ -> GT
       AccessorE _ _ _ _ -> GT
-      ObjectUpdateE _ t' exp' mStr' updates' -> compare t t' <>
-                                                liftCompare comp exp1 exp' <>
-                                                compare mStr mStr' <>
-                                                liftCompare (\(s, e) (s', e') -> compare s s' <> liftCompare comp e e') updates updates'
+      ObjectUpdateE _ t' exp' mStr' updates' ->
+        compare t t'
+          <> liftCompare comp exp1 exp'
+          <> compare mStr mStr'
+          <> liftCompare (\(s, e) (s', e') -> compare s s' <> liftCompare comp e e') updates updates'
       _ -> LT
     TyInstE t exp1 -> \case
       V _ -> GT
@@ -375,12 +378,14 @@ instance (Ord ty, Ord (KindOf ty)) => Ord1 (Exp x ty) where
       LetE _ _ -> GT
       AccessorE _ _ _ _ -> GT
       ObjectUpdateE _ _ _ _ _ -> GT
-      TyInstE t' exp' -> compare t t' <>
-                         liftCompare comp exp1 exp'
+      TyInstE t' exp' ->
+        compare t t'
+          <> liftCompare comp exp1 exp'
       _ -> LT
     TyAbs bvar exp1 -> \case
-      TyAbs bvar' exp' -> compare bvar bvar' <>
-                          liftCompare comp exp1 exp'
+      TyAbs bvar' exp' ->
+        compare bvar bvar'
+          <> liftCompare comp exp1 exp'
       _ -> GT
 
 instance Eq1 (Lit x) where
@@ -429,9 +434,10 @@ instance (Ord1 f, Monad f, Ord t) => Ord1 (Pat x t f) where
   {-# INLINEABLE liftCompare #-}
   liftCompare comp = \case
     VarP i1 n1 t1 -> \case
-      VarP i2 n2 t2 -> compare i1 i2 <>
-                       compare n1 n2 <>
-                       compare t1 t2
+      VarP i2 n2 t2 ->
+        compare i1 i2
+          <> compare n1 n2
+          <> compare t1 t2
       _ -> LT
     WildP -> \case
       VarP _ _ _ -> GT
@@ -443,9 +449,10 @@ instance (Ord1 f, Monad f, Ord t) => Ord1 (Pat x t f) where
       LitP l2 -> liftCompare (liftCompare comp) l1 l2
       _ -> LT
     ConP tn1 cn1 ps1 -> \case
-      ConP tn2 cn2 ps2 -> compare tn1 tn2 <>
-                          compare cn1 cn2 <>
-                          liftCompare (liftCompare comp) ps1 ps2
+      ConP tn2 cn2 ps2 ->
+        compare tn1 tn2
+          <> compare cn1 cn2
+          <> liftCompare (liftCompare comp) ps1 ps2
       _ -> GT
 
 instance (Eq1 f, Monad f, Eq ty) => Eq1 (BindE ty f) where
@@ -467,28 +474,31 @@ instance (Ord1 f, Monad f, Ord ty) => Ord1 (BindE ty f) where
   {-# INLINEABLE liftCompare #-}
   liftCompare comp = \case
     NonRecursive i1 ix1 b1 -> \case
-      NonRecursive i2 ix2 b2 -> compare i1 i2 <>
-                                compare ix1 ix2 <>
-                                liftCompare comp b1 b2
+      NonRecursive i2 ix2 b2 ->
+        compare i1 i2
+          <> compare ix1 ix2
+          <> liftCompare comp b1 b2
       _ -> LT
     Recursive xs -> \case
       NonRecursive _ _ _ -> GT
       Recursive ys -> go comp xs ys
       where
-        go :: forall a b .
-              (a -> b -> Ordering) ->
-              [((Ident, Int), Scope (BVar ty) f a)] ->
-              [((Ident, Int), Scope (BVar ty) f b)] ->
-              Ordering
+        go ::
+          forall a b.
+          (a -> b -> Ordering) ->
+          [((Ident, Int), Scope (BVar ty) f a)] ->
+          [((Ident, Int), Scope (BVar ty) f b)] ->
+          Ordering
         go comp' = \case
           [] -> \case
             [] -> EQ
             _ -> LT
           ((i1, x) : xs') -> \case
             [] -> GT
-            ((i2, y) : ys) -> compare i1 i2 <>
-                              liftCompare comp' x y <>
-                              go comp' xs' ys
+            ((i2, y) : ys) ->
+              compare i1 i2
+                <> liftCompare comp' x y
+                <> go comp' xs' ys
 
 instance (Eq1 f, Monad f, Eq ty) => Eq1 (Alt x ty f) where
   liftEq eq (UnguardedAlt ps1 e1) (UnguardedAlt ps2 e2) = liftEq eq ps1 ps2 && liftEq eq e1 e2
@@ -496,8 +506,8 @@ instance (Eq1 f, Monad f, Eq ty) => Eq1 (Alt x ty f) where
 instance (Ord1 f, Monad f, Ord ty) => Ord1 (Alt x ty f) where
   {-# INLINEABLE liftCompare #-}
   liftCompare comp (UnguardedAlt ps1 e1) (UnguardedAlt ps2 e2) =
-    liftCompare comp ps1 ps2 <>
-    liftCompare comp e1 e2
+    liftCompare comp ps1 ps2
+      <> liftCompare comp e1 e2
 
 instance Applicative (Exp x ty) where
   pure = V
@@ -740,7 +750,7 @@ expTy f = \case
   LamE (BVar _ t _) body -> t `funTy` expTy' f body
   AppE e1 e2 -> appType f e1 e2
   CaseE t _ _ -> t
-  LetE  _ e -> expTy' f e
+  LetE _ e -> expTy' f e
   AccessorE _ t _ _ -> t
   ObjectUpdateE _ t _ _ _ -> t
   TyInstE t e -> instTy t $ expTy f e
@@ -757,7 +767,7 @@ expTy' f scoped = case instantiateEither (either (V . B) (V . F)) scoped of
      in t `funTy` expTy' id body'
   AppE e1 e2 -> appType (>>= f) e1 e2
   CaseE t _ _ -> t
-  LetE  _ e -> expTy' (>>= f) e
+  LetE _ e -> expTy' (>>= f) e
   AccessorE _ t _ _ -> t
   ObjectUpdateE _ t _ _ _ -> t
   TyAbs (BVar _ k idnt) inner ->
@@ -812,7 +822,7 @@ instance (Show ty, Show (KindOf ty), Show (XAccessor x), Show (XObjectUpdate x),
 instance (Show ty, Show (KindOf ty), Show (XAccessor x), Show (XObjectUpdate x), Show (XObjectLiteral x)) => Show1 (Alt x ty (Exp x ty)) where
   liftShowsPrec sp sl d (UnguardedAlt ps e) =
     showString "UnGuardedAlt "
-      .  showString " "
+      . showString " "
       . showsPrec d (liftShowsPrec sp sl d ps "")
       . showString " "
       . liftShowsPrec sp sl d e
@@ -821,8 +831,6 @@ deriving instance (Show a, Show (KindOf ty), Show ty, Show1 (Exp x ty), Show (XA
 
 makePrisms ''Ty
 makePrisms ''Exp
-
-
 
 abstractMany :: (Eq ty) => [FVar ty] -> FVar ty -> Maybe (BVar ty)
 abstractMany xs v@(FVar t i) = (\index -> BVar index t $ disqualify i) <$> elemIndex v xs

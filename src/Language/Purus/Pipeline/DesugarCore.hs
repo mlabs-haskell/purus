@@ -1,6 +1,7 @@
 {-# LANGUAGE TypeApplications #-}
 {-# OPTIONS_GHC -Wno-orphans #-}
 {-# OPTIONS_GHC -Wno-unrecognised-pragmas #-}
+
 {-# HLINT ignore "Use camelCase" #-}
 module Language.Purus.Pipeline.DesugarCore where
 
@@ -8,19 +9,19 @@ import Prelude
 
 import Data.Map qualified as M
 
-import Data.Text qualified as T
 import Data.Text (Text)
+import Data.Text qualified as T
 
 import Data.Char (isUpper)
-import Data.Maybe (fromJust, mapMaybe)
 import Data.Foldable (Foldable (foldl'), foldrM, traverse_)
 import Data.List (find, sort, sortOn)
+import Data.Maybe (fromJust, mapMaybe)
 
 import Data.Bifunctor (Bifunctor (first))
 
-import Control.Monad.Except (MonadError(..), liftEither)
-import Control.Monad.State (gets)
+import Control.Monad.Except (MonadError (..), liftEither)
 import Control.Monad.Reader
+import Control.Monad.State (gets)
 
 import Language.PureScript (runIdent)
 import Language.PureScript.AST.Literals (Literal (..))
@@ -37,6 +38,7 @@ import Language.PureScript.CoreFn.Expr (
   _Var,
  )
 import Language.PureScript.CoreFn.Module (Module (..))
+import Language.PureScript.CoreFn.TypeLike (TypeLike (..))
 import Language.PureScript.CoreFn.Utils (exprType)
 import Language.PureScript.Environment (mkCtorTy, mkTupleTyName)
 import Language.PureScript.Names (
@@ -49,11 +51,12 @@ import Language.PureScript.Names (
   disqualify,
  )
 import Language.PureScript.Types (Type (..))
-import Language.PureScript.CoreFn.TypeLike (TypeLike (..))
 
-import Language.Purus.Pretty (prettyStr, prettyTypeStr, renderExprStr)
-import Language.Purus.Pretty.Common qualified as PC
-import Language.Purus.IR.Utils
+import Language.Purus.Debug (
+  doTrace,
+  doTraceM,
+  prettify,
+ )
 import Language.Purus.IR (
   Alt (..),
   BVar (..),
@@ -66,24 +69,25 @@ import Language.Purus.IR (
   expTy,
   expTy',
  )
-import Language.Purus.Debug
-    ( doTrace, doTraceM, prettify )
+import Language.Purus.IR.Utils
 import Language.Purus.Pipeline.Monad
+import Language.Purus.Pretty (prettyStr, prettyTypeStr, renderExprStr)
+import Language.Purus.Pretty.Common qualified as PC
 
 import Bound (Var (..), abstract)
 import Bound.Scope (Scope, fromScope)
 
-import Control.Lens
-    ( (^..),
-      to,
-      preview,
-      transform,
-      cosmos,
-      (.=),
-      Ixed(ix) )
+import Control.Lens (
+  Ixed (ix),
+  cosmos,
+  preview,
+  to,
+  transform,
+  (.=),
+  (^..),
+ )
 
 import Prettyprinter (Pretty (..))
-
 
 freshly :: DesugarCore a -> DesugarCore a
 freshly act = local (const M.empty) act
@@ -100,7 +104,7 @@ forceBind i indx = ix i .= indx
 
 getVarIx :: Ident -> DesugarCore Int
 getVarIx ident =
-  gets (preview  $ ix ident) >>= \case
+  gets (preview $ ix ident) >>= \case
     Nothing -> throwError $ "getVarIx: Free variable " <> showIdent' ident
     Just indx -> pure indx
 
@@ -151,32 +155,35 @@ tyAbsMany vars expr = foldrM (uncurry tyAbs) expr vars
 desugarCoreModule' :: [IR_Decl] -> Module (Bind Ann) PurusType PurusType Ann -> DesugarCore (Module IR_Decl PurusType PurusType Ann)
 desugarCoreModule' imports Module {..} = do
   decls' <- traverse (freshly . desugarCoreDecl . doEtaReduce) moduleDecls
-  decls  <- bindLocalTopLevelDeclarations decls'
+  decls <- bindLocalTopLevelDeclarations decls'
   pure $ Module {moduleDecls = decls, ..}
- where
-   doEtaReduce = \case
-     NonRec a nm body -> NonRec a nm (runEtaReduce body)
-     Rec xs -> Rec $ fmap runEtaReduce <$> xs
-   {- Need to do this to ensure that all  -}
-   bindLocalTopLevelDeclarations :: [BindE PurusType (Exp WithObjects PurusType) (Vars PurusType)]
-                                 -> DesugarCore [BindE PurusType (Exp WithObjects PurusType) (Vars PurusType)]
-   bindLocalTopLevelDeclarations ds = do
-     let topLevelIdents = foldBinds (\acc nm _ -> nm:acc ) [] (ds <> imports)
-     traverse_ (uncurry forceBind) topLevelIdents -- IDK if this is really necessary?
-     s <- ask
-     doTraceM "bindLocalTopLevelDeclarations" $ prettify [ "Input (Module Decls):\n" <> prettify (prettyStr <$> ds)
-                                                         , "Top level binds:\n" <> prettyStr (M.toList s)
-                                                         , "Top level idents:\n" <> prettify (prettyStr <$> topLevelIdents)
-                                                         ]
-     -- this is only safe because every locally-scoped (i.e. inside a decl) variable should be
-     -- bound by this point
-     let upd = \case
-               V (B bv) -> V $ B bv
-               V (F fv@(FVar t (Qualified _ ident))) -> case M.lookup ident s of
-                 Nothing -> V $ F fv
-                 Just indx -> V $ B $ BVar indx t ident
-               other -> other
-     pure $ mapBind (const $ viaExp (transform upd))  <$> ds
+  where
+    doEtaReduce = \case
+      NonRec a nm body -> NonRec a nm (runEtaReduce body)
+      Rec xs -> Rec $ fmap runEtaReduce <$> xs
+    {- Need to do this to ensure that all  -}
+    bindLocalTopLevelDeclarations ::
+      [BindE PurusType (Exp WithObjects PurusType) (Vars PurusType)] ->
+      DesugarCore [BindE PurusType (Exp WithObjects PurusType) (Vars PurusType)]
+    bindLocalTopLevelDeclarations ds = do
+      let topLevelIdents = foldBinds (\acc nm _ -> nm : acc) [] (ds <> imports)
+      traverse_ (uncurry forceBind) topLevelIdents -- IDK if this is really necessary?
+      s <- ask
+      doTraceM "bindLocalTopLevelDeclarations" $
+        prettify
+          [ "Input (Module Decls):\n" <> prettify (prettyStr <$> ds)
+          , "Top level binds:\n" <> prettyStr (M.toList s)
+          , "Top level idents:\n" <> prettify (prettyStr <$> topLevelIdents)
+          ]
+      -- this is only safe because every locally-scoped (i.e. inside a decl) variable should be
+      -- bound by this point
+      let upd = \case
+            V (B bv) -> V $ B bv
+            V (F fv@(FVar t (Qualified _ ident))) -> case M.lookup ident s of
+              Nothing -> V $ F fv
+              Just indx -> V $ B $ BVar indx t ident
+            other -> other
+      pure $ mapBind (const $ viaExp (transform upd)) <$> ds
 
 desugarCoreDecl ::
   Bind Ann ->
@@ -511,24 +518,25 @@ runEtaReduce = transform etaReduce
 
 etaReduce ::
   forall ann.
-  Expr ann -> Expr ann
+  Expr ann ->
+  Expr ann
 etaReduce input = case partitionLam input of
   Just (boundVars, fun, args) ->
     if sort boundVars == sort args then fun else input
   Nothing -> input
   where
     partitionLam ::
-      Expr ann  ->
+      Expr ann ->
       Maybe ([Ident], Expr ann, [Ident])
     partitionLam e = do
       let (bvars, inner) = stripLambdas e
       (f, args) <- analyzeAppCfn inner
-      argBVars  <- traverse argToBVar args
+      argBVars <- traverse argToBVar args
       pure $ (bvars, f, argBVars)
 
     argToBVar :: Expr ann -> Maybe Ident
     argToBVar = \case
-      Var _ _ qualified-> Just . disqualify  $ qualified
+      Var _ _ qualified -> Just . disqualify $ qualified
       _ -> Nothing
 
     stripLambdas = \case

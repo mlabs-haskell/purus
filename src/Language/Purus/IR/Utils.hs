@@ -1,19 +1,20 @@
-{-# OPTIONS_GHC -Wno-orphans #-}
 {-# LANGUAGE StarIsType #-}
+{-# OPTIONS_GHC -Wno-orphans #-}
 {-# OPTIONS_GHC -Wno-unrecognised-pragmas #-}
+
 {-# HLINT ignore "Use camelCase" #-}
 module Language.Purus.IR.Utils where
 
 import Prelude
 
-import Language.Purus.IR
 import Bound
+import Control.Monad
 import Data.Void (Void)
 import Language.PureScript.CoreFn.Expr (PurusType)
-import Control.Monad
 import Language.PureScript.CoreFn.TypeLike
-import Prettyprinter (Pretty)
 import Language.PureScript.Names
+import Language.Purus.IR
+import Prettyprinter (Pretty)
 
 import Data.Set (Set)
 import Data.Set qualified as S
@@ -23,19 +24,19 @@ import Data.Map qualified as M
 
 import Data.Text qualified as T
 
-import Data.Maybe ( fromMaybe, mapMaybe )
+import Data.Maybe (fromMaybe, mapMaybe)
 
-import Data.Char ( isUpper )
+import Data.Char (isUpper)
 
-import Data.Bifunctor ( Bifunctor(first) )
+import Data.Bifunctor (Bifunctor (first))
 
-import Data.Functor.Identity (Identity(..))
+import Data.Functor.Identity (Identity (..))
 
+import Control.Lens.Operators ((^..))
+import Control.Lens.Plated (Plated (..), cosmos, transform)
 import Data.Foldable (foldl')
-import Language.PureScript.Types (Type(..), SourceType, Constraint (..))
-import Control.Lens.Plated ( cosmos, Plated(..), transform )
-import Control.Lens.Operators ( (^..) )
 import Language.PureScript.AST.SourcePos (SourceAnn)
+import Language.PureScript.Types (Constraint (..), SourceType, Type (..))
 
 {- Convenience/Utility Type Stuff -}
 
@@ -83,14 +84,14 @@ viaExp f scoped =
 
 viaExpM ::
   forall x t m.
-  Monad m =>
+  (Monad m) =>
   (Exp x t (Vars t) -> m (Exp x t (Vars t))) ->
   Scope (BVar t) (Exp x t) (Vars t) ->
   m (Scope (BVar t) (Exp x t) (Vars t))
 viaExpM f scoped = do
   let unscoped = toExp scoped
   transformed <- f unscoped
-  pure $ abstract (\case B bv -> Just bv;_ -> Nothing) transformed
+  pure $ abstract (\case B bv -> Just bv; _ -> Nothing) transformed
 
 -- stupid, but `\e -> toExp e`` is probably the most duplicated code phrase
 -- in this whole project
@@ -99,7 +100,6 @@ toExp = fmap join . fromScope
 
 fromExp :: Exp x t (Vars t) -> Scope (BVar t) (Exp x t) (Vars t)
 fromExp = abstract $ \case B bv -> Just bv; _ -> Nothing
-
 
 -- something is wrong with my attempts to write a plated instance and I dunno how to fix it,
 -- but specific traverals seem to work, so this should work?
@@ -169,10 +169,10 @@ deepMapMaybeBound _f = \case
   V (F fv) -> V . F $ fv
   AppE e1 e2 -> AppE (go e1) (go e2)
   LamE bv body -> LamE bv $ goScope body
-  LetE  bs e ->
+  LetE bs e ->
     let bs' = mapBind (const goScope) <$> bs
         e' = goScope e
-     in LetE  bs' e'
+     in LetE bs' e'
   LitE t lit -> LitE t $ go <$> lit
   AccessorE x t str e -> AccessorE x t str $ go e
   ObjectUpdateE x t e copy fs ->
@@ -197,7 +197,7 @@ deepMapMaybeBound _f = \case
 -- touches everything, *except* the kind annotations in TyAbs (can't write a generic traversal b/c (KindOf t ~ t) is
 -- only true for SourceType and not Ty)
 transformTypesInExp ::
-  forall x t .
+  forall x t.
   (t -> t) ->
   Exp x t (Vars t) ->
   Exp x t (Vars t)
@@ -209,51 +209,50 @@ transformTypesInExp f = \case
   LamE bv body ->
     let bv' = goBV bv
         body' = goScope body
-    in LamE bv' body'
+     in LamE bv' body'
   LetE bs body ->
     let bs' = mapBind (const goScope) <$> bs
         body' = goScope body
-    in LetE bs' body'
+     in LetE bs' body'
   AccessorE x t str e ->
     let t' = f t
         e' = go e
-    in AccessorE x t' str e'
+     in AccessorE x t' str e'
   ObjectUpdateE x t e copy fs ->
     let t' = f t
         e' = go e
         fs' = fmap go <$> fs
-    in ObjectUpdateE x t' e' copy fs'
+     in ObjectUpdateE x t' e' copy fs'
   CaseE t scrut alts ->
     let t' = f t
         scrut' = go scrut
         alts' = goAlt <$> alts
-    in CaseE t' scrut' alts'
+     in CaseE t' scrut' alts'
   TyInstE t e -> TyInstE (f t) (go e)
   TyAbs btv e -> TyAbs btv (go e)
- where
-   -- can't use mapAlt b/c we need to update types in patterns
-   -- (We still have object lit pats before object desugaring)
-   goAlt :: Alt x t (Exp x t) (Vars t) -> Alt x t (Exp x t) (Vars t)
-   goAlt (UnguardedAlt pat body) =
-     let pat' = goPat pat
-         body' = goScope body
-     in UnguardedAlt pat' body'
+  where
+    -- can't use mapAlt b/c we need to update types in patterns
+    -- (We still have object lit pats before object desugaring)
+    goAlt :: Alt x t (Exp x t) (Vars t) -> Alt x t (Exp x t) (Vars t)
+    goAlt (UnguardedAlt pat body) =
+      let pat' = goPat pat
+          body' = goScope body
+       in UnguardedAlt pat' body'
 
-   goPat :: Pat x t (Exp x t) (Vars t) -> Pat x t (Exp x t) (Vars t)
-   goPat = \case
-     VarP nm indx t -> VarP nm indx (f t)
-     LitP (ObjectL x fs) -> LitP . ObjectL x $ fmap goPat  <$> fs
-     ConP tn cn ps -> ConP tn cn $ goPat <$> ps
-     other -> other
+    goPat :: Pat x t (Exp x t) (Vars t) -> Pat x t (Exp x t) (Vars t)
+    goPat = \case
+      VarP nm indx t -> VarP nm indx (f t)
+      LitP (ObjectL x fs) -> LitP . ObjectL x $ fmap goPat <$> fs
+      ConP tn cn ps -> ConP tn cn $ goPat <$> ps
+      other -> other
 
+    goBV :: BVar t -> BVar t
+    goBV (BVar bvIx bvTy bvNm) = BVar bvIx (f bvTy) bvNm
 
-   goBV :: BVar t -> BVar t
-   goBV (BVar bvIx bvTy bvNm) = BVar bvIx (f bvTy) bvNm
+    goScope :: Scope (BVar t) (Exp x t) (Vars t) -> Scope (BVar t) (Exp x t) (Vars t)
+    goScope = viaExp go
 
-   goScope :: Scope (BVar t) (Exp x t) (Vars t) -> Scope (BVar t) (Exp x t) (Vars t)
-   goScope = viaExp go
-
-   go = transformTypesInExp f
+    go = transformTypesInExp f
 
 stripTypeAbstractions :: Exp x t a -> ([(Int, Ident, KindOf t)], Exp x t a)
 stripTypeAbstractions = \case
@@ -303,52 +302,54 @@ mapBind ::
 mapBind f = runIdentity . traverseBind (\a b -> pure $ f a b)
 
 -- it's a foldl' if that ever matters
-foldBinds :: forall x t r
-           . (     r
-                -> (Ident,Int)
-                -> Scope (BVar t) (Exp x t) (Vars t)
-                -> r
-             ) -> r
-               -> [BindE t (Exp x t) (Vars t)]
-               -> r
+foldBinds ::
+  forall x t r.
+  ( r ->
+    (Ident, Int) ->
+    Scope (BVar t) (Exp x t) (Vars t) ->
+    r
+  ) ->
+  r ->
+  [BindE t (Exp x t) (Vars t)] ->
+  r
 foldBinds _ e [] = e
-foldBinds f e (x:xs) = case x of
-  NonRecursive nm i b -> foldBinds f (f e (nm,i) b) xs
+foldBinds f e (x : xs) = case x of
+  NonRecursive nm i b -> foldBinds f (f e (nm, i) b) xs
   Recursive recBinds ->
-    let e' = foldl' (\acc (nm,b) -> f acc nm b) e recBinds
-    in foldBinds f e' xs
+    let e' = foldl' (\acc (nm, b) -> f acc nm b) e recBinds
+     in foldBinds f e' xs
 
-
-foldMBindsWith :: forall (m :: * -> *) x t r
-               . Monad m
-              => (r -> Ident -> Int -> Scope (BVar t) (Exp x t) (Vars t) -> m r)
-              -> (r -> [((Ident,Int),Scope (BVar t) (Exp x t) (Vars t))] -> m r)
-              -> r
-              -> [BindE t (Exp x t) (Vars t)]
-              -> m r
-foldMBindsWith _ _  e [] = pure e
-foldMBindsWith fNonRec fRec e (x:xs) = case x of
+foldMBindsWith ::
+  forall (m :: * -> *) x t r.
+  (Monad m) =>
+  (r -> Ident -> Int -> Scope (BVar t) (Exp x t) (Vars t) -> m r) ->
+  (r -> [((Ident, Int), Scope (BVar t) (Exp x t) (Vars t))] -> m r) ->
+  r ->
+  [BindE t (Exp x t) (Vars t)] ->
+  m r
+foldMBindsWith _ _ e [] = pure e
+foldMBindsWith fNonRec fRec e (x : xs) = case x of
   NonRecursive nm i b -> fNonRec e nm i b >>= \e' -> foldMBindsWith fNonRec fRec e' xs
-  Recursive recBinds  -> fRec e recBinds >>= \e' -> foldMBindsWith fNonRec fRec e' xs
+  Recursive recBinds -> fRec e recBinds >>= \e' -> foldMBindsWith fNonRec fRec e' xs
 
-flatBinds :: [BindE t (Exp x t) (Vars t)] -> Map (Ident,Int) (Scope (BVar t) (Exp x t) (Vars t))
+flatBinds :: [BindE t (Exp x t) (Vars t)] -> Map (Ident, Int) (Scope (BVar t) (Exp x t) (Vars t))
 flatBinds = foldBinds (\acc nm scoped -> M.insert nm scoped acc) M.empty
 
 {- Get a singleton set of the identifier of a BindE if non-recursive, or
    a set of the identifiers of each decl the rec group if recursive
 -}
-bindIdIxs :: BindE t (Exp x t) (Vars t) -> Set (Ident,Int)
+bindIdIxs :: BindE t (Exp x t) (Vars t) -> Set (Ident, Int)
 bindIdIxs = \case
-  NonRecursive i x _ -> S.singleton (i,x)
-  Recursive xs       -> S.fromList $ fst <$> xs
+  NonRecursive i x _ -> S.singleton (i, x)
+  Recursive xs -> S.fromList $ fst <$> xs
 
 bindBodies :: BindE t (Exp x t) (Vars t) -> [Scope (BVar t) (Exp x t) (Vars t)]
 bindBodies = \case
   NonRecursive _ _ b -> [b]
-  Recursive xs       -> snd <$> xs
+  Recursive xs -> snd <$> xs
 
 -- N.B. we're using Set instead of [] mainly to ensure that everything has the same order
-allDeclIdentifiers :: forall x t. Ord t => [BindE t (Exp x t) (Vars t)] -> Set (Ident, Int)
+allDeclIdentifiers :: forall x t. (Ord t) => [BindE t (Exp x t) (Vars t)] -> Set (Ident, Int)
 allDeclIdentifiers [] = S.empty
 allDeclIdentifiers (b : rest) = case b of
   NonRecursive nm indx _ -> S.insert (nm, indx) $ allDeclIdentifiers rest
@@ -418,7 +419,7 @@ mkBVar idnt indx ty = BVar indx ty idnt
 unBVar :: BVar t -> (Ident, Int)
 unBVar (BVar indx _ idnt) = (idnt, indx)
 
-allBoundVars :: forall x t. Ord t => Exp x t (Vars t) -> [BVar t]
+allBoundVars :: forall x t. (Ord t) => Exp x t (Vars t) -> [BVar t]
 allBoundVars e = S.toList . S.fromList $ flip mapMaybe everything $ \case
   V (B bv) -> Just bv
   _ -> Nothing
@@ -436,7 +437,6 @@ stripSkolems = transform $ \case
 -}
 stripSkolemsFromExpr :: Exp x PurusType (Vars PurusType) -> Exp x PurusType (Vars PurusType)
 stripSkolemsFromExpr = transformTypesInExp stripSkolems
-
 
 {-
   *********************
@@ -477,7 +477,6 @@ instance Plated SourceType where
         (\kargs' args' -> Constraint a cn kargs' args' cdata)
           <$> traverse g kargs
           <*> traverse g args
-
 
 {- Useful for transform/rewrite/cosmos/etc -}
 instance Plated (Exp x t (Vars t)) where

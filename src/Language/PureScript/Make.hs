@@ -32,7 +32,6 @@ import Language.PureScript.AST (ErrorMessageHint (..), Module (..), SourceSpan (
 import Language.PureScript.CST qualified as CST
 import Language.PureScript.CoreFn qualified as CF
 import Language.PureScript.CoreFn qualified as CFT
-import Language.Purus.Pretty qualified as CFT 
 import Language.PureScript.Crash (internalError)
 import Language.PureScript.Docs.Convert qualified as Docs
 import Language.PureScript.Environment (Environment (..), initEnvironment)
@@ -49,6 +48,7 @@ import Language.PureScript.Names (ModuleName, isBuiltinModuleName, runModuleName
 import Language.PureScript.Renamer (renameInModule)
 import Language.PureScript.Sugar (Env, collapseBindingGroups, createBindingGroups, desugar, desugarCaseGuards, externsEnv, primEnv)
 import Language.PureScript.TypeChecker (CheckState (..), emptyCheckState, typeCheckModule)
+import Language.Purus.Pretty qualified as CFT
 import Prettyprinter.Util (putDocW)
 import System.Directory (doesFileExist)
 import System.FilePath (replaceExtension)

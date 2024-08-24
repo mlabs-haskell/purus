@@ -2,21 +2,25 @@ module Language.Purus.Prim.Data where
 
 import Prelude
 
-import Language.PureScript.Names
-    ( Ident(Ident, UnusedIdent),
-      ProperName,
-      ProperNameType(TypeName),
-      Qualified(..),
-      QualifiedBy(ByModuleName) )
 import Language.PureScript.Constants.Prim qualified as C
-import Language.PureScript.CoreFn.Module
-    ( Datatypes(Datatypes),
-      CtorDecl(CtorDecl),
-      DataDecl(DataDecl),
-      dDataTyName )
-import Language.PureScript.CoreFn.Desugar.Utils ( properToIdent )
-import Language.PureScript.Environment
-    ( mkTupleTyName, DataDeclType(Data) )
+import Language.PureScript.CoreFn.Desugar.Utils (properToIdent)
+import Language.PureScript.CoreFn.Module (
+  CtorDecl (CtorDecl),
+  DataDecl (DataDecl),
+  Datatypes (Datatypes),
+  dDataTyName,
+ )
+import Language.PureScript.Environment (
+  DataDeclType (Data),
+  mkTupleTyName,
+ )
+import Language.PureScript.Names (
+  Ident (Ident, UnusedIdent),
+  ProperName,
+  ProperNameType (TypeName),
+  Qualified (..),
+  QualifiedBy (ByModuleName),
+ )
 
 import Language.Purus.IR
 
@@ -26,7 +30,7 @@ import Data.Map qualified as M
 import Data.Text (Text)
 import Data.Text qualified as T
 
-import Control.Lens ( (<&>), (^.) )
+import Control.Lens ((<&>), (^.))
 
 pattern ArrayCons :: Qualified Ident
 pattern ArrayCons = Qualified (ByModuleName C.M_Prim) (Ident "Cons")

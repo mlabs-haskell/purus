@@ -78,8 +78,8 @@ import Language.PureScript.TypeChecker.Unify (freshTypeWithKind, replaceTypeWild
 import Language.PureScript.Types
 
 import Debug.Trace
-import Language.Purus.Pretty.Types (prettyTypeStr)
 import Language.PureScript.Pretty.Values (renderValue)
+import Language.Purus.Pretty.Types (prettyTypeStr)
 
 moduleTraces :: Bool
 moduleTraces = True
