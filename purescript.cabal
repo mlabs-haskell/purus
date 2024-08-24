@@ -409,23 +409,28 @@ library
     Language.Purus.Debug
     Language.Purus.IR
     Language.Purus.IR.Utils
+    Language.Purus.Make
     Language.Purus.Pipeline.Monad
     Language.Purus.Pipeline.CompileToPIR
+    Language.Purus.Pipeline.CompileToPIR.Eval
+    Language.Purus.Pipeline.CompileToPIR.Utils
     Language.Purus.Pipeline.DesugarCore
     Language.Purus.Pipeline.DesugarObjects
     Language.Purus.Pipeline.EliminateCases
     Language.Purus.Pipeline.GenerateDatatypes
+    Language.Purus.Pipeline.GenerateDatatypes.Utils 
     Language.Purus.Pipeline.Inline
+    Language.Purus.Pipeline.Inline.Types 
     Language.Purus.Pipeline.Instantiate
     Language.Purus.Pipeline.Lift
+    Language.Purus.Pipeline.Lift.Types 
     Language.Purus.Pretty
     Language.Purus.Pretty.Common
     Language.Purus.Pretty.Expr
     Language.Purus.Pretty.Types
     Language.Purus.Prim.Data
+    Language.Purus.Types
     Language.Purus.Utils
-
-
 
   other-modules:
     Data.Text.PureScript
