@@ -9,9 +9,15 @@ import Control.Monad.State
 import Control.Lens.Operators
 import Control.Monad.Trans.Except (ExceptT)
 import Language.PureScript.Names
+import Language.PureScript.CoreFn.Module
+import Language.PureScript.CoreFn.Expr
+import Language.Purus.IR.Utils
 import Data.Map (Map)
+import Data.Map qualified as M
 import Control.Monad.Except (MonadError)
 import Control.Monad.Reader
+import Language.PureScript.CoreFn (Ann)
+import Language.Purus.Types
  
 {- [Current Compilation Pipeline Structure]
      - That is, "current" before the `Language.Purus` reorganization.
@@ -128,7 +134,6 @@ So there are basically 4 different phases:
 
 -}
 
-
 newtype CounterT m a = CounterT {runCounterT :: StateT Int m a}
   deriving newtype (Functor, Applicative, Monad,  MonadTrans)
 
@@ -148,14 +153,47 @@ instance Monad m => MonadCounter (CounterT m) where
     id += 1
     pure s
 
+instance Monad m => MonadCounter (StateT s (CounterT m)) where
+  next = lift next
+
 newtype PurusM s a = PurusM {runPurusM :: StateT s (CounterT (Either String))  a}
-  deriving newtype (Functor, Applicative, Monad, MonadError String, MonadState s)
+  deriving newtype (Functor, Applicative, Monad, MonadCounter, MonadError String, MonadState s)
 
 instance MonadReader r (PurusM r) where
   ask =  get
 
   local f act = do
+    s <- get
     id %= f
-    act 
+    res <-  act
+    id .= s
+    pure res
 
   reader f = gets f
+
+evalPurusM :: s -> PurusM s a -> CounterT (Either String) a
+evalPurusM s pm = evalStateT (runPurusM pm) s
+
+newtype DesugarCore a = DesugarCore (PurusM (Map Ident Int) a)
+  deriving newtype (Functor, Applicative, Monad, MonadError String, MonadCounter, MonadState (Map Ident Int), MonadReader (Map Ident Int))
+
+runDesugarCore :: DesugarCore a -> CounterT (Either String) a
+runDesugarCore (DesugarCore psm) = evalPurusM M.empty psm
+
+newtype Inline a = Inline (PurusM (Module IR_Decl PurusType PurusType Ann) a)
+  deriving newtype (Functor, Applicative, Monad, MonadError String, MonadCounter, MonadReader (Module IR_Decl PurusType PurusType Ann))
+
+runInline :: Module IR_Decl PurusType PurusType Ann -> Inline a -> CounterT (Either String) a
+runInline modl (Inline psm) = evalPurusM modl psm
+
+newtype PlutusContext a = PlutusContext (PurusM DatatypeDictionary a)
+  deriving newtype (Functor, Applicative, Monad, MonadError String, MonadCounter, MonadState DatatypeDictionary, MonadReader DatatypeDictionary)
+
+runPlutusContext :: DatatypeDictionary -> PlutusContext a -> CounterT (Either String) a
+runPlutusContext dtdict (PlutusContext psm) = evalPurusM dtdict psm 
+
+newtype Counter a = Counter (PurusM () a)
+  deriving newtype (Functor, Applicative, Monad, MonadError String, MonadCounter)
+
+runCounter :: Counter a -> CounterT (Either String) a
+runCounter (Counter psm) = evalPurusM () psm

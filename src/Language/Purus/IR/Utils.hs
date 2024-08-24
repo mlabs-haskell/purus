@@ -1,3 +1,7 @@
+{-# OPTIONS_GHC -Wno-orphans #-}
+{-# LANGUAGE StarIsType #-}
+{-# OPTIONS_GHC -Wno-unrecognised-pragmas #-}
+{-# HLINT ignore "Use camelCase" #-}
 module Language.Purus.IR.Utils where
 
 import Prelude
@@ -84,11 +88,11 @@ viaExpM ::
   Scope (BVar t) (Exp x t) (Vars t) ->
   m (Scope (BVar t) (Exp x t) (Vars t))
 viaExpM f scoped = do
-  let unscoped = join <$> fromScope scoped
+  let unscoped = toExp scoped
   transformed <- f unscoped
   pure $ abstract (\case B bv -> Just bv;_ -> Nothing) transformed
 
--- stupid, but `\e -> join <$> fromScope e`` is probably the most duplicated code phrase
+-- stupid, but `\e -> toExp e`` is probably the most duplicated code phrase
 -- in this whole project
 toExp :: Scope (BVar t) (Exp x t) (Vars t) -> Exp x t (Vars t)
 toExp = fmap join . fromScope
@@ -109,15 +113,15 @@ transformExp f = \case
   LamE bv e -> LamE bv <$> transformScope e
   CaseE t e alts ->
     let goAlt :: Alt x t (Exp x t) (Vars t) -> f (Alt x t (Exp x t) (Vars t))
-        goAlt (UnguardedAlt bs pats scoped) = UnguardedAlt bs pats <$> transformScope scoped
+        goAlt (UnguardedAlt pats scoped) = UnguardedAlt pats <$> transformScope scoped
      in CaseE t <$> runTransform e <*> traverse goAlt alts
-  LetE binds decls scoped ->
+  LetE decls scoped ->
     let goDecls :: BindE t (Exp x t) (Vars t) -> f (BindE t (Exp x t) (Vars t))
         goDecls = \case
           NonRecursive ident bvix expr ->
             NonRecursive ident bvix <$> transformScope expr
           Recursive xs -> Recursive <$> traverse (\(i, x) -> (i,) <$> transformScope x) xs
-     in LetE binds <$> traverse goDecls decls <*> transformScope scoped
+     in LetE <$> traverse goDecls decls <*> transformScope scoped
   AppE e1 e2 -> AppE <$> runTransform e1 <*> runTransform e2
   AccessorE x t pss e -> AccessorE x t pss <$> runTransform e
   ObjectUpdateE x t e cf fs ->
@@ -136,7 +140,7 @@ transformExp f = \case
       Scope (BVar t) (Exp x t) (Vars t) ->
       f (Scope (BVar t) (Exp x t) (Vars t))
     transformScope scoped = do
-      let unscoped = join <$> fromScope scoped
+      let unscoped = toExp scoped
       transformed <- runTransform unscoped
       pure $ toScope (F <$> transformed)
 
@@ -165,10 +169,10 @@ deepMapMaybeBound _f = \case
   V (F fv) -> V . F $ fv
   AppE e1 e2 -> AppE (go e1) (go e2)
   LamE bv body -> LamE bv $ goScope body
-  LetE _REMOVE bs e ->
+  LetE  bs e ->
     let bs' = mapBind (const goScope) <$> bs
         e' = goScope e
-     in LetE _REMOVE bs' e'
+     in LetE  bs' e'
   LitE t lit -> LitE t $ go <$> lit
   AccessorE x t str e -> AccessorE x t str $ go e
   ObjectUpdateE x t e copy fs ->
@@ -206,10 +210,10 @@ transformTypesInExp f = \case
     let bv' = goBV bv
         body' = goScope body
     in LamE bv' body'
-  LetE _REMOVE bs body ->
+  LetE bs body ->
     let bs' = mapBind (const goScope) <$> bs
         body' = goScope body
-    in LetE _REMOVE bs' body'
+    in LetE bs' body'
   AccessorE x t str e ->
     let t' = f t
         e' = go e
@@ -230,10 +234,10 @@ transformTypesInExp f = \case
    -- can't use mapAlt b/c we need to update types in patterns
    -- (We still have object lit pats before object desugaring)
    goAlt :: Alt x t (Exp x t) (Vars t) -> Alt x t (Exp x t) (Vars t)
-   goAlt (UnguardedAlt _REMOVE pat body) =
+   goAlt (UnguardedAlt pat body) =
      let pat' = goPat pat
          body' = goScope body
-     in UnguardedAlt _REMOVE pat' body'
+     in UnguardedAlt pat' body'
 
    goPat :: Pat x t (Exp x t) (Vars t) -> Pat x t (Exp x t) (Vars t)
    goPat = \case
@@ -265,7 +269,7 @@ containsBVar idnt indx expr =
     )
     subExpressions
   where
-    subExpressions = (join <$> fromScope expr) ^.. cosmos
+    subExpressions = toExp expr ^.. cosmos
 
 {-
   *********************
@@ -330,6 +334,9 @@ foldMBindsWith fNonRec fRec e (x:xs) = case x of
 flatBinds :: [BindE t (Exp x t) (Vars t)] -> Map (Ident,Int) (Scope (BVar t) (Exp x t) (Vars t))
 flatBinds = foldBinds (\acc nm scoped -> M.insert nm scoped acc) M.empty
 
+{- Get a singleton set of the identifier of a BindE if non-recursive, or
+   a set of the identifiers of each decl the rec group if recursive
+-}
 bindIdIxs :: BindE t (Exp x t) (Vars t) -> Set (Ident,Int)
 bindIdIxs = \case
   NonRecursive i x _ -> S.singleton (i,x)
@@ -365,11 +372,11 @@ traverseAlt ::
   (Scope (BVar t) (Exp x t) (Vars t) -> f (Scope (BVar t) (Exp x t) (Vars t))) ->
   Alt x t (Exp x t) (Vars t) ->
   f (Alt x t (Exp x t) (Vars t))
-traverseAlt f (UnguardedAlt _REMOVE pat body) = UnguardedAlt _REMOVE pat <$> f body
+traverseAlt f (UnguardedAlt pat body) = UnguardedAlt pat <$> f body
 
 mapAlt ::
   forall x t.
-  (Scope (BVar t) (Exp x t) (Vars t) -> (Scope (BVar t) (Exp x t) (Vars t))) ->
+  (Scope (BVar t) (Exp x t) (Vars t) -> Scope (BVar t) (Exp x t) (Vars t)) ->
   Alt x t (Exp x t) (Vars t) ->
   Alt x t (Exp x t) (Vars t)
 mapAlt f alt = runIdentity . traverseAlt (pure . f) $ alt
@@ -380,9 +387,6 @@ mapAlt f alt = runIdentity . traverseAlt (pure . f) $ alt
   *********************
 -}
 
--- Builtins shouldn't be inlined because they can't be.
--- TODO/REVIEW: Figure out whether it's necessary to *monomorphize*
---              polymorphic builtins. (Trivial to implement if needed)
 isBuiltinE :: Exp x ty1 (Var b (FVar ty2)) -> Bool
 isBuiltinE = \case
   V (F (FVar _ qi)) -> isBuiltin qi
@@ -421,11 +425,15 @@ allBoundVars e = S.toList . S.fromList $ flip mapMaybe everything $ \case
   where
     everything = e ^.. cosmos
 
+{- Remove skolems from *types* by stripping their index and turning the remaining ident into a TyVar
+-}
 stripSkolems :: PurusType -> PurusType
 stripSkolems = transform $ \case
   Skolem a nm ki _ _ -> TypeVar a nm ki
   other -> other
 
+{- Strip skolems from *all type annotations in an expression*
+-}
 stripSkolemsFromExpr :: Exp x PurusType (Vars PurusType) -> Exp x PurusType (Vars PurusType)
 stripSkolemsFromExpr = transformTypesInExp stripSkolems
 
@@ -485,17 +493,17 @@ instance Plated (Exp x t (Vars t)) where
         LamE bv e -> LamE bv <$> scopeHelper e
         CaseE t es alts ->
           let goAlt :: Alt x t (Exp x t) (Vars t) -> f (Alt x t (Exp x t) (Vars t))
-              goAlt (UnguardedAlt bs pats scoped) =
-                UnguardedAlt bs pats <$> scopeHelper scoped
+              goAlt (UnguardedAlt pats scoped) =
+                UnguardedAlt pats <$> scopeHelper scoped
            in CaseE t <$> tfun es <*> traverse goAlt alts
-        LetE binds decls scoped ->
+        LetE decls scoped ->
           let goDecls :: BindE t (Exp x t) (Vars t) -> f (BindE t (Exp x t) (Vars t))
               goDecls = \case
                 NonRecursive ident bvix expr ->
                   NonRecursive ident bvix <$> scopeHelper expr
                 Recursive xs ->
                   Recursive <$> traverse (\(i, x) -> (i,) <$> scopeHelper x) xs
-           in LetE binds <$> traverse goDecls decls <*> scopeHelper scoped
+           in LetE <$> traverse goDecls decls <*> scopeHelper scoped
         AppE e1 e2 -> AppE <$> tfun e1 <*> tfun e2
         AccessorE x t pss e -> AccessorE x t pss <$> tfun e
         ObjectUpdateE x t e cf fs ->
@@ -511,7 +519,7 @@ instance Plated (Exp x t (Vars t)) where
             Scope (BVar t) (Exp x t) (Vars t) ->
             f (Scope (BVar t) (Exp x t) (Vars t))
           scopeHelper scoped =
-            let unscoped = join <$> fromScope scoped
+            let unscoped = toExp scoped
                 effed = tfun unscoped
                 abstr = abstract $ \case
                   B bv -> Just bv
@@ -520,9 +528,6 @@ instance Plated (Exp x t (Vars t)) where
 
           traverseLit = \case
             IntL i -> pure $ IntL i
-            -- NumL d -> pure $ NumL d
             StringL str -> pure $ StringL str
             CharL char -> pure $ CharL char
-            -- ArrayL xs -> ArrayL <$> traverse tfun  xs
-            -- ConstArrayL xs -> ConstArrayL <$> pure xs
             ObjectL x fs -> ObjectL x <$> traverse (\(str, e) -> (str,) <$> tfun e) fs

@@ -66,7 +66,7 @@ import Language.PureScript.CoreFn.Desugar.Utils (
 import Language.PureScript.CoreFn.Expr (Bind (..), CaseAlternative (..), Expr (..), Guard)
 import Language.PureScript.CoreFn.Meta (Meta (..))
 import Language.PureScript.CoreFn.Module
-import Language.Purus.Pretty (ppType, prettyAsStr, prettyDatatypes, renderExprStr)
+import Language.Purus.Pretty (ppType, prettyStr, prettyDatatypes, renderExprStr)
 import Language.PureScript.CoreFn.Utils (exprType, stripQuantifiers)
 import Language.PureScript.Crash (internalError)
 import Language.PureScript.Environment (
@@ -163,7 +163,7 @@ moduleToCoreFn (A.Module modSS coms mn _decls (Just exps)) = do
   decls' <- concat <$> traverse (declToCoreFn mn) nonDataDecls
   let dataDecls' = mkDataDecls mn dataDecls
       result = Module modSS coms mn (spanName modSS) imports exps' reExps externs decls' dataDecls'
-  traceM $ prettyAsStr dataDecls'
+  traceM $ prettyStr dataDecls'
   pure $ result
   where
     setModuleName = modify $ \cs ->

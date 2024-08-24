@@ -32,7 +32,7 @@ import Language.PureScript.AST (ErrorMessageHint (..), Module (..), SourceSpan (
 import Language.PureScript.CST qualified as CST
 import Language.PureScript.CoreFn qualified as CF
 import Language.PureScript.CoreFn qualified as CFT
-import Language.PureScript.CoreFn.Pretty qualified as CFT
+import Language.Purus.Pretty qualified as CFT 
 import Language.PureScript.Crash (internalError)
 import Language.PureScript.Docs.Convert qualified as Docs
 import Language.PureScript.Environment (Environment (..), initEnvironment)
@@ -56,7 +56,7 @@ import System.FilePath (replaceExtension)
 -- Temporary
 import Debug.Trace (traceM)
 import Language.PureScript.CoreFn.Desugar.Utils (pTrace)
-import Language.PureScript.CoreFn.Pretty (ppType)
+import Language.Purus.Pretty (ppType)
 
 {- | Rebuild a single module.
 

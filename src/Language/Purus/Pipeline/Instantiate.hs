@@ -18,29 +18,32 @@ import Data.Text (Text)
 import Language.PureScript.CoreFn.TypeLike (instantiates, TypeLike (..))
 import Data.Foldable (foldl')
 import Data.Map (Map)
-import Language.Purus.Pipeline.Lift
+
 import Language.PureScript.CoreFn.Expr (PurusType)
-import Language.Purus.Debug
-import Language.Purus.Pretty.Common (prettyAsStr)
+
 import Control.Lens (view,_2)
+
+import Language.Purus.Pipeline.Lift.Types
+import Language.Purus.Debug
+import Language.Purus.Pretty.Common (prettyStr)
 import Language.Purus.IR (analyzeApp)
 
 
 instantiateTypes :: MonoExp -> MonoExp
 instantiateTypes = \case
   V v -> V v
-  LitE t lit -> LitE t $ monoMorph <$> lit
-  LamE bv scope -> LamE bv $ viaExp monoMorph scope
-  appE@(AppE f a) ->
-    let a' = monoMorph a
-        f' = monoMorph f
+  LitE t lit -> LitE t $ instantiateTypes <$> lit
+  LamE bv scope -> LamE bv $ viaExp instantiateTypes scope
+  AppE f a ->
+    let a' = instantiateTypes a
+        f' = instantiateTypes f
     in instantiateApp $ AppE f' a'
-  CaseE t scrut alts -> CaseE t (monoMorph scrut) (mapAlt (viaExp monoMorph) <$> alts)
-  LetE _REMOVE decls body -> LetE _REMOVE (mapBind (const (viaExp monoMorph)) <$> decls) (viaExp monoMorph body)
-  AccessorE x t lbl obj -> AccessorE x t lbl (monoMorph obj)
-  ObjectUpdateE x t e copy fs -> ObjectUpdateE x t (monoMorph e) copy (fmap monoMorph <$> fs)
+  CaseE t scrut alts -> CaseE t (instantiateTypes scrut) (mapAlt (viaExp instantiateTypes) <$> alts)
+  LetE decls body -> LetE (mapBind (const (viaExp instantiateTypes)) <$> decls) (viaExp instantiateTypes body)
+  AccessorE x t lbl obj -> AccessorE x t lbl (instantiateTypes obj)
+  ObjectUpdateE x t e copy fs -> ObjectUpdateE x t (instantiateTypes e) copy (fmap instantiateTypes <$> fs)
   -- I'm not sure what to do for TyInstE or TyAbs TODO: Ask Koz
-  TyAbs t inner -> TyAbs t (monoMorph inner)
+  TyAbs t inner -> TyAbs t (instantiateTypes inner)
   other -> other
 
 instantiateApp :: MonoExp -> MonoExp
@@ -53,14 +56,14 @@ instantiateApp e = case analyzeApp e of
         quantifiedTyVars = view _2 <$> fTyVars
         instantiations   = getInstantiations quantifiedTyVars fTypes argTypes
         f'               = go instantiations quantifiedTyVars f
-        msg              = prettify [ "Function:\n" <> prettyAsStr f
-                                    , "Arguments:\n" <> prettyAsStr args
-                                    , "Split Fun Types:\n" <> prettyAsStr fTypes
-                                    , "Split Arg Types:\n" <> prettyAsStr argTypes
-                                    , "Quantified TyVars:\n" <> prettyAsStr quantifiedTyVars
-                                    , "Instantiations:\n" <> prettyAsStr (M.toList instantiations)
-                                    , "New Function:\n" <> prettyAsStr f'
-                                    , "New Function Type:\n" <> prettyAsStr (expTy id f')
+        msg              = prettify [ "Function:\n" <> prettyStr f
+                                    , "Arguments:\n" <> prettyStr args
+                                    , "Split Fun Types:\n" <> prettyStr fTypes
+                                    , "Split Arg Types:\n" <> prettyStr argTypes
+                                    , "Quantified TyVars:\n" <> prettyStr quantifiedTyVars
+                                    , "Instantiations:\n" <> prettyStr (M.toList instantiations)
+                                    , "New Function:\n" <> prettyStr f'
+                                    , "New Function Type:\n" <> prettyStr (expTy id f')
                                     ]
     in doTrace "instantiateTypes" msg $ foldl' AppE f' args
  where
@@ -88,17 +91,3 @@ getInstantiations (var : vars) fs@(fE : fEs) as@(aE : aEs) = case instantiates v
     getInstantiations [var] fEs aEs
       <> getInstantiations vars fs as
   Just t -> M.insert var t $ getInstantiations vars fs as
-
-
-{- NOTE: Nullnary constructors
-
-   The instantiation functions above *should* work (or can at least be fixed in theory to work) on every
-   polymorphic *function* or *function-like-construct* (i.e. non-nullary data constructors).
-
-   It will not work for polymorphic nullary constructors, such as (from Haskell) Proxy or Nothing, which
-   require type instantiations to typecheck in PIR, but do not accept any value-level arguments from which the
-   types might be deduced.
-
-
-
--}

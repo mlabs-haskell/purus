@@ -1,28 +1,39 @@
 module Language.Purus.Utils where
 
 import Prelude
-import Control.Exception
-
-import Data.Map (Map)
-import Data.Map qualified as M
 
 import Language.PureScript.PSString (PSString)
 import Language.PureScript.Types (RowListItem (rowListLabel), rowToList)
 import Language.PureScript.AST.SourcePos (SourceAnn)
 import Language.PureScript.Label (Label(runLabel))
 
-import Language.PureScript.CoreFn.Module ( Module )
+import Language.PureScript.CoreFn.Module ( Module(..) )
 import Language.PureScript.CoreFn.Expr ( Bind, PurusType )
 import Language.PureScript.CoreFn.Ann ( Ann )
 import Language.PureScript.CoreFn.FromJSON ()
-import Language.PureScript.CoreFn.TypeLike
-
-import Data.Aeson qualified as Aeson
-import Data.Text (Text)
+import Language.PureScript.Names
+import Language.PureScript.CoreFn.TypeLike 
 
 import Language.Purus.IR
-import Language.Purus.IR.Utils (IR_Decl)
+import Language.Purus.IR.Utils (IR_Decl, WithObjects, Vars)
 import Language.Purus.Debug
+
+import Control.Exception
+
+import Data.List (find)
+
+import Data.Map (Map)
+import Data.Map qualified as M
+
+import Data.Text (Text)
+import Data.Text qualified as T
+
+import Data.Aeson qualified as Aeson
+
+import Bound
+
+import Prettyprinter
+
 
 
 {- IO utility. Reads a CoreFn module from a source file.

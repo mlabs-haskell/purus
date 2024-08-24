@@ -11,179 +11,70 @@ module Language.Purus.Pipeline.Lift where
 
 import Prelude
 
-import Bound.Scope (Scope (..), abstract, fromScope)
-import Bound.Var (Var (..))
-import Data.Map qualified as M
+import Language.PureScript.CoreFn.Expr (PurusType)
+import Language.PureScript.CoreFn.Module (Module(..))
+import Language.PureScript.CoreFn.FromJSON ()
+import Language.PureScript.CoreFn.TypeLike (
+  TypeLike (..),
+ )
+import Language.PureScript.Names (Ident (..), runIdent)
+import Language.PureScript.PSString (PSString)
 import Language.Purus.IR.Utils
+    ( Vars,
+      WithObjects,
+      asExp,
+      viaExp,
+      toExp,
+      fromExp,
+      deepMapMaybeBound,
+      containsBVar,
+      mapBind,
+      foldBinds,
+      unBVar,
+      allBoundVars,
+      stripSkolems,
+      stripSkolemsFromExpr )
 import Language.Purus.IR (
   Alt (..),
   BVar (..),
   BindE (..),
   Exp (..),
-  FVar (..),
   Lit (..),
   Pat (..),
   expTy', expTy,
  )
-import Language.PureScript.CoreFn.Expr (PurusType)
-import Language.PureScript.CoreFn.FromJSON ()
-import Language.PureScript.CoreFn.TypeLike (
-  TypeLike (..),
- )
-import Language.PureScript.Names (Ident (..), Qualified (..), QualifiedBy (..), ModuleName (..), runIdent)
-import Language.PureScript.PSString (PSString)
-
-import Control.Applicative (Alternative ((<|>)))
-import Control.Lens.Operators ((^..))
-import Control.Lens.Plated (cosmos, transform)
-import Control.Monad.Reader ( join, foldM, asks )
-import Data.Bifunctor (Bifunctor (bimap, first))
-import Data.Foldable (foldl', toList)
-import Data.Map (Map)
-import Data.Maybe ( catMaybes, mapMaybe )
-import Data.Set (Set)
-import Data.Set qualified as S
 import Language.Purus.Debug
     ( doTraceM, prettify )
-import Language.Purus.Pretty.Common (prettyAsStr, (<::>), docString)
-import Prettyprinter ( Pretty(pretty), align, vcat, hardline, indent, (<+>) )
-import Control.Monad (void)
-import Language.PureScript.Types (Type(..))
-import Control.Lens (view, _2, toListOf)
-import Data.Text (Text)
+import Language.Purus.Pretty.Common (prettyStr,  docString)
+import Language.Purus.Pipeline.Monad ( Inline, MonadCounter(next) )
+import Language.Purus.Pipeline.Lift.Types
+
+import Control.Applicative (Alternative ((<|>)))
+
+import Data.Maybe ( mapMaybe )
+import Data.Foldable (foldl', toList)
+
+import Data.Map (Map)
+import Data.Map qualified as M
+
+import Data.Set (Set)
+import Data.Set qualified as S
+
+import Control.Monad.Reader ( foldM, asks )
+
 import Debug.Trace (trace)
-import Control.Lens (over,_1)
+
 import Data.Text qualified as T
--- TODO (IMPORTANT!): Add type abstractions to the declarations with free tyvars and
---                    update the types of the variables which correspond to their
---                    identifiers.
 
--- sorry Koz i really want to be able to fit type sigs on one line
-type MonoExp = Exp WithObjects PurusType (Vars PurusType)
-type MonoScoped = Scope (BVar PurusType) (Exp WithObjects PurusType) (Vars PurusType)
-type MonoBind = BindE PurusType (Exp WithObjects PurusType) (Vars PurusType)
-type MonoAlt = Alt WithObjects PurusType (Exp WithObjects PurusType) (Vars PurusType)
+import Control.Lens (over,_1, toListOf, cosmos, transform, (^..))
 
-{- The thing that our Lift function gives us.
+import Bound.Scope (abstract)
+import Bound.Var (Var (..))
 
-   This is essentially equivalent to a LetE expression,
-   but it's useful to keep the lifted declarations separate from
-   the body expression, since we'll be inlining and monomorphizing
-   with those declarations.
--}
-data LiftResult = LiftResult
-  { liftedDecls :: [MonoBind]
-  , trimmedExp :: MonoExp
-  }
+import Prettyprinter 
 
-{- When we lift expressions, we have to abstract any types mentioned in the
-   expressions which are well-scoped in the original context we are lifting from,
-   but are no longer in scope in the lifted expression.
 
-   This will usually turn a non-quantified expression into a quantified expression.
 
-   This is bad. It can (e.g.) cause case expressions that return functions to have
-   branches with *different* types. E.g.
-
-   ```haskell
-   -- Assume there's a (y :: a) for some a in scope
-   let f :: Int -> a -> a
-       f x t = (...)
-   in case (z :: Maybe Int) of
-         Just w -> f w
-         Nothing -> \_ -> y
-
-   -- f gets lifted to:
-   f :: forall (t1 :: Type). Int -> t1 -> t1
-   f = /\(t1 :: Type) -> (...)
-   ```
-
-   In a situation like that, we lack sufficient information to "force" the type to its "original"
-   form. In this particular example, it is not even clear how we could possibly know what
-   `t1` needs to be instantiated to (well ok *we*, i.e., competent human beings, can know it
-   but it's not clear that a general procedure for recovering the information from the context exists)
-
-   The easiest solution here is to pack that information into variables. Either bound or free variables
-   would work here, but we can use the ModuleName field in the Qualified Ident inside of an FVar to
-   very clearly indicate that a "hole" representing an inline target exists.
-
-   This pattern synonym (it's bidirectional btw) allows us to construct and deconstruct a
-   representation of those "holes".
-
-   NOTE: This will break a bunch of stuff, as up to this point we haven't been using FVars for anything
-         meaningful. But that should be OK, since all of these FVars will be eliminated during inlining
-         (and it's very easy to throw a *useful* error if we made a mistake and missed one)
--}
-pattern LiftedHole :: Text -> Integer -> t -> FVar t
-pattern LiftedHole nm indx ty
-  = FVar ty
-   ( Qualified
-     (ByModuleName (ModuleName "$LIFTED")) -- just has to be an arbitrary illegal module name
-     (GenIdent (Just nm) indx)
-   )
-
-pattern LiftedHoleTerm :: Text -> Integer -> t -> Exp x t (Vars t)
-pattern LiftedHoleTerm nm indx ty = V (F (LiftedHole nm indx ty))
-
--- concrete representation, avoid manual Text<->Ident & Integer<->Int conversion
-data Hole t = Hole Ident Int t
-
-toHole :: Exp x t (Vars t) -> Maybe (Hole t)
-toHole (LiftedHoleTerm nm indx ty) = Just $ Hole (Ident nm) (fromIntegral indx) ty
-toHole _ = Nothing
-
-fromHole :: Hole t -> Exp x t (Vars t)
-fromHole (Hole hId hIx hTy) = LiftedHoleTerm (runIdent hId) (fromIntegral hIx) hTy
-
--- dunno if we should ignore the type?
-fillsHole :: BVar t -> Exp x t (Vars t) -> Bool
-fillsHole (BVar bvIx bvTy bvIdent) = \case
-  LiftedHoleTerm (Ident -> i) (fromIntegral -> indx) t -> bvIx == indx && bvIdent == i
-  _ -> False
-
-unHole :: Hole t -> (Ident,Int)
-unHole (Hole hId hIx _) = (hId,hIx)
-
-instance Pretty LiftResult where
-  pretty (LiftResult decls expr) =
-    let mkPrettyDeclWithTySig acc (i,u) scoped =
-          let unscoped = join <$> fromScope scoped
-              ty       = expTy id unscoped
-              prettyBody = pretty (NonRecursive i u scoped)
-              prettySig  = pretty i <::> pretty ty
-              prettyWithSig = align $ vcat [prettySig,prettyBody,hardline]
-          in prettyWithSig : acc
-
-        prettyDecls = foldBinds mkPrettyDeclWithTySig [] decls
-
-    in align $ vcat
-         [ "let"
-         , indent 2 . align . vcat $ prettyDecls
-         , "in" <+> align (pretty expr)
-         ]
-
-{- Intermediate data type for recording the scope at the
-   place where a group of declarations occurs in the AST.
-
-   Without this scope information, lifting is impossible.
--}
-data ToLift = ToLift
-  { varScopeAtDecl :: Set (BVar PurusType)
-  , tyVarScopeAtDecl :: Set (BVar (KindOf PurusType))
-  , declarations :: Set MonoBind
-  }
-  deriving (Show, Eq, Ord)
-
-instance Pretty ToLift where
-  pretty ToLift {..} =
-    pretty $
-      prettify
-        [ "------ToLift-------"
-        , "Var Scope:\n" <> prettyAsStr (S.toList varScopeAtDecl)
-        , "Ty Var Scope:\n " <> prettyAsStr (S.toList tyVarScopeAtDecl)
-        , "Decls:\n" <> prettyAsStr (S.toList declarations)
-        , "-------------------"
-        ]
 
 
 {- Given a collection of declarations that will be lifted, determine for each declaration
@@ -253,7 +144,7 @@ deepAnalysis toLifts = M.mapWithKey go analyses
     -- FIXME: I think the problem is here? yup it was, keeping this as a reminder i changed it in case breaks
     getLiftedPeerDeps :: MonoScoped ->  Set (Ident,Int)
     getLiftedPeerDeps scoped =
-          let unscoped = join <$> fromScope scoped
+          let unscoped = toExp scoped
               allComponentHoleIdents = S.fromList $ mapMaybe (fmap unHole . toHole)  (unscoped ^.. cosmos)
           in  S.intersection allLiftedDeclIdents allComponentHoleIdents
 
@@ -278,7 +169,7 @@ deepAnalysis toLifts = M.mapWithKey go analyses
            (allBoundVars e)
 
 
-cleanupLiftedTypes :: LiftResult  -> Monomorphizer LiftResult
+cleanupLiftedTypes :: LiftResult  -> Inline LiftResult
 cleanupLiftedTypes (LiftResult bs body) = do
   let refreshTypes = mkRefreshTypes bs
       updateVars :: forall (f :: * -> *). Functor f => f (Vars PurusType) -> f (Vars PurusType)
@@ -287,25 +178,6 @@ cleanupLiftedTypes (LiftResult bs body) = do
       body' =  updateVars body
   pure $ LiftResult bs' body'
  where
-  addTypeAbstractions :: [MonoBind] -> Monomorphizer [MonoBind]
-  addTypeAbstractions = traverse (traverseBind (const go))
-    where
-      go :: MonoScoped -> Monomorphizer MonoScoped
-      go = viaExpM $ \e -> do
-        let e' = transformTypesInExp stripSkolems e
-            t = expTy id e'
-            free = freeTypeVariables t
-        bvars <- traverse (\(nm,ki) -> freshUnique >>= \u -> pure $ BVar u ki (Ident nm)) free
-        let result =  foldr TyAbs e' bvars
-            msg = prettify [ "INPUT EXPR:\n" <> prettyAsStr e
-                           , "INPUT EXPR TY:\n" <> prettyAsStr t <> "\n\n" <> show (void t)
-                           , "FREE TY VARS IN INPUT:\n" <> prettyAsStr free
-                           , "RESULT:\n" <> prettyAsStr result
-                           , "RESULT TY:\n" <> prettyAsStr (expTy id result)
-                           ]
-        doTraceM "addTypeAbstractions" msg
-        pure result
-
   mkRefreshTypes :: [MonoBind] -> Vars PurusType -> Vars PurusType
   mkRefreshTypes binds v = case v of
       F (LiftedHole hid@(Ident -> hId) hix@(fromInteger -> hIx) _) ->  case M.lookup (hId,hIx) refreshDict of
@@ -314,8 +186,8 @@ cleanupLiftedTypes (LiftResult bs body) = do
       _ -> v
     where
       refreshDict = foldBinds
-                      (\acc nm@(i,u) b ->
-                         let ty = (expTy' id b)
+                      (\acc nm b ->
+                         let ty = expTy' id b
                          in M.insert nm ty acc)
                       M.empty
                       binds
@@ -324,7 +196,7 @@ cleanupLiftedTypes (LiftResult bs body) = do
 updateAllBinds :: Map (Ident,Int) (Set (BVar PurusType))
                -> MonoExp
                -> [MonoBind]
-               -> Monomorphizer ([MonoBind], MonoExp)
+               -> Inline ([MonoBind], MonoExp)
 updateAllBinds deepDict prunedBody _binds  = do
   let allLiftedIdents = M.keys deepDict
   allOldToNew <- M.fromList <$> traverse (\nm -> (nm,) <$> mkOldToNew nm) allLiftedIdents
@@ -338,11 +210,11 @@ updateAllBinds deepDict prunedBody _binds  = do
 
       msg =
         prettify
-          [ "Pruned body:\n " <> prettyAsStr prunedBody
-          , "AllDeclIdents:\n " <> prettyAsStr allLiftedIdents
-          , "AdjustedBody:\n " <> prettyAsStr adjustedBody
-          , "Binds:\n" <> concatMap (\x -> prettyAsStr x <> "\n\n") binds
-          , "Deep Dict:\n" <> prettyAsStr (M.toList (S.toList <$> deepDict))
+          [ "Pruned body:\n " <> prettyStr prunedBody
+          , "AllDeclIdents:\n " <> prettyStr allLiftedIdents
+          , "AdjustedBody:\n " <> prettyStr adjustedBody
+          , "Binds:\n" <> concatMap (\x -> prettyStr x <> "\n\n") binds
+          , "Deep Dict:\n" <> prettyStr (M.toList (S.toList <$> deepDict))
           ]
   doTraceM "updateAllBinds" msg
   pure (binds, adjustedBody)
@@ -375,15 +247,15 @@ updateAllBinds deepDict prunedBody _binds  = do
               let liftedWithOldVars = mkUpdateCallSiteLifted deep (hId, hIx) x
                   bvf v = M.lookup v thisOldToNew <|> Just v
                   updatedVarBind = abstract (\case B v -> bvf v; _ -> Nothing) liftedWithOldVars
-               in join <$> fromScope updatedVarBind
+               in toExp updatedVarBind
             Nothing -> x
           _ -> x
         thisOldToNew = allOldToNew M.! declNm -- has to be here if it's in dict
 
 
-    regenBVar :: forall t. BVar t -> Monomorphizer (BVar t)
+    regenBVar :: forall t. BVar t -> Inline (BVar t)
     regenBVar (BVar _ bvTy bvIdent) = do
-      u <- freshUnique
+      u <- next
       pure (BVar u bvTy bvIdent)
 
     {- Things named `oldToNew` here refer to a Map from variables with their original indices
@@ -394,7 +266,7 @@ updateAllBinds deepDict prunedBody _binds  = do
 
        `allOldToNew` is used to refer to the global map from identifiers to their `oldToNew` map.
     -}
-    mkOldToNew :: (Ident,Int) -> Monomorphizer (Map (BVar PurusType) (BVar PurusType))
+    mkOldToNew :: (Ident,Int) -> Inline (Map (BVar PurusType) (BVar PurusType))
     mkOldToNew nm =
       M.fromList
         <$> foldM
@@ -405,7 +277,7 @@ updateAllBinds deepDict prunedBody _binds  = do
     {- Corresponds to (2) in [NOTE 1]-}
     mkUpdateCallSiteLifted :: Set (BVar PurusType) -> (Ident, Int) -> MonoExp -> MonoExp
     mkUpdateCallSiteLifted new (idnt, indx) me = case toHole me of
-      Just (Hole hId hIx hTy)
+      Just (Hole hId hIx _)
         | hIx == indx && hId == idnt -> foldl' AppE me (V . B <$> S.toList new)
         | otherwise -> me
       Nothing -> me
@@ -432,9 +304,9 @@ updateAllBinds deepDict prunedBody _binds  = do
        original call-sites: We don't care about *new* variables/indices because there aren't any new
        vars/indices)
     -}
-    mkUpdateCallSiteBody :: (Ident, Int) ->  MonoExp -> MonoExp
+    mkUpdateCallSiteBody :: (Ident, Int) -> MonoExp -> MonoExp
     mkUpdateCallSiteBody nm@(idnt, indx) x = case toHole x of
-      Just hole@(Hole hId hIx hTy)
+      Just hole@(Hole hId hIx _)
         | hIx == indx && hId == idnt ->
             let deep = S.toList $ deepDict M.! nm
              in foldl' AppE (fromHole hole) (V . B <$> deep)
@@ -442,7 +314,7 @@ updateAllBinds deepDict prunedBody _binds  = do
       Nothing -> x
 
 {- Given a "main" expression (and implicit access to the module context via the
-   `Monomorphizer` monad), lift all component declarations, transform their bodies,
+   `Inline` monad), lift all component declarations, transform their bodies,
    and update all call-sites.
 
    NOTE: The first argument is the name of the 'main' declaration. We need this to handle the case where the main function is
@@ -456,7 +328,7 @@ updateAllBinds deepDict prunedBody _binds  = do
 lift ::
   (Ident,Int) ->
   MonoExp ->
-  Monomorphizer LiftResult -- we don't put the expression back together yet b/c it's helpful to keep the pieces separate for monomorphization
+  Inline LiftResult -- we don't put the expression back together yet b/c it's helpful to keep the pieces separate for monomorphization
 lift mainNm _e = do
   e <- handleSelfRecursiveMain
   modDict <- mkModDict
@@ -469,21 +341,21 @@ lift mainNm _e = do
   result <-  cleanupLiftedTypes $ LiftResult binds body
   let msg =
         prettify
-          [ "Input Expr:\n" <> prettyAsStr e
-          , "Pruned Expr:\n" <> prettyAsStr prunedExp
-          , "ToLifts:\n" <> prettyAsStr (S.toList toLift)
+          [ "Input Expr:\n" <> prettyStr e
+          , "Pruned Expr:\n" <> prettyStr prunedExp
+          , "ToLifts:\n" <> prettyStr (S.toList toLift)
           , "Collect Dict:\n" <> prettyCollectDict
-          , "Result\n" <> prettyAsStr result
+          , "Result\n" <> prettyStr result
            ]
   doTraceM "lift" msg
   pure result
  where
-    handleSelfRecursiveMain :: Monomorphizer MonoExp
+    handleSelfRecursiveMain :: Inline MonoExp
     handleSelfRecursiveMain
       | not (uncurry containsBVar mainNm (fromExp _e)) = pure _e
       | otherwise = do
           let (mnNm,mnIx) = mainNm
-          u <- freshUnique
+          u <- next
           let uTxt = T.pack (show u)
               newNm = case mnNm of
                 Ident t -> Ident $ t <> "$" <> uTxt
@@ -501,7 +373,7 @@ lift mainNm _e = do
               syntheticPrimeBody = abstr . V . B $ BVar mnIx eTy mnNm
               syntheticPrimeBinding = ((newNm,u),syntheticPrimeBody)
               bindingGroup = Recursive [syntheticMainBinding,syntheticPrimeBinding]
-          pure $ LetE M.empty [bindingGroup] syntheticPrimeBody
+          pure $ LetE [bindingGroup] syntheticPrimeBody
 
 
     mkDict :: Set (Ident,Int)
@@ -510,7 +382,7 @@ lift mainNm _e = do
            -> Map (Ident,Int) MonoScoped
     mkDict visited acc me = trace "mkDict" $ case me of
       V F{} -> acc
-      bvE@(V (B (BVar bvIx _ bvId))) -> case S.member (bvId,bvIx) visited of
+      (V (B (BVar bvIx _ bvId))) -> case S.member (bvId,bvIx) visited of
         True -> acc
         False -> case M.lookup (bvId,bvIx) acc of
           Nothing -> acc
@@ -520,14 +392,14 @@ lift mainNm _e = do
       AppE e1 e2 -> mkDict visited acc e1 <> mkDict visited acc e2
       CaseE _ scrut alts ->
         let wScrut = mkDict visited acc scrut
-        in foldl' (\ac (UnguardedAlt _ _ body) -> mkDict visited ac (toExp body)) wScrut alts
+        in foldl' (\ac (UnguardedAlt _ body) -> mkDict visited ac (toExp body)) wScrut alts
       AccessorE _ _ _ arg -> mkDict visited acc arg
       ObjectUpdateE _ _ ex _ flds ->
         let wEx = mkDict visited acc ex
         in foldl' (\ac fld -> mkDict visited ac (snd fld)) wEx flds
       TyAbs _ ex -> mkDict visited acc ex
       LamE _ scoped -> mkDict visited acc (toExp scoped)
-      LetE _ decls scoped ->
+      LetE decls scoped ->
         let wDeclsTopLevel = foldBinds (\ac nm body -> M.insert nm body ac) acc decls
             wDeclsDeep     = foldBinds (\ac _ body -> mkDict visited ac (toExp body)) wDeclsTopLevel decls
         in mkDict visited wDeclsDeep (toExp scoped)
@@ -580,20 +452,20 @@ lift mainNm _e = do
       TyAbs tv ex -> case collect visited dict boundVars (S.insert tv boundTyVars) ex of
         (l,m,r) -> (l,TyAbs tv m, r)
       LamE bv scoped ->
-        let (bnds, unscoped,vis1) = collect visited dict (S.insert bv boundVars) boundTyVars (join <$> fromScope scoped)
+        let (bnds, unscoped,vis1) = collect visited dict (S.insert bv boundVars) boundTyVars (toExp scoped)
             rescoped = abstract (\case B bvx -> Just bvx; _ -> Nothing) unscoped
          in (bnds, LamE bv rescoped,vis1)
-      LetE _ _decls scoped ->
+      LetE _decls scoped ->
         let decls = mapBind (const $ viaExp stripSkolemsFromExpr) <$> _decls
             --boundVarsPlusDecls = foldBinds (\acc (nm,indx) body -> S.insert (BVar indx (expTy' id body) nm) acc) boundVars decls
             --vis1 = foldBinds (\vis nm _ -> S.insert nm vis) visited decls
             (liftedDecls,vis2) = collectFromNestedDeclarations visited boundVars boundTyVars decls
-         in over _1 (liftedDecls <>) $ collect vis2 dict  boundVars boundTyVars (join <$> fromScope scoped)
+         in over _1 (liftedDecls <>) $ collect vis2 dict  boundVars boundTyVars (toExp scoped)
       -- If we run this directly after core desugaring then there should not be any TyInstEs in the AST
       tInst@TyInstE {} ->
         error $
           "Don't know what to do with a TyInst. Seems like it requires backtracking to handle correctly? Ughhhh\n"
-            <> prettyAsStr tInst
+            <> prettyStr tInst
       where
         {- We need to "sanitize" the declarations being collected so that any Vars that reference a
            declaration being lifted are transformed into a LiftedHole with the proper type annotation.
@@ -630,12 +502,12 @@ lift mainNm _e = do
           [MonoAlt] ->
           (Set ToLift, [MonoAlt], Set (Ident,Int))
         collectFromAlts acc [] = acc
-        collectFromAlts (liftAcc, altAcc, visAcc) (UnguardedAlt _bs pat scoped : rest) =
+        collectFromAlts (liftAcc, altAcc, visAcc) (UnguardedAlt  pat scoped : rest) =
           let boundInPat = extractPatVarBinders pat
               boundVars' = foldr S.insert boundVars boundInPat
               (bnds, unscoped,vis1) = collect visAcc dict boundVars' boundTyVars (stripSkolemsFromExpr . toExp $  scoped)
               rescoped = abstract (\case B bvx -> Just bvx; _ -> Nothing) unscoped
-              thisAlt = UnguardedAlt _bs pat rescoped
+              thisAlt = UnguardedAlt pat rescoped
               acc' = (liftAcc <> bnds, altAcc <> [thisAlt], vis1)
            in collectFromAlts acc' rest
 
@@ -648,7 +520,7 @@ lift mainNm _e = do
           LitP (ObjectL _ ps) -> concatMap (extractPatVarBinders . snd) ps
           _ -> []
 
-usedModuleDecls :: MonoExp -> Monomorphizer [MonoBind]
+usedModuleDecls :: MonoExp -> Inline [MonoBind]
 usedModuleDecls e = do
     modDict <- mkModDict
     let deps = S.fromList
@@ -671,14 +543,14 @@ usedModuleDecls e = do
 
     directDeps = e ^.. cosmos
 
-mkModDict :: Monomorphizer (Map (Ident,Int) MonoScoped)
+mkModDict :: Inline (Map (Ident,Int) MonoScoped)
 mkModDict = do
-  decls <- view _2
+  decls <- asks moduleDecls
   pure $ foldBinds (\acc nm b  -> M.insert nm b acc) M.empty decls
 
 {- NOTE 1:
 
-   We need three different functions, each of which is (modulo the Monomorphizer monad)
+   We need three different functions, each of which is (modulo the Inline monad)
    morally a function :: Exp -> Exp
 
    1) We need a function that updates call sites in the body of the expression(s) inside the
@@ -692,7 +564,7 @@ mkModDict = do
       might also occur for other lifted expressions inside the scope of the binding being lifted).
 
       Here, we need to generate new unique indices for the variables being applied, which must be done in the
-      'Monomorphizer' monad. We can generate a Map from the old indices to the new indices "all at once" for the totality of
+      'Inline' monad. We can generate a Map from the old indices to the new indices "all at once" for the totality of
       lifted declarations and pass it around.
 
       Furthermore, because the new(ly re-indexed) variables must be added as lambda arguments on the LHS of *each*

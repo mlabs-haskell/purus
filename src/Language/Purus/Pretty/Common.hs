@@ -44,8 +44,8 @@ import Prettyprinter (
  )
 import Prettyprinter.Render.Text (renderStrict)
 
-prettyAsStr :: (Pretty a) => a -> String
-prettyAsStr = T.unpack . renderStrict . layoutPretty defaultLayoutOptions . pretty
+prettyStr :: (Pretty a) => a -> String
+prettyStr = T.unpack . renderStrict . layoutPretty defaultLayoutOptions . pretty
 
 docString :: Doc a -> String
 docString = T.unpack . renderStrict . layoutPretty defaultLayoutOptions

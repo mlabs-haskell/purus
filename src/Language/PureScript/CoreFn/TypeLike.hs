@@ -102,13 +102,13 @@ instantiateWithArgs f args = doTrace "instantiateWithArgs" msg result
   where
     msg =
       "instantiateWithArgs:\n  fun: "
-        <> prettyAsStr f
+        <> prettyStr f
         <> "\n  args: "
-        <> prettyAsStr args
+        <> prettyStr args
         <> "\n  instantiations: "
-        <> prettyAsStr instantiations
+        <> prettyStr instantiations
         <> "\n  result: "
-        <> prettyAsStr result
+        <> prettyStr result
     result = quantify $ replaceAllTypeVars instantiations (unQuantify f)
     instantiations = getAllInstantiations f args
 
@@ -118,7 +118,7 @@ getAllInstantiations ::
   t ->
   [t] ->
   [(Text, t)]
-getAllInstantiations fun args@(_ : _) = doTrace "getAllInstantiations" (prettyAsStr result) result
+getAllInstantiations fun args@(_ : _) = doTrace "getAllInstantiations" (prettyStr result) result
   where
     result = catMaybes $ zipWith go funArgs args
 

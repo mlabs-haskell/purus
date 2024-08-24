@@ -21,46 +21,42 @@ import Control.Monad.Reader (asks)
 import Control.Monad.Supply (SupplyT)
 import Control.Monad.Trans.Class (MonadTrans (..))
 import Control.Monad.Writer.Class (MonadWriter (..))
-import Data.Aeson (Result (..), Value (String), decode, encode, fromJSON, object, (.=))
+import Data.Aeson (Result (..), Value (String), fromJSON, object, (.=))
 import Data.Bifunctor (bimap, first)
 import Data.Either (partitionEithers)
 import Data.Foldable (for_)
 import Data.List.NonEmpty qualified as NEL
 import Data.Map qualified as M
-import Data.Maybe (fromJust, fromMaybe, maybeToList)
+import Data.Maybe (fromMaybe, maybeToList)
 import Data.Set qualified as S
 import Data.Text qualified as T
-import Data.Text.Encoding qualified as TE
 import Data.Text.IO qualified as TIO
 import Data.Time.Clock (UTCTime)
-import Data.Version (makeVersion, showVersion)
+import Data.Version (makeVersion)
 import Language.JavaScript.Parser qualified as JS
 import Language.PureScript.AST (SourcePos (..))
 import Language.PureScript.Bundle qualified as Bundle
 import Language.PureScript.CST qualified as CST
-import Language.PureScript.CodeGen.UPLC qualified as PC
 import Language.PureScript.CoreFn qualified as CF
 import Language.PureScript.CoreFn.FromJSON ()
-import Language.PureScript.CoreFn.Pretty (writeModule)
 import Language.PureScript.CoreFn.ToJSON (moduleToJSON)
-import Language.PureScript.CoreFn.ToJSON qualified as CFJ
 import Language.PureScript.Crash (internalError)
 import Language.PureScript.Docs.Prim qualified as Docs.Prim
 import Language.PureScript.Docs.Types qualified as Docs
 import Language.PureScript.Errors (MultipleErrors, SimpleErrorMessage (..), errorMessage, errorMessage')
 import Language.PureScript.Externs (ExternsFile, externsFileName)
 import Language.PureScript.Make.Cache (CacheDb, ContentHash, normaliseForCache)
-import Language.PureScript.Make.Monad (Make, copyFile, getTimestamp, getTimestampMaybe, hashFile, makeIO, readExternsFile, readJSONFile, readTextFile, writeCborFile, writeJSONFile, writeTextFile)
+import Language.PureScript.Make.Monad (Make, getTimestamp, getTimestampMaybe, hashFile, makeIO, readExternsFile, readJSONFile, readTextFile, writeCborFile, writeJSONFile)
 import Language.PureScript.Names (Ident (..), ModuleName, runModuleName)
 import Language.PureScript.Options (CodegenTarget (..), Options (..))
 import Language.PureScript.Pretty.Common (SMap (..))
-import Paths_purescript qualified as Paths
 import SourceMap (generate)
 import SourceMap.Types (Mapping (..), Pos (..), SourceMapping (..))
 import System.Directory (getCurrentDirectory)
 import System.FilePath (makeRelative, normalise, splitDirectories, splitPath, (</>))
 import System.FilePath.Posix qualified as Posix
 import System.IO (IOMode (WriteMode), stderr, withFile)
+import Language.Purus.Pretty (writeModule)
 
 -- | Determines when to rebuild a module
 data RebuildPolicy
