@@ -429,6 +429,7 @@ library
     Language.Purus.Pretty.Expr
     Language.Purus.Pretty.Types
     Language.Purus.Prim.Data
+    Language.Purus.Prim.Ledger
     Language.Purus.Types
     Language.Purus.Utils
 
