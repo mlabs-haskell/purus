@@ -478,55 +478,8 @@ primTypes =
       , (C.Int, (kindType, ExternData []))
       , (C.Boolean, (kindType, boolData))
       , (C.Partial <&> coerceProperName, (kindConstraint, ExternData []))
-      -- Ledger API (V2), as per https://github.com/IntersectMBO/plutus/blob/master/plutus-ledger-api/src/PlutusLedgerApi/V2.hs
-      -- Context types
-      , ledgerType "ScriptContext"
-      , ledgerType "ScriptPurpose"
-      -- Bytes
-      , ledgerType "LedgerBytes"
-      -- Certificates
-      , ledgerType "DCert"
-      -- Credentials
-      , ledgerType "StakingCredential"
-      , ledgerType "Credential"
-      -- Value
-      , ledgerType "Value"
-      , ledgerType "CurrencySymbol"
-      , ledgerType "TokenName"
-      , ledgerType "Lovelace"
-      -- Time
-      , ledgerType "POSIXTime"
-      -- No POSIXTimeRange, people can use the actual type instead of a synonym
-      -- Types for representing transactions
-      , ledgerType "Address"
-      , ledgerType "PubKeyHash"
-      , ledgerType "TxId"
-      , ledgerType "TxInfo"
-      , ledgerType "TxOut"
-      , ledgerType "TxOutRef"
-      , ledgerType "TxInInfo"
-      , ledgerType "OutputDatum"
-      -- Intervals
-      , ledgerType "Interval"
-      , ledgerType "Extended"
-      -- No Closure, just use the type its synonymizing
-      , ledgerType "UpperBound"
-      , ledgerType "LowerBound"
-      -- Association maps
-      , ledgerType "AssocMap"
-      -- Newtypes and hash types
-      , ledgerType "ScriptHash"
-      , ledgerType "Redeemer"
-      , ledgerType "RedeemerHash"
-      , ledgerType "Datum"
-      , ledgerType "DatumHash"
-      -- Data
-      , ledgerType "Data"
-      , ledgerType "BuiltinData"
-      ]
+      ] 
   where
-    ledgerType :: Text -> (Qualified (ProperName a), (SourceType, TypeKind)) 
-    ledgerType x = (Qualified (ByModuleName (ModuleName "Prim")) (ProperName x), (kindType, ExternData []))
     boolData =
       DataType
         Data
