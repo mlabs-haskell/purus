@@ -75,7 +75,7 @@ import Prettyprinter (
  )
 
 -- TODO: Pretty print the datatypes too
-prettyModule :: (Pretty k, Pretty t, Show a) => Module (Bind a) k t a -> Doc ann
+prettyModule :: (Pretty k, Pretty t, Pretty b) => Module b k t a -> Doc ann
 prettyModule (Module _ _ modName modPath modImports modExports modReExports modForeign modDecls modDatatypes) =
   vsep
     [ pretty modName <+> parens (pretty modPath)
@@ -90,7 +90,7 @@ prettyModule (Module _ _ modName modPath modImports modExports modReExports modF
     , line <> "Datatypes: " <> spacer
     , prettyDatatypes modDatatypes <> line
     , line <> "Declarations: " <> spacer
-    , vcat . punctuate line $ asDynamic prettyDeclaration <$> modDecls
+    , vcat . punctuate line $ pretty <$> modDecls
     ]
   where
     spacer = line <> pretty (T.pack $ replicate 30 '-')
@@ -234,6 +234,9 @@ prettyLiteralValue (ArrayLiteral xs) = printer oneLine multiLine
     -- N.B. I think it makes more sense to ensure that list *elements* are always oneLine
     multiLine = list $ asOneLine prettyValue <$> xs
 prettyLiteralValue (ObjectLiteral ps) = prettyObject $ second Just `map` ps
+
+instance Show a => Pretty (Bind a) where
+  pretty = asDynamic id .  prettyDeclaration
 
 prettyDeclaration :: forall a ann. (Show a) => Bind a -> Printer ann
 prettyDeclaration b = case b of

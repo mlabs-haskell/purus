@@ -29,8 +29,10 @@ import Language.PureScript.CoreFn.Module (
 import Language.PureScript.CoreFn.Desugar.Utils (properToIdent)
 import Language.PureScript.CoreFn.Expr (
   Expr (..),
+  PurusType
  )
 import Language.PureScript.CoreFn.FromJSON ()
+import Language.PureScript.CoreFn.Module
 import Language.PureScript.CoreFn.TypeLike (TypeLike (..))
 
 import Language.Purus.Debug
@@ -75,7 +77,7 @@ import Bound.Scope
 
 import Control.Lens (cosmos, ix, to, (&), (.~), (^..), (^.), (<&>))
 
-import Control.Monad.Except (throwError)
+import Control.Monad.Except (throwError, liftEither)
 
 tryConvertType :: SourceType -> Counter Ty
 tryConvertType = go id
@@ -501,3 +503,7 @@ purusTypeToKind _t =
       t2' <- purusTypeToKind t2
       pure $ KindArrow t1' t2'
     other -> Left $ "Error: PureScript type '" <> prettyTypeStr other <> " is not a valid Plutus Kind"
+
+desugarObjectsInDatatypes :: Datatypes PurusType PurusType
+                          -> Counter (Datatypes Kind Ty)
+desugarObjectsInDatatypes = bitraverseDatatypes (liftEither . purusTypeToKind) tryConvertType

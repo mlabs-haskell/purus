@@ -5,6 +5,8 @@ module Language.Purus.Types where
 import Prelude
 
 import Data.Map (Map)
+import qualified Data.Map as M
+
 import Data.Text (Text)
 
 import Language.PureScript.Names
@@ -39,6 +41,9 @@ data DatatypeDictionary = DatatypeDictionary
   , _destructors :: Map (Qualified (ProperName 'TypeName)) PIR.Name
   -- ^ Map from a PS type name to the name of the case destructor
   }
+
+initDatatypeDict :: DatatypeDictionary
+initDatatypeDict = DatatypeDictionary M.empty M.empty M.empty M.empty M.empty M.empty
 
 -- jfc why didn't i makeLenses everywhere
 makeLenses ''DatatypeDictionary

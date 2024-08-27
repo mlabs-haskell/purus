@@ -14,9 +14,6 @@ import Data.Foldable (foldl')
 import Debug.Trace (traceM)
 
 import Language.PureScript.Constants.Prim qualified as C
-import Language.PureScript.CoreFn.TypeLike (
-  TypeLike (splitFunTyParts),
- )
 import Language.PureScript.Names (
   Ident (..),
   ProperName (..),
@@ -28,6 +25,7 @@ import Language.PureScript.Names (
   showIdent,
   showQualified,
  )
+import Language.PureScript.CoreFn.TypeLike 
 
 import Language.Purus.Debug (doTraceM)
 import Language.Purus.IR (
@@ -201,3 +199,4 @@ analyzeTyApp t = (,tyAppArgs t) <$> tyAppFun t
           Just tX' -> Just tX'
         go other = Just other
     tyAppFun _ = Nothing
+

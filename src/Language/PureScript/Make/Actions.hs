@@ -47,7 +47,7 @@ import Language.PureScript.Errors (MultipleErrors, SimpleErrorMessage (..), erro
 import Language.PureScript.Externs (ExternsFile, externsFileName)
 import Language.PureScript.Make.Cache (CacheDb, ContentHash, normaliseForCache)
 import Language.PureScript.Make.Monad (Make, getTimestamp, getTimestampMaybe, hashFile, makeIO, readExternsFile, readJSONFile, readTextFile, writeCborFile, writeJSONFile)
-import Language.PureScript.Names (Ident (..), ModuleName, runModuleName)
+import Language.PureScript.Names (Ident (..), ModuleName (..), runModuleName)
 import Language.PureScript.Options (CodegenTarget (..), Options (..))
 import Language.PureScript.Pretty.Common (SMap (..))
 import Language.Purus.Pretty (writeModule)
@@ -204,10 +204,10 @@ buildMakeActions outputDir filePathMap foreigns usePrefix =
        in outputDir </> filePath </> fn
 
     targetFilename :: ModuleName -> CodegenTarget -> FilePath
-    targetFilename mn = \case
+    targetFilename mn@(ModuleName nm) = \case
       Docs -> outputFilename mn "docs.json"
-      CoreFn -> outputFilename mn "index.cfn"
-      CheckCoreFn -> outputFilename mn "index.cfn"
+      CoreFn -> outputFilename mn (T.unpack nm <> ".cfn")
+      CheckCoreFn -> outputFilename mn (T.unpack nm <> ".cfn")
 
     getOutputTimestamp :: ModuleName -> Make (Maybe UTCTime)
     getOutputTimestamp mn = do
@@ -261,7 +261,7 @@ buildMakeActions outputDir filePathMap foreigns usePrefix =
       when (S.member Docs codegenTargets) $ do
         lift $ writeJSONFile (outputFilename mn "docs.json") docs
       when (S.member CoreFn codegenTargets) $ do
-        let targetFile = (targetFilename mn CoreFn)
+        let targetFile = targetFilename mn CoreFn
         lift $ writeJSONFile targetFile (moduleToJSON (makeVersion [0, 0, 1]) m)
         lift $ makeIO "write pretty core" $ withFile (targetFile <> ".pretty") WriteMode $ \handle ->
           writeModule handle m

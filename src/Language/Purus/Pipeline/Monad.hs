@@ -1,24 +1,33 @@
 {-# LANGUAGE StandaloneDeriving #-}
 {-# LANGUAGE StarIsType #-}
 {-# LANGUAGE UndecidableInstances #-}
-
+{-# LANGUAGE TemplateHaskell #-}
 module Language.Purus.Pipeline.Monad where
 
-import Control.Monad.State
 import Prelude
 
-import Control.Lens.Operators
-import Control.Monad.Except (MonadError)
-import Control.Monad.Reader
-import Control.Monad.Trans.Except (ExceptT)
+
 import Data.Map (Map)
 import Data.Map qualified as M
+
+
+
 import Language.PureScript.CoreFn (Ann)
 import Language.PureScript.CoreFn.Expr
 import Language.PureScript.CoreFn.Module
 import Language.PureScript.Names
 import Language.Purus.IR.Utils
 import Language.Purus.Types
+
+import Control.Monad.State
+import Control.Monad.Except (MonadError)
+import Control.Monad.Reader
+import Control.Monad.Trans.Except (ExceptT)
+
+import Control.Lens.TH (makeLenses)
+import Control.Lens.Operators
+
+import Prettyprinter
 
 {- [Current Compilation Pipeline Structure]
      - That is, "current" before the `Language.Purus` reorganization.
@@ -173,11 +182,49 @@ instance MonadReader r (PurusM r) where
 evalPurusM :: s -> PurusM s a -> CounterT (Either String) a
 evalPurusM s pm = evalStateT (runPurusM pm) s
 
-newtype DesugarCore a = DesugarCore (PurusM (Map Ident Int) a)
-  deriving newtype (Functor, Applicative, Monad, MonadError String, MonadCounter, MonadState (Map Ident Int), MonadReader (Map Ident Int))
+runStatePurusM :: s -> PurusM s a -> CounterT (Either String) (a,s)
+runStatePurusM s pm = runStateT (runPurusM pm) s
 
-runDesugarCore :: DesugarCore a -> CounterT (Either String) a
-runDesugarCore (DesugarCore psm) = evalPurusM M.empty psm
+data DesugarContext = DesugarContext {_globalScope :: Map ModuleName (Map Ident Int), _localScope :: Map Ident Int}
+  deriving (Show, Eq)
+
+instance Pretty DesugarContext where
+  pretty (DesugarContext globals locals) =
+    let globals' = align
+                   . vcat
+                   . fmap (\ (a,b) -> pretty a <+> ":=" <+> b <> hardline)
+                   . M.toList
+                   $ indent 2
+                     . align
+                     . vcat
+                     . map pretty
+                     . M.toList
+                     <$> globals
+
+        locals' = align . vcat . map pretty . M.toList $ locals
+    in "DesugarContext:" <> hardline
+       <> "Globals:" <> indent 2 globals' <> hardline
+       <> "Locals:" <> indent 2 locals' <> hardline 
+
+instance Semigroup DesugarContext where
+  (DesugarContext gb1 lb1) <> (DesugarContext gb2 lb2) = DesugarContext (gb1 <> gb2) (lb1 <> lb2)
+
+instance Monoid DesugarContext where
+  mempty = DesugarContext M.empty M.empty 
+
+makeLenses ''DesugarContext
+
+newtype DesugarCore a = DesugarCore (PurusM DesugarContext a)
+  deriving newtype (Functor,
+                    Applicative,
+                    Monad,
+                    MonadError String,
+                    MonadCounter,
+                    MonadState DesugarContext,
+                    MonadReader DesugarContext)
+
+runDesugarCore :: DesugarCore a -> CounterT (Either String) (a,DesugarContext)
+runDesugarCore (DesugarCore psm) = runStatePurusM mempty psm
 
 newtype Inline a = Inline (PurusM (Module IR_Decl PurusType PurusType Ann) a)
   deriving newtype (Functor, Applicative, Monad, MonadError String, MonadCounter, MonadReader (Module IR_Decl PurusType PurusType Ann))

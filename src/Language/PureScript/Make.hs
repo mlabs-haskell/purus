@@ -49,6 +49,7 @@ import Language.PureScript.Renamer (renameInModule)
 import Language.PureScript.Sugar (Env, collapseBindingGroups, createBindingGroups, desugar, desugarCaseGuards, externsEnv, primEnv)
 import Language.PureScript.TypeChecker (CheckState (..), emptyCheckState, typeCheckModule)
 import Language.Purus.Pretty qualified as CFT
+
 import Prettyprinter.Util (putDocW)
 import System.Directory (doesFileExist)
 import System.FilePath (replaceExtension)
