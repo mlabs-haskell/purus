@@ -12,46 +12,59 @@ import Data.Set qualified as S
 
 import Data.Function (on)
 
-import Data.List (sort, sortBy, stripPrefix, groupBy, find, foldl', delete)
+import Data.List (sortBy, stripPrefix, groupBy, foldl', delete)
 import Data.Foldable (foldrM)
 
 import System.FilePath
+    ( makeRelative, (</>), takeDirectory, takeExtensions )
 
-import Language.PureScript.CoreFn.Ann
-import Language.PureScript.CoreFn.Module
-import Language.PureScript.CoreFn.Expr
+import Language.PureScript.CoreFn.Ann ( Ann )
+import Language.PureScript.CoreFn.Module ( Module(..) )
+import Language.PureScript.CoreFn.Expr ( Bind, PurusType )
 import Language.PureScript.Names
+    ( runIdent, Ident(Ident), runModuleName, ModuleName(..) )
 
-import Language.Purus.Pipeline.DesugarCore
-import Language.Purus.Pipeline.Lift
-import Language.Purus.Pipeline.Inline
-import Language.Purus.Pipeline.Instantiate
+import Language.Purus.Pipeline.CompileToPIR.Eval 
+import Language.Purus.Pipeline.DesugarCore ( desugarCoreModule )
+import Language.Purus.Pipeline.Lift ( lift )
+import Language.Purus.Pipeline.Inline ( inline )
+import Language.Purus.Pipeline.Instantiate ( instantiateTypes, applyPolyRowArgs )
 import Language.Purus.Pipeline.DesugarObjects
+    ( desugarObjects, desugarObjectsInDatatypes )
 import Language.Purus.Pipeline.GenerateDatatypes
-import Language.Purus.Pipeline.EliminateCases
-import Language.Purus.Pipeline.CompileToPIR
-import Language.Purus.Pipeline.Monad 
-
-import Language.Purus.Types
-import Language.Purus.IR.Utils
-import Language.Purus.IR
-import Language.Purus.Utils 
+    ( generateDatatypes )
+import Language.Purus.Pipeline.EliminateCases ( eliminateCases )
+import Language.Purus.Pipeline.CompileToPIR ( compileToPIR )
+import Language.Purus.Pipeline.Monad
+    ( globalScope,
+      runCounter,
+      runDesugarCore,
+      runInline,
+      runPlutusContext,
+      CounterT(runCounterT),
+      DesugarCore )
+import Language.Purus.Prim.Data (primDataPS)
+import Language.Purus.Pretty.Common (docString, prettyStr)
+import Language.Purus.Types ( PIRTerm, initDatatypeDict )
+import Language.Purus.IR.Utils ( foldBinds, IR_Decl )
+import Language.Purus.Utils
+    ( decodeModuleIO, findDeclBodyWithIndex )
 
 import Control.Monad.State ( evalStateT )
 import Control.Monad.Except ( MonadError(throwError) )
 
-import Control.Lens.Operators ( (^?), (^.))
-import Control.Lens ( Ixed(ix) )
+import Control.Lens.Combinators(folded)
+import Control.Lens.Operators ( (^?))
+import Control.Lens ( At(at) )
 
 import Algebra.Graph.AdjacencyMap ( stars )
 import Algebra.Graph.AdjacencyMap.Algorithm (topSort)
 
 import System.FilePath.Glob qualified as Glob
-import Language.Purus.Pretty.Expr (prettyModule)
-import Language.Purus.Pretty.Common (docString, prettyStr)
 
 import Debug.Trace (traceM)
-import Language.Purus.Prim.Data (primDataPS)
+
+import PlutusIR.Core.Instance.Pretty.Readable ( prettyPirReadable )
 
 {-
 decodeModuleIR :: FilePath -> IO (Module IR_Decl SourceType SourceType Ann, (Int, M.Map Ident Int))
@@ -148,23 +161,23 @@ compile primModule orderedModules mainModuleName mainFunctionName
         loop r' rs
    go :: CounterT (Either String) PIRTerm
    go = do
-     !(summedModule,dsCxt) <- runDesugarCore $ desugarCoreModules primModule orderedModules
-     -- error $ "Desugar Context:\n" <> prettyStr dsCxt
-     let decls = moduleDecls summedModule 
+     (summedModule,dsCxt) <- runDesugarCore $ desugarCoreModules primModule orderedModules
+     let traceBracket msg = traceM ("\n" <> msg <> "\n")
+         decls = moduleDecls summedModule
          declIdentsSet = foldBinds (\acc nm _ -> S.insert nm acc) S.empty decls
          couldn'tFindMain n = "Error: Could not find a main function with the name (" <> show n <> ") '"
                             <> T.unpack (runIdent mainFunctionName)
                             <> "' in module "  
                             <> T.unpack (runModuleName mainModuleName)
                             <>  "\nin declarations:\n" <> prettyStr (S.toList declIdentsSet)
-     mainFunctionIx <- note (couldn'tFindMain 1) $ dsCxt ^? globalScope . ix mainModuleName . ix mainFunctionName
+     mainFunctionIx <- note (couldn'tFindMain 1) $ dsCxt ^? globalScope . at mainModuleName . folded . at mainFunctionName . folded
      traceM $ "Found main function Index: " <> show mainFunctionIx
      mainFunctionBody <- note (couldn'tFindMain 2) $ findDeclBodyWithIndex mainFunctionName mainFunctionIx decls
      traceM "Found main function body"
      inlined <- runInline summedModule $ lift (mainFunctionName,mainFunctionIx) mainFunctionBody >>= inline
-     traceM $ "Done inlining. Result: \n" <> prettyStr inlined
-     let !instantiated = instantiateTypes inlined
-     traceM $ "Done instantiating types. Result:\n" <> prettyStr instantiated
+     traceBracket $ "Done inlining. Result: \n" <> prettyStr inlined
+     let !instantiated = applyPolyRowArgs $ instantiateTypes inlined
+     traceBracket $ "Done instantiating types. Result:\n" <> prettyStr instantiated
      withoutObjects <- instantiateTypes <$> runCounter (desugarObjects instantiated)
      traceM $ "Desugared objects. Result:\n" <> prettyStr withoutObjects
      datatypes      <- runCounter $ desugarObjectsInDatatypes (moduleDataTypes summedModule)
@@ -174,7 +187,9 @@ compile primModule orderedModules mainModuleName mainFunctionName
        traceM "Generated PIR datatypes"
        withoutCases <- eliminateCases datatypes withoutObjects
        traceM "Eliminated case expressions. Compiling to PIR..."
-       compileToPIR datatypes withoutCases
+       pirTerm <- compileToPIR datatypes withoutCases
+       traceM . docString $ prettyPirReadable pirTerm
+       pure pirTerm
 
 
 
@@ -189,7 +204,7 @@ modulesInDependencyOrder (concat -> paths) = do
       -- we ignore Builtin and Prim deps (b/c we add those later ourselves)
       let canResolve :: ModuleName -> Bool
           canResolve (ModuleName mn) = mn /= "Prim" && mn /= "Builtin"
-      foldrM (\mn acc -> if not (canResolve mn) then pure acc else case modMap ^? ix mn of
+      foldrM (\mn acc -> if not (canResolve mn) then pure acc else case modMap ^? at mn . folded of
                                Nothing -> throwIO . userError $ "Error: Module '" <> T.unpack (runModuleName mn) <> "' is required for compilation but could not be found"
                                Just mdl -> pure $ mdl:acc) [] ordered
 
@@ -234,7 +249,11 @@ make path mainModule mainFunction primModule =  do
     (Nothing,m:ms) -> either (throwIO . userError) pure $ compile m ms (ModuleName mainModule) (Ident mainFunction)
     _ -> throwIO . userError $ "Error: No modules found for compilation"
 
+
 -- for exploration/repl testing, this hardcodes `tests/purus/passing/Lib` as the target directory and
 -- we only select the name of the main function
 makeForTest :: Text -> IO PIRTerm
 makeForTest main = make "tests/purus/passing/Misc" "Lib" main Nothing 
+
+evalForTest :: Text -> IO ()
+evalForTest main = makeForTest main >>= evaluateTerm >>= print 

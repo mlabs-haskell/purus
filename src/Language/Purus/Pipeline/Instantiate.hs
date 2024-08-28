@@ -14,15 +14,28 @@ import Data.Foldable (foldl')
 
 import Data.Text (Text)
 
+import Language.PureScript.Constants.Prim qualified as C
 import Language.PureScript.CoreFn.TypeLike (TypeLike (..), instantiates)
+import Language.PureScript.CoreFn.Expr (PurusType)
+import Language.PureScript.Types (Type(..))
+import Language.PureScript.Names
 
 import Language.Purus.IR.Utils
 import Language.Purus.Debug
-import Language.Purus.IR ( analyzeApp, Exp(..), expTy )
+import Language.Purus.IR ( BVar(..), analyzeApp, Exp(..), expTy, bvType )
 import Language.Purus.Pretty.Common (prettyStr)
 
-import Control.Lens (view, _2)
+import Control.Lens (view, _2, transform)
 import Prettyprinter (Pretty)
+
+
+applyPolyRowArgs :: Exp WithObjects PurusType (Vars PurusType)
+                 -> Exp WithObjects PurusType (Vars PurusType)
+applyPolyRowArgs = transform $ \case
+  instE@(TyInstE t (TyAbs (BVar kvI kvTy (Ident kvNm)) innerE)) -> case kvTy  of
+      TypeApp _ (TypeConstructor _ C.Row) _ -> transformTypesInExp (replaceAllTypeVars [(kvNm,t)]) innerE
+      _ -> instE
+  other -> other
 
 instantiateTypes :: forall x (t :: *). (TypeLike t, Pretty t, Pretty (KindOf t)) => Exp x t (Vars t)  -> Exp x t (Vars t)
 instantiateTypes = \case

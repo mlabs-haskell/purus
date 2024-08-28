@@ -54,11 +54,13 @@ import PlutusIR (
 import PlutusIR qualified as PIR
 
 import Control.Lens (
-  ix,
+  at,
   over,
+  folded,
   preview,
   view,
   (^?),
+  (^.),
   _1,
  )
 import Control.Monad.Except (
@@ -132,7 +134,7 @@ getBoundTyVarName nm =
 
 -- Sometimes (e.g. when typing lambdas) we have to branch on whether the tv is already bound
 lookupTyVar :: Text -> PlutusContext (Maybe PIR.TyName)
-lookupTyVar nm = gets (preview (tyVars . ix nm))
+lookupTyVar nm = gets (preview (tyVars . at nm . folded))
 
 bindTV :: Text -> PIR.TyName -> PlutusContext ()
 bindTV txt nm = modify $ over tyVars (M.insert txt nm)
@@ -166,7 +168,7 @@ getConstructorName qi =
   doTraceM "getConstructorName" (show qi) >> do
     ctors <- gets (view constrNames)
     traceM $ show ctors
-    pure $ ctors ^? ix qi . _1
+    pure $ ctors ^? at qi . folded . _1
 
 prettyQPN :: Qualified (ProperName 'TypeName) -> String
 prettyQPN = T.unpack . showQualified runProperName

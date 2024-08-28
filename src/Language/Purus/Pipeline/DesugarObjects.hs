@@ -114,7 +114,7 @@ tryConvertType = go id
         t2' <- go (f . KindedType ann t1) t2
         t1' <- go (f . (\x -> KindedType ann x t2)) t1
         pure $ KType t1' t2'
-      other -> throwError $ "Unsupported type:\n  " <> prettyTypeStr other
+      other -> throwError $ "Unsupported type:\n  " <> show other
 
 tryConvertKind :: SourceType -> Counter Kind
 tryConvertKind t = tryConvertKind' id t t

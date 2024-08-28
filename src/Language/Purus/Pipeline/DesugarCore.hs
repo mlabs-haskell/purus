@@ -78,10 +78,12 @@ import Bound (Var (..), abstract)
 import Bound.Scope (Scope, fromScope)
 
 import Control.Lens (
-  Ixed (ix),
+  At(at),
+  Ixed(ix),
   cosmos,
   preview,
   over,
+  folded,
   to,
   transform,
   (.=),
@@ -108,8 +110,9 @@ freshly act = local (set localScope M.empty) act
 bindLocal :: Ident -> DesugarCore Int
 bindLocal ident = do
   i <- next
-  localScope . ix ident .= i
-  doTraceM "bind" ("IDENT: " <> T.unpack (runIdent ident) <> "\n\nINDEX: " <> prettyStr i)
+  modify $ over localScope (M.insert ident i) -- localScope . at ident .= i
+  s <- view localScope
+  doTraceM "bind" ("IDENT: " <> T.unpack (runIdent ident) <> "\n\nINDEX: " <> prettyStr i <> "\n\nSCOPE:\n" <> prettyStr (M.toList s))
   pure i
 
 forceBindGlobal :: ModuleName -> Ident -> Int -> DesugarCore ()
@@ -175,7 +178,7 @@ desugarCoreModule :: Datatypes PurusType PurusType
                   -> Module (Bind Ann) PurusType PurusType Ann
                   -> DesugarCore (Module IR_Decl PurusType PurusType Ann)
 desugarCoreModule inScope imports Module {..} = do
-  globalScope . ix moduleName .= M.empty 
+  globalScope . at moduleName .= Just M.empty
   decls' <- traverse (freshly . desugarCoreDecl . doEtaReduce) moduleDecls
   decls <- bindLocalTopLevelDeclarations decls'
   let allDatatypes = moduleDataTypes <> inScope
@@ -207,7 +210,7 @@ desugarCoreModule inScope imports Module {..} = do
       let upd = \case
             V (B bv) -> V $ B bv
             V (F fv@(FVar t (Qualified (ByModuleName mn) ident))) ->
-              case s ^? globalScope . ix mn . ix ident  of
+              case s ^? globalScope . at mn . folded . at ident . folded  of
                 Just indx -> V $ B $ BVar indx t ident
                 Nothing -> V $ F fv
             other -> other
@@ -222,8 +225,6 @@ desugarCoreDecl = \case
     s <- view localScope
     let abstr = abstract (matchLet s)
     desugared <- desugarCore expr
-    -- let boundVars = freeTypeVariables (expTy id desugared)
-    -- scoped <-  abstr  <$> tyAbsMany boundVars desugared
     let scoped = abstr desugared
     pure $ NonRecursive ident bvix scoped
   Rec xs -> do
@@ -303,10 +304,13 @@ desugarCore' lam@(Abs _ann ty ident expr) = do
         prettify
           [ "ANNOTATED LAM TY:\n" <> prettyStr ty
           , "BOUND VAR TY:\n" <> prettyStr ty'
+          , "BOUND VAR INDEX: " <> prettyStr bvIx
+          , "BOUND VAR IDENT: " <> prettyStr ident 
           , "BODY TY:\n" <> prettyStr (exprType expr)
           , "INPUT EXPR:\n" <> renderExprStr lam
           , "RESULT EXPR:\n" <> prettyStr result
           , "RESULT EXPR TY:\n" <> prettyStr (expTy id result)
+          , "LOCAL SCOPE:\n" <> prettyStr (M.toList s)
           ]
   doTraceM "desugarCoreLam" msg
   pure result
@@ -317,8 +321,6 @@ desugarCore' appE@(App {}) = case fromJust $ PC.analyzeApp appE of
     pure $ foldl' AppE f' args'
 desugarCore' (Var _ann ty qi) = pure $ V . F $ FVar ty qi
 desugarCore' (Let _ann binds cont) = do
-  -- afaict their mutual recursion sorter doesn't work properly in let exprs (maybe it's implicit that they're all mutually recursive?)
-  -- traverse_ bindAllNames binds
   bindEs <- traverse rebindInScope =<< traverse desugarCoreDecl binds
   s <- view localScope
   cont' <- desugarCore cont
@@ -501,6 +503,8 @@ matchVarLamAbs :: Ident -> Int -> FVar ty -> Maybe (BVar ty)
 matchVarLamAbs nm bvix (FVar ty n')
   | nm == disqualify n' = Just (BVar bvix ty nm)
   | otherwise = Nothing
+
+
 
 matchLet :: (Pretty ty) => M.Map Ident Int -> Vars ty -> Maybe (BVar ty)
 matchLet _ (B bv) = Just bv

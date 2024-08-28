@@ -8,6 +8,7 @@ module Language.PureScript.CoreFn.Module where
 
 import Prelude
 
+import Data.Maybe (fromMaybe)
 import Data.Map.Strict (Map)
 
 import Data.Text (Text)
@@ -18,14 +19,13 @@ import Language.PureScript.Environment (DataDeclType)
 import Language.PureScript.Names (Ident(..), ModuleName, ProperName (..), ProperNameType (..), Qualified)
 
 import Control.Lens (
-  Ixed (ix),
+  At(at),
   filtered,
   folded,
   makeLenses,
   view,
   (^.),
   (^?),
-  (^?!),
  )
 
 import Data.Aeson (FromJSON, ToJSON)
@@ -116,15 +116,15 @@ getAllConstructorDecls ::
   Qualified (ProperName 'TypeName) ->
   Datatypes k t ->
   [CtorDecl t]
-getAllConstructorDecls qn dts = dts ^?! tyDict . ix qn . dDataCtors
+getAllConstructorDecls qn dts = fromMaybe [] $ dts ^? tyDict . at qn . folded . dDataCtors
 
 lookupDataDecl :: Qualified (ProperName 'TypeName) -> Datatypes k t -> Maybe (DataDecl k t)
 lookupDataDecl qtn (Datatypes tys _) = M.lookup qtn tys
 
 lookupCtorDecl :: Qualified Ident -> Datatypes k t -> Maybe (CtorDecl t)
 lookupCtorDecl qi datatypes = do
-  tyname <- datatypes ^? ctorDict . ix qi
-  datatypes ^? tyDict . ix tyname . dDataCtors . folded . filtered ((== qi) . view cdCtorName)
+  tyname <- datatypes ^? ctorDict . at qi . folded
+  datatypes ^? tyDict . at tyname . folded . dDataCtors . folded . filtered ((== qi) . view cdCtorName)
 
 instance Semigroup (Datatypes k t) where
   (Datatypes tyDict1 ctorDict1) <> (Datatypes tyDict2 ctorDict2) =

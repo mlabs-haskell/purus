@@ -90,8 +90,8 @@ printExpr path decl =
 declToPLC :: FilePath -> Text -> IO (PLCProgram DefaultUni DefaultFun ())
 declToPLC path main = declToPIR path main >>= compileToUPLC
 
-evaluateDecl :: FilePath -> Text -> IO (EvaluationResult (PLC.Term PLC.TyName Name DefaultUni DefaultFun ()), [Text])
-evaluateDecl path main = declToPLC path main Data.Functor.<&> runPLCProgram
+evaluateTerm :: PIRTerm -> IO (EvaluationResult (PLC.Term PLC.TyName Name DefaultUni DefaultFun ()), [Text])
+evaluateTerm term = runPLCProgram <$> compileToUPLC term 
 
 compileToUPLC :: PIRTerm -> IO (PLCProgram DefaultUni DefaultFun ())
 compileToUPLC e = do
@@ -122,15 +122,8 @@ runCompile x =
    in
     first show res
 
-passing :: IO ()
-passing = traverse_ eval passingTests
-  where
-    eval :: Text -> IO ()
-    eval declName = E.catch @(E.SomeException) (void $ evaluateDecl "tests/purus/passing/Misc/output/Lib/index.cfn" declName) $
-      \e ->
-        let msg = "Failed to compile and evaluate '" <> T.unpack declName <> "''\n  Error message: " <> show e
-         in error msg
-    passingTests =
+passing :: [Text]
+passing =
       [ "testTestClass"
       , "minus"
       , "testEq"

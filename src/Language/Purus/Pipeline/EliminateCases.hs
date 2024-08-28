@@ -74,7 +74,8 @@ import Bound.Scope (
   toScope,
  )
 import Control.Lens (
-  ix,
+  at,
+  folded,
   view,
   (^.),
   (^?),
@@ -189,7 +190,7 @@ mkDestructorFunTy ::
   Qualified (ProperName 'TypeName) ->
   PlutusContext (Bool, Ty) -- (Is it a nullary TyCon,Destructor fun ty )
 mkDestructorFunTy datatypes tn = do
-  case datatypes ^? tyDict . ix tn of
+  case datatypes ^. tyDict . at tn of
     Nothing -> throwError $ "mkDestructorFunTy: No type info for " <> prettyQPN tn
     Just dDecl -> do
       let tyArgs = dDecl ^. dDataArgs

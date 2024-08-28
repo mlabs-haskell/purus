@@ -107,7 +107,7 @@ import Algebra.Graph.AdjacencyMap (
 import Algebra.Graph.AdjacencyMap.Algorithm (Cycle, scc, topSort)
 import Algebra.Graph.NonEmpty.AdjacencyMap (fromNonEmpty)
 
-import Control.Lens.Combinators (cosmos, ix, transformM)
+import Control.Lens.Combinators (cosmos, at, transformM)
 import Control.Lens.Operators ((.=), (^..))
 
 import Bound (Var (..))
@@ -337,7 +337,7 @@ inlineInLifted decls = do
       done1 <- doneInlining . toExp . getInlineBody $ e
       unless done1 $ do
         e' <- go e
-        ix i .= e'
+        at i .= Just e'
         update (i : retry) is
       when done1 $ do
         update retry is

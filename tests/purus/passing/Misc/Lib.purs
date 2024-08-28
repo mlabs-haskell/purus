@@ -380,5 +380,5 @@ kozsTwoSCCEx =
   in a z && b z && c z && f z && g z && h z
 
 
-testLedgerTypes :: Prim.DCert
-testLedgerTypes = Prim.DCertMir
+testLedgerTypes :: DCert
+testLedgerTypes = DCertMir
