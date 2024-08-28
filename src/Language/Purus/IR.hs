@@ -29,7 +29,6 @@ import Data.Text (Text)
 import Data.Text qualified as T
 
 import Language.PureScript.Constants.Prim qualified as C
-import Language.PureScript.CoreFn.FromJSON ()
 import Language.PureScript.CoreFn.TypeLike
 import Language.PureScript.Names (Ident (..), ProperName (..), ProperNameType (..), Qualified (..), QualifiedBy (..), disqualify, runIdent, runModuleName, showIdent, showQualified)
 import Language.PureScript.PSString (PSString, decodeStringWithReplacement, prettyPrintString)

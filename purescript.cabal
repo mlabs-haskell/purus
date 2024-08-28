@@ -430,6 +430,8 @@ library
     Language.Purus.Pretty.Types
     Language.Purus.Prim.Data
     Language.Purus.Prim.Ledger
+    Language.Purus.Prim.LedgerData
+    Language.Purus.Prim.Utils
     Language.Purus.Types
     Language.Purus.Utils
 

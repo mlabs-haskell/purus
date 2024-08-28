@@ -91,6 +91,7 @@ Exports:
   iff,
   ghcInlinerPaperEx,
   kozsTwoSCCEx,
+  testLedgerTypes,
   testClassInt,
   eqInt,
   eq2IntBoolean,
@@ -254,6 +255,9 @@ testTestClass =
   (((a :: Prim.Type) -> (Prim.Boolean)))))
   (testClassInt: (Lib.TestClass$Dict (Prim.Int)))
   (3: Prim.Int)
+
+testLedgerTypes :: Prim.DCert
+testLedgerTypes = (DCertMir: Prim.DCert)
 
 testIdentitee :: Prim.Int
 testIdentitee = 

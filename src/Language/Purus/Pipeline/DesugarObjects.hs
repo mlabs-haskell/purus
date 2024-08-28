@@ -32,7 +32,7 @@ import Language.PureScript.CoreFn.Expr (
   PurusType
  )
 import Language.PureScript.CoreFn.FromJSON ()
-import Language.PureScript.CoreFn.Module
+import Language.PureScript.CoreFn.Module hiding (properToIdent)
 import Language.PureScript.CoreFn.TypeLike (TypeLike (..))
 
 import Language.Purus.Debug

@@ -15,7 +15,7 @@ import Language.PureScript.AST.SourcePos (SourceSpan)
 import Language.PureScript.Comments (Comment)
 import Language.PureScript.CoreFn.Expr (Bind (..))
 import Language.PureScript.Environment (DataDeclType)
-import Language.PureScript.Names (Ident, ModuleName, ProperName (..), ProperNameType (..), Qualified)
+import Language.PureScript.Names (Ident(..), ModuleName, ProperName (..), ProperNameType (..), Qualified)
 
 import Control.Lens (
   Ixed (ix),
@@ -34,8 +34,12 @@ import GHC.Generics (Generic)
 import Data.Kind qualified as GHC
 import Data.List (find, findIndex)
 import Data.Map qualified as M
-import Data.Maybe (fromJust)
-import Language.PureScript.CoreFn.Desugar.Utils (properToIdent)
+
+
+-- | Converts a ProperName to an Ident. Duplicated here to break a module cycle.
+properToIdent :: ProperName a -> Ident
+properToIdent = Ident . runProperName
+
 
 data DataDecl k t = DataDecl
   { _dDeclType :: !DataDeclType

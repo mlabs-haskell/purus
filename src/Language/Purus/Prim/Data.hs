@@ -26,7 +26,6 @@ import Language.PureScript.Names (
   QualifiedBy (ByModuleName),
  )
 
-
 import Language.Purus.IR
 
 import Data.Map (Map)
@@ -36,8 +35,6 @@ import Data.Text (Text)
 import Data.Text qualified as T
 
 import Control.Lens ((<&>), (^.))
-
-
 
 pattern ArrayCons :: Qualified Ident
 pattern ArrayCons = Qualified (ByModuleName C.M_Prim) (Ident "Cons")

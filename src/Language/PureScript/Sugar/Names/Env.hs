@@ -41,6 +41,8 @@ import Language.PureScript.Errors (MultipleErrors, SimpleErrorMessage (..), erro
 import Language.PureScript.Names (Ident, ModuleName, Name (..), OpName, OpNameType (..), ProperName, ProperNameType (..), Qualified (..), QualifiedBy (..), coerceProperName, disqualify, getQual)
 import Language.PureScript.Types (SourceType)
 
+import Language.Purus.Prim.Ledger
+
 {- |
 The details for an import: the name of the thing that is being imported
 (`A.x` if importing from `A`), the module that the thing was originally
@@ -160,7 +162,7 @@ envModuleExports (_, _, exps) = exps
 The exported types from the @Prim@ module
 -}
 primExports :: Exports
-primExports = mkPrimExports primTypes primClasses
+primExports = mkPrimExports (primTypes <> M.fromList ledgerTypes) primClasses
 
 {- |
 The exported types from the @Prim.Boolean@ module
