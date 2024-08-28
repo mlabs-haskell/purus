@@ -3,44 +3,60 @@
 --
 module Language.PureScript.AST.Binders where
 
-import Prelude
+import           Prelude
 
-import Language.PureScript.AST.SourcePos (SourceSpan)
-import Language.PureScript.AST.Literals (Literal(..))
-import Language.PureScript.Names (Ident, OpName, OpNameType(..), ProperName, ProperNameType(..), Qualified)
-import Language.PureScript.Comments (Comment)
-import Language.PureScript.Types (SourceType)
+import           Language.PureScript.AST.Literals  (Literal (..))
+import           Language.PureScript.AST.SourcePos (SourceSpan)
+import           Language.PureScript.Comments      (Comment)
+import           Language.PureScript.Names         (Ident, OpName,
+                                                    OpNameType (..), ProperName,
+                                                    ProperNameType (..),
+                                                    Qualified)
+import           Language.PureScript.Types         (SourceType)
+
+data BinderAtom
+  -- |
+  -- Wildcard binder
+  --
+  = NullBinder
+  -- |
+  -- A binder which binds an identifier
+  --
+  | VarBinder SourceSpan Ident
+  deriving (Show)
+
+instance Eq BinderAtom where
+  NullBinder == NullBinder = True
+  VarBinder _ a == VarBinder _ b = a == b
+  _ == _ = False
+
+instance Ord BinderAtom where
+  compare NullBinder NullBinder = EQ
+  compare (VarBinder _ ident) (VarBinder _ ident') =
+    compare ident ident'
+  compare binder binder' =
+    compare (orderOf binder) (orderOf binder')
+      where
+        orderOf :: Binder -> Int
+        orderOf NullBinder             = 0
+        orderOf VarBinder{}            = 1
 
 -- |
 -- Data type for binders
 --
 data Binder
   -- |
-  -- Wildcard binder
-  --
-  = NullBinder
-  -- |
-  -- A binder which matches a literal
-  --
-  | LiteralBinder SourceSpan (Literal Binder)
-  -- |
-  -- A binder which binds an identifier
-  --
-  | VarBinder SourceSpan Ident
-  -- |
   -- A binder which matches a data constructor
   --
-  | ConstructorBinder SourceSpan (Qualified (ProperName 'ConstructorName)) [(SourceSpan, Ident)]
+  = ConstructorBinder SourceSpan (Qualified (ProperName 'ConstructorName)) [BinderAtom]
   -- |
-  -- A operator alias binder. During the rebracketing phase of desugaring,
-  -- this data constructor will be removed.
-  --
-  | OpBinder SourceSpan (Qualified (OpName 'ValueOpName))
+  -- A binder that contains a list of variables
+  | BinderAtoms [BinderAtom]
   -- |
   -- Binary operator application. During the rebracketing phase of desugaring,
   -- this data constructor will be removed.
   --
-  | BinaryNoParensBinder Binder Binder Binder
+  | BinaryNoParensBinder BinderAtom (Qualified (OpName 'ValueOpName)) BinderAtom
   -- |
   -- Explicit parentheses. During the rebracketing phase of desugaring, this
   -- data constructor will be removed.
@@ -71,16 +87,9 @@ data Binder
 -- the `Ord` instance was needed for the speed-up, but I did not want the `Eq`
 -- to have mismatched behavior.
 instance Eq Binder where
-  NullBinder == NullBinder =
-    True
-  (LiteralBinder _ lb) == (LiteralBinder _ lb') =
-    lb == lb'
-  (VarBinder _ ident) == (VarBinder _ ident') =
-    ident == ident'
   (ConstructorBinder _ qpc bs) == (ConstructorBinder _ qpc' bs') =
     qpc == qpc' && bs == bs'
-  (OpBinder _ qov) == (OpBinder _ qov') =
-    qov == qov'
+  BinderAtoms a == BinderAtoms b = a == b
   (BinaryNoParensBinder b1 b2 b3) == (BinaryNoParensBinder b1' b2' b3') =
     b1 == b1' && b2 == b2' && b3 == b3'
   (ParensInBinder b) == (ParensInBinder b') =
@@ -94,15 +103,8 @@ instance Eq Binder where
   _ == _ = False
 
 instance Ord Binder where
-  compare NullBinder NullBinder = EQ
-  compare (LiteralBinder _ lb) (LiteralBinder _ lb') =
-    compare lb lb'
-  compare (VarBinder _ ident) (VarBinder _ ident') =
-    compare ident ident'
   compare (ConstructorBinder _ qpc bs) (ConstructorBinder _ qpc' bs') =
     compare qpc qpc' <> compare bs bs'
-  compare (OpBinder _ qov) (OpBinder _ qov') =
-    compare qov qov'
   compare (BinaryNoParensBinder b1 b2 b3) (BinaryNoParensBinder b1' b2' b3') =
     compare b1 b1' <> compare b2 b2' <> compare b3 b3'
   compare (ParensInBinder b) (ParensInBinder b') =
@@ -117,16 +119,13 @@ instance Ord Binder where
     compare (orderOf binder) (orderOf binder')
       where
         orderOf :: Binder -> Int
-        orderOf NullBinder             = 0
-        orderOf LiteralBinder{}        = 1
-        orderOf VarBinder{}            = 2
-        orderOf ConstructorBinder{}    = 3
-        orderOf OpBinder{}             = 4
-        orderOf BinaryNoParensBinder{} = 5
-        orderOf ParensInBinder{}       = 6
-        orderOf NamedBinder{}          = 7
-        orderOf PositionedBinder{}     = 8
-        orderOf TypedBinder{}          = 9
+        orderOf ConstructorBinder{}    = 0
+        orderOf BinderAtoms{}          = 1
+        orderOf BinaryNoParensBinder{} = 3
+        orderOf ParensInBinder{}       = 4
+        orderOf NamedBinder{}          = 5
+        orderOf PositionedBinder{}     = 6
+        orderOf TypedBinder{}          = 7
 
 -- |
 -- Collect all names introduced in binders in an expression
@@ -137,19 +136,18 @@ binderNames = map snd . binderNamesWithSpans
 binderNamesWithSpans :: Binder -> [(SourceSpan, Ident)]
 binderNamesWithSpans = go []
   where
-  go ns (LiteralBinder _ b)             = lit ns b
-  go ns (VarBinder ss name)             = (ss, name) : ns
   go ns (ConstructorBinder _ _ bs)      = foldl go ns $ uncurry VarBinder <$> bs
+  go ns (BinderAtoms atoms)             = ns ++ concatMap binderAtomNamesWithSpans atoms
   go ns (BinaryNoParensBinder b1 b2 b3) = foldl go ns [b1, b2, b3]
   go ns (ParensInBinder b)              = go ns b
   go ns (NamedBinder ss name b)         = go ((ss, name) : ns) b
   go ns (PositionedBinder _ _ b)        = go ns b
   go ns (TypedBinder _ b)               = go ns b
   go ns _                               = ns
-  lit ns (ObjectLiteral bs) = foldl go ns (map snd bs)
-  lit ns (ArrayLiteral bs)  = foldl go ns bs
-  lit ns _                  = ns
 
+binderAtomNamesWithSpans :: BinderAtom -> [(SourceSpan, Ident)]
+binderAtomNamesWithSpans NullBinder = []
+binderAtomNamesWithSpans (VarBinder span ident) = [(span, ident)]
 
 isIrrefutable :: Binder -> Bool
 isIrrefutable NullBinder               = True

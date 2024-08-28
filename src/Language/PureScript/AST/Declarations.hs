@@ -349,7 +349,7 @@ getTypeDeclaration _ = Nothing
 unwrapTypeDeclaration :: TypeDeclarationData -> (Ident, SourceType)
 unwrapTypeDeclaration td = (tydeclIdent td, tydeclType td)
 
--- | A value declaration assigns a name and potential binders, to an expression (or multiple guarded expressions).
+-- | A value declaration assigns a name and potential binders, to an expression (or multiple expressions).
 --
 -- @double x = x + x@
 --
@@ -364,11 +364,11 @@ data ValueDeclarationData a = ValueDeclarationData
   , valdeclExpression :: !a
   } deriving (Show, Functor, Foldable, Traversable)
 
-getValueDeclaration :: Declaration -> Maybe (ValueDeclarationData [GuardedExpr])
+getValueDeclaration :: Declaration -> Maybe (ValueDeclarationData [Expr])
 getValueDeclaration (ValueDeclaration d) = Just d
 getValueDeclaration _ = Nothing
 
-pattern ValueDecl :: SourceAnn -> Ident -> NameKind -> [Binder] -> [GuardedExpr] -> Declaration
+pattern ValueDecl :: SourceAnn -> Ident -> NameKind -> [Binder] -> [Expr] -> Declaration
 pattern ValueDecl sann ident name binders expr
   = ValueDeclaration (ValueDeclarationData sann ident name binders expr)
 
@@ -418,7 +418,7 @@ data Declaration
   -- |
   -- A value declaration (name, top-level binders, optional guard, value)
   --
-  | ValueDeclaration {-# UNPACK #-} !(ValueDeclarationData [GuardedExpr])
+  | ValueDeclaration {-# UNPACK #-} !(ValueDeclarationData [Expr])
   -- |
   -- A declaration paired with pattern matching in let-in expression (binder, optional guard, value)
   | BoundValueDeclaration SourceAnn Binder Expr
@@ -632,22 +632,6 @@ flattenDecls = concatMap flattenOne
           flattenOne d = [d]
 
 -- |
--- A guard is just a boolean-valued expression that appears alongside a set of binders
---
-data Guard = ConditionGuard Expr
-           | PatternGuard Binder Expr
-           deriving (Show)
-
--- |
--- The right hand side of a binder in value declarations
--- and case expressions.
-data GuardedExpr = GuardedExpr [Guard] Expr
-                 deriving (Show)
-
-pattern MkUnguarded :: Expr -> GuardedExpr
-pattern MkUnguarded e = GuardedExpr [] e
-
--- |
 -- Data type for expressions and terms
 --
 data Expr
@@ -798,9 +782,9 @@ data CaseAlternative = CaseAlternative
     --
     caseAlternativeBinders :: Binder
     -- |
-    -- The result expression or a collect of guarded expressions
+    -- The result expression or a collect of expressions
     --
-  , caseAlternativeResult :: GuardedExpr
+  , caseAlternativeResult :: Expr
   } deriving (Show)
 
 -- |

@@ -225,15 +225,7 @@ foreignRange = \case
   ForeignKind a b -> (a, nameTok b)
 
 valueBindingFieldsRange :: ValueBindingFields a -> TokenRange
-valueBindingFieldsRange (ValueBindingFields a _ b) = (nameTok a, snd $ guardedRange b)
-
-guardedRange :: Guarded a -> TokenRange
-guardedRange = \case
-  Unconditional a b -> (a, snd $ whereRange b)
-  Guarded as -> (fst . guardedExprRange $ NE.head as, snd . guardedExprRange $ NE.last as)
-
-guardedExprRange :: GuardedExpr a -> TokenRange
-guardedExprRange (GuardedExpr a _ _ b) = (a, snd $ whereRange b)
+valueBindingFieldsRange (ValueBindingFields a _ _ b) = (nameTok a, snd $ whereRange b)
 
 whereRange :: Where a -> TokenRange
 whereRange (Where a bs)
@@ -297,7 +289,7 @@ exprRange = \case
   ExprVisibleTypeApp _ a _ b -> (fst $ exprRange a, snd $ typeRange b)
   ExprLambda _ (Lambda a _ _ b) -> (a, snd $ exprRange b)
   ExprIf _ (IfThenElse a _ _ _ _ b) -> (a, snd $ exprRange b)
-  ExprCase _ (CaseOf a _ _ c) -> (a, snd . guardedRange . snd $ NE.last c)
+  ExprCase _ (CaseOf a _ _ c) -> (a, snd . whereRange . snd $ NE.last c)
   ExprLet _ (LetIn a _ _ b) -> (a, snd $ exprRange b)
   ExprDo _ (DoBlock a b) -> (a,  snd . doStatementRange $ NE.last b)
   ExprAdo _ (AdoBlock a _ _ b) -> (a, snd $ exprRange b)

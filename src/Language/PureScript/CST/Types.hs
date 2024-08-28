@@ -290,19 +290,8 @@ data FixityFields = FixityFields
 data ValueBindingFields a = ValueBindingFields
   { valName :: Name Ident
   , valBinders :: [BinderAtom a]
-  , valGuarded :: Guarded a
-  } deriving (Show, Eq, Ord, Functor, Foldable, Traversable, Generic)
-
-data Guarded a
-  = Unconditional SourceToken (Where a)
-  | Guarded (NonEmpty (GuardedExpr a))
-  deriving (Show, Eq, Ord, Functor, Foldable, Traversable, Generic)
-
-data GuardedExpr a = GuardedExpr
-  { grdBar :: SourceToken
-  , grdPatterns :: Separated (PatternGuard a)
-  , grdSep :: SourceToken
-  , grdWhere :: Where a
+  , valEquals :: SourceToken
+  , valExpr :: Where a
   } deriving (Show, Eq, Ord, Functor, Foldable, Traversable, Generic)
 
 data PatternGuard a = PatternGuard
@@ -386,7 +375,7 @@ data CaseOf a = CaseOf
   { caseKeyword :: SourceToken
   , caseHead :: Expr a
   , caseOf :: SourceToken
-  , caseBranches :: NonEmpty (Separated (Binder a), Guarded a)
+  , caseBranches :: NonEmpty (Binder a, Where a)
   } deriving (Show, Eq, Ord, Functor, Foldable, Traversable, Generic)
 
 data LetIn a = LetIn

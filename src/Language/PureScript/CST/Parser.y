@@ -54,9 +54,6 @@ import Language.PureScript.PSString (PSString)
 %partial parseDoStatement doStatement
 %partial parseDoExpr doExpr
 %partial parseDoNext doNext
-%partial parseGuardExpr guardExpr
-%partial parseGuardNext guardNext
-%partial parseGuardStatement guardStatement
 %partial parseClassSignature classSignature
 %partial parseClassSuper classSuper
 %partial parseClassNameAndFundeps classNameAndFundeps
@@ -418,14 +415,6 @@ expr5 :: { Expr () }
   | '\\' many(binderAtom) '->' expr { ExprLambda () (Lambda $1 $2 $3 $4) }
   | 'let' '\{' manySep(letBinding, '\;') '\}' 'in' expr { ExprLet () (LetIn $1 $3 $5 $6) }
   | 'case' expr 'of' '\{' manySep(caseBranch, '\;') '\}' { ExprCase () (CaseOf $1 $2 $3 $5) }
-  -- These special cases handle some idiosynchratic syntax that the current
-  -- parser allows. Technically the parser allows the rhs of a case branch to be
-  -- at any level, but this is ambiguous. We allow it in the case of a singleton
-  -- case, since this is used in the wild.
-  | 'case' expr 'of' '\{' sep(binder1, ',') '->' '\}' exprWhere
-      {% addWarning (let (a,b) = whereRange $8 in [a, b]) WarnDeprecatedCaseOfOffsideSyntax *> pure (ExprCase () (CaseOf $1 $2 $3 (pure ($5, Unconditional $6 $8)))) }
-  | 'case' expr 'of' '\{' sep(binder1, ',') '\}' guardedCase
-      {% addWarning (let (a,b) = guardedRange $7 in [a, b]) WarnDeprecatedCaseOfOffsideSyntax *> pure (ExprCase () (CaseOf $1 $2 $3 (pure ($5, $7)))) }
 
 expr6 :: { Expr () }
   : expr7 %shift { $1 }
@@ -471,28 +460,16 @@ recordUpdate :: { RecordUpdate () }
 
 letBinding :: { LetBinding () }
   : ident '::' type { LetBindingSignature () (Labeled $1 $2 $3) }
-  | ident guardedDecl { LetBindingName () (ValueBindingFields $1 [] $2) }
-  | ident many(binderAtom) guardedDecl { LetBindingName () (ValueBindingFields $1 (NE.toList $2) $3) }
+  | ident '=' exprWhere
+    { LetBindingName () (ValueBindingFields $1 [] $2 $3) }
+  | ident many(binderAtom) '=' exprWhere
+    { LetBindingName () (ValueBindingFields $1 (NE.toList $2) $3 $4) }
   | binder1 '=' exprWhere { LetBindingPattern () $1 $2 $3 }
 
-caseBranch :: { (Separated (Binder ()), Guarded ()) }
-  : sep(binder1, ',') guardedCase { ($1, $2) }
+caseBranch :: { (Binder (), Where ()) }
+  : binder '->' exprWhere { ($1, $3) }
 
-guardedDecl :: { Guarded () }
-  : '=' exprWhere { Unconditional $1 $2 }
-  | many(guardedDeclExpr) { Guarded $1 }
-
-guardedDeclExpr :: { GuardedExpr () }
-  : guard '=' exprWhere { uncurry GuardedExpr $1 $2 $3 }
-
-guardedCase :: { Guarded () }
-  : '->' exprWhere { Unconditional $1 $2 }
-  | many(guardedCaseExpr) { Guarded $1 }
-
-guardedCaseExpr :: { GuardedExpr () }
-  : guard '->' exprWhere { uncurry GuardedExpr $1 $2 $3 }
-
--- Do/Ado statements and pattern guards require unbounded lookahead due to many
+-- Do/Ado statements require unbounded lookahead due to many
 -- conflicts between `binder` and `expr` syntax. For example `Foo a b c` can
 -- either be a constructor `binder` or several `expr` applications, and we won't
 -- know until we see a `<-` or layout separator.
@@ -556,23 +533,6 @@ doExpr :: { Expr () }
 doNext :: { [DoStatement ()] }
   : '\;' {%^ revert parseDoStatement }
   | '\}' {%^ revert $ pure [] }
-
-guard :: { (SourceToken, Separated (PatternGuard ())) }
-  : '|' {%% revert $ fmap (($1,) . uncurry Separated) parseGuardStatement }
-
-guardStatement :: { (PatternGuard (), [(SourceToken, PatternGuard ())]) }
-  : {- empty -}
-      {%^ revert $ do
-        grd <- fmap (uncurry PatternGuard) $ tryPrefix parseBinderAndArrow parseGuardExpr
-        fmap (grd,) parseGuardNext
-      }
-
-guardExpr :: { Expr() }
-  : expr1 {%^ revert $ pure $1 }
-
-guardNext :: { [(SourceToken, PatternGuard ())] }
-  : ',' {%^ revert $ fmap (\(g, gs) -> ($1, g) : gs) parseGuardStatement }
-  | {- empty -} {%^ revert $ pure [] }
 
 binderAndArrow :: { (Binder (), SourceToken) }
   : binder '<-' {%^ revert $ pure ($1, $2) }
@@ -686,7 +646,8 @@ decl :: { Declaration () }
   | 'derive' instHead { DeclDerive () $1 Nothing $2 }
   | 'derive' 'newtype' instHead { DeclDerive () $1 (Just $2) $3 }
   | ident '::' type { DeclSignature () (Labeled $1 $2 $3) }
-  | ident manyOrEmpty(binderAtom) guardedDecl { DeclValue () (ValueBindingFields $1 $2 $3) }
+  | ident manyOrEmpty(binderAtom) '=' exprWhere
+    { DeclValue () (ValueBindingFields $1 $2 $3 $4) }
   | fixity { DeclFixity () $1 }
   | 'foreign' 'import' ident '::' type {% when (isConstrained $5) (addFailure ([$1, $2, nameTok $3, $4] <> toList (flattenType $5)) ErrConstraintInForeignImportSyntax) *> pure (DeclForeign () $1 $2 (ForeignValue (Labeled $3 $4 $5))) }
   | 'foreign' 'import' 'data' properName '::' type { DeclForeign () $1 $2 (ForeignData $3 (Labeled (getProperName $4) $5 $6)) }
@@ -769,7 +730,7 @@ constraint :: { Constraint () }
 
 instBinding :: { InstanceBinding () }
   : ident '::' type { InstanceBindingSignature () (Labeled $1 $2 $3) }
-  | ident manyOrEmpty(binderAtom) guardedDecl { InstanceBindingName () (ValueBindingFields $1 $2 $3) }
+  | ident manyOrEmpty(binderAtom) '=' exprWhere { InstanceBindingName () (ValueBindingFields $1 $2 $3 $4) }
 
 fixity :: { FixityFields }
   : infix int qualIdent 'as' op { FixityFields $1 $2 (FixityValue (fmap Left $3) $4 (getOpName $5)) }

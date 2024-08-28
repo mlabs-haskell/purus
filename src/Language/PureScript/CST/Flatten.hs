@@ -60,10 +60,11 @@ flattenInstanceBinding = \case
   InstanceBindingName _ a -> flattenValueBindingFields a
 
 flattenValueBindingFields :: ValueBindingFields a -> DList SourceToken
-flattenValueBindingFields (ValueBindingFields a b c) =
+flattenValueBindingFields (ValueBindingFields a b c d) =
   flattenName a <>
   foldMap flattenBinderAtom b <>
-  flattenGuarded c
+  pure c <>
+  flattenWhere d
 
 flattenBinderAtom :: BinderAtom a -> DList SourceToken
 flattenBinderAtom = \case
@@ -74,6 +75,7 @@ flattenBinder :: Binder a -> DList SourceToken
 flattenBinder = \case
   BinderConstructor _ as a b ->
     foldMap flattenName as <> flattenQualifiedName a <> foldMap flattenBinderAtom b
+  BinderAtoms _ as -> foldMap flattenBinderAtom as
   BinderArray _ a -> flattenWrapped (foldMap (flattenSeparated flattenName)) a
   BinderRecord _ a ->
     flattenWrapped (foldMap (flattenSeparated (flattenRecordLabeled flattenName))) a
@@ -108,7 +110,7 @@ flattenCaseOf (CaseOf a b c d) =
   pure a <>
   flattenExpr b <>
   pure c <>
-  foldMap (\(e, f) -> flattenSeparated flattenBinder e <> flattenGuarded f) d
+  foldMap (\(e, f) -> flattenBinder e <> flattenWhere f) d
 
 flattenLetIn :: LetIn a -> DList SourceToken
 flattenLetIn (LetIn a b c d) =
@@ -167,22 +169,6 @@ flattenLetBinding = \case
 flattenWhere :: Where a -> DList SourceToken
 flattenWhere (Where a b) =
   flattenExpr a <> foldMap (\(c, d) -> pure c <> foldMap flattenLetBinding d) b
-
-flattenPatternGuard :: PatternGuard a -> DList SourceToken
-flattenPatternGuard (PatternGuard a b) =
-  foldMap (\(c, d) -> flattenBinder c <> pure d) a <> flattenExpr b
-
-flattenGuardedExpr :: GuardedExpr a -> DList SourceToken
-flattenGuardedExpr (GuardedExpr a b c d) =
-  pure a <>
-  flattenSeparated flattenPatternGuard b <>
-  pure c <>
-  flattenWhere d
-
-flattenGuarded :: Guarded a -> DList SourceToken
-flattenGuarded = \case
-  Unconditional a b -> pure a <> flattenWhere b
-  Guarded a -> foldMap flattenGuardedExpr a
 
 flattenFixityFields :: FixityFields -> DList SourceToken
 flattenFixityFields (FixityFields (a, _) (b, _) c) =
