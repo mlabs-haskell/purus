@@ -28,6 +28,7 @@ import Language.PureScript.Constants.Prim qualified as C
 import Language.PureScript.CoreFn.Expr (PurusType)
 import Language.PureScript.CoreFn.FromJSON ()
 import Language.PureScript.Environment (pattern RecordT)
+
 -- for the instance
 import Language.PureScript.Names (
   Ident (GenIdent, Ident),
@@ -46,7 +47,7 @@ import Language.PureScript.Types (
   isMonoType,
  )
 
-import Language.Purus.Debug
+import Language.Purus.Debug ( doTrace, doTraceM, prettify )
 import Language.Purus.IR (
   BVar (..),
   BindE (..),
@@ -92,7 +93,7 @@ import Language.Purus.Pipeline.Lift.Types (
   unHole,
   pattern LiftedHole,
  )
-import Language.Purus.Pipeline.Monad
+import Language.Purus.Pipeline.Monad ( Inline, MonadCounter(next) )
 import Language.Purus.Pretty.Common (prettyStr)
 
 import Algebra.Graph.AdjacencyMap (
@@ -107,7 +108,7 @@ import Algebra.Graph.AdjacencyMap (
 import Algebra.Graph.AdjacencyMap.Algorithm (Cycle, scc, topSort)
 import Algebra.Graph.NonEmpty.AdjacencyMap (fromNonEmpty)
 
-import Control.Lens.Combinators (cosmos, at, transformM)
+import Control.Lens.Combinators (at, cosmos, transformM)
 import Control.Lens.Operators ((.=), (^..))
 
 import Bound (Var (..))
@@ -255,7 +256,7 @@ inlineWithData = transformM go''
               pure e
             _ -> pure fv
           _ -> pure fv
-        V b@B{} -> pure $ V b
+        V b@B {} -> pure $ V b
         AppE e1 e2 -> AppE <$> go e1 <*> go e2
         CaseE t scrut alts -> do
           scrut' <- go scrut

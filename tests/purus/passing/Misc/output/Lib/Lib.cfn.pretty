@@ -92,6 +92,8 @@ Exports:
   ghcInlinerPaperEx,
   kozsTwoSCCEx,
   testLedgerTypes,
+  litPattern,
+  irrPattern,
   testClassInt,
   eqInt,
   eq2IntBoolean,
@@ -504,6 +506,16 @@ mutuallyRecursiveBindingGroup =
 
 minus :: (Prim.Int -> ((Prim.Int -> (Prim.Int))))
 minus = \(v: Prim.Int) -> \(v1: Prim.Int) -> (42: Prim.Int)
+
+litPattern :: (Prim.Int -> (Prim.Boolean))
+litPattern = 
+  \(n: Prim.Int) -> 
+    case (n: Prim.Int) of 
+       2 -> (False: Prim.Boolean)
+       _ -> (True: Prim.Boolean)
+
+irrPattern :: (Prim.Int -> (Prim.Int))
+irrPattern = \(n: Prim.Int) -> (2: Prim.Int)
 
 id :: forall (t :: Prim.Type). ((t :: Prim.Type) -> ((t :: Prim.Type)))
 id = \(x: (t :: Prim.Type)) -> (x: (t :: Prim.Type))

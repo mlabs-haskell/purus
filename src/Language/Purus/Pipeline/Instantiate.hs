@@ -15,29 +15,30 @@ import Data.Foldable (foldl')
 import Data.Text (Text)
 
 import Language.PureScript.Constants.Prim qualified as C
-import Language.PureScript.CoreFn.TypeLike (TypeLike (..), instantiates)
 import Language.PureScript.CoreFn.Expr (PurusType)
-import Language.PureScript.Types (Type(..))
-import Language.PureScript.Names
+import Language.PureScript.CoreFn.TypeLike (TypeLike (..), instantiates)
+import Language.PureScript.Names ( Ident(Ident) )
+import Language.PureScript.Types (Type (..))
 
+import Language.Purus.Debug ( doTrace, prettify )
+import Language.Purus.IR (BVar (..), Exp (..), analyzeApp, expTy)
 import Language.Purus.IR.Utils
-import Language.Purus.Debug
-import Language.Purus.IR ( BVar(..), analyzeApp, Exp(..), expTy, bvType )
+    ( WithObjects, Vars, mapAlt, mapBind, transformTypesInExp, viaExp )
 import Language.Purus.Pretty.Common (prettyStr)
 
-import Control.Lens (view, _2, transform)
+import Control.Lens (transform, view, _2)
 import Prettyprinter (Pretty)
 
-
-applyPolyRowArgs :: Exp WithObjects PurusType (Vars PurusType)
-                 -> Exp WithObjects PurusType (Vars PurusType)
+applyPolyRowArgs ::
+  Exp WithObjects PurusType (Vars PurusType) ->
+  Exp WithObjects PurusType (Vars PurusType)
 applyPolyRowArgs = transform $ \case
-  instE@(TyInstE t (TyAbs (BVar kvI kvTy (Ident kvNm)) innerE)) -> case kvTy  of
-      TypeApp _ (TypeConstructor _ C.Row) _ -> transformTypesInExp (replaceAllTypeVars [(kvNm,t)]) innerE
-      _ -> instE
+  instE@(TyInstE t (TyAbs (BVar kvI kvTy (Ident kvNm)) innerE)) -> case kvTy of
+    TypeApp _ (TypeConstructor _ C.Row) _ -> transformTypesInExp (replaceAllTypeVars [(kvNm, t)]) innerE
+    _ -> instE
   other -> other
 
-instantiateTypes :: forall x (t :: *). (TypeLike t, Pretty t, Pretty (KindOf t)) => Exp x t (Vars t)  -> Exp x t (Vars t)
+instantiateTypes :: forall x (t :: *). (TypeLike t, Pretty t, Pretty (KindOf t)) => Exp x t (Vars t) -> Exp x t (Vars t)
 instantiateTypes = \case
   V v -> V v
   LitE t lit -> LitE t $ instantiateTypes <$> lit
@@ -86,7 +87,7 @@ instantiateApp e = case analyzeApp e of
    and returns a Map of type variable substitutions.
 -}
 getInstantiations ::
-  TypeLike t =>
+  (TypeLike t) =>
   [Text] ->
   [t] ->
   [t] ->

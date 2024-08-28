@@ -5,7 +5,7 @@ module Language.Purus.Types where
 import Prelude
 
 import Data.Map (Map)
-import qualified Data.Map as M
+import Data.Map qualified as M
 
 import Data.Text (Text)
 

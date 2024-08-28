@@ -382,3 +382,12 @@ kozsTwoSCCEx =
 
 testLedgerTypes :: DCert
 testLedgerTypes = DCertMir
+
+litPattern :: Int -> Boolean
+litPattern n = case n of
+  2 -> False
+  _ -> True
+
+irrPattern :: Int -> Int
+irrPattern n = case n of
+  _ -> 2

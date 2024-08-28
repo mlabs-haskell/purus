@@ -51,7 +51,6 @@ import Language.PureScript.TypeChecker (CheckState (..), emptyCheckState, typeCh
 import Language.Purus.Pretty qualified as CFT
 import Language.Purus.Prim.Ledger
 
-
 import System.Directory (doesFileExist)
 import System.FilePath (replaceExtension)
 
@@ -62,7 +61,7 @@ import Language.Purus.Pretty (ppType)
 initEnvironmentPurus :: Environment
 initEnvironmentPurus = case initEnvironment of
   Environment nms tys dCons tSyns tcDicts tcs ->
-    Environment nms (M.fromList ledgerTypes <> tys) (dCons <> ledgerConstructorsEnv)  tSyns tcDicts tcs
+    Environment nms (M.fromList ledgerTypes <> tys) (dCons <> ledgerConstructorsEnv) tSyns tcDicts tcs
 
 {- | Rebuild a single module.
 

@@ -92,20 +92,21 @@ findInlineDeclGroup ident (Recursive xs : rest) = case find (\x -> fst (fst x) =
 qualifyNull :: a -> Qualified a
 qualifyNull = Qualified ByNullSourcePos
 
-
 --
-findDeclBodyWithIndex :: Ident
-                  -> Int
-                  -> [BindE ty (Exp x ty) (Vars ty)]
-                  -> Maybe (Exp x ty (Vars ty))
-findDeclBodyWithIndex nm i binds
- = foldBinds go Nothing binds
- where
-   go :: Maybe (Exp x ty (Vars ty))
-      -> (Ident,Int)
-      -> Scope (BVar ty) (Exp x ty) (Vars ty)
-      -> Maybe (Exp x ty (Vars ty))
-   go (Just res) _ _ =  Just res
-   go Nothing (nm',i') body
-     | nm' == nm && i' == i = Just (toExp body)
-     | otherwise = Nothing 
+findDeclBodyWithIndex ::
+  Ident ->
+  Int ->
+  [BindE ty (Exp x ty) (Vars ty)] ->
+  Maybe (Exp x ty (Vars ty))
+findDeclBodyWithIndex nm i binds =
+  foldBinds go Nothing binds
+  where
+    go ::
+      Maybe (Exp x ty (Vars ty)) ->
+      (Ident, Int) ->
+      Scope (BVar ty) (Exp x ty) (Vars ty) ->
+      Maybe (Exp x ty (Vars ty))
+    go (Just res) _ _ = Just res
+    go Nothing (nm', i') body
+      | nm' == nm && i' == i = Just (toExp body)
+      | otherwise = Nothing

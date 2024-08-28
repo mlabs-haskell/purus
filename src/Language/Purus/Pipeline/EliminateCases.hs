@@ -28,6 +28,11 @@ import Language.PureScript.CoreFn.Module (
   tyDict,
  )
 import Language.PureScript.CoreFn.TypeLike
+    ( getAllInstantiations,
+      getInstantiations,
+      safeFunArgTypes,
+      TypeLike(replaceAllTypeVars, instTy, quantify, splitFunTyParts,
+               applyType, funTy) )
 import Language.PureScript.Names (
   Ident (..),
   ProperName (..),
@@ -40,7 +45,7 @@ import Language.PureScript.Types (
   TypeVarVisibility (TypeVarVisible),
  )
 
-import Language.Purus.Debug
+import Language.Purus.Debug ( doTrace, doTraceM, prettify )
 import Language.Purus.IR (
   Alt (..),
   BVar (BVar),
@@ -58,12 +63,21 @@ import Language.Purus.IR (
  )
 import Language.Purus.IR qualified as IR
 import Language.Purus.IR.Utils
+    ( Vars, WithoutObjects, toExp, isConstructor, fromExp )
 import Language.Purus.Pipeline.DesugarCore (
   matchVarLamAbs,
  )
 import Language.Purus.Pipeline.GenerateDatatypes.Utils
+    ( analyzeTyApp,
+      foldr1Err,
+      freshName,
+      funResultTy,
+      getDestructorTy,
+      prettyQI,
+      prettyQPN )
 import Language.Purus.Pipeline.Monad
-import Language.Purus.Pretty (prettyStr)
+    ( MonadCounter(next), PlutusContext )
+import Language.Purus.Pretty.Common ( prettyStr )
 
 import Bound (Var (..))
 import Bound.Scope (
@@ -75,10 +89,8 @@ import Bound.Scope (
  )
 import Control.Lens (
   at,
-  folded,
   view,
   (^.),
-  (^?),
  )
 import Control.Lens.Combinators (transform)
 import Control.Lens.Plated (transformM)
@@ -117,7 +129,7 @@ eliminateCases ::
   Exp WithoutObjects Ty (Var (BVar Ty) (FVar Ty)) ->
   PlutusContext (Exp WithoutObjects Ty (Var (BVar Ty) (FVar Ty)))
 eliminateCases datatypes _exp = do
-  res <- eliminateCaseExpressions datatypes _exp
+  res <- eliminateCaseExpressions datatypes . desugarIrrefutables . desugarLiteralPatterns $ _exp
   doTraceM "eliminateCaseExpressions" ("INPUT:\n" <> prettyStr _exp <> "\n\nOUTPUT:\n" <> prettyStr res)
   pure
     . instantiateNullaryWithAnnotatedType datatypes
@@ -656,34 +668,44 @@ monomorphizePatterns datatypes _e' = case _e' of
           e' = rebindPat p' e
        in UnguardedAlt p' e'
 
-desugarLiteralPatterns :: Exp WithoutObjects Ty (Var (BVar Ty) (FVar Ty)) -> PlutusContext (Exp WithoutObjects Ty (Var (BVar Ty) (FVar Ty)))
-desugarLiteralPatterns = transformM desugarLiteralPattern
+desugarLiteralPatterns :: Exp WithoutObjects Ty (Var (BVar Ty) (FVar Ty))
+                       -> Exp WithoutObjects Ty (Var (BVar Ty) (FVar Ty))
+desugarLiteralPatterns = transform desugarLiteralPattern
 
+
+{- TODO/FIXME (8/28): This is currently broken because we use the Builtins.equalsInteger/String/etc
+                      which return a PLC `bool` not a SOP `Boolean`.
+
+                      The only sensible solution is to replace the equality test with some specific
+                      free variable (maybe qualified by a "$COMPILER" ModuleName) that represents the
+                      equality test for the correct primitive type, and replace those variables
+                      during final PIR compilation.
+
+-}
 desugarLiteralPattern ::
   Exp WithoutObjects Ty (Var (BVar Ty) (FVar Ty)) ->
-  PlutusContext (Exp WithoutObjects Ty (Var (BVar Ty) (FVar Ty)))
-desugarLiteralPattern = \case
-  CaseE resTy scrut (UnguardedAlt (LitP patLit) rhs : alts) -> do
+  Exp WithoutObjects Ty (Var (BVar Ty) (FVar Ty))
+desugarLiteralPattern =  \case
+  CaseE resTy scrut (UnguardedAlt (LitP patLit) rhs : alts) ->
     let eqTest = mkEqTestFun scrut patLit
         trueP = ConP C.Boolean C.C_True []
         falseP = ConP C.Boolean C.C_False []
-    rest <- fmap F . toScope <$> desugarLiteralPattern (CaseE resTy scrut alts)
-    pure $
-      CaseE
+        rest = fromExp $  desugarLiteralPattern (CaseE resTy scrut alts)
+    in CaseE
         resTy
-        eqTest
+        eqTest 
         [ UnguardedAlt trueP rhs
         , UnguardedAlt falseP rest
         ]
-  CaseE _ _ (UnguardedAlt WildP rhs : _) -> pure $ toExp rhs -- FIXME: Wrong! Need to do the same
-  -- catchall stuff we do in the ctor
-  -- case eliminator
-  CaseE _ scrut (UnguardedAlt (VarP bvId bvIx _) rhs : _) -> pure $ flip instantiate rhs $ \case
+  CaseE _ _ (UnguardedAlt WildP rhs : _) -> toExp rhs -- FIXME: Wrong! Need to do the same
+                                                      -- catchall stuff we do in the ctor
+                                                      -- case eliminator
+  CaseE _ scrut (UnguardedAlt (VarP bvId bvIx _) rhs : _) -> flip instantiate rhs $ \case
     bv@(BVar bvIx' _ bvId') ->
       if bvIx == bvIx' && bvId == bvId'
         then scrut
         else V . B $ bv
-  other -> pure other
+  other ->  other
   where
     eqInt =
       V . F $
@@ -707,22 +729,19 @@ desugarLiteralPattern = \case
       CharL c -> eqChar `AppE` LitE (TyCon C.Char) (CharL c) `AppE` scrut
       StringL s -> eqString `AppE` LitE (TyCon C.String) (StringL s) `AppE` scrut
 
-desugarIrrefutables :: Exp WithoutObjects Ty (Var (BVar Ty) (FVar Ty)) -> PlutusContext (Exp WithoutObjects Ty (Var (BVar Ty) (FVar Ty)))
-desugarIrrefutables = transformM desugarIrrefutable
-
 -- This is for case expressions where the first alternative contains an irrefutable pattern (WildP, VarP)
 -- (we need this b/c the other two won't catch and eliminate those expressions)
-desugarIrrefutable ::
+desugarIrrefutables ::
   Exp WithoutObjects Ty (Var (BVar Ty) (FVar Ty)) ->
-  PlutusContext (Exp WithoutObjects Ty (Var (BVar Ty) (FVar Ty)))
-desugarIrrefutable = \case
-  CaseE _ _ (UnguardedAlt WildP rhs : _) -> pure $ toExp rhs
-  CaseE _ scrut (UnguardedAlt (VarP bvId bvIx _) rhs : _) -> pure $ flip instantiate rhs $ \case
-    bv@(BVar bvIx' _ bvId') ->
-      if bvIx == bvIx' && bvId == bvId'
-        then scrut
-        else V . B $ bv
-  other -> pure other
+  Exp WithoutObjects Ty (Var (BVar Ty) (FVar Ty))
+desugarIrrefutables = transform $  \case
+     CaseE _ _ (UnguardedAlt WildP rhs : _) ->  toExp rhs
+     CaseE _ scrut (UnguardedAlt (VarP bvId bvIx _) rhs : _) ->  flip instantiate rhs $ \case
+       bv@(BVar bvIx' _ bvId') ->
+         if bvIx == bvIx' && bvId == bvId'
+           then scrut
+           else V . B $ bv
+     other -> other
 
 data CtorCase = CtorCase
   { irrefutableRHS :: Exp WithoutObjects Ty (Var (BVar Ty) (FVar Ty))

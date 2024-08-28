@@ -1,33 +1,31 @@
 {-# LANGUAGE StandaloneDeriving #-}
 {-# LANGUAGE StarIsType #-}
-{-# LANGUAGE UndecidableInstances #-}
 {-# LANGUAGE TemplateHaskell #-}
+{-# LANGUAGE UndecidableInstances #-}
+
 module Language.Purus.Pipeline.Monad where
 
 import Prelude
 
-
 import Data.Map (Map)
 import Data.Map qualified as M
 
+import Language.PureScript.CoreFn.Ann ( Ann )
+import Language.PureScript.CoreFn.Expr ( PurusType )
+import Language.PureScript.CoreFn.Module ( Module )
+import Language.PureScript.Names ( Ident, ModuleName )
+import Language.Purus.IR.Utils ( IR_Decl )
+import Language.Purus.Types ( DatatypeDictionary )
 
-
-import Language.PureScript.CoreFn (Ann)
-import Language.PureScript.CoreFn.Expr
-import Language.PureScript.CoreFn.Module
-import Language.PureScript.Names
-import Language.Purus.IR.Utils
-import Language.Purus.Types
-
-import Control.Monad.State
 import Control.Monad.Except (MonadError)
-import Control.Monad.Reader
-import Control.Monad.Trans.Except (ExceptT)
-
+import Control.Monad.Reader ( MonadReader(..), MonadTrans(..) )
+import Control.Monad.State
+    ( evalStateT, StateT(..), MonadState(get, put), gets )
+import Control.Lens.Operators ( (%=), (+=), (.=) )
 import Control.Lens.TH (makeLenses)
-import Control.Lens.Operators
 
 import Prettyprinter
+    ( Pretty(pretty), (<+>), align, hardline, indent, vcat )
 
 {- [Current Compilation Pipeline Structure]
      - That is, "current" before the `Language.Purus` reorganization.
@@ -182,7 +180,7 @@ instance MonadReader r (PurusM r) where
 evalPurusM :: s -> PurusM s a -> CounterT (Either String) a
 evalPurusM s pm = evalStateT (runPurusM pm) s
 
-runStatePurusM :: s -> PurusM s a -> CounterT (Either String) (a,s)
+runStatePurusM :: s -> PurusM s a -> CounterT (Either String) (a, s)
 runStatePurusM s pm = runStateT (runPurusM pm) s
 
 data DesugarContext = DesugarContext {_globalScope :: Map ModuleName (Map Ident Int), _localScope :: Map Ident Int}
@@ -190,40 +188,48 @@ data DesugarContext = DesugarContext {_globalScope :: Map ModuleName (Map Ident 
 
 instance Pretty DesugarContext where
   pretty (DesugarContext globals locals) =
-    let globals' = align
-                   . vcat
-                   . fmap (\ (a,b) -> pretty a <+> ":=" <+> b <> hardline)
-                   . M.toList
-                   $ indent 2
-                     . align
-                     . vcat
-                     . map pretty
-                     . M.toList
-                     <$> globals
+    let globals' =
+          align
+            . vcat
+            . fmap (\(a, b) -> pretty a <+> ":=" <+> b <> hardline)
+            . M.toList
+            $ indent 2
+              . align
+              . vcat
+              . map pretty
+              . M.toList
+              <$> globals
 
         locals' = align . vcat . map pretty . M.toList $ locals
-    in "DesugarContext:" <> hardline
-       <> "Globals:" <> indent 2 globals' <> hardline
-       <> "Locals:" <> indent 2 locals' <> hardline 
+     in "DesugarContext:"
+          <> hardline
+          <> "Globals:"
+          <> indent 2 globals'
+          <> hardline
+          <> "Locals:"
+          <> indent 2 locals'
+          <> hardline
 
 instance Semigroup DesugarContext where
   (DesugarContext gb1 lb1) <> (DesugarContext gb2 lb2) = DesugarContext (gb1 <> gb2) (lb1 <> lb2)
 
 instance Monoid DesugarContext where
-  mempty = DesugarContext M.empty M.empty 
+  mempty = DesugarContext M.empty M.empty
 
 makeLenses ''DesugarContext
 
 newtype DesugarCore a = DesugarCore (PurusM DesugarContext a)
-  deriving newtype (Functor,
-                    Applicative,
-                    Monad,
-                    MonadError String,
-                    MonadCounter,
-                    MonadState DesugarContext,
-                    MonadReader DesugarContext)
+  deriving newtype
+    ( Functor
+    , Applicative
+    , Monad
+    , MonadError String
+    , MonadCounter
+    , MonadState DesugarContext
+    , MonadReader DesugarContext
+    )
 
-runDesugarCore :: DesugarCore a -> CounterT (Either String) (a,DesugarContext)
+runDesugarCore :: DesugarCore a -> CounterT (Either String) (a, DesugarContext)
 runDesugarCore (DesugarCore psm) = runStatePurusM mempty psm
 
 newtype Inline a = Inline (PurusM (Module IR_Decl PurusType PurusType Ann) a)

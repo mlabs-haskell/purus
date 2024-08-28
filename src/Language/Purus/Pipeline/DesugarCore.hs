@@ -14,20 +14,26 @@ import Data.Text qualified as T
 
 import Data.Char (isUpper)
 import Data.Foldable (Foldable (foldl'), foldrM, traverse_)
-import Data.List (find, sort, sortOn)
-import Data.Maybe (fromJust, mapMaybe, isJust)
+import Data.List (sort, sortOn)
+import Data.Maybe (fromJust, isJust)
 
-import Data.Bifunctor (Bifunctor (first))
+import Data.Bifunctor (Bifunctor (first,second))
 
-import Control.Monad.Except (MonadError (..), liftEither)
-import Control.Monad.Reader
-import Control.Monad.State (gets, get, modify, put)
+import Control.Monad.Reader ( join, unless, MonadReader(local) )
+import Control.Monad.State (get, modify)
 
-import Language.PureScript (runIdent)
+import Language.PureScript.Names
+    ( runIdent,
+      Ident(..),
+      ModuleName(ModuleName),
+      ProperName(ProperName),
+      Qualified(Qualified),
+      QualifiedBy(ByModuleName),
+      coerceProperName,
+      disqualify )
 import Language.PureScript.AST.Literals (Literal (..))
-import Language.PureScript.AST.SourcePos (spanStart)
 import Language.PureScript.Constants.Prim qualified as C
-import Language.PureScript.CoreFn.Ann (Ann, annSS, nullAnn)
+import Language.PureScript.CoreFn.Ann (Ann, nullAnn)
 import Language.PureScript.CoreFn.Binders (Binder (..))
 import Language.PureScript.CoreFn.Desugar.Utils (properToIdent, showIdent', wrapTrace)
 import Language.PureScript.CoreFn.Expr (
@@ -35,21 +41,11 @@ import Language.PureScript.CoreFn.Expr (
   CaseAlternative (CaseAlternative),
   Expr (..),
   PurusType,
-  _Var,
  )
-import Language.PureScript.CoreFn.Module (Module (..), Datatypes)
+import Language.PureScript.CoreFn.Module (Datatypes, Module (..))
 import Language.PureScript.CoreFn.TypeLike (TypeLike (..))
 import Language.PureScript.CoreFn.Utils (exprType)
 import Language.PureScript.Environment (mkCtorTy, mkTupleTyName)
-import Language.PureScript.Names (
-  Ident (..),
-  ModuleName (ModuleName),
-  ProperName (ProperName),
-  Qualified (Qualified),
-  QualifiedBy (ByModuleName, BySourcePos),
-  coerceProperName,
-  disqualify,
- )
 import Language.PureScript.Types (Type (..))
 
 import Language.Purus.Debug (
@@ -67,38 +63,38 @@ import Language.Purus.IR (
   Lit (CharL, IntL, ObjectL, StringL),
   Pat (..),
   expTy,
-  expTy',
  )
 import Language.Purus.IR.Utils
+    ( foldBinds, WithObjects, Vars, IR_Decl, mapBind, viaExp )
 import Language.Purus.Pipeline.Monad
-import Language.Purus.Pretty (prettyStr, prettyTypeStr, renderExprStr, prettyModule, docString)
+    ( globalScope,
+      DesugarContext(DesugarContext),
+      DesugarCore,
+      localScope,
+      MonadCounter(next) )
+import Language.Purus.Pretty (prettyStr, prettyTypeStr, renderExprStr)
 import Language.Purus.Pretty.Common qualified as PC
 
 import Bound (Var (..), abstract)
-import Bound.Scope (Scope, fromScope)
+import Bound.Scope (fromScope)
 
 import Control.Lens (
-  At(at),
-  Ixed(ix),
-  cosmos,
-  preview,
-  over,
+  At (at),
+  Ixed (ix),
   folded,
-  to,
+  over,
+  set,
   transform,
+  view,
   (.=),
-  (^..), set, (^?), view
+  (^?),
  )
 
-import Prettyprinter (Pretty (..))
 import Debug.Trace (traceM)
+import Prettyprinter (Pretty (..))
 
-{- FIXME: We need to maintain a Map ModuleName (Map Ident Int)
-          to unambiguously handle imported function declarations. 
-
--}
-
-{- This runs the computation in an empty *local* context. The globals are still in scope.
+{- This runs the computation in an empty *local* context. The globals (i.e. top level declarations and
+   imports are still in scope.)
 
    In general, we ignore locally-scoped top-level declarations until we've desugared
    everything to core, then we abstract those variables after we've assigned enough
@@ -120,14 +116,9 @@ forceBindGlobal mn i indx = do
   DesugarContext globals _ <- get
   let modMapExists = isJust (M.lookup mn globals)
   unless modMapExists $
-    modify $ over globalScope (M.insert mn M.empty)
+    modify $
+      over globalScope (M.insert mn M.empty)
   modify $ over (globalScope . ix mn) (M.insert i indx)
-
-getVarIx :: Ident -> DesugarCore Int
-getVarIx ident =
-  gets (preview $ localScope . ix ident) >>= \case
-    Nothing -> throwError $ "getVarIx: Free variable " <> showIdent' ident
-    Just indx -> pure indx
 
 isBuiltinOrPrim :: Exp x t (Vars t) -> Bool
 isBuiltinOrPrim = \case
@@ -169,14 +160,13 @@ tyAbsMany vars expr = foldrM (uncurry tyAbs) expr vars
         Note that variables which represent the identifiers of imported declarations do not fall into
         one of those categories! We have to bind those declarations *here*, so we need to collect those
         declarations from this modules dependencies and pass them as an argument here.
-
-        FIXME: We don't have a linker yet so in `desugarCoreModule` we just pass an empty list.
 -}
 
-desugarCoreModule :: Datatypes PurusType PurusType
-                  -> [IR_Decl]
-                  -> Module (Bind Ann) PurusType PurusType Ann
-                  -> DesugarCore (Module IR_Decl PurusType PurusType Ann)
+desugarCoreModule ::
+  Datatypes PurusType PurusType ->
+  [IR_Decl] ->
+  Module (Bind Ann) PurusType PurusType Ann ->
+  DesugarCore (Module IR_Decl PurusType PurusType Ann)
 desugarCoreModule inScope imports Module {..} = do
   globalScope . at moduleName .= Just M.empty
   decls' <- traverse (freshly . desugarCoreDecl . doEtaReduce) moduleDecls
@@ -185,8 +175,8 @@ desugarCoreModule inScope imports Module {..} = do
   s <- get
   traceM $ "DesugarContext for " <> prettyStr moduleName <> "\n" <> prettyStr s
   let result = Module {moduleDecls = decls <> imports, moduleDataTypes = allDatatypes, ..}
-  --traceM $ "Desugar Coure output for " <> prettyStr moduleName <> "\n" <> docString (prettyModule result)
-  pure result 
+  -- traceM $ "Desugar Coure output for " <> prettyStr moduleName <> "\n" <> docString (prettyModule result)
+  pure result
   where
     doEtaReduce = \case
       NonRec a nm body -> NonRec a nm (runEtaReduce body)
@@ -210,7 +200,7 @@ desugarCoreModule inScope imports Module {..} = do
       let upd = \case
             V (B bv) -> V $ B bv
             V (F fv@(FVar t (Qualified (ByModuleName mn) ident))) ->
-              case s ^? globalScope . at mn . folded . at ident . folded  of
+              case s ^? globalScope . at mn . folded . at ident . folded of
                 Just indx -> V $ B $ BVar indx t ident
                 Nothing -> V $ F fv
             other -> other
@@ -305,7 +295,7 @@ desugarCore' lam@(Abs _ann ty ident expr) = do
           [ "ANNOTATED LAM TY:\n" <> prettyStr ty
           , "BOUND VAR TY:\n" <> prettyStr ty'
           , "BOUND VAR INDEX: " <> prettyStr bvIx
-          , "BOUND VAR IDENT: " <> prettyStr ident 
+          , "BOUND VAR IDENT: " <> prettyStr ident
           , "BODY TY:\n" <> prettyStr (exprType expr)
           , "INPUT EXPR:\n" <> renderExprStr lam
           , "RESULT EXPR:\n" <> prettyStr result
@@ -351,7 +341,7 @@ rebindInScope b = do
   let f scoped = abstract (matchLet s) . fmap join . fromScope $ scoped
   case b of
     NonRecursive i x scoped -> pure $ NonRecursive i x (f scoped)
-    Recursive xs -> pure . Recursive $ (\(nm, body) -> (nm, f body)) <$> xs
+    Recursive xs -> pure . Recursive $ second f <$> xs
 desugarAlt ::
   CaseAlternative Ann ->
   DesugarCore (Alt WithObjects PurusType (Exp WithObjects PurusType) (Vars PurusType))
@@ -367,7 +357,7 @@ desugarAlt (CaseAlternative [binder] result) = case result of
     pure $ UnguardedAlt pat (abstrE re')
 desugarAlt (CaseAlternative binders result) = do
   pats <- traverse toPat binders
-  s <- view localScope -- NOTE: Maybe this should be moved into the case block? 
+  s <- view localScope -- NOTE: Maybe this should be moved into the case block?
   let abstrE = abstract (matchLet s)
       n = length binders
       tupTyName = mkTupleTyName n
@@ -409,64 +399,6 @@ toPat = \case
           tupCtorName = coerceProperName <$> tupTyName
       ConP tupTyName tupCtorName <$> traverse (toPat . snd) fs
 
-getBoundVar :: forall ann. (Show ann) => Either [(Expr ann, Expr ann)] (Expr ann) -> Binder ann -> [Vars PurusType]
-getBoundVar body binder = case binder of
-  ConstructorBinder _ _ _ binders -> concatMap (getBoundVar body) binders
-  LiteralBinder _ (ArrayLiteral arrBinders) -> concatMap (getBoundVar body) arrBinders
-  LiteralBinder _ (ObjectLiteral objBinders) -> concatMap (getBoundVar body . snd) objBinders
-  VarBinder _ ident _ -> case body of
-    Right expr -> case findBoundVar ident expr of
-      Nothing -> [] -- probably should trace or warn at least
-      Just (ty, qi) -> [F $ FVar ty qi]
-    Left fml -> do
-      let allResults = concatMap (\(x, y) -> [x, y]) fml
-          matchingVar = mapMaybe (findBoundVar ident) allResults
-      case matchingVar of
-        ((ty, qi) : _) -> [F $ FVar ty qi]
-        _ -> []
-  _ -> []
-
-findBoundVar :: forall ann. Ident -> Expr ann -> Maybe (PurusType, Qualified Ident)
-findBoundVar nm ex = find (goFind . snd) (allVars ex)
-  where
-    goFind = \case
-      Qualified (ByModuleName _) _ -> False
-      Qualified (BySourcePos _) nm' -> nm == nm'
-
-allVars :: forall ann. Expr ann -> [(PurusType, Qualified Ident)]
-allVars ex = ex ^.. cosmos . _Var . to (\(_, b, c) -> (b, c))
-
-qualifySS :: Ann -> Ident -> Qualified Ident
-qualifySS ann i = Qualified (BySourcePos $ spanStart (annSS ann)) i
-
--- Stolen from DesugarObjects
-desugarBinds :: [Bind Ann] -> DesugarCore [[((Vars PurusType, Int), Scope (BVar PurusType) (Exp WithObjects PurusType) (Vars PurusType))]]
-desugarBinds [] = pure []
-desugarBinds (b : bs) = case b of
-  NonRec _ann ident expr -> do
-    bvIx <- bindLocal ident
-    let qualifiedIdent = qualifySS _ann ident
-    e' <- desugarCore expr
-    let scoped = abstract (matchLet $ M.singleton ident bvIx) e'
-    rest <- desugarBinds bs
-    pure $ [((F $ FVar (exprType expr) qualifiedIdent, bvIx), scoped)] : rest
-  -- TODO: Fix this to preserve recursivity (requires modifying the *LET* ctor of Exp)
-  Rec xs -> do
-    traverse_ (\((_, nm), _) -> bindLocal nm) xs
-    recRes <- traverse handleRecBind xs
-    rest <- desugarBinds bs
-    pure $ recRes : rest
-  where
-    handleRecBind ::
-      ((Ann, Ident), Expr Ann) ->
-      DesugarCore ((Vars PurusType, Int), Scope (BVar PurusType) (Exp WithObjects PurusType) (Vars PurusType))
-    handleRecBind ((ann, ident), expr) = do
-      u <- getVarIx ident
-      s <- view localScope
-      expr' <- desugarCore expr
-      let scoped = abstract (matchLet s) expr'
-          fv = F $ FVar (expTy' id scoped) (qualifySS ann ident)
-      pure ((fv, u), scoped)
 
 desugarLit :: Literal (Expr Ann) -> DesugarCore (Lit WithObjects (Exp WithObjects PurusType (Vars PurusType)))
 desugarLit (NumericLiteral (Left int)) = pure $ IntL int
@@ -504,8 +436,6 @@ matchVarLamAbs nm bvix (FVar ty n')
   | nm == disqualify n' = Just (BVar bvix ty nm)
   | otherwise = Nothing
 
-
-
 matchLet :: (Pretty ty) => M.Map Ident Int -> Vars ty -> Maybe (BVar ty)
 matchLet _ (B bv) = Just bv
 matchLet binds fv@(F (FVar ty n')) = case result of
@@ -525,20 +455,6 @@ matchLet binds fv@(F (FVar ty n')) = case result of
 -- TODO (t4ccer): Move somehwere, but cycilc imports are annoying
 instance FuncType PurusType where
   headArg = functionArgumentIfFunction
-
--- REVIEW: This *MIGHT* not be right. I'm not 1000% sure what the PS criteria for a mutually rec group are
---         First arg threads the FVars that correspond to the already-processed binds
---         through the rest of the conversion. I think that's right - earlier bindings
---         should be available to later bindings
-assembleBindEs :: (Eq ty) => [[((FVar ty, Int), Scope (BVar ty) (Exp x ty) (FVar ty))]] -> DesugarCore [BindE ty (Exp x ty) (FVar ty)]
-assembleBindEs [] = pure []
-assembleBindEs ([] : rest) = assembleBindEs rest -- shouldn't happen but w/e
-assembleBindEs ([((FVar _tx idnt, bix), e)] : rest) = do
-  (NonRecursive (disqualify idnt) bix e :) <$> assembleBindEs rest
-assembleBindEs (xsRec : rest) = do
-  let recBinds = flip map xsRec $ \((FVar _tx idnt, bvix), e) -> ((disqualify idnt, bvix), e)
-  rest' <- assembleBindEs rest
-  pure $ Recursive recBinds : rest'
 
 runEtaReduce :: Expr ann -> Expr ann
 runEtaReduce = transform etaReduce

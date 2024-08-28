@@ -13,7 +13,7 @@ import Control.DeepSeq (NFData)
 import Control.Monad (unless, void)
 import Data.Aeson ((.:), (.=))
 import Data.Aeson qualified as A
-import Data.Foldable (find, fold, Foldable (foldl'))
+import Data.Foldable (Foldable (foldl'), find, fold)
 import Data.Functor ((<&>))
 import Data.IntMap qualified as IM
 import Data.IntSet qualified as IS
@@ -30,7 +30,7 @@ import Language.PureScript.AST.SourcePos (nullSourceAnn, pattern NullSourceAnn)
 import Language.PureScript.Constants.Prim qualified as C
 import Language.PureScript.Constants.Purus qualified as PLC
 import Language.PureScript.Crash (internalError)
-import Language.PureScript.Names (Ident, ProperName (..), ProperNameType (..), Qualified (..), QualifiedBy (..), coerceProperName, disqualify, Ident, ModuleName (ModuleName))
+import Language.PureScript.Names (Ident, ModuleName (ModuleName), ProperName (..), ProperNameType (..), Qualified (..), QualifiedBy (..), coerceProperName, disqualify)
 import Language.PureScript.Roles (Role (..))
 import Language.PureScript.TypeClassDictionaries (NamedDict)
 import Language.PureScript.Types (SourceConstraint, SourceType, Type (..), TypeVarVisibility (..), eqType, freeTypeVariables, quantify, srcTypeApp, srcTypeConstructor)
@@ -478,7 +478,7 @@ primTypes =
       , (C.Int, (kindType, ExternData []))
       , (C.Boolean, (kindType, boolData))
       , (C.Partial <&> coerceProperName, (kindConstraint, ExternData []))
-      ] 
+      ]
   where
     boolData =
       DataType

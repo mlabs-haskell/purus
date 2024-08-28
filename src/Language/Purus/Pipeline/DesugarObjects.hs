@@ -1,7 +1,5 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TypeApplications #-}
--- has to be here (more or less)
-{-# OPTIONS_GHC -Wno-orphans #-}
 
 module Language.Purus.Pipeline.DesugarObjects where
 
@@ -20,22 +18,33 @@ import Control.Monad (foldM)
 
 import Language.PureScript.Constants.Prim qualified as C
 import Language.PureScript.CoreFn.Ann (Ann)
-import Language.PureScript.CoreFn.Module (
-  Datatypes (Datatypes), 
-  DataDecl (DataDecl),
-  dDataTyName,
-  CtorDecl (CtorDecl)
-  )
 import Language.PureScript.CoreFn.Desugar.Utils (properToIdent)
 import Language.PureScript.CoreFn.Expr (
   Expr (..),
-  PurusType
+  PurusType,
  )
 import Language.PureScript.CoreFn.FromJSON ()
-import Language.PureScript.CoreFn.Module hiding (properToIdent)
+import Language.PureScript.CoreFn.Module
+    ( Datatypes(Datatypes),
+      bitraverseDatatypes,
+      dDataTyName,
+      CtorDecl(CtorDecl),
+      DataDecl(DataDecl) )
 import Language.PureScript.CoreFn.TypeLike (TypeLike (..))
-
-import Language.Purus.Debug
+import Language.PureScript.CoreFn.Utils (exprType)
+import Language.PureScript.Environment (DataDeclType (Data), kindType, mkTupleTyName, pattern RecordT, pattern (:->))
+import Language.PureScript.Names (Ident (..), ProperName (..), ProperNameType (..), Qualified (..), QualifiedBy (..), coerceProperName)
+import Language.PureScript.PSString (PSString)
+import Language.PureScript.Types (
+  RowListItem (rowListType),
+  SourceType,
+  Type (..),
+  eqType,
+  rowToList,
+  srcTypeApp,
+  srcTypeConstructor,
+ )
+import Language.Purus.Debug ( doTraceM )
 import Language.Purus.IR (
   Alt (..),
   BVar (..),
@@ -51,33 +60,20 @@ import Language.Purus.IR (
   pattern (:~>),
  )
 import Language.Purus.IR.Utils
+    ( WithObjects, Vars, WithoutObjects, fromExp, toExp )
 import Language.Purus.Pipeline.Monad
-import Language.Purus.Pretty (
-  prettyStr,
-  prettyTypeStr,
- )
+    ( Counter, MonadCounter(next) )
+import Language.Purus.Pretty.Common ( prettyStr )
+import Language.Purus.Pretty.Types ( prettyTypeStr )
 import Language.Purus.Utils (mkFieldMap)
-import Language.PureScript.CoreFn.Utils (Context, exprType)
-import Language.PureScript.Environment (DataDeclType (Data), kindType, mkTupleTyName, pattern RecordT, pattern (:->))
-import Language.PureScript.Names (Ident (..), ProperName (..), ProperNameType (..), Qualified (..), QualifiedBy (..), coerceProperName, runModuleName, ModuleName (ModuleName))
-import Language.PureScript.PSString (PSString)
-import Language.PureScript.Types (
-  RowListItem (rowListType),
-  SourceType,
-  Type (..),
-  eqType,
-  rowToList,
-  srcTypeApp,
-  srcTypeConstructor,
- )
 import Prelude
 
 import Bound (Var (..))
-import Bound.Scope
+import Bound.Scope ( toScope )
 
-import Control.Lens (cosmos, ix, to, (&), (.~), (^..), (^.), (<&>))
+import Control.Lens (cosmos, ix, to, (&), (.~), (<&>), (^.), (^..))
 
-import Control.Monad.Except (throwError, liftEither)
+import Control.Monad.Except (liftEither, throwError)
 
 tryConvertType :: SourceType -> Counter Ty
 tryConvertType = go id
@@ -438,9 +434,9 @@ mkProdFields :: [t] -> [(Ident, t)]
 mkProdFields = map (UnusedIdent,)
 
 primData :: Datatypes Kind Ty
-primData = 
-  tupleDatatypes <> 
-  Datatypes tDict cDict 
+primData =
+  tupleDatatypes
+    <> Datatypes tDict cDict
   where
     tDict :: Map (Qualified (ProperName 'TypeName)) (DataDecl Kind Ty)
     tDict =
@@ -504,6 +500,7 @@ purusTypeToKind _t =
       pure $ KindArrow t1' t2'
     other -> Left $ "Error: PureScript type '" <> prettyTypeStr other <> " is not a valid Plutus Kind"
 
-desugarObjectsInDatatypes :: Datatypes PurusType PurusType
-                          -> Counter (Datatypes Kind Ty)
+desugarObjectsInDatatypes ::
+  Datatypes PurusType PurusType ->
+  Counter (Datatypes Kind Ty)
 desugarObjectsInDatatypes = bitraverseDatatypes (liftEither . purusTypeToKind) tryConvertType

@@ -8,18 +8,18 @@ module Language.PureScript.CoreFn.Module where
 
 import Prelude
 
-import Data.Maybe (fromMaybe)
 import Data.Map.Strict (Map)
+import Data.Maybe (fromMaybe)
 
 import Data.Text (Text)
 import Language.PureScript.AST.SourcePos (SourceSpan)
 import Language.PureScript.Comments (Comment)
 import Language.PureScript.CoreFn.Expr (Bind (..))
 import Language.PureScript.Environment (DataDeclType)
-import Language.PureScript.Names (Ident(..), ModuleName, ProperName (..), ProperNameType (..), Qualified)
+import Language.PureScript.Names (Ident (..), ModuleName, ProperName (..), ProperNameType (..), Qualified)
 
 import Control.Lens (
-  At(at),
+  At (at),
   filtered,
   folded,
   makeLenses,
@@ -35,11 +35,9 @@ import Data.Kind qualified as GHC
 import Data.List (find, findIndex)
 import Data.Map qualified as M
 
-
 -- | Converts a ProperName to an Ident. Duplicated here to break a module cycle.
 properToIdent :: ProperName a -> Ident
 properToIdent = Ident . runProperName
-
 
 data DataDecl k t = DataDecl
   { _dDeclType :: !DataDeclType

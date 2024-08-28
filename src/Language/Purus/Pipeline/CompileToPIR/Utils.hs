@@ -1,25 +1,28 @@
 {-# LANGUAGE GADTs #-}
+
 module Language.Purus.Pipeline.CompileToPIR.Utils where
 
 import Prelude
 
 import Data.Kind qualified as GHC
-import Data.List.NonEmpty qualified as NE
 import Data.List (foldl')
+import Data.List.NonEmpty qualified as NE
 
-import Language.Purus.IR ( Ty )
-import Language.Purus.Pipeline.Monad ( PlutusContext )
-import Language.Purus.Types ( PIRTerm, PIRType )
-import Language.Purus.Pipeline.GenerateDatatypes.Utils
-    ( freshName )
-import Language.Purus.Pipeline.GenerateDatatypes ( toPIRType )
+import Language.Purus.IR (Ty)
+import Language.Purus.Pipeline.GenerateDatatypes (toPIRType)
+import Language.Purus.Pipeline.GenerateDatatypes.Utils (
+  freshName,
+ )
+import Language.Purus.Pipeline.Monad (PlutusContext)
+import Language.Purus.Types (PIRTerm, PIRType)
 
 import PlutusCore qualified as PLC
-import PlutusIR
-    ( Type(TyBuiltin),
-      Binding(TermBind),
-      Recursivity(NonRec),
-      Strictness(..) )
+import PlutusIR (
+  Binding (TermBind),
+  Recursivity (NonRec),
+  Strictness (..),
+  Type (TyBuiltin),
+ )
 import PlutusIR qualified as PIR
 import PlutusIR.MkPir (mkConstant)
 
@@ -77,7 +80,7 @@ extractUni' = \case
   other -> Left $ "Not a PLC constant-able type:\n " <> show other
 
 {-
-    PIR Constants, Term Builders, Helpers, Etc 
+    PIR Constants, Term Builders, Helpers, Etc
 -}
 
 tyBuiltinBool :: PIRType
@@ -89,7 +92,7 @@ e1 # e2 = PIR.Apply () e1 e2
 -- I think this is the right fixity? TODO: Check plutarch
 infixl 9 #
 
-pirIfThen :: PIRType -> PIRTerm -> PIRTerm -> PIRTerm -> PlutusContext  PIRTerm
+pirIfThen :: PIRType -> PIRTerm -> PIRTerm -> PIRTerm -> PlutusContext PIRTerm
 pirIfThen resTy cond troo fawlse = do
   troo' <- pirDelay troo
   fawlse' <- pirDelay fawlse
@@ -98,13 +101,12 @@ pirIfThen resTy cond troo fawlse = do
 -- utility for constructing LamAbs w/ a fresh variable name. We do this a lot in the case analysis stuff
 freshLam ::
   Ty -> -- type of the fresh var being created
-  (PIRType -> PIRTerm -> PlutusContext  PIRTerm) -> -- fn from that fresh var to a term
-  PlutusContext  PIRTerm
+  (PIRType -> PIRTerm -> PlutusContext PIRTerm) -> -- fn from that fresh var to a term
+  PlutusContext PIRTerm
 freshLam t f = do
   name <- freshName
   t' <- toPIRType t
   PIR.LamAbs () name t' <$> f t' (PIR.Var () name)
-
 
 sopUnit :: PIRType
 sopUnit = PIR.TySOP () [[]]
@@ -118,7 +120,7 @@ tyInstMany = foldl' (flip pirTyInst)
 sopUnitTerm :: PIRTerm
 sopUnitTerm = PIR.Constr () sopUnit 0 []
 
-pirDelay :: PIRTerm -> PlutusContext  PIRTerm
+pirDelay :: PIRTerm -> PlutusContext PIRTerm
 pirDelay term = do
   nm <- freshName
   pure $ PIR.LamAbs () nm sopUnit term
@@ -137,11 +139,11 @@ pirEqString s1 s2 =
    in pirEq # s1 # s2
 
 -- delayed (which is literally always what we want). Not sure if need to force here?
-pirError :: PIRType -> PlutusContext  PIRTerm
+pirError :: PIRType -> PlutusContext PIRTerm
 pirError t = pirForce <$> pirDelay (PIR.Error () t)
 
 -- for builtin booleans jfc why don't they have thiiiisss
-pirAnd :: PIRTerm -> PIRTerm -> PlutusContext  PIRTerm
+pirAnd :: PIRTerm -> PIRTerm -> PlutusContext PIRTerm
 pirAnd t1 t2 = do
   tBranch <- pirIfThen tyBuiltinBool t2 (mkConstant () True) (mkConstant () False)
   pirIfThen tyBuiltinBool t1 tBranch (mkConstant () False)
@@ -149,8 +151,8 @@ pirAnd t1 t2 = do
 pirLetNonRec ::
   PIRType -> -- type of the expression we're let- binding
   PIRTerm ->
-  (PIRTerm -> PlutusContext  PIRTerm) ->
-  PlutusContext  PIRTerm
+  (PIRTerm -> PlutusContext PIRTerm) ->
+  PlutusContext PIRTerm
 pirLetNonRec ty toLet f = do
   nm <- freshName
   let myvar = PIR.Var () nm

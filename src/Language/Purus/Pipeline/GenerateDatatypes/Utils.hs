@@ -14,6 +14,7 @@ import Data.Foldable (foldl')
 import Debug.Trace (traceM)
 
 import Language.PureScript.Constants.Prim qualified as C
+import Language.PureScript.CoreFn.TypeLike
 import Language.PureScript.Names (
   Ident (..),
   ProperName (..),
@@ -25,7 +26,6 @@ import Language.PureScript.Names (
   showIdent,
   showQualified,
  )
-import Language.PureScript.CoreFn.TypeLike 
 
 import Language.Purus.Debug (doTraceM)
 import Language.Purus.IR (
@@ -55,12 +55,12 @@ import PlutusIR qualified as PIR
 
 import Control.Lens (
   at,
-  over,
   folded,
+  over,
   preview,
   view,
-  (^?),
   (^.),
+  (^?),
   _1,
  )
 import Control.Monad.Except (
@@ -201,4 +201,3 @@ analyzeTyApp t = (,tyAppArgs t) <$> tyAppFun t
           Just tX' -> Just tX'
         go other = Just other
     tyAppFun _ = Nothing
-

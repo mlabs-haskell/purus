@@ -5,19 +5,18 @@ import Prelude
 import Language.PureScript.AST.SourcePos (pattern NullSourceAnn)
 import Language.PureScript.Constants.Prim qualified as C
 import Language.PureScript.CoreFn.Desugar.Utils (properToIdent)
+import Language.PureScript.CoreFn.Expr
 import Language.PureScript.CoreFn.Module (
   CtorDecl (CtorDecl),
   DataDecl (DataDecl),
   Datatypes (Datatypes),
   dDataTyName,
  )
-import Language.PureScript.CoreFn.Expr
 import Language.PureScript.Environment (
   DataDeclType (Data),
+  kindType,
   mkTupleTyName,
-  kindType
  )
-import Language.PureScript.Types (Type(..))
 import Language.PureScript.Names (
   Ident (Ident, UnusedIdent),
   ProperName,
@@ -25,6 +24,7 @@ import Language.PureScript.Names (
   Qualified (..),
   QualifiedBy (ByModuleName),
  )
+import Language.PureScript.Types (Type (..))
 
 import Language.Purus.IR
 
@@ -104,11 +104,9 @@ tupleDatatypes = Datatypes (M.fromList tupleTypes) (M.fromList tupleCtors)
 
     mkTupleCtorTvArgs = mkProdFields . map (flip TyVar KindType) . vars
 
-
 primDataPS :: Datatypes PurusType PurusType
 primDataPS = tupleDatatypesPS <> Datatypes tDict cDict
   where
-
     tDict :: Map (Qualified (ProperName 'TypeName)) (DataDecl PurusType PurusType)
     tDict =
       M.fromList $
@@ -142,7 +140,7 @@ primDataPS = tupleDatatypesPS <> Datatypes tDict cDict
 tupleDatatypesPS :: Datatypes PurusType PurusType
 tupleDatatypesPS = Datatypes (M.fromList tupleTypes) (M.fromList tupleCtors)
   where
-    tupleTypes :: [(Qualified (ProperName 'TypeName),DataDecl PurusType PurusType)]
+    tupleTypes :: [(Qualified (ProperName 'TypeName), DataDecl PurusType PurusType)]
     tupleTypes = flip map [0 .. maxTupleSize] $ \(n :: Int) ->
       let tyNm = mkTupleTyName n
           ctorNm = mkTupleCtorIdent n
@@ -160,4 +158,4 @@ tupleDatatypesPS = Datatypes (M.fromList tupleTypes) (M.fromList tupleCtors)
 
     mkTupleArgKinds = fmap (,kindType) . vars
 
-    mkTupleCtorTvArgs = mkProdFields . map (\v ->  TypeVar na v kindType) . vars
+    mkTupleCtorTvArgs = mkProdFields . map (\v -> TypeVar na v kindType) . vars

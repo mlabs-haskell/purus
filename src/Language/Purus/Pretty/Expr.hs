@@ -28,6 +28,9 @@ import Language.PureScript.Environment (
 import Language.PureScript.Names (Ident, ModuleName, ProperName (..), disqualify, runIdent, showIdent, showQualified)
 import Language.PureScript.PSString (PSString, decodeStringWithReplacement, prettyPrintString)
 
+import Language.PureScript.CoreFn.TypeLike
+import Language.PureScript.Environment (function, pattern (:->))
+import Language.PureScript.Types (SourceType)
 import Language.Purus.Pretty.Common (
   LineFormat (MultiLine, OneLine),
   Printer,
@@ -73,9 +76,6 @@ import Prettyprinter (
   (<+>),
   (<>),
  )
-import Language.PureScript.Types (SourceType)
-import Language.PureScript.Environment (function, pattern (:->))
-import Language.PureScript.CoreFn.TypeLike
 
 foldl1x :: (Foldable t) => String -> (a -> a -> a) -> t a -> a
 foldl1x msg f xs
@@ -109,8 +109,8 @@ appType fe ae = case stripQuantifiers' fTy of
           . replaceAllTypeVars (M.toList dict)
           $ ft
   where
-    stripQuantifiers' :: SourceType -> ([Text],SourceType)
-    stripQuantifiers' st = first (map (\(_,b,_) -> b)) $ stripQuantifiers st
+    stripQuantifiers' :: SourceType -> ([Text], SourceType)
+    stripQuantifiers' st = first (map (\(_, b, _) -> b)) $ stripQuantifiers st
 
     (f, args) = appFunArgs fe ae
     fTy = exprType f
@@ -298,8 +298,8 @@ prettyLiteralValue (ArrayLiteral xs) = printer oneLine multiLine
     multiLine = list $ asOneLine prettyValue <$> xs
 prettyLiteralValue (ObjectLiteral ps) = prettyObject $ second Just `map` ps
 
-instance Show a => Pretty (Bind a) where
-  pretty = asDynamic id .  prettyDeclaration
+instance (Show a) => Pretty (Bind a) where
+  pretty = asDynamic id . prettyDeclaration
 
 prettyDeclaration :: forall a ann. (Show a) => Bind a -> Printer ann
 prettyDeclaration b = case b of

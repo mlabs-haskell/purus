@@ -1,11 +1,6 @@
-{-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# HLINT ignore "Use if" #-}
 {-# HLINT ignore "Use <&>" #-}
--- has to be here (more or less)
-{-# OPTIONS_GHC -Wno-orphans #-}
-{-# OPTIONS_GHC -Wno-unrecognised-pragmas #-}
-
 {-# HLINT ignore "Move concatMap out" #-}
 
 module Language.Purus.Pipeline.Lift where
@@ -51,6 +46,18 @@ import Language.Purus.IR.Utils (
   viaExp,
  )
 import Language.Purus.Pipeline.Lift.Types
+    ( LiftResult(LiftResult),
+      MonoExp,
+      pattern LiftedHole,
+      pattern LiftedHoleTerm,
+      fromHole,
+      toHole,
+      unHole,
+      Hole(Hole),
+      MonoAlt,
+      MonoBind,
+      MonoScoped,
+      ToLift(ToLift, declarations) )
 import Language.Purus.Pipeline.Monad (Inline, MonadCounter (next))
 import Language.Purus.Pretty.Common (docString, prettyStr)
 
@@ -77,6 +84,7 @@ import Bound.Scope (abstract)
 import Bound.Var (Var (..))
 
 import Prettyprinter
+    ( Pretty(pretty), align, hardline, indent, vcat )
 
 {- Given a collection of declarations that will be lifted, determine for each declaration
    the "deep" (recursive) set of NEW variable dependencies which need to be added

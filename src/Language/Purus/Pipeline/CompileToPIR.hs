@@ -19,18 +19,18 @@ import Control.Monad.Except (MonadError (..))
 import Data.Bifunctor (Bifunctor (..))
 import Data.List.NonEmpty qualified as NE
 
+import Language.PureScript.Constants.PLC (defaultFunMap)
 import Language.PureScript.CoreFn.FromJSON ()
+import Language.PureScript.CoreFn.Module (
+  Datatypes,
+ )
+import Language.PureScript.CoreFn.TypeLike (TypeLike (..))
 import Language.PureScript.Names (
   Ident,
   disqualify,
   runIdent,
  )
 import Language.PureScript.PSString (prettyPrintString)
-import Language.PureScript.CoreFn.Module (
-  Datatypes,
- )
-import Language.PureScript.CoreFn.TypeLike (TypeLike (..))
-import Language.PureScript.Constants.PLC (defaultFunMap)
 
 import Language.Purus.Debug (doTraceM, prettify)
 import Language.Purus.IR (
@@ -45,6 +45,14 @@ import Language.Purus.IR (
  )
 import Language.Purus.IR qualified as IR
 import Language.Purus.IR.Utils (Vars, WithoutObjects, toExp)
+import Language.Purus.Pipeline.GenerateDatatypes (
+  mkKind,
+  toPIRType,
+ )
+import Language.Purus.Pipeline.GenerateDatatypes.Utils (
+  bindTV,
+  getConstructorName,
+ )
 import Language.Purus.Pipeline.Monad (PlutusContext)
 import Language.Purus.Pretty.Common (prettyStr)
 import Language.Purus.Types (PIRTerm, pirDatatypes)
@@ -52,23 +60,15 @@ import PlutusCore.Default (
   DefaultFun,
   DefaultUni,
  )
-import Language.Purus.Pipeline.GenerateDatatypes.Utils (
-  bindTV,
-  getConstructorName,
- )
-import Language.Purus.Pipeline.GenerateDatatypes (
-  mkKind,
-  toPIRType,
- )
 
-import PlutusIR (Binding (TermBind), Name (Name), Strictness (..), Term (Builtin), VarDecl (VarDecl))
-import PlutusIR.MkPir (mkConstant)
 import PlutusCore (Unique (..))
 import PlutusCore qualified as PLC
+import PlutusIR (Binding (TermBind), Name (Name), Strictness (..), Term (Builtin), VarDecl (VarDecl))
 import PlutusIR qualified as PIR
+import PlutusIR.MkPir (mkConstant)
 
-import Control.Lens (view)
 import Bound (Var (..))
+import Control.Lens (view)
 
 type PIRTermBind = Binding PLC.TyName Name DefaultUni DefaultFun ()
 
@@ -79,10 +79,12 @@ compileToPIR ::
 compileToPIR _datatypes _exp = do
   resBody <- compileToPIR' _datatypes _exp
   datatypes <- view pirDatatypes
-  let binds =  NE.fromList $ map (PIR.DatatypeBind ()) . M.elems $ datatypes
-      msg = prettify [ "INPUT:\n" <> prettyStr _exp
-                     , "OUTPUT (BODY):\n" <>  prettyStr resBody
-                     ]
+  let binds = NE.fromList $ map (PIR.DatatypeBind ()) . M.elems $ datatypes
+      msg =
+        prettify
+          [ "INPUT:\n" <> prettyStr _exp
+          , "OUTPUT (BODY):\n" <> prettyStr resBody
+          ]
   doTraceM "compileToPIR" msg
   pure $ PIR.Let () PIR.Rec binds resBody
 
