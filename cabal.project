@@ -17,5 +17,7 @@ packages:
 constraints:
   nothunks < 0.2
 
+test-show-details: direct
+
 index-state:
   , cardano-haskell-packages 2024-06-27T10:04:00Z

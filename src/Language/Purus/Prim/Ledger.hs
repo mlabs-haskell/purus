@@ -365,7 +365,7 @@ txOutCon = mononym "TxOut"
 txOutRefType :: (Qualified (ProperName 'TypeName), (Type SourceAnn, TypeKind))
 txOutRefType =
   monoType "TxOutRef"
-    . recordType "TxOut"
+    . recordType "TxOutRef"
     $ [ ("id", tyCon "TxId")
       , ("idx", tyCon "Int")
       ]
