@@ -58,7 +58,7 @@ import Language.Purus.Pipeline.Monad (
  )
 import Language.Purus.Pretty.Common (docString, prettyStr)
 import Language.Purus.Prim.Data (primDataPS)
-import Language.Purus.Types (PIRTerm, initDatatypeDict)
+import Language.Purus.Types (PIRTerm, initDatatypeDict, PLCTerm)
 import Language.Purus.Utils (
   decodeModuleIO,
   findDeclBodyWithIndex,
@@ -79,6 +79,7 @@ import System.FilePath.Glob qualified as Glob
 import Debug.Trace (traceM)
 
 import PlutusIR.Core.Instance.Pretty.Readable (prettyPirReadable)
+import PlutusCore.Evaluation.Result (EvaluationResult)
 
 {-
 decodeModuleIR :: FilePath -> IO (Module IR_Decl SourceType SourceType Ann, (Int, M.Map Ident Int))
@@ -177,7 +178,7 @@ compile primModule orderedModules mainModuleName mainFunctionName =
     go :: CounterT (Either String) PIRTerm
     go = do
       (summedModule, dsCxt) <- runDesugarCore $ desugarCoreModules primModule orderedModules
-      let traceBracket msg = traceM ("\n" <> msg <> "\n")
+      let traceBracket lbl msg = traceM ("\n" <> lbl <> "\n\n" <> msg <> "\n\n")
           decls = moduleDecls summedModule
           declIdentsSet = foldBinds (\acc nm _ -> S.insert nm acc) S.empty decls
           couldn'tFindMain n =
@@ -194,11 +195,11 @@ compile primModule orderedModules mainModuleName mainFunctionName =
       mainFunctionBody <- note (couldn'tFindMain 2) $ findDeclBodyWithIndex mainFunctionName mainFunctionIx decls
       traceM "Found main function body"
       inlined <- runInline summedModule $ lift (mainFunctionName, mainFunctionIx) mainFunctionBody >>= inline
-      traceBracket $ "Done inlining. Result: \n" <> prettyStr inlined
+      traceBracket "Done inlining. Result:" $ prettyStr inlined
       let !instantiated = applyPolyRowArgs $ instantiateTypes inlined
-      traceBracket $ "Done instantiating types. Result:\n" <> prettyStr instantiated
+      traceBracket "Done instantiating types. Result:" $ prettyStr instantiated
       withoutObjects <- instantiateTypes <$> runCounter (desugarObjects instantiated)
-      traceM $ "Desugared objects. Result:\n" <> prettyStr withoutObjects
+      traceBracket  "Desugared objects. Result:\n" $ prettyStr withoutObjects
       datatypes <- runCounter $ desugarObjectsInDatatypes (moduleDataTypes summedModule)
       traceM "Desugared datatypes"
       runPlutusContext initDatatypeDict $ do
@@ -279,5 +280,8 @@ make path mainModule mainFunction primModule = do
 makeForTest :: Text -> IO PIRTerm
 makeForTest main = make "tests/purus/passing/Misc" "Lib" main Nothing
 
-evalForTest :: Text -> IO ()
-evalForTest main = makeForTest main >>= evaluateTerm >>= print
+evalForTest_ :: Text -> IO ()
+evalForTest_ main = evalForTest main >>= print
+
+evalForTest :: Text -> IO (EvaluationResult PLCTerm,[Text])
+evalForTest main = makeForTest main >>= evaluateTerm

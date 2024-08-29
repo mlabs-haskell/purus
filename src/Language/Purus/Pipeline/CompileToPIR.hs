@@ -17,8 +17,8 @@ import Control.Monad (
  )
 import Control.Monad.Except (MonadError (..))
 import Data.Bifunctor (Bifunctor (..))
-import Data.List.NonEmpty qualified as NE
 
+import Language.PureScript.Constants.Prim qualified as C
 import Language.PureScript.Constants.PLC (defaultFunMap)
 import Language.PureScript.CoreFn.FromJSON ()
 import Language.PureScript.CoreFn.Module (
@@ -26,9 +26,9 @@ import Language.PureScript.CoreFn.Module (
  )
 import Language.PureScript.CoreFn.TypeLike (TypeLike (..))
 import Language.PureScript.Names (
-  Ident,
+  Ident (..),
   disqualify,
-  runIdent,
+  runIdent, Qualified (..), QualifiedBy (ByModuleName),
  )
 import Language.PureScript.PSString (prettyPrintString)
 
@@ -69,8 +69,12 @@ import PlutusIR.MkPir (mkConstant)
 
 import Bound (Var (..))
 import Control.Lens (view)
+import Language.Purus.Pipeline.CompileToPIR.Utils (builtinSubstitutions)
 
 type PIRTermBind = Binding PLC.TyName Name DefaultUni DefaultFun ()
+
+pattern Unit :: FVar t
+pattern Unit <- FVar _ (Qualified (ByModuleName C.M_Prim) (Ident "unit"))
 
 compileToPIR ::
   Datatypes IR.Kind Ty ->
@@ -95,17 +99,21 @@ compileToPIR' ::
 compileToPIR' datatypes _exp =
   doTraceM "compileToPIR'" (prettyStr _exp) >> case _exp of
     V x -> case x of
-      F (FVar _ ident) ->
-        let nm = runIdent $ disqualify ident
-         in case M.lookup (T.unpack nm) defaultFunMap of
-              Just aBuiltinFun -> pure $ Builtin () aBuiltinFun
-              Nothing ->
+      F Unit -> pure $ mkConstant () ()
+      F (FVar _ ident@(Qualified qb (runIdent -> nm))) ->
+        case M.lookup (T.unpack nm) defaultFunMap of
+              Just aBuiltinFun -> case M.lookup aBuiltinFun builtinSubstitutions of
+                Nothing -> pure $ Builtin () aBuiltinFun
+                Just substBuiltin -> substBuiltin
+              Nothing -> do
                 getConstructorName ident >>= \case
                   Just aCtorNm -> pure $ PIR.Var () aCtorNm
-                  Nothing ->
-                    throwError $
-                      T.unpack nm
-                        <> " isn't a builtin, and it shouldn't be possible to have a free variable that's anything but a builtin"
+                  Nothing -> throwError $
+                            T.unpack nm
+                            <> " isn't a builtin, and it shouldn't be possible to have a"
+                            <> " free variable that's anything but a builtin. Please "
+                            <> "report this bug to the Purus authors. "
+
       B (BVar bvix _ (runIdent -> nm)) -> pure $ PIR.Var () (Name nm $ Unique bvix)
     LitE _ lit -> compileToPIRLit lit
     lam@(LamE (BVar bvIx bvT bvNm) body) -> do

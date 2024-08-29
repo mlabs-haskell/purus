@@ -103,6 +103,8 @@ import Prettyprinter (Pretty (..))
 freshly :: DesugarCore a -> DesugarCore a
 freshly act = local (set localScope M.empty) act
 
+{- Binds a local variable.
+-}
 bindLocal :: Ident -> DesugarCore Int
 bindLocal ident = do
   i <- next
@@ -111,6 +113,11 @@ bindLocal ident = do
   doTraceM "bind" ("IDENT: " <> T.unpack (runIdent ident) <> "\n\nINDEX: " <> prettyStr i <> "\n\nSCOPE:\n" <> prettyStr (M.toList s))
   pure i
 
+{- Binds a "global" variable to the specific index.
+
+   "Global" in the context of this module means: An identifier that corresponds to
+   a top-level declaration in the module being compiled or one of its dependencies.
+-}
 forceBindGlobal :: ModuleName -> Ident -> Int -> DesugarCore ()
 forceBindGlobal mn i indx = do
   DesugarContext globals _ <- get
@@ -120,19 +127,19 @@ forceBindGlobal mn i indx = do
       over globalScope (M.insert mn M.empty)
   modify $ over (globalScope . ix mn) (M.insert i indx)
 
-isBuiltinOrPrim :: Exp x t (Vars t) -> Bool
-isBuiltinOrPrim = \case
+{- -}
+isCtorOrPrim :: Exp x t (Vars t) -> Bool
+isCtorOrPrim = \case
   V (F (FVar _ (Qualified (ByModuleName (ModuleName "Prim")) _))) -> True
   V (F (FVar _ (Qualified _ (Ident i)))) -> isUpper (T.head i)
   _ -> False
 
 {- We don't bind anything b/c the type level isn't `Bound` -}
 tyAbs :: forall x t. Text -> KindOf t -> Exp x t (Vars t) -> DesugarCore (Exp x t (Vars t))
-tyAbs nm k exp'
-  | not (isBuiltinOrPrim exp') = do
+tyAbs nm k exp' = do
       u <- next
       pure $ TyAbs (BVar u k (Ident nm)) exp'
-  | otherwise = pure exp'
+
 
 tyAbsMany :: forall x t. [(Text, KindOf t)] -> Exp x t (Vars t) -> DesugarCore (Exp x t (Vars t))
 tyAbsMany vars expr = foldrM (uncurry tyAbs) expr vars

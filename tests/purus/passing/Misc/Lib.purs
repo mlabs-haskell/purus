@@ -385,9 +385,28 @@ testLedgerTypes = DCertMir
 
 litPattern :: Int -> Boolean
 litPattern n = case n of
-  2 -> False
-  _ -> True
+  0 -> False
+  1 -> True
+  2 -> True
+  3 -> True
+  4 -> True
+  _ -> False
+
+litPatternApplied :: Boolean
+litPatternApplied = litPattern 5
 
 irrPattern :: Int -> Int
 irrPattern n = case n of
   _ -> 2
+
+someData :: Builtin.BuiltinData
+someData = Builtin.iData 1
+
+someDataList :: Builtin.BuiltinList Builtin.BuiltinData
+someDataList = Builtin.mkCons someData (Builtin.mkNilData Prim.unit)
+
+isNullSomeDataList :: Boolean
+isNullSomeDataList = Builtin.nullList someDataList 
+
+plutusIFTE :: Builtin.BuiltinData
+plutusIFTE = Builtin.ifThenElse True someData (Builtin.trace "BOOM!" someData)

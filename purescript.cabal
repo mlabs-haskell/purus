@@ -406,6 +406,7 @@ library
     Language.PureScript.Types
     System.IO.UTF8
 
+    Language.Purus.Config
     Language.Purus.Debug
     Language.Purus.IR
     Language.Purus.IR.Utils

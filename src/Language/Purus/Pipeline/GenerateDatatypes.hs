@@ -205,6 +205,7 @@ handlePrimTy = \case
   C.String -> pure $ TyBuiltin () (PLC.SomeTypeIn PLC.DefaultUniString)
   C.Char -> pure $ TyBuiltin () (PLC.SomeTypeIn PLC.DefaultUniInteger)
   C.Int -> pure $ TyBuiltin () (PLC.SomeTypeIn PLC.DefaultUniInteger)
+  C.Unit -> pure $ TyBuiltin () (PLC.SomeTypeIn PLC.DefaultUniUnit)
   _ -> Nothing
 
 mkKind :: IR.Kind -> PIR.Kind ()

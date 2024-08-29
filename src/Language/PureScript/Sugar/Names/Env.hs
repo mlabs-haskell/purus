@@ -236,6 +236,7 @@ mkPrimExports ts cs =
   nullExports
     { exportedTypes = M.fromList $ uncurry mkTypeEntry `map` M.toList ts
     , exportedTypeClasses = M.fromList $ mkClassEntry `map` M.keys cs
+    , exportedValues = M.fromList $ mkValueEntry <$> M.keys primFunctions
     }
 
 mkTypeEntry (Qualified (ByModuleName mn) name) (_, DataType _ _ (map fst -> ctors)) = (name, (ctors, primExportSource mn))

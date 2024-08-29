@@ -1,8 +1,29 @@
+{- Contains primitive Purus datatypes.
+
+   Unlike PureScript, where (e.g.) `true/false` are
+   morally "foreign imports" and `Array` is an opaque primitive type,
+   our `Boolean` and `Array` (TODO: CHANGE THE NAME TO LIST) are
+   real algebraic datatypes with constructors & so on, and therefore
+   we need to provide definitions for their constructors.
+
+   We also create tuples here. They're directly exposed to users
+   (albeit in the somewhat ugly Tuple1, Tuple2, ... form), but, more importantly,
+   we need tuples (qua anonymous products) to eliminate Records (which
+   Plutus has no notion of). 
+
+-}
+
 module Language.Purus.Prim.Data where
 
 import Prelude
 
-import Language.PureScript.AST.SourcePos (pattern NullSourceAnn)
+import Data.Map (Map)
+import Data.Map qualified as M
+
+import Data.Text (Text)
+import Data.Text qualified as T
+
+import Language.PureScript.AST.SourcePos (pattern NullSourceAnn, SourceAnn)
 import Language.PureScript.Constants.Prim qualified as C
 import Language.PureScript.CoreFn.Desugar.Utils (properToIdent)
 import Language.PureScript.CoreFn.Expr
@@ -24,15 +45,11 @@ import Language.PureScript.Names (
   Qualified (..),
   QualifiedBy (ByModuleName),
  )
-import Language.PureScript.Types (Type (..))
+import Language.PureScript.Types (Type (..), SourceType)
 
 import Language.Purus.IR
-
-import Data.Map (Map)
-import Data.Map qualified as M
-
-import Data.Text (Text)
-import Data.Text qualified as T
+    ( Kind(KindType), Ty(TyVar, TyApp, TyCon) )
+import Language.Purus.Config ( maxTupleSize )
 
 import Control.Lens ((<&>), (^.))
 
@@ -42,17 +59,17 @@ pattern ArrayCons = Qualified (ByModuleName C.M_Prim) (Ident "Cons")
 pattern ArrayNil :: Qualified Ident
 pattern ArrayNil = Qualified (ByModuleName C.M_Prim) (Ident "Nil")
 
-maxTupleSize :: Int
-maxTupleSize = 10
 
 mkProdFields :: [t] -> [(Ident, t)]
 mkProdFields = map (UnusedIdent,)
 
+na :: SourceAnn
 na = NullSourceAnn
 
 primData :: Datatypes Kind Ty
 primData = tupleDatatypes <> Datatypes tDict cDict
   where
+    tDict :: Map (Qualified (ProperName 'TypeName)) (DataDecl Kind Ty)
     tDict =
       M.fromList $
         map
@@ -85,6 +102,7 @@ primData = tupleDatatypes <> Datatypes tDict cDict
 tupleDatatypes :: Datatypes Kind Ty
 tupleDatatypes = Datatypes (M.fromList tupleTypes) (M.fromList tupleCtors)
   where
+    tupleTypes :: [(Qualified (ProperName 'TypeName), DataDecl Kind Ty)]
     tupleTypes = flip map [0 .. maxTupleSize] $ \(n :: Int) ->
       let tyNm = mkTupleTyName n
           ctorNm = mkTupleCtorIdent n
@@ -92,7 +110,8 @@ tupleDatatypes = Datatypes (M.fromList tupleTypes) (M.fromList tupleCtors)
           ctorTvArgs = mkTupleCtorTvArgs n
        in (tyNm, DataDecl Data tyNm argKinds [CtorDecl ctorNm ctorTvArgs])
 
-    tupleCtors = [0 .. 10] <&> \x -> (mkTupleCtorIdent x, mkTupleTyName x)
+    tupleCtors :: [(Qualified Ident, Qualified (ProperName 'TypeName))]
+    tupleCtors = [0 .. maxTupleSize] <&> \x -> (mkTupleCtorIdent x, mkTupleTyName x)
 
     mkTupleCtorIdent :: Int -> Qualified Ident
     mkTupleCtorIdent n = properToIdent <$> mkTupleTyName n
@@ -100,8 +119,10 @@ tupleDatatypes = Datatypes (M.fromList tupleTypes) (M.fromList tupleCtors)
     vars :: Int -> [Text]
     vars n = map (\x -> "t" <> T.pack (show x)) [1 .. n]
 
+    mkTupleArgKinds :: Int -> [(Text, Kind)]
     mkTupleArgKinds = fmap (,KindType) . vars
 
+    mkTupleCtorTvArgs :: Int -> [(Ident, Ty)]
     mkTupleCtorTvArgs = mkProdFields . map (flip TyVar KindType) . vars
 
 primDataPS :: Datatypes PurusType PurusType
@@ -148,7 +169,8 @@ tupleDatatypesPS = Datatypes (M.fromList tupleTypes) (M.fromList tupleCtors)
           ctorTvArgs = mkTupleCtorTvArgs n
        in (tyNm, DataDecl Data tyNm argKinds [CtorDecl ctorNm ctorTvArgs])
 
-    tupleCtors = [0 .. 10] <&> \x -> (mkTupleCtorIdent x, mkTupleTyName x)
+    tupleCtors :: [(Qualified Ident, Qualified (ProperName 'TypeName))]
+    tupleCtors = [0 .. maxTupleSize] <&> \x -> (mkTupleCtorIdent x, mkTupleTyName x)
 
     mkTupleCtorIdent :: Int -> Qualified Ident
     mkTupleCtorIdent n = properToIdent <$> mkTupleTyName n
@@ -156,6 +178,8 @@ tupleDatatypesPS = Datatypes (M.fromList tupleTypes) (M.fromList tupleCtors)
     vars :: Int -> [Text]
     vars n = map (\x -> "t" <> T.pack (show x)) [1 .. n]
 
+    mkTupleArgKinds :: Int -> [(Text, SourceType)]
     mkTupleArgKinds = fmap (,kindType) . vars
 
+    mkTupleCtorTvArgs :: Int -> [(Ident, Type SourceAnn)]
     mkTupleCtorTvArgs = mkProdFields . map (\v -> TypeVar na v kindType) . vars

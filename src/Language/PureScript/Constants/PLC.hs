@@ -4,7 +4,7 @@
 
 module Language.PureScript.Constants.PLC where
 
-import Language.PureScript.Constants.PLC.TH
-import PlutusCore.Default
+import Language.PureScript.Constants.PLC.TH ( mkBuiltinMap )
+import PlutusCore.Default ( DefaultFun )
 
 mkBuiltinMap ''DefaultFun

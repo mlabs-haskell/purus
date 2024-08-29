@@ -3,41 +3,35 @@
 module Language.Purus.Prim.Ledger where
 
 import Data.Map qualified as M
-
+ 
 import Data.Bifunctor (first)
 import Data.List (foldl')
-import Data.Text (Text)
 import Language.PureScript.AST.SourcePos (SourceAnn, nullSourceAnn)
-import Language.PureScript.Constants.Prim qualified as C
 import Language.PureScript.CoreFn.Module (
   CtorDecl (CtorDecl),
   DataDecl (DataDecl),
  )
 import Language.PureScript.CoreFn.TypeLike (TypeLike (applyType, funTy), quantify)
 import Language.PureScript.Environment (
-  DataDeclType (Data, Newtype),
+  DataDeclType (Newtype),
   TypeKind (DataType),
   kindType,
   (-:>),
  )
-import Language.PureScript.Label (Label)
 import Language.PureScript.Names (
-  Ident (Ident, UnusedIdent),
-  ModuleName (ModuleName),
+  Ident,
   ProperName (ProperName, runProperName),
   ProperNameType (ConstructorName, TypeName),
-  Qualified (Qualified),
-  QualifiedBy (ByModuleName),
+  Qualified,
   coerceProperName,
   disqualify,
   runIdent,
  )
-import Language.PureScript.Roles (Role (Nominal))
 import Language.PureScript.Types (
   SourceType,
-  Type (RCons, REmpty, TypeApp, TypeConstructor, TypeVar),
+  Type (TypeConstructor, TypeVar),
  )
-import Language.Purus.IR (Kind (KindType), Ty (TyApp, TyCon, TyVar))
+import Language.Purus.IR ()
 import Language.Purus.Prim.LedgerData
 import Language.Purus.Prim.Utils
 import Prelude

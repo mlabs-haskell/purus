@@ -39,7 +39,7 @@ import Language.PureScript.Names (
   ProperNameType (..),
   Qualified (..),
   runIdent,
-  showQualified,
+  showQualified, ModuleName (..), QualifiedBy (..),
  )
 import Language.PureScript.Types (
   TypeVarVisibility (TypeVarVisible),
@@ -104,24 +104,25 @@ import PlutusIR (
   Name (Name),
  )
 
-{-
-eliminateCaseExpressions' :: Datatypes IR.Kind Ty
-                          -> Exp WithoutObjects Ty (Var (BVar Ty) (FVar Ty))
-                          -> PlutusContext (Exp WithoutObjects Ty (Var (BVar Ty) (FVar Ty)))
-eliminateCaseExpressions' datatypes
-  = transformM (
-        desugarLiteralPatterns
-    >=> desugarIrrefutables
-    >=> desugarConstructorPatterns datatypes
-    >=> (pure . monomorphizePatterns datatypes)
-        )
--}
+{- @Koz: This module contains the transformations needed to eliminate case expressions.
 
-{-
-desugarConstructorPatterns :: Datatypes IR.Kind Ty
-                           -> Exp WithoutObjects Ty (Var (BVar Ty) (FVar Ty))
-                           -> PlutusContext (Exp WithoutObjects Ty (Var (BVar Ty) (FVar Ty)))
-desugarConstructorPatterns datatypes = transformM (desugarConstructorPattern datatypes)
+         Because we are using PIR datatypes (and not, e.g., hand-rolled SOPs), we have to use their
+         destructor function machinery to eliminate cases. The bulk of this module consists in functions that
+         create (and correctly type) those destructors.
+
+         The order of transformations here is:
+           1. Eliminate literal patterns (by transforming them into constructor patterns that match on Boolean)
+           2. Eliminate bare irrefutable patterns, since those don't actually require case analysis
+           3. Eliminate constructor patterns
+
+         We also run a final Constructor instantiation pass to ensure that all constructors have the
+         correct type instantiations and type annotations, and handle nullary constructors separately.
+
+         NOTE on Nullary constructors: The PS type checker annotates constructors with their *Monomorphic* types
+                                       (or: with types as monomorphic as they can be). To instantiate nullary
+                                       constructors, we just look at the type annotation, figure out the
+                                       necessary instantiations by unifying the annotated type with the
+                                       type in the declaration, and instantiate. 
 -}
 
 eliminateCases ::
@@ -136,6 +137,13 @@ eliminateCases datatypes _exp = do
     . instantiateCtors datatypes
     $ res
 
+{- NOTE(@Koz): This function runs "desugarConstructorPatterns", but is called "eliminateCaseExpressions"
+               because, if we run this *after* desugarIrrefutables and desugarLiteralPatterns,
+               we ought to *only* have Constructor Patterns remaining in the AST. If that is the case,
+               this will completely eliminate case expressions from the input.
+
+               Honestly, I'm not exactly sure why I had to write it like this. But it *works* written like this!
+-}
 eliminateCaseExpressions ::
   Datatypes IR.Kind Ty ->
   Exp WithoutObjects Ty (Var (BVar Ty) (FVar Ty)) ->
@@ -197,6 +205,9 @@ eliminateCaseExpressions datatypes = \case
             xs' = traverse (traverse (eliminateCaseExpressions datatypes) . second deScope) xs
          in Recursive . map (second rescope) <$> xs'
 
+{- Creates (and correctly types) the destructor function
+
+-}
 mkDestructorFunTy ::
   Datatypes IR.Kind Ty ->
   Qualified (ProperName 'TypeName) ->
@@ -341,33 +352,20 @@ desugarConstructorPattern datatypes altBodyTy _e =
                           else V . B $ bv
                     other -> error $ "Expected an irrefutable alt but got: " <> prettyStr other
               result <- assemblePartialCtorCase (CtorCase irrefutable (M.fromList indexedBranches) destructor scrutTy) allCtors
-              let msg =
-                    "INPUT TY:\n"
-                      <> prettyStr _eTy
-                      <> "\n\nINPUT:\n"
-                      <> prettyStr _e
-                      <> "\n\nRESULT TY:\n"
-                      <> prettyStr (expTy id result)
-                      <> "\n\n DESTRUCTOR TY:\n"
-                      <> prettyStr (expTy id destructor)
-                      <> "\n\nORIGINAL CASE RES TY:\n"
-                      <> prettyStr _resTy
-                      <> "\n\nDEDUCED BRANCH RES TY:\n"
-                      <> prettyStr branchRetTy
-                      <> "\n\nSPLIT BRANCH TY:\n"
-                      <> prettyStr branchSplit
-                      <> "\n\nFULL BRANCH TY:\n"
-                      <> prettyStr branchTy
-                      <> "\n\nSCRUT TY:\n"
-                      <> prettyStr scrutTy
-                      <> "\n\nSCRUT EXPR:\n"
-                      <> prettyStr scrut
-                      <> "\n\nRESULT:\n"
-                      <> prettyStr result
-                      <> "\n\nALT BODY TY:\n"
-                      <> prettyStr altBodyTy
-                      <> "\n\nINSTANTIATED ALT BODY TY:\n"
-                      <> prettyStr retTy'
+              let msg = prettify [ "INPUT TY:\n" <> prettyStr _eTy
+                                 , "INPUT:\n" <> prettyStr _e
+                                 , "RESULT TY:\n" <> prettyStr (expTy id result)
+                                 , "DESTRUCTOR TY:\n" <> prettyStr (expTy id destructor)
+                                 , "ORIGINAL CASE RES TY:\n" <> prettyStr _resTy
+                                 , "DEDUCED BRANCH RES TY:\n" <> prettyStr branchRetTy
+                                 , "SPLIT BRANCH TY:\n" <> prettyStr branchSplit
+                                 , "FULL BRANCH TY:\n" <> prettyStr branchTy
+                                 , "SCRUT TY:\n" <> prettyStr scrutTy
+                                 , "SCRUT EXPR:\n" <> prettyStr scrut
+                                 , "RESULT:\n" <> prettyStr result
+                                 , "ALT BODY TY:\n" <> prettyStr altBodyTy
+                                 , "INSTANTIATED ALT BODY TY:\n" <> prettyStr retTy'
+                                 ]
               doTraceM "desugarConstructorPattern" msg
               pure result
         other -> pure other
@@ -417,17 +415,12 @@ desugarConstructorPattern datatypes altBodyTy _e =
 
         resTy = expTy id result
 
-        msg =
-          "INPUT TY:\n"
-            <> prettyStr t
-            <> "\n\nINPUT EXPR:\n"
-            <> prettyStr e
-            <> "\n\nINPUT EXPR TY:\n"
-            <> prettyStr (expTy id e)
-            <> "\n\nOUTPUT TY:\n"
-            <> prettyStr resTy
-            <> "\n\nOUTPUT:\n"
-            <> prettyStr result
+        msg = prettify [ "INPUT TY:\n" <> prettyStr t
+                       , "INPUT EXPR:\n" <> prettyStr e
+                       , "INPUT EXPR TY:\n" <> prettyStr (expTy id e)
+                       , "OUTPUT TY:\n" <> prettyStr resTy
+                       , "OUTPUT:\n" <> prettyStr result
+                       ]
     {- This is a bit weird. If the alt body type is already quantified then we don't want to
        do any instantiations. TODO: Explain why (kind of complicated)
     -}
@@ -438,13 +431,10 @@ desugarConstructorPattern datatypes altBodyTy _e =
         result = case analyzeTyApp scrutT of
           Just (_, tyArgs) -> foldr instTy (quantify altT) (reverse tyArgs)
           Nothing -> altT
-        msg =
-          "INPUT SCRUT TY:\n"
-            <> prettyStr scrutT
-            <> "\n\nINPUT TARG TY:\n"
-            <> prettyStr altT
-            <> "\n\nOUTPUT TY:\n"
-            <> prettyStr result
+        msg = prettify [ "INPUT SCRUT TY:\n" <> prettyStr scrutT
+                       , "INPUT TARG TY:\n" <> prettyStr altT
+                       , "OUTPUT TY:\n" <> prettyStr result
+                       ]
 
     mkIndexedBranch ::
       Ty ->
@@ -500,19 +490,13 @@ instantiateCtor datatypes expr = case expr of
               monoFields = monoCtorInst tyNm ctorNm (funResultTy t) datatypes
               fe' = foldr TyInstE fe monoFields
               result = foldl' AppE fe' args
-              msg =
-                "NAME:"
-                  <> T.unpack (showQualified runIdent n)
-                  <> "\n\nMONO TYPE:\n"
-                  <> prettyStr t
-                  <> "\n\nINPUT:\n"
-                  <> prettyStr expr
-                  <> "\n\nRESULT:\n"
-                  <> prettyStr result
-                  <> "\n\nMONO FIELDS:\n"
-                  <> prettyStr monoFields
-                  <> "\n\nINSTANTIATED FUN:\n"
-                  <> prettyStr fe'
+              msg = prettify [ "NAME:" <> T.unpack (showQualified runIdent n)
+                             , "MONO TYPE:\n" <> prettyStr t
+                             , "INPUT:\n" <> prettyStr expr
+                             , "RESULT:\n" <> prettyStr result
+                             , "MONO FIELDS:\n" <> prettyStr monoFields
+                             , "INSTANTIATED FUN:\n" <> prettyStr fe'
+                             ]
            in doTrace "instantiateCtor" msg result
     _ -> expr
   _ -> expr
@@ -524,11 +508,8 @@ instantiateNullaryWithAnnotatedType ::
   Exp x Ty (Vars Ty)
 instantiateNullaryWithAnnotatedType datatypes _e = doTrace "instantiateNullaryWithAnnotatedType" msg result
   where
-    msg =
-      "INPUT:\n"
-        <> prettyStr _e
-        <> "\n\nOUTPUT:\n"
-        <> prettyStr result
+    msg = prettify [ "INPUT:\n" <> prettyStr _e
+                   , "OUTPUT:\n" <> prettyStr result ]
     result = transform go _e
     go ::
       Exp x Ty (Vars Ty) ->
@@ -556,15 +537,15 @@ monoCtorInst tn cn t datatypes = doTrace "monoCtorInst" msg $ snd <$> reverse in
     msg =
       "TYPE NAME:"
         <> T.unpack (showQualified runProperName tn)
-        <> "\n\nCTOR NAME:\n"
+        <> "CTOR NAME:\n"
         <> T.unpack (showQualified runProperName cn)
-        <> "\n\nMONO IN TYPE:\n"
+        <> "MONO IN TYPE:\n"
         <> prettyStr t
-        <> "\n\nCTOR DECL ARGS:\n"
+        <> "CTOR DECL ARGS:\n"
         <> prettyStr ctorArgs
-        <> "\n\nPOLY TY:\n"
+        <> "POLY TY:\n"
         <> prettyStr polyTy
-        <> "\n\nINSTANTIATIONS:\n"
+        <> "INSTANTIATIONS:\n"
         <> prettyStr instantiations
     (_, thisCtorDecl) = either error id $ getConstructorIndexAndDecl cn datatypes
     ctorArgs = snd <$> thisCtorDecl ^. cdCtorFields
@@ -575,6 +556,12 @@ monoCtorInst tn cn t datatypes = doTrace "monoCtorInst" msg $ snd <$> reverse in
 
     instantiations = getInstantiations t polyTy
 
+{- Given a scrutinee type and enough information to uniquely identify a constructor (so as to
+   retrieve its data declaration), return the index of the constructor and its instantiated arguments.
+
+   This is used, primarily, to ensure that the annotations attached to Var patterns are correctly instantiated to the
+   type of the scrutinee they serve as matchers for. 
+-}
 monoCtorFields ::
   Qualified (ProperName 'TypeName) ->
   Qualified (ProperName 'ConstructorName) ->
@@ -583,21 +570,14 @@ monoCtorFields ::
   (Int, [Ty]) -- Constructor index & list of field types
 monoCtorFields tn cn t datatypes = doTrace "monoCtorFields" msg (thisCtorIx, monoCtorArgs)
   where
-    msg =
-      "TYPE NAME:"
-        <> T.unpack (showQualified runProperName tn)
-        <> "\n\nCTOR NAME:\n"
-        <> T.unpack (showQualified runProperName cn)
-        <> "\n\nMONO IN TYPE:\n"
-        <> prettyStr t
-        <> "\n\nCTOR DECL ARGS:\n"
-        <> prettyStr ctorArgs
-        <> "\n\nPOLY TY:\n"
-        <> prettyStr polyTy
-        <> "\n\nRESULT TYS:\n"
-        <> prettyStr monoCtorArgs
-        <> "\n\nINSTANTIATIONS:\n"
-        <> prettyStr instantiations
+    msg = prettify [ "TYPE NAME:" <> T.unpack (showQualified runProperName tn)
+                   , "CTOR NAME:\n" <> T.unpack (showQualified runProperName cn)
+                   , "MONO IN TYPE:\n" <> prettyStr t
+                   , "CTOR DECL ARGS:\n" <> prettyStr ctorArgs
+                   , "POLY TY:\n" <> prettyStr polyTy
+                   , "RESULT TYS:\n" <> prettyStr monoCtorArgs
+                   , "INSTANTIATIONS:\n" <> prettyStr instantiations
+                   ]
     (thisCtorIx, thisCtorDecl) = either error id $ getConstructorIndexAndDecl cn datatypes
     ctorArgs = snd <$> thisCtorDecl ^. cdCtorFields
     thisDataDecl = fromJust $ lookupDataDecl tn datatypes
@@ -615,8 +595,22 @@ monoCtorFields tn cn t datatypes = doTrace "monoCtorFields" msg (thisCtorIx, mon
 
 {-
 
-We can't easily do this in the monomorphizer itself
+Variables bound in patterns contain type annotations in those patterns. We generally ignore those annotations
+in previous compiler passes, as they do not matter there. Here, we need to ensure that the annotations are correct
+so that the constructor pattern desugaring works as intended & the lambdas introduced there have the correct types.
 
+
+An example might be helpful. If we have
+
+```
+case (x :: Maybe Int) of
+  Just y -> f y
+  Nothing -> (...)
+```
+
+The `y` in pattern position there there may have a (hidden/internal) annotation like
+`Maybe a`. We need to force that `a` to `Int`, which is simple enough with some unification,
+provided that we have access to the data declaration for `Maybe`.
 -}
 monomorphizePatterns ::
   Datatypes IR.Kind Ty ->
@@ -625,9 +619,9 @@ monomorphizePatterns ::
 monomorphizePatterns datatypes _e' = case _e' of
   CaseE resTy scrut alts ->
     let scrutTy = expTy id scrut
-        alts' = goAlt scrutTy <$> alts
+        alts' = goAlt scrutTy <$> alts -- REVIEW: Why do we do this twice? Was there a reason or is this just a mistake?
         res = CaseE resTy scrut $ goAlt scrutTy <$> alts'
-     in doTrace "monomorphizePatterns" ("INPUT:\n" <> prettyStr _e' <> "\n\nRESULT:\n" <> prettyStr res) res
+     in doTrace "monomorphizePatterns" ("INPUT:\n" <> prettyStr _e' <> "RESULT:\n" <> prettyStr res) res
   other -> other
   where
     monomorphPat ::
@@ -681,13 +675,15 @@ desugarLiteralPatterns = transform desugarLiteralPattern
                       equality test for the correct primitive type, and replace those variables
                       during final PIR compilation.
 
+                      Actually we can get away with $COMPILER.boolToBoolean :: forall x. x -> Boolean,
+                      don't need to catch anything else
 -}
 desugarLiteralPattern ::
   Exp WithoutObjects Ty (Var (BVar Ty) (FVar Ty)) ->
   Exp WithoutObjects Ty (Var (BVar Ty) (FVar Ty))
 desugarLiteralPattern =  \case
   CaseE resTy scrut (UnguardedAlt (LitP patLit) rhs : alts) ->
-    let eqTest = mkEqTestFun scrut patLit
+    let eqTest =  mkEqTestFun scrut patLit
         trueP = ConP C.Boolean C.C_True []
         falseP = ConP C.Boolean C.C_False []
         rest = fromExp $  desugarLiteralPattern (CaseE resTy scrut alts)
@@ -700,6 +696,7 @@ desugarLiteralPattern =  \case
   CaseE _ _ (UnguardedAlt WildP rhs : _) -> toExp rhs -- FIXME: Wrong! Need to do the same
                                                       -- catchall stuff we do in the ctor
                                                       -- case eliminator
+                                                      -- NOTE (8/28): I'm not sure if the previous FIXME still matters? 
   CaseE _ scrut (UnguardedAlt (VarP bvId bvIx _) rhs : _) -> flip instantiate rhs $ \case
     bv@(BVar bvIx' _ bvId') ->
       if bvIx == bvIx' && bvId == bvId'
@@ -751,7 +748,7 @@ data CtorCase = CtorCase
   , scrutType :: Ty
   }
 
--- FIXME: I don't think we'll have to do this anymore if we re-instantiate after object desugaring
+-- FIXME/REVIEW: I don't think we'll have to do this anymore if we re-instantiate after object desugaring. I should test this.
 ezMonomorphize ::
   Exp WithoutObjects Ty (Var (BVar Ty) (FVar Ty)) ->
   Exp WithoutObjects Ty (Var (BVar Ty) (FVar Ty))
@@ -766,20 +763,16 @@ ezMonomorphize = transform go
               let instantiations = reverse (snd <$> instantiations')
                   f' = foldr TyInstE f instantiations
                   result = foldl' AppE f' args
-                  msg =
-                    "INPUT:\n"
-                      <> prettyStr expr
-                      <> "\n\nOUTPUT:\n"
-                      <> prettyStr result
+                  msg = prettify [ "INPUT:\n" <> prettyStr expr
+                                 , "OUTPUT:\n"
+                                 ,  prettyStr result ]
                in doTrace "ezMonomorphize" msg result
           ft ->
-            let msg =
-                  "NO CHANGE (NOT A FORALL):\n\n"
-                    <> "FUN TY:\n"
-                    <> prettyStr ft
-                    <> "\n\nARG TYPES:\n"
-                    <> prettyStr (expTy id <$> args)
-                    <> "\n\nORIGINAL EXPR:\n"
-                    <> prettyStr expr
+            let msg = prettify [
+                  "NO CHANGE (NOT A FORALL):"
+                  , "FUN TY:\n" <> prettyStr ft
+                  , "ARG TYPES:\n" <> prettyStr (expTy id <$> args)
+                  , "ORIGINAL EXPR:\n" <> prettyStr expr
+                  ]
              in doTrace "ezMonomorphize" msg expr
       _ -> expr -- doTrace "ezMonomorphize" ("" <> prettyStr expr) expr

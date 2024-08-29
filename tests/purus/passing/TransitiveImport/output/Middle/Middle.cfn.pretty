@@ -8,12 +8,12 @@ Imported Modules:
 
 Exports: 
 ------------------------------
-  unit,
+  uneet,
   middle
 
 Re-Exports: 
 ------------------------------
-  Test.Unit
+  Test.Uneet
   Test.test
 
 Foreign: 
@@ -27,8 +27,8 @@ Datatypes:
 
 Declarations: 
 ------------------------------
-unit :: Test.Unit
-unit = (Unit: Test.Unit)
+uneet :: Test.Uneet
+uneet = (Uneet: Test.Uneet)
 
 middle :: forall (a :: Prim.Type). ((Test.TestCls$Dict ((a :: Prim.Type))) -> (((a :: Prim.Type) -> ((a :: Prim.Type)))))
 middle = 

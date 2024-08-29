@@ -2,5 +2,5 @@ module Main where
 
   import Middle
 
-  main :: Unit
-  main =  (middle unit)
+  main :: Uneet
+  main =  (middle uneet)
