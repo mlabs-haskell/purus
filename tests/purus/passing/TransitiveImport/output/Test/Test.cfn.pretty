@@ -9,8 +9,8 @@ Imported Modules:
 Exports: 
 ------------------------------
   test,
-  Unit,
-  testClsUnit
+  Uneet,
+  testClsUneet
 
 Re-Exports: 
 ------------------------------
@@ -25,20 +25,20 @@ Datatypes:
 newtype TestCls$Dict (a :: Prim.Type) = 
   TestCls$Dict ({ test :: ((a :: Prim.Type) -> ((a :: Prim.Type))) })
 
-data Unit  = 
-  Unit 
+data Uneet  = 
+  Uneet 
 
 
 Declarations: 
 ------------------------------
-testClsUnit :: (Test.TestCls$Dict (Test.Unit))
-testClsUnit = 
-  (TestCls$Dict: ({   test :: (Test.Unit -> (Test.Unit)) } ->
-  ((Test.TestCls$Dict (Test.Unit)))))
-  ({ test: \(v: Test.Unit) -> (Unit: Test.Unit) }: {
-                                                     test :: (Test.Unit ->
-                                                     (Test.Unit))
-                                                   })
+testClsUneet :: (Test.TestCls$Dict (Test.Uneet))
+testClsUneet = 
+  (TestCls$Dict: ({   test :: (Test.Uneet -> (Test.Uneet)) } ->
+  ((Test.TestCls$Dict (Test.Uneet)))))
+  ({ test: \(v: Test.Uneet) -> (Uneet: Test.Uneet) }: {
+                                                        test :: (Test.Uneet ->
+                                                        (Test.Uneet))
+                                                      })
 
 test :: forall (@a :: Prim.Type). ((Test.TestCls$Dict ((a :: Prim.Type))) -> (((a :: Prim.Type) -> ((a :: Prim.Type)))))
 test = 

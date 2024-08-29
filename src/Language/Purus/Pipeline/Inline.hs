@@ -1,4 +1,4 @@
-module Language.Purus.Pipeline.Inline where
+module Language.Purus.Pipeline.Inline (inline) where
 
 import Prelude
 
@@ -28,6 +28,7 @@ import Language.PureScript.Constants.Prim qualified as C
 import Language.PureScript.CoreFn.Expr (PurusType)
 import Language.PureScript.CoreFn.FromJSON ()
 import Language.PureScript.Environment (pattern RecordT)
+
 -- for the instance
 import Language.PureScript.Names (
   Ident (GenIdent, Ident),
@@ -46,7 +47,7 @@ import Language.PureScript.Types (
   isMonoType,
  )
 
-import Language.Purus.Debug
+import Language.Purus.Debug (doTrace, doTraceM, prettify)
 import Language.Purus.IR (
   BVar (..),
   BindE (..),
@@ -92,7 +93,7 @@ import Language.Purus.Pipeline.Lift.Types (
   unHole,
   pattern LiftedHole,
  )
-import Language.Purus.Pipeline.Monad
+import Language.Purus.Pipeline.Monad (Inline, MonadCounter (next))
 import Language.Purus.Pretty.Common (prettyStr)
 
 import Algebra.Graph.AdjacencyMap (
@@ -107,7 +108,7 @@ import Algebra.Graph.AdjacencyMap (
 import Algebra.Graph.AdjacencyMap.Algorithm (Cycle, scc, topSort)
 import Algebra.Graph.NonEmpty.AdjacencyMap (fromNonEmpty)
 
-import Control.Lens.Combinators (cosmos, ix, transformM)
+import Control.Lens.Combinators (at, cosmos, transformM)
 import Control.Lens.Operators ((.=), (^..))
 
 import Bound (Var (..))
@@ -229,7 +230,7 @@ handleSelfRecursive (nm, indx) body
           updatedOriginalBody = viaExp (deepMapMaybeBound f) body
           updatedOriginalDecl = ((nm, indx), updatedOriginalBody)
           abstr = abstract $ \case B bv -> Just bv; _ -> Nothing
-          newBreakerDecl = ((newNm, u), (abstr . V . B $ BVar indx bodyTy nm))
+          newBreakerDecl = ((newNm, u), abstr . V . B $ BVar indx bodyTy nm)
       pure $ M.fromList [updatedOriginalDecl, newBreakerDecl]
 
 inlineWithData :: MonoExp -> InlineState MonoExp
@@ -255,7 +256,7 @@ inlineWithData = transformM go''
               pure e
             _ -> pure fv
           _ -> pure fv
-        V b@B{} -> pure $ V b
+        V b@B {} -> pure $ V b
         AppE e1 e2 -> AppE <$> go e1 <*> go e2
         CaseE t scrut alts -> do
           scrut' <- go scrut
@@ -291,13 +292,6 @@ doneInlining me = do
           ]
   doTraceM "doneInlining" msg
   pure result
-
-remainingInlineTargets :: MonoExp -> InlineState (Set (Ident, Int))
-remainingInlineTargets me = do
-  dct <- get
-  let allInlineable = M.keysSet $ M.filter notALoopBreaker dct
-      allHoles = S.fromList $ mapMaybe (fmap unHole . toHole) (me ^.. cosmos)
-  pure $ S.intersection allHoles allInlineable
 
 prettyDict :: Map (Ident, Int) InlineBodyData -> String
 prettyDict =
@@ -337,7 +331,7 @@ inlineInLifted decls = do
       done1 <- doneInlining . toExp . getInlineBody $ e
       unless done1 $ do
         e' <- go e
-        ix i .= e'
+        at i .= Just e'
         update (i : retry) is
       when done1 $ do
         update retry is
@@ -462,14 +456,3 @@ inlineInLifted decls = do
                   KindedType _ t1 t2 -> isRow t1 || isRow t2
                   TypeApp _ t1 t2 -> isRow t1 || isRow t2
                   _ -> False
-findDeclGroup ::
-  (Ident, Int) ->
-  [BindE ty (Exp x ty) a] ->
-  Maybe (BindE ty (Exp x ty) a)
-findDeclGroup _ [] = Nothing
-findDeclGroup (ident, indx) (NonRecursive ident' bvix expr : rest)
-  | ident == ident' && bvix == indx = Just $ NonRecursive ident' bvix expr
-  | otherwise = findDeclGroup (ident, indx) rest
-findDeclGroup nm (Recursive xs : rest) = case find (\x -> fst x == nm) xs of
-  Nothing -> findDeclGroup nm rest
-  Just _ -> Just (Recursive xs)

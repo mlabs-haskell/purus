@@ -3,7 +3,7 @@
    typecheck in PIR (and also to simplify some of our own subsequent compiler passes).
 -}
 
-module Language.Purus.Pipeline.Instantiate where
+module Language.Purus.Pipeline.Instantiate (instantiateTypes, applyPolyRowArgs) where
 
 import Prelude
 
@@ -14,17 +14,44 @@ import Data.Foldable (foldl')
 
 import Data.Text (Text)
 
+import Language.PureScript.Constants.Prim qualified as C
+import Language.PureScript.CoreFn.Expr (PurusType)
 import Language.PureScript.CoreFn.TypeLike (TypeLike (..), instantiates)
+import Language.PureScript.Names (Ident (Ident))
+import Language.PureScript.Types (Type (..))
 
-import Language.Purus.IR.Utils
-import Language.Purus.Debug
-import Language.Purus.IR ( analyzeApp, Exp(..), expTy )
+import Language.Purus.Debug (doTrace, prettify)
+import Language.Purus.IR (BVar (..), Exp (..), analyzeApp, expTy)
+import Language.Purus.IR.Utils (
+  Vars,
+  WithObjects,
+  mapAlt,
+  mapBind,
+  transformTypesInExp,
+  viaExp,
+ )
 import Language.Purus.Pretty.Common (prettyStr)
 
-import Control.Lens (view, _2)
+import Control.Lens (transform, view, _2)
 import Prettyprinter (Pretty)
 
-instantiateTypes :: forall x (t :: *). (TypeLike t, Pretty t, Pretty (KindOf t)) => Exp x t (Vars t)  -> Exp x t (Vars t)
+{- After inlining and instantiating, we're left abstracted type variables and instantiated types which
+   may be of kind `Row Type`. That's bad! We need to "apply" the instantiations to the abstractions so
+   that we have concrete rows (or as concrete as they can possibly be at any rate) before we
+   do object desugaring.
+-}
+applyPolyRowArgs ::
+  Exp WithObjects PurusType (Vars PurusType) ->
+  Exp WithObjects PurusType (Vars PurusType)
+applyPolyRowArgs = transform $ \case
+  instE@(TyInstE t (TyAbs (BVar kvI kvTy (Ident kvNm)) innerE)) -> case kvTy of
+    TypeApp _ (TypeConstructor _ C.Row) _ -> transformTypesInExp (replaceAllTypeVars [(kvNm, t)]) innerE
+    _ -> instE
+  other -> other
+
+{- Instantiates every type abstraction wherever it is possible to deduce the instantiation.
+-}
+instantiateTypes :: forall x (t :: *). (TypeLike t, Pretty t, Pretty (KindOf t)) => Exp x t (Vars t) -> Exp x t (Vars t)
 instantiateTypes = \case
   V v -> V v
   LitE t lit -> LitE t $ instantiateTypes <$> lit
@@ -73,7 +100,7 @@ instantiateApp e = case analyzeApp e of
    and returns a Map of type variable substitutions.
 -}
 getInstantiations ::
-  TypeLike t =>
+  (TypeLike t) =>
   [Text] ->
   [t] ->
   [t] ->

@@ -7,6 +7,7 @@ import Prelude hiding ((<>))
 
 import Control.Monad.Reader (MonadReader (ask), runReader)
 import Data.Bifunctor (Bifunctor (..))
+import Data.Map (Map)
 import Data.Map qualified as M
 import Data.Text (Text)
 import Data.Text qualified as T
@@ -20,7 +21,6 @@ import Language.PureScript.CoreFn.Expr (
   Guard,
  )
 import Language.PureScript.CoreFn.Module
-import Language.PureScript.CoreFn.Utils
 import Language.PureScript.Environment (
   DataDeclType (..),
   getFunArgTy,
@@ -28,6 +28,9 @@ import Language.PureScript.Environment (
 import Language.PureScript.Names (Ident, ModuleName, ProperName (..), disqualify, runIdent, showIdent, showQualified)
 import Language.PureScript.PSString (PSString, decodeStringWithReplacement, prettyPrintString)
 
+import Language.PureScript.CoreFn.TypeLike
+import Language.PureScript.Environment (function, pattern (:->))
+import Language.PureScript.Types (SourceType)
 import Language.Purus.Pretty.Common (
   LineFormat (MultiLine, OneLine),
   Printer,
@@ -74,8 +77,68 @@ import Prettyprinter (
   (<>),
  )
 
+foldl1x :: (Foldable t) => String -> (a -> a -> a) -> t a -> a
+foldl1x msg f xs
+  | null xs = Prelude.error msg
+  | otherwise = foldl1 f xs
+
+exprType :: (Show a) => Expr a -> SourceType
+exprType = \case
+  Literal _ ty _ -> ty
+  Accessor _ ty _ _ -> ty
+  ObjectUpdate _ ty _ _ _ -> ty
+  Abs _ ty _ _ -> ty
+  App _ t1 t2 -> appType t1 t2
+  Var _ ty __ -> ty
+  Case _ ty _ _ -> ty
+  Let _ _ e -> exprType e
+
+appType :: (Show a) => Expr a -> Expr a -> SourceType
+appType fe ae = case stripQuantifiers' fTy of
+  ([], ft) ->
+    let numArgs = length argTypes
+     in foldl1x "appType first branch (CoreFn.Utils)" function . drop numArgs . splitFunTyParts $ ft
+  (xs, ft) ->
+    let funArgs = splitFunTyParts ft -- funArgTypes ft
+        dict = mkInstanceMap M.empty xs argTypes funArgs
+        numArgs = length argTypes
+     in quantify
+          . foldl1x "" function
+          . drop numArgs
+          . splitFunTyParts
+          . replaceAllTypeVars (M.toList dict)
+          $ ft
+  where
+    stripQuantifiers' :: SourceType -> ([Text], SourceType)
+    stripQuantifiers' st = first (map (\(_, b, _) -> b)) $ stripQuantifiers st
+
+    (f, args) = appFunArgs fe ae
+    fTy = exprType f
+    argTypes = exprType <$> args
+
+    mkInstanceMap :: Map Text SourceType -> [Text] -> [SourceType] -> [SourceType] -> Map Text SourceType
+    mkInstanceMap acc [] _ _ = acc
+    mkInstanceMap acc _ [] _ = acc
+    mkInstanceMap acc _ _ [] = acc
+    mkInstanceMap acc (var : vars) (mt : mts) (pt : pts) = case instantiates var mt pt of
+      Nothing ->
+        mkInstanceMap acc [var] mts pts
+          <> mkInstanceMap M.empty vars (mt : mts) (pt : pts)
+      Just t -> mkInstanceMap (M.insert var t acc) vars (mt : mts) (pt : pts)
+
+appFunArgs :: Expr a -> Expr a -> (Expr a, [Expr a])
+appFunArgs f args = (appFun f, appArgs f args)
+  where
+    appArgs :: Expr a -> Expr a -> [Expr a]
+    appArgs (App _ t1 t2) t3 = appArgs t1 t2 <> [t3]
+    appArgs _ t3 = [t3]
+
+    appFun :: Expr a -> Expr a
+    appFun (App _ t1 _) = appFun t1
+    appFun res = res
+
 -- TODO: Pretty print the datatypes too
-prettyModule :: (Pretty k, Pretty t, Show a) => Module (Bind a) k t a -> Doc ann
+prettyModule :: (Pretty k, Pretty t, Pretty b) => Module b k t a -> Doc ann
 prettyModule (Module _ _ modName modPath modImports modExports modReExports modForeign modDecls modDatatypes) =
   vsep
     [ pretty modName <+> parens (pretty modPath)
@@ -90,7 +153,7 @@ prettyModule (Module _ _ modName modPath modImports modExports modReExports modF
     , line <> "Datatypes: " <> spacer
     , prettyDatatypes modDatatypes <> line
     , line <> "Declarations: " <> spacer
-    , vcat . punctuate line $ asDynamic prettyDeclaration <$> modDecls
+    , vcat . punctuate line $ pretty <$> modDecls
     ]
   where
     spacer = line <> pretty (T.pack $ replicate 30 '-')
@@ -234,6 +297,9 @@ prettyLiteralValue (ArrayLiteral xs) = printer oneLine multiLine
     -- N.B. I think it makes more sense to ensure that list *elements* are always oneLine
     multiLine = list $ asOneLine prettyValue <$> xs
 prettyLiteralValue (ObjectLiteral ps) = prettyObject $ second Just `map` ps
+
+instance (Show a) => Pretty (Bind a) where
+  pretty = asDynamic id . prettyDeclaration
 
 prettyDeclaration :: forall a ann. (Show a) => Bind a -> Printer ann
 prettyDeclaration b = case b of

@@ -9,23 +9,23 @@ module Language.PureScript.CoreFn.Module where
 import Prelude
 
 import Data.Map.Strict (Map)
+import Data.Maybe (fromMaybe)
 
 import Data.Text (Text)
 import Language.PureScript.AST.SourcePos (SourceSpan)
 import Language.PureScript.Comments (Comment)
 import Language.PureScript.CoreFn.Expr (Bind (..))
 import Language.PureScript.Environment (DataDeclType)
-import Language.PureScript.Names (Ident, ModuleName, ProperName (..), ProperNameType (..), Qualified)
+import Language.PureScript.Names (Ident (..), ModuleName, ProperName (..), ProperNameType (..), Qualified)
 
 import Control.Lens (
-  Ixed (ix),
+  At (at),
   filtered,
   folded,
   makeLenses,
   view,
   (^.),
   (^?),
-  (^?!),
  )
 
 import Data.Aeson (FromJSON, ToJSON)
@@ -34,8 +34,10 @@ import GHC.Generics (Generic)
 import Data.Kind qualified as GHC
 import Data.List (find, findIndex)
 import Data.Map qualified as M
-import Data.Maybe (fromJust)
-import Language.PureScript.CoreFn.Desugar.Utils (properToIdent)
+
+-- | Converts a ProperName to an Ident. Duplicated here to break a module cycle.
+properToIdent :: ProperName a -> Ident
+properToIdent = Ident . runProperName
 
 data DataDecl k t = DataDecl
   { _dDeclType :: !DataDeclType
@@ -112,15 +114,15 @@ getAllConstructorDecls ::
   Qualified (ProperName 'TypeName) ->
   Datatypes k t ->
   [CtorDecl t]
-getAllConstructorDecls qn dts = dts ^?! tyDict . ix qn . dDataCtors
+getAllConstructorDecls qn dts = fromMaybe [] $ dts ^? tyDict . at qn . folded . dDataCtors
 
 lookupDataDecl :: Qualified (ProperName 'TypeName) -> Datatypes k t -> Maybe (DataDecl k t)
 lookupDataDecl qtn (Datatypes tys _) = M.lookup qtn tys
 
 lookupCtorDecl :: Qualified Ident -> Datatypes k t -> Maybe (CtorDecl t)
 lookupCtorDecl qi datatypes = do
-  tyname <- datatypes ^? ctorDict . ix qi
-  datatypes ^? tyDict . ix tyname . dDataCtors . folded . filtered ((== qi) . view cdCtorName)
+  tyname <- datatypes ^? ctorDict . at qi . folded
+  datatypes ^? tyDict . at tyname . folded . dDataCtors . folded . filtered ((== qi) . view cdCtorName)
 
 instance Semigroup (Datatypes k t) where
   (Datatypes tyDict1 ctorDict1) <> (Datatypes tyDict2 ctorDict2) =

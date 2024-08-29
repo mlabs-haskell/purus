@@ -26,6 +26,7 @@ $( TH.declare do
       TH.ty "String"
       TH.ty "Symbol"
       TH.ty "Type"
+      TH.ty "Unit"
       TH.asIdent do TH.asString do TH.var "undefined"
 
     TH.mod "Prim.Boolean" do

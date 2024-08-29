@@ -3,17 +3,62 @@
 {-# OPTIONS_GHC -Wno-unrecognised-pragmas #-}
 
 {-# HLINT ignore "Use camelCase" #-}
-module Language.Purus.IR.Utils where
+module Language.Purus.IR.Utils (
+  WithObjects,
+  WithoutObjects,
+  IR_Decl,
+  Vars,
+  asExp,
+  viaExp,
+  viaExpM,
+  toExp,
+  fromExp,
+  deepMapMaybeBound,
+  transformTypesInExp,
+  containsBVar,
+  traverseBind,
+  mapBind,
+  foldBinds,
+  flatBinds,
+  allDeclIdentifiers,
+  traverseAlt,
+  mapAlt,
+  isBuiltinE,
+  isBuiltin,
+  isConstructorE,
+  isConstructor,
+  mkBVar,
+  unBVar,
+  allBoundVars,
+  stripSkolems,
+  stripSkolemsFromExpr,
+) where
 
 import Prelude
 
-import Bound
-import Control.Monad
+import Bound (Scope, Var (..), abstract, fromScope)
+import Control.Monad (join)
 import Data.Void (Void)
 import Language.PureScript.CoreFn.Expr (PurusType)
-import Language.PureScript.CoreFn.TypeLike
-import Language.PureScript.Names
-import Language.Purus.IR
+import Language.PureScript.CoreFn.TypeLike (TypeLike (KindOf))
+import Language.PureScript.Names (
+  Ident (Ident),
+  ModuleName (ModuleName),
+  Qualified (..),
+  QualifiedBy (ByModuleName),
+ )
+import Language.Purus.IR (
+  Alt (..),
+  BVar (..),
+  BindE (..),
+  Exp (..),
+  FVar (..),
+  Lit (CharL, IntL, ObjectL, StringL),
+  Pat (ConP, LitP, VarP),
+  XAccessor,
+  XObjectLiteral,
+  XObjectUpdate,
+ )
 import Prettyprinter (Pretty)
 
 import Data.Set (Set)
@@ -27,8 +72,6 @@ import Data.Text qualified as T
 import Data.Maybe (fromMaybe, mapMaybe)
 
 import Data.Char (isUpper)
-
-import Data.Bifunctor (Bifunctor (first))
 
 import Data.Functor.Identity (Identity (..))
 
@@ -100,49 +143,6 @@ toExp = fmap join . fromScope
 
 fromExp :: Exp x t (Vars t) -> Scope (BVar t) (Exp x t) (Vars t)
 fromExp = abstract $ \case B bv -> Just bv; _ -> Nothing
-
--- something is wrong with my attempts to write a plated instance and I dunno how to fix it,
--- but specific traverals seem to work, so this should work?
-transformExp ::
-  forall x t f.
-  (Monad f) =>
-  (Exp x t (Vars t) -> f (Exp x t (Vars t))) ->
-  Exp x t (Vars t) ->
-  f (Exp x t (Vars t))
-transformExp f = \case
-  LamE bv e -> LamE bv <$> transformScope e
-  CaseE t e alts ->
-    let goAlt :: Alt x t (Exp x t) (Vars t) -> f (Alt x t (Exp x t) (Vars t))
-        goAlt (UnguardedAlt pats scoped) = UnguardedAlt pats <$> transformScope scoped
-     in CaseE t <$> runTransform e <*> traverse goAlt alts
-  LetE decls scoped ->
-    let goDecls :: BindE t (Exp x t) (Vars t) -> f (BindE t (Exp x t) (Vars t))
-        goDecls = \case
-          NonRecursive ident bvix expr ->
-            NonRecursive ident bvix <$> transformScope expr
-          Recursive xs -> Recursive <$> traverse (\(i, x) -> (i,) <$> transformScope x) xs
-     in LetE <$> traverse goDecls decls <*> transformScope scoped
-  AppE e1 e2 -> AppE <$> runTransform e1 <*> runTransform e2
-  AccessorE x t pss e -> AccessorE x t pss <$> runTransform e
-  ObjectUpdateE x t e cf fs ->
-    (\e' fs' -> ObjectUpdateE x t e' cf fs')
-      <$> runTransform e
-      <*> traverse (\(nm, expr) -> (nm,) <$> runTransform expr) fs
-  LitE t lit -> LitE t <$> traverse runTransform lit
-  V a -> pure (V a)
-  TyAbs bv e -> TyAbs bv <$> runTransform e
-  TyInstE t e -> TyInstE t <$> runTransform e
-  where
-    runTransform :: Exp x t (Vars t) -> f (Exp x t (Vars t))
-    runTransform x = transformExp f x >>= f
-
-    transformScope ::
-      Scope (BVar t) (Exp x t) (Vars t) ->
-      f (Scope (BVar t) (Exp x t) (Vars t))
-    transformScope scoped = do
-      let unscoped = toExp scoped
-      transformed <- runTransform unscoped
-      pure $ toScope (F <$> transformed)
 
 {- | Does not touch Var *binders*.
 
@@ -254,11 +254,6 @@ transformTypesInExp f = \case
 
     go = transformTypesInExp f
 
-stripTypeAbstractions :: Exp x t a -> ([(Int, Ident, KindOf t)], Exp x t a)
-stripTypeAbstractions = \case
-  TyAbs (BVar i k nm) inner -> first ((i, nm, k) :) $ stripTypeAbstractions inner
-  other -> ([], other)
-
 containsBVar :: Ident -> Int -> Scope (BVar t) (Exp x t) (Vars t) -> Bool
 containsBVar idnt indx expr =
   any
@@ -319,34 +314,8 @@ foldBinds f e (x : xs) = case x of
     let e' = foldl' (\acc (nm, b) -> f acc nm b) e recBinds
      in foldBinds f e' xs
 
-foldMBindsWith ::
-  forall (m :: * -> *) x t r.
-  (Monad m) =>
-  (r -> Ident -> Int -> Scope (BVar t) (Exp x t) (Vars t) -> m r) ->
-  (r -> [((Ident, Int), Scope (BVar t) (Exp x t) (Vars t))] -> m r) ->
-  r ->
-  [BindE t (Exp x t) (Vars t)] ->
-  m r
-foldMBindsWith _ _ e [] = pure e
-foldMBindsWith fNonRec fRec e (x : xs) = case x of
-  NonRecursive nm i b -> fNonRec e nm i b >>= \e' -> foldMBindsWith fNonRec fRec e' xs
-  Recursive recBinds -> fRec e recBinds >>= \e' -> foldMBindsWith fNonRec fRec e' xs
-
 flatBinds :: [BindE t (Exp x t) (Vars t)] -> Map (Ident, Int) (Scope (BVar t) (Exp x t) (Vars t))
 flatBinds = foldBinds (\acc nm scoped -> M.insert nm scoped acc) M.empty
-
-{- Get a singleton set of the identifier of a BindE if non-recursive, or
-   a set of the identifiers of each decl the rec group if recursive
--}
-bindIdIxs :: BindE t (Exp x t) (Vars t) -> Set (Ident, Int)
-bindIdIxs = \case
-  NonRecursive i x _ -> S.singleton (i, x)
-  Recursive xs -> S.fromList $ fst <$> xs
-
-bindBodies :: BindE t (Exp x t) (Vars t) -> [Scope (BVar t) (Exp x t) (Vars t)]
-bindBodies = \case
-  NonRecursive _ _ b -> [b]
-  Recursive xs -> snd <$> xs
 
 -- N.B. we're using Set instead of [] mainly to ensure that everything has the same order
 allDeclIdentifiers :: forall x t. (Ord t) => [BindE t (Exp x t) (Vars t)] -> Set (Ident, Int)
@@ -356,10 +325,6 @@ allDeclIdentifiers (b : rest) = case b of
   Recursive xs ->
     let rest' = allDeclIdentifiers rest
      in foldl' (\acc ((nm, indx), _) -> S.insert (nm, indx) acc) rest' xs
-
-isSelfRecursiveNR :: BindE t (Exp x t) (Vars t) -> Bool
-isSelfRecursiveNR (NonRecursive ident indx body) = containsBVar ident indx body
-isSelfRecursiveNR _ = False
 
 {-
   *********************
@@ -409,9 +374,6 @@ isConstructorE = \case
 isConstructor :: Qualified Ident -> Bool
 isConstructor (Qualified _ (Ident nm)) = isUpper (T.head nm)
 isConstructor _ = False
-
-inlineable :: Qualified Ident -> Bool
-inlineable nm = not (isConstructor nm || isBuiltin nm)
 
 mkBVar :: Ident -> Int -> t -> BVar t
 mkBVar idnt indx ty = BVar indx ty idnt

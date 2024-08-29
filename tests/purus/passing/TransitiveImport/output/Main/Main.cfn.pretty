@@ -26,9 +26,9 @@ Datatypes:
 
 Declarations: 
 ------------------------------
-main :: Test.Unit
+main :: Test.Uneet
 main = 
   (middle: forall (a :: Prim.Type). ((Test.TestCls$Dict ((a :: Prim.Type))) ->
   (((a :: Prim.Type) -> ((a :: Prim.Type))))))
-  (testClsUnit: (Test.TestCls$Dict (Test.Unit)))
-  (unit: Test.Unit)
+  (testClsUneet: (Test.TestCls$Dict (Test.Uneet)))
+  (uneet: Test.Uneet)

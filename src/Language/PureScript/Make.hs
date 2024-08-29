@@ -49,14 +49,19 @@ import Language.PureScript.Renamer (renameInModule)
 import Language.PureScript.Sugar (Env, collapseBindingGroups, createBindingGroups, desugar, desugarCaseGuards, externsEnv, primEnv)
 import Language.PureScript.TypeChecker (CheckState (..), emptyCheckState, typeCheckModule)
 import Language.Purus.Pretty qualified as CFT
-import Prettyprinter.Util (putDocW)
+import Language.Purus.Prim.Ledger
+
 import System.Directory (doesFileExist)
 import System.FilePath (replaceExtension)
 
 -- Temporary
 import Debug.Trace (traceM)
-import Language.PureScript.CoreFn.Desugar.Utils (pTrace)
 import Language.Purus.Pretty (ppType)
+
+initEnvironmentPurus :: Environment
+initEnvironmentPurus = case initEnvironment of
+  Environment nms tys dCons tSyns tcDicts tcs ->
+    Environment nms (M.fromList ledgerTypes <> tys) (dCons <> ledgerConstructorsEnv) tSyns tcDicts tcs
 
 {- | Rebuild a single module.
 
@@ -94,7 +99,7 @@ rebuildModuleWithIndex ::
   m ExternsFile
 rebuildModuleWithIndex MakeActions {..} exEnv externs m@(Module _ _ moduleName _ _) moduleIndex = do
   progress $ CompilingModule moduleName moduleIndex
-  let env = foldl' (flip applyExternsFileToEnvironment) initEnvironment externs
+  let env = foldl' (flip applyExternsFileToEnvironment) initEnvironmentPurus externs
       withPrim = importPrim m
   lint withPrim
 

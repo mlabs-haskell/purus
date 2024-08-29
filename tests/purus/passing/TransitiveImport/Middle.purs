@@ -1,9 +1,9 @@
-module Middle (module Test, unit, middle) where
+module Middle (module Test, uneet, middle) where
 
 import Test
 
-unit :: Unit
-unit = Unit
+uneet :: Uneet
+uneet = Uneet
 
 middle :: forall (a :: Type). TestCls a => a -> a
 middle = test

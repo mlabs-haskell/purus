@@ -1,13 +1,22 @@
+{- Generates the PIR Datatype declarations which must be let- bound in order for
+   our modules to compile.
+-}
 {-# LANGUAGE GADTs #-}
 {-# LANGUAGE PolyKinds #-}
 {-# OPTIONS_GHC -Wno-orphans #-}
 
-module Language.Purus.Pipeline.GenerateDatatypes where
+module Language.Purus.Pipeline.GenerateDatatypes (
+  generateDatatypes,
+  toPIRType,
+  mkKind,
+) where
 
 import Prelude
 
 import Data.Map qualified as M
+
 import Data.Set qualified as S
+
 import Data.Text (Text)
 import Data.Text qualified as T
 
@@ -43,14 +52,10 @@ import Language.PureScript.Types (
 
 import Language.Purus.Debug (doTraceM)
 import Language.Purus.IR (
-  BVar,
-  Exp (..),
-  FVar,
   Ty (..),
   ppTy,
  )
 import Language.Purus.IR qualified as IR
-import Language.Purus.IR.Utils (WithoutObjects)
 import Language.Purus.Pipeline.GenerateDatatypes.Utils (
   bindTV,
   foldr1Err,
@@ -76,7 +81,6 @@ import PlutusIR (
  )
 import PlutusIR qualified as PIR
 
-import Bound.Var (Var)
 import Control.Lens (
   over,
   to,
@@ -86,14 +90,29 @@ import Control.Monad.Except (
   MonadError (throwError),
  )
 
+{-  Generates PIR datatypes declarations for all of the datatypes in scope
+    in the Main module we are compiling and adds them to the monadic context for use
+    by the subsequent passes.
+
+    We are using PIR's datatype encodings, so we need to do this to ensure that
+    all possibly-used datatypes are available for case desugaring (which references
+    the destructors for those datatypes), and so that CompileToPIR can let- bind them
+    in the outermost scope of the main expression.
+
+    This does strictly more work than it needs to, since we could get away with generating
+    only declarations for the types directly mentioned in the expression and the recursive
+    dependencies of those types. However, PIR removes unused datatype declarations (seemingly
+    with 100% reliability?), so being lazy here doesn't have that much of an impact
+    (unless we're reading our traces -_-)
+
+-}
 generateDatatypes ::
   Datatypes IR.Kind Ty ->
-  Exp WithoutObjects Ty (Var (BVar Ty) (FVar Ty)) ->
   PlutusContext ()
-generateDatatypes datatypes main = mkPIRDatatypes datatypes (allTypeConstructors main)
+generateDatatypes datatypes = mkPIRDatatypes datatypes allTypeConstructors
   where
-    allTypeConstructors :: Exp WithoutObjects Ty (Var (BVar Ty) (FVar Ty)) -> S.Set (Qualified (ProperName 'TypeName))
-    allTypeConstructors _ = datatypes ^. tyDict . to M.keys . to S.fromList
+    allTypeConstructors :: S.Set (Qualified (ProperName 'TypeName))
+    allTypeConstructors = datatypes ^. tyDict . to M.keys . to S.fromList
 
 mkPIRDatatypes ::
   Datatypes IR.Kind Ty ->
@@ -205,19 +224,10 @@ handlePrimTy = \case
   C.String -> pure $ TyBuiltin () (PLC.SomeTypeIn PLC.DefaultUniString)
   C.Char -> pure $ TyBuiltin () (PLC.SomeTypeIn PLC.DefaultUniInteger)
   C.Int -> pure $ TyBuiltin () (PLC.SomeTypeIn PLC.DefaultUniInteger)
+  C.Unit -> pure $ TyBuiltin () (PLC.SomeTypeIn PLC.DefaultUniUnit)
   _ -> Nothing
 
 mkKind :: IR.Kind -> PIR.Kind ()
 mkKind = \case
   IR.KindType -> PIR.Type ()
   IR.KindArrow k1 k2 -> PIR.KindArrow () (mkKind k1) (mkKind k2)
-
-sourceTypeToKind :: SourceType -> Either String (PIR.Kind ())
-sourceTypeToKind _t =
-  doTraceM "sourceTypeToKind" (prettyStr _t) >> case _t of
-    TypeConstructor _ C.Type -> pure $ PIR.Type ()
-    t1 :-> t2 -> do
-      t1' <- sourceTypeToKind t1
-      t2' <- sourceTypeToKind t2
-      pure $ PIR.KindArrow () t1' t2'
-    other -> Left $ "Error: PureScript type '" <> prettyTypeStr other <> " is not a valid Plutus Kind"

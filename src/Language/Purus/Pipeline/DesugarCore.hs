@@ -14,20 +14,17 @@ import Data.Text qualified as T
 
 import Data.Char (isUpper)
 import Data.Foldable (Foldable (foldl'), foldrM, traverse_)
-import Data.List (find, sort, sortOn)
-import Data.Maybe (fromJust, mapMaybe)
+import Data.List (sort, sortOn)
+import Data.Maybe (fromJust, isJust)
 
-import Data.Bifunctor (Bifunctor (first))
+import Data.Bifunctor (Bifunctor (first, second))
 
-import Control.Monad.Except (MonadError (..), liftEither)
-import Control.Monad.Reader
-import Control.Monad.State (gets)
+import Control.Monad.Reader (MonadReader (local), join, unless)
+import Control.Monad.State (get, modify)
 
-import Language.PureScript (runIdent)
 import Language.PureScript.AST.Literals (Literal (..))
-import Language.PureScript.AST.SourcePos (spanStart)
 import Language.PureScript.Constants.Prim qualified as C
-import Language.PureScript.CoreFn.Ann (Ann, annSS, nullAnn)
+import Language.PureScript.CoreFn.Ann (Ann, nullAnn)
 import Language.PureScript.CoreFn.Binders (Binder (..))
 import Language.PureScript.CoreFn.Desugar.Utils (properToIdent, showIdent', wrapTrace)
 import Language.PureScript.CoreFn.Expr (
@@ -35,9 +32,8 @@ import Language.PureScript.CoreFn.Expr (
   CaseAlternative (CaseAlternative),
   Expr (..),
   PurusType,
-  _Var,
  )
-import Language.PureScript.CoreFn.Module (Module (..), Datatypes)
+import Language.PureScript.CoreFn.Module (Datatypes, Module (..))
 import Language.PureScript.CoreFn.TypeLike (TypeLike (..))
 import Language.PureScript.CoreFn.Utils (exprType)
 import Language.PureScript.Environment (mkCtorTy, mkTupleTyName)
@@ -46,9 +42,10 @@ import Language.PureScript.Names (
   ModuleName (ModuleName),
   ProperName (ProperName),
   Qualified (Qualified),
-  QualifiedBy (ByModuleName, BySourcePos),
+  QualifiedBy (ByModuleName),
   coerceProperName,
   disqualify,
+  runIdent,
  )
 import Language.PureScript.Types (Type (..))
 
@@ -67,60 +64,89 @@ import Language.Purus.IR (
   Lit (CharL, IntL, ObjectL, StringL),
   Pat (..),
   expTy,
-  expTy',
  )
-import Language.Purus.IR.Utils
-import Language.Purus.Pipeline.Monad
+import Language.Purus.IR.Utils (
+  IR_Decl,
+  Vars,
+  WithObjects,
+  foldBinds,
+  mapBind,
+  viaExp,
+ )
+import Language.Purus.Pipeline.Monad (
+  DesugarContext (DesugarContext),
+  DesugarCore,
+  MonadCounter (next),
+  globalScope,
+  localScope,
+ )
 import Language.Purus.Pretty (prettyStr, prettyTypeStr, renderExprStr)
 import Language.Purus.Pretty.Common qualified as PC
 
 import Bound (Var (..), abstract)
-import Bound.Scope (Scope, fromScope)
+import Bound.Scope (fromScope)
 
 import Control.Lens (
+  At (at),
   Ixed (ix),
-  cosmos,
-  preview,
-  to,
+  folded,
+  over,
+  set,
   transform,
+  view,
   (.=),
-  (^..),
+  (^?),
  )
 
+import Debug.Trace (traceM)
 import Prettyprinter (Pretty (..))
 
-freshly :: DesugarCore a -> DesugarCore a
-freshly act = local (const M.empty) act
+{- This runs the computation in an empty *local* context. The globals (i.e. top level declarations and
+   imports are still in scope.)
 
-bind :: Ident -> DesugarCore Int
-bind ident = do
+   In general, we ignore locally-scoped top-level declarations until we've desugared
+   everything to core, then we abstract those variables after we've assigned enough
+   indices.
+-}
+freshly :: DesugarCore a -> DesugarCore a
+freshly act = local (set localScope M.empty) act
+
+{- Binds a local variable.
+-}
+bindLocal :: Ident -> DesugarCore Int
+bindLocal ident = do
   i <- next
-  ix ident .= i
-  doTraceM "bind" ("IDENT: " <> T.unpack (runIdent ident) <> "\n\nINDEX: " <> prettyStr i)
+  modify $ over localScope (M.insert ident i) -- localScope . at ident .= i
+  s <- view localScope
+  doTraceM "bind" ("IDENT: " <> T.unpack (runIdent ident) <> "\n\nINDEX: " <> prettyStr i <> "\n\nSCOPE:\n" <> prettyStr (M.toList s))
   pure i
 
-forceBind :: Ident -> Int -> DesugarCore ()
-forceBind i indx = ix i .= indx
+{- Binds a "global" variable to the specific index.
 
-getVarIx :: Ident -> DesugarCore Int
-getVarIx ident =
-  gets (preview $ ix ident) >>= \case
-    Nothing -> throwError $ "getVarIx: Free variable " <> showIdent' ident
-    Just indx -> pure indx
+   "Global" in the context of this module means: An identifier that corresponds to
+   a top-level declaration in the module being compiled or one of its dependencies.
+-}
+forceBindGlobal :: ModuleName -> Ident -> Int -> DesugarCore ()
+forceBindGlobal mn i indx = do
+  DesugarContext globals _ <- get
+  let modMapExists = isJust (M.lookup mn globals)
+  unless modMapExists $
+    modify $
+      over globalScope (M.insert mn M.empty)
+  modify $ over (globalScope . ix mn) (M.insert i indx)
 
-isBuiltinOrPrim :: Exp x t (Vars t) -> Bool
-isBuiltinOrPrim = \case
+{- -}
+isCtorOrPrim :: Exp x t (Vars t) -> Bool
+isCtorOrPrim = \case
   V (F (FVar _ (Qualified (ByModuleName (ModuleName "Prim")) _))) -> True
   V (F (FVar _ (Qualified _ (Ident i)))) -> isUpper (T.head i)
   _ -> False
 
 {- We don't bind anything b/c the type level isn't `Bound` -}
 tyAbs :: forall x t. Text -> KindOf t -> Exp x t (Vars t) -> DesugarCore (Exp x t (Vars t))
-tyAbs nm k exp'
-  | not (isBuiltinOrPrim exp') = do
-      u <- next
-      pure $ TyAbs (BVar u k (Ident nm)) exp'
-  | otherwise = pure exp'
+tyAbs nm k exp' = do
+  u <- next
+  pure $ TyAbs (BVar u k (Ident nm)) exp'
 
 tyAbsMany :: forall x t. [(Text, KindOf t)] -> Exp x t (Vars t) -> DesugarCore (Exp x t (Vars t))
 tyAbsMany vars expr = foldrM (uncurry tyAbs) expr vars
@@ -148,16 +174,23 @@ tyAbsMany vars expr = foldrM (uncurry tyAbs) expr vars
         Note that variables which represent the identifiers of imported declarations do not fall into
         one of those categories! We have to bind those declarations *here*, so we need to collect those
         declarations from this modules dependencies and pass them as an argument here.
-
-        FIXME: We don't have a linker yet so in `desugarCoreModule` we just pass an empty list.
 -}
 
-desugarCoreModule :: Datatypes PurusType PurusType -> [IR_Decl] -> Module (Bind Ann) PurusType PurusType Ann -> DesugarCore (Module IR_Decl PurusType PurusType Ann)
+desugarCoreModule ::
+  Datatypes PurusType PurusType ->
+  [IR_Decl] ->
+  Module (Bind Ann) PurusType PurusType Ann ->
+  DesugarCore (Module IR_Decl PurusType PurusType Ann)
 desugarCoreModule inScope imports Module {..} = do
+  globalScope . at moduleName .= Just M.empty
   decls' <- traverse (freshly . desugarCoreDecl . doEtaReduce) moduleDecls
   decls <- bindLocalTopLevelDeclarations decls'
   let allDatatypes = moduleDataTypes <> inScope
-  pure $ Module {moduleDecls = decls, moduleDataTypes = allDatatypes, ..}
+  s <- get
+  traceM $ "DesugarContext for " <> prettyStr moduleName <> "\n" <> prettyStr s
+  let result = Module {moduleDecls = decls <> imports, moduleDataTypes = allDatatypes, ..}
+  -- traceM $ "Desugar Coure output for " <> prettyStr moduleName <> "\n" <> docString (prettyModule result)
+  pure result
   where
     doEtaReduce = \case
       NonRec a nm body -> NonRec a nm (runEtaReduce body)
@@ -167,22 +200,23 @@ desugarCoreModule inScope imports Module {..} = do
       [BindE PurusType (Exp WithObjects PurusType) (Vars PurusType)] ->
       DesugarCore [BindE PurusType (Exp WithObjects PurusType) (Vars PurusType)]
     bindLocalTopLevelDeclarations ds = do
-      let topLevelIdents = foldBinds (\acc nm _ -> nm : acc) [] (ds <> imports)
-      traverse_ (uncurry forceBind) topLevelIdents -- IDK if this is really necessary?
-      s <- ask
+      let topLevelIdents = foldBinds (\acc nm _ -> nm : acc) [] ds
+      traverse_ (uncurry (forceBindGlobal moduleName)) topLevelIdents
+      s <- get
       doTraceM "bindLocalTopLevelDeclarations" $
         prettify
-          [ "Input (Module Decls):\n" <> prettify (prettyStr <$> ds)
-          , "Top level binds:\n" <> prettyStr (M.toList s)
-          , "Top level idents:\n" <> prettify (prettyStr <$> topLevelIdents)
+          [ -- "Input (Module Decls):\n" <> prettify (prettyStr <$> ds)
+            "Top level idents:\n" <> prettify (prettyStr <$> topLevelIdents)
+          , "State:\n" <> prettyStr s
           ]
       -- this is only safe because every locally-scoped (i.e. inside a decl) variable should be
       -- bound by this point
       let upd = \case
             V (B bv) -> V $ B bv
-            V (F fv@(FVar t (Qualified _ ident))) -> case M.lookup ident s of
-              Nothing -> V $ F fv
-              Just indx -> V $ B $ BVar indx t ident
+            V (F fv@(FVar t (Qualified (ByModuleName mn) ident))) ->
+              case s ^? globalScope . at mn . folded . at ident . folded of
+                Just indx -> V $ B $ BVar indx t ident
+                Nothing -> V $ F fv
             other -> other
       pure $ mapBind (const $ viaExp (transform upd)) <$> ds
 
@@ -191,12 +225,10 @@ desugarCoreDecl ::
   DesugarCore (BindE PurusType (Exp WithObjects PurusType) (Vars PurusType))
 desugarCoreDecl = \case
   NonRec _ ident expr -> wrapTrace ("desugarCoreDecl: " <> showIdent' ident) $ do
-    bvix <- bind ident
-    s <- ask
+    bvix <- bindLocal ident
+    s <- view localScope
     let abstr = abstract (matchLet s)
     desugared <- desugarCore expr
-    -- let boundVars = freeTypeVariables (expTy id desugared)
-    -- scoped <-  abstr  <$> tyAbsMany boundVars desugared
     let scoped = abstr desugared
     pure $ NonRecursive ident bvix scoped
   Rec xs -> do
@@ -214,8 +246,8 @@ desugarCoreDecl = \case
             )
             xs
     doTraceM "desugarCoreDecl" inMsg
-    first_pass <- traverse (\((_, ident), e) -> bind ident >>= \u -> pure ((ident, u), e)) xs
-    s <- ask
+    first_pass <- traverse (\((_, ident), e) -> bindLocal ident >>= \u -> pure ((ident, u), e)) xs
+    s <- view localScope
     let abstr = abstract (matchLet s)
     second_pass <-
       traverse
@@ -264,8 +296,8 @@ desugarCore e = do
 desugarCore' :: Expr Ann -> DesugarCore (Exp WithObjects PurusType (Vars PurusType))
 desugarCore' (Literal _ann ty lit) = LitE ty <$> desugarLit lit
 desugarCore' lam@(Abs _ann ty ident expr) = do
-  bvIx <- bind ident
-  s <- ask
+  bvIx <- bindLocal ident
+  s <- view localScope
   expr' <- desugarCore' expr
   let !ty' = functionArgumentIfFunction $ snd (stripQuantifiers ty)
       (vars', _) = stripQuantifiers ty
@@ -276,10 +308,13 @@ desugarCore' lam@(Abs _ann ty ident expr) = do
         prettify
           [ "ANNOTATED LAM TY:\n" <> prettyStr ty
           , "BOUND VAR TY:\n" <> prettyStr ty'
+          , "BOUND VAR INDEX: " <> prettyStr bvIx
+          , "BOUND VAR IDENT: " <> prettyStr ident
           , "BODY TY:\n" <> prettyStr (exprType expr)
           , "INPUT EXPR:\n" <> renderExprStr lam
           , "RESULT EXPR:\n" <> prettyStr result
           , "RESULT EXPR TY:\n" <> prettyStr (expTy id result)
+          , "LOCAL SCOPE:\n" <> prettyStr (M.toList s)
           ]
   doTraceM "desugarCoreLam" msg
   pure result
@@ -290,10 +325,8 @@ desugarCore' appE@(App {}) = case fromJust $ PC.analyzeApp appE of
     pure $ foldl' AppE f' args'
 desugarCore' (Var _ann ty qi) = pure $ V . F $ FVar ty qi
 desugarCore' (Let _ann binds cont) = do
-  -- afaict their mutual recursion sorter doesn't work properly in let exprs (maybe it's implicit that they're all mutually recursive?)
-  -- traverse_ bindAllNames binds
   bindEs <- traverse rebindInScope =<< traverse desugarCoreDecl binds
-  s <- ask
+  s <- view localScope
   cont' <- desugarCore cont
   let abstr = abstract (matchLet s)
   pure $ LetE bindEs $ abstr cont'
@@ -318,27 +351,27 @@ rebindInScope ::
   BindE PurusType (Exp WithObjects PurusType) (Vars PurusType) ->
   DesugarCore (BindE PurusType (Exp WithObjects PurusType) (Vars PurusType))
 rebindInScope b = do
-  s <- ask
+  s <- view localScope
   let f scoped = abstract (matchLet s) . fmap join . fromScope $ scoped
   case b of
     NonRecursive i x scoped -> pure $ NonRecursive i x (f scoped)
-    Recursive xs -> pure . Recursive $ (\(nm, body) -> (nm, f body)) <$> xs
+    Recursive xs -> pure . Recursive $ second f <$> xs
 desugarAlt ::
   CaseAlternative Ann ->
   DesugarCore (Alt WithObjects PurusType (Exp WithObjects PurusType) (Vars PurusType))
 desugarAlt (CaseAlternative [binder] result) = case result of
   Left exs ->
-    throwError $
+    error $
       "internal error: `desugarAlt` guarded alt not expected at this stage: " <> show exs
   Right ex -> do
     pat <- toPat binder
-    s <- ask
-    let abstrE = abstract (matchLet s)
+    s <- view localScope
     re' <- desugarCore ex
+    let abstrE = abstract (matchLet s)
     pure $ UnguardedAlt pat (abstrE re')
 desugarAlt (CaseAlternative binders result) = do
   pats <- traverse toPat binders
-  s <- ask
+  s <- view localScope -- NOTE: Maybe this should be moved into the case block?
   let abstrE = abstract (matchLet s)
       n = length binders
       tupTyName = mkTupleTyName n
@@ -346,7 +379,7 @@ desugarAlt (CaseAlternative binders result) = do
       pat = ConP tupTyName tupCtorName pats
   case result of
     Left exs -> do
-      throwError $ "internal error: `desugarAlt` guarded alt not expected at this stage: " <> show exs
+      error $ "internal error: `desugarAlt` guarded alt not expected at this stage: " <> show exs
     Right ex -> do
       re' <- desugarCore ex
       pure $ UnguardedAlt pat (abstrE re')
@@ -355,7 +388,7 @@ toPat :: Binder ann -> DesugarCore (Pat x PurusType (Exp x ty) (Vars ty))
 toPat = \case
   NullBinder _ -> pure WildP
   VarBinder _ i ty -> do
-    n <- bind i
+    n <- bindLocal i
     pure $ VarP i n ty
   ConstructorBinder _ tn cn bs -> ConP tn cn <$> traverse toPat bs
   NamedBinder _ nm _ ->
@@ -379,65 +412,6 @@ toPat = \case
           tupTyName = mkTupleTyName len
           tupCtorName = coerceProperName <$> tupTyName
       ConP tupTyName tupCtorName <$> traverse (toPat . snd) fs
-
-getBoundVar :: forall ann. (Show ann) => Either [(Expr ann, Expr ann)] (Expr ann) -> Binder ann -> [Vars PurusType]
-getBoundVar body binder = case binder of
-  ConstructorBinder _ _ _ binders -> concatMap (getBoundVar body) binders
-  LiteralBinder _ (ArrayLiteral arrBinders) -> concatMap (getBoundVar body) arrBinders
-  LiteralBinder _ (ObjectLiteral objBinders) -> concatMap (getBoundVar body . snd) objBinders
-  VarBinder _ ident _ -> case body of
-    Right expr -> case findBoundVar ident expr of
-      Nothing -> [] -- probably should trace or warn at least
-      Just (ty, qi) -> [F $ FVar ty qi]
-    Left fml -> do
-      let allResults = concatMap (\(x, y) -> [x, y]) fml
-          matchingVar = mapMaybe (findBoundVar ident) allResults
-      case matchingVar of
-        ((ty, qi) : _) -> [F $ FVar ty qi]
-        _ -> []
-  _ -> []
-
-findBoundVar :: forall ann. Ident -> Expr ann -> Maybe (PurusType, Qualified Ident)
-findBoundVar nm ex = find (goFind . snd) (allVars ex)
-  where
-    goFind = \case
-      Qualified (ByModuleName _) _ -> False
-      Qualified (BySourcePos _) nm' -> nm == nm'
-
-allVars :: forall ann. Expr ann -> [(PurusType, Qualified Ident)]
-allVars ex = ex ^.. cosmos . _Var . to (\(_, b, c) -> (b, c))
-
-qualifySS :: Ann -> Ident -> Qualified Ident
-qualifySS ann i = Qualified (BySourcePos $ spanStart (annSS ann)) i
-
--- Stolen from DesugarObjects
-desugarBinds :: [Bind Ann] -> DesugarCore [[((Vars PurusType, Int), Scope (BVar PurusType) (Exp WithObjects PurusType) (Vars PurusType))]]
-desugarBinds [] = pure []
-desugarBinds (b : bs) = case b of
-  NonRec _ann ident expr -> do
-    bvIx <- bind ident
-    let qualifiedIdent = qualifySS _ann ident
-    e' <- desugarCore expr
-    let scoped = abstract (matchLet $ M.singleton ident bvIx) e'
-    rest <- desugarBinds bs
-    pure $ [((F $ FVar (exprType expr) qualifiedIdent, bvIx), scoped)] : rest
-  -- TODO: Fix this to preserve recursivity (requires modifying the *LET* ctor of Exp)
-  Rec xs -> do
-    traverse_ (\((_, nm), _) -> bind nm) xs
-    recRes <- traverse handleRecBind xs
-    rest <- desugarBinds bs
-    pure $ recRes : rest
-  where
-    handleRecBind ::
-      ((Ann, Ident), Expr Ann) ->
-      DesugarCore ((Vars PurusType, Int), Scope (BVar PurusType) (Exp WithObjects PurusType) (Vars PurusType))
-    handleRecBind ((ann, ident), expr) = do
-      u <- getVarIx ident
-      s <- ask
-      expr' <- desugarCore expr
-      let scoped = abstract (matchLet s) expr'
-          fv = F $ FVar (expTy' id scoped) (qualifySS ann ident)
-      pure ((fv, u), scoped)
 
 desugarLit :: Literal (Expr Ann) -> DesugarCore (Lit WithObjects (Exp WithObjects PurusType (Vars PurusType)))
 desugarLit (NumericLiteral (Left int)) = pure $ IntL int
@@ -494,20 +468,6 @@ matchLet binds fv@(F (FVar ty n')) = case result of
 -- TODO (t4ccer): Move somehwere, but cycilc imports are annoying
 instance FuncType PurusType where
   headArg = functionArgumentIfFunction
-
--- REVIEW: This *MIGHT* not be right. I'm not 1000% sure what the PS criteria for a mutually rec group are
---         First arg threads the FVars that correspond to the already-processed binds
---         through the rest of the conversion. I think that's right - earlier bindings
---         should be available to later bindings
-assembleBindEs :: (Eq ty) => [[((FVar ty, Int), Scope (BVar ty) (Exp x ty) (FVar ty))]] -> DesugarCore [BindE ty (Exp x ty) (FVar ty)]
-assembleBindEs [] = pure []
-assembleBindEs ([] : rest) = assembleBindEs rest -- shouldn't happen but w/e
-assembleBindEs ([((FVar _tx idnt, bix), e)] : rest) = do
-  (NonRecursive (disqualify idnt) bix e :) <$> assembleBindEs rest
-assembleBindEs (xsRec : rest) = do
-  let recBinds = flip map xsRec $ \((FVar _tx idnt, bvix), e) -> ((disqualify idnt, bvix), e)
-  rest' <- assembleBindEs rest
-  pure $ Recursive recBinds : rest'
 
 runEtaReduce :: Expr ann -> Expr ann
 runEtaReduce = transform etaReduce

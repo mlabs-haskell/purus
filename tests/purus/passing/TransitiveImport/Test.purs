@@ -1,9 +1,9 @@
 module Test  where
 
-data Unit = Unit
+data Uneet = Uneet
 
 class TestCls (a :: Type) where
   test :: a -> a
 
-instance TestCls Unit where
-  test _ = Unit
+instance TestCls Uneet where
+  test _ = Uneet
