@@ -4,7 +4,7 @@ serializeScriptContext :: ScriptContext -> BuiltinData
 serializeScriptContext (ScriptContext rec) = 
   constrData 0 (mkCons (serializeTxInfo rec.txInfo)
                   (mkCons (serializeScriptPurpose rec.purpose)
-                     (mkNilData Unit)))
+                     (mkNilData unit)))
 
 deserializeScriptContext :: BuiltinData -> ScriptContext
 deserializeScriptContext dat = 
@@ -18,13 +18,13 @@ deserializeScriptContext dat =
 serializeScriptPurpose :: ScriptPurpose -> BuiltinData
 serializeScriptPurpose sp = case sp of 
   Minting cs -> 
-    constrData 0 (mkCons (serializeCurrencySymbol cs) (mkNilData Unit))
+    constrData 0 (mkCons (serializeCurrencySymbol cs) (mkNilData unit))
   Spending tor -> 
-    constrData 1 (mkCons (serializeTxOutRef tor) (mkNilData Unit))
+    constrData 1 (mkCons (serializeTxOutRef tor) (mkNilData unit))
   Rewarding sc -> 
-    constrData 2 (mkCons (serializeStakingCredential sc) (mkNilData Unit))
+    constrData 2 (mkCons (serializeStakingCredential sc) (mkNilData unit))
   Certifying d -> 
-    constrData 3 (mkCons (serializeDCert d) (mkNilData Unit))
+    constrData 3 (mkCons (serializeDCert d) (mkNilData unit))
 
 deserializeScriptPurpose :: BuiltinData -> ScriptPurpose
 deserializeScriptPurpose dat = 
@@ -44,30 +44,30 @@ serializeDCert d = case d of
   DCertDelegRegKey sc -> 
     constrData 0 
       (mkCons (serializeStakingCredential sc)
-         (mkNilData Unit))
+         (mkNilData unit))
   DCertDelegDeRegKey sc -> 
     constrData 1 
       (mkCons (serializeStakingCredential sc)
-         (mkNilData Unit))
+         (mkNilData unit))
   DCertDelegDelegatee sc pkh -> 
     constrData 2 
       (mkCons (serializeStakingCredential sc)
          (mkCons (serializePubKeyHash pkh)
-            (mkNilData Unit)))
+            (mkNilData unit)))
   DCertPoolRegister pkh1 pkh2 -> 
     constrData 3 
       (mkCons (serializePubKeyHash pkh1)
          (mkCons (serializePubKeyHash pkh2)
-            (mkNilData Unit)))
+            (mkNilData unit)))
   DCertPoolRetire pkh i -> 
     constrData 4 
       (mkCons (serializePubKeyHash pkh)
          (mkCons (serializeInt i)
-            (mkNilData Unit)))
+            (mkNilData unit)))
   DCertGenesis -> 
-    constrData 5 (mkNilData Unit)
+    constrData 5 (mkNilData unit)
   DCertMir -> 
-    constrData 6 (mkNilData Unit)
+    constrData 6 (mkNilData unit)
 
 deserializeDCert :: BuiltinData -> DCert
 deserializeDCert dat = 
@@ -100,12 +100,12 @@ deserializeDCert dat =
 serializeStakingCredential :: StakingCredential -> BuiltinData
 serializeStakingCredential sc = case sc of 
   StakingHash c -> 
-    constrData 0 (mkCons (serializeCredential c) (mkNilData Unit))
+    constrData 0 (mkCons (serializeCredential c) (mkNilData unit))
   StakingPtr i1 i2 i3 -> 
     constrData 1 (mkCons (serializeInt i1)
                     (mkCons (serializeInt i2)
                        (mkCons (serializeInt i3)
-                          (mkNilData Unit))))
+                          (mkNilData unit))))
 
 deserializeStakingCredential :: BuiltinData -> StakingCredential
 deserializeStakingCredential dat = 
@@ -123,8 +123,8 @@ deserializeStakingCredential dat =
 
 serializeCredential :: Credential -> BuiltinData
 serializeCredential c = case c of 
-  PubKeyCredential pkh -> constrData 0 (mkCons (serializePubKeyHash pkh) (mkNilData Unit))
-  ScriptCredential sh -> constrData 1 (mkCons (serializeScriptHash sh) (mkNilData Unit))
+  PubKeyCredential pkh -> constrData 0 (mkCons (serializePubKeyHash pkh) (mkNilData unit))
+  ScriptCredential sh -> constrData 1 (mkCons (serializeScriptHash sh) (mkNilData unit))
 
 deserializeCredential :: BuiltinData -> Credential
 deserializeCredential dat = 
@@ -172,7 +172,7 @@ serializeAddress :: Address -> BuiltinData
 serializeAddress (Address rec) = 
   constrData 0 (mkCons (serializeCredential rec.credential) 
                   (mkCons (serializeMaybe serializeStakingCredential rec.stakingCredential) 
-                     (mkNilData Unit)))
+                     (mkNilData unit)))
 
 deserializeAddress :: BuiltinData -> Address
 deserializeAddress dat = 
@@ -193,7 +193,7 @@ deserializePubKeyHash dat =
 
 serializeTxId :: TxId -> BuiltinData
 serializeTxId (TxId bs) = 
-  constrData 0 (mkCons (serializeByteString bs) (mkNilData Unit))
+  constrData 0 (mkCons (serializeByteString bs) (mkNilData unit))
 
 deserializeTxId :: BuiltinData -> TxId
 deserializeTxId dat = 
@@ -215,7 +215,7 @@ serializeTxInfo (TxInfo rec) =
                                           (mkCons (serializeAssocMap serializeScriptPurpose serializeRedeemer rec.redeemers)
                                              (mkCons (serializeAssocMap serializeDatumHash serializeDatum rec.data)
                                                 (mkCons (serializeTxId rec.id)
-                                                   (mkNilData Unit)))))))))))))
+                                                   (mkNilData unit)))))))))))))
 
 deserializeTxInfo :: BuiltinData -> TxInfo
 deserializeTxInfo dat = 
@@ -263,7 +263,7 @@ serializeTxOut (TxOut rec) =
                   (mkCons (serializeValue rec.value)
                      (mkCons (serializeOutputDatum rec.outputDatum)
                         (mkCons (serializeMaybe serializeScriptHash rec.referenceScript)
-                           (mkNilData Unit)))))
+                           (mkNilData unit)))))
 
 deserializeTxOut :: BuiltinData -> TxOut
 deserializeTxOut dat = 
@@ -285,7 +285,7 @@ serializeTxOutRef :: TxOutRef -> BuiltinData
 serializeTxOutRef (TxOutRef rec) = 
   constrData 0 (mkCons (serializeTxId rec.id)
                   (mkCons (serializeInt rec.idx)
-                     (mkNilData Unit)))
+                     (mkNilData unit)))
 
 deserializeTxOutRef :: BuiltinData -> TxOutRef
 deserializeTxOutRef dat = 
@@ -299,7 +299,7 @@ serializeTxInInfo :: TxInInfo -> BuiltinData
 serializeTxInInfo (TxInInfo rec) = 
   constrData 0 (mkCons (serializeTxOutRef rec.outRef)
                   (mkCons (serializeTxOut rec.resolved)
-                     (mkNilData Unit)))
+                     (mkNilData unit)))
 
 deserializeTxInInfo :: BuiltinData -> TxInInfo
 deserializeTxInInfo dat = 
@@ -311,9 +311,9 @@ deserializeTxInInfo dat =
 
 serializeOutputDatum :: OutputDatum -> BuiltinData
 serializeOutputDatum od = case od of 
-  NoOutputDatum -> constrData 0 (mkNilData Unit)
-  OutputDatumHash h -> constrData 1 (mkCons (serializeDatumHash h) (mkNilData Unit))
-  OutputDatum d -> constrData 2 (mkCons (serializeDatum d) (mkNilData Unit))
+  NoOutputDatum -> constrData 0 (mkNilData unit)
+  OutputDatumHash h -> constrData 1 (mkCons (serializeDatumHash h) (mkNilData unit))
+  OutputDatum d -> constrData 2 (mkCons (serializeDatum d) (mkNilData unit))
 
 deserializeOutputDatum :: BuiltinData -> OutputDatum
 deserializeOutputDatum dat = 
@@ -332,7 +332,7 @@ serializeInterval ::
 serializeInterval f (Interval rec) = 
   constrData 0 (mkCons (serializeLowerBound f rec.from) 
                   (mkCons (serializeUpperBound f rec.to)
-                     (mkNilData Unit)))
+                     (mkNilData unit)))
 
 deserializeInterval :: 
   forall (a :: Type) . (BuiltinData -> a) -> BuiltinData -> Interval a
@@ -347,9 +347,9 @@ deserializeInterval f dat =
 serializeExtended :: 
   forall (a :: Type) . (a -> BuiltinData) -> Extended a -> BuiltinData
 serializeExtended f e = case e of 
-  NegInf -> constrData 0 (mkNilData Unit)
-  Finite x -> constrData 1 (mkCons (f x) (mkNilData Unit))
-  PosInf -> constrData 2 (mkNilData Unit)
+  NegInf -> constrData 0 (mkNilData unit)
+  Finite x -> constrData 1 (mkCons (f x) (mkNilData unit))
+  PosInf -> constrData 2 (mkNilData unit)
 
 deserializeExtended :: 
   forall (a :: Type) . (BuiltinData -> a) -> BuiltinData -> Extended a
@@ -458,7 +458,7 @@ deserializeByteString = unBData
 serializeArray :: 
   forall (a :: Type) . (a -> BuiltinData) -> Array a -> BuiltinData
 serializeArray f arr = case arr of 
-  Nil -> mkNilData Unit
+  Nil -> mkNilData unit
   Cons x xs -> mkCons (f x) (serializeArray f xs)
 
 deserializeArray :: 
@@ -477,7 +477,7 @@ serializeTuple2 ::
   Tuple2 a b -> 
   BuiltinData
 serializeTuple2 fA fB (Tuple2 x y) = 
-  constrData 0 (mkCons (fA x) (mkCons (fB y) (mkNilData Unit))
+  constrData 0 (mkCons (fA x) (mkCons (fB y) (mkNilData unit))
 
 deserializeTuple2 :: 
   forall (a :: Type) (b :: Type) .
@@ -501,8 +501,8 @@ serializeMaybe ::
   Maybe a -> 
   BuiltinData
 serializeMaybe f m = case m of 
-  Nothing -> constrData 0 (mkNilData Unit)
-  Just x -> constrData 1 (mkCons (f x) (mkNilData Unit))
+  Nothing -> constrData 0 (mkNilData unit)
+  Just x -> constrData 1 (mkCons (f x) (mkNilData unit))
 
 deserializeMaybe :: 
   forall (a :: Type) . 
@@ -516,3 +516,180 @@ deserializeMaybe f dat =
        then Nothing
        else let unlisted = unListData (sndPair p)
               in Just (f (headList unlisted))
+
+maybe :: 
+  forall (a :: Type) (b :: Type) . 
+  b -> 
+  (a -> b) -> 
+  Maybe a -> 
+  b
+maybe whenNothing whenJust m = case m of 
+  Nothing -> whenNothing
+  Just x -> whenJust x
+
+fromJust :: 
+  forall (a :: Type) .
+  Maybe a -> 
+  a
+fromJust m = case m of 
+  Nothing -> error "fromJust: found Nothing"
+  Just x -> x
+
+fromMaybe :: 
+  forall (a :: Type) . 
+  a -> 
+  Maybe a -> 
+  a
+fromMaybe whenNothing m = case m of 
+  Nothing -> whenNothing
+  Just x -> x
+
+identity :: forall (a :: Type) . a -> a
+identity x = x
+
+const :: forall (a :: Type) (b :: Type) . a -> b -> b
+const _ x = x
+
+and :: Boolean -> Boolean -> Boolean
+and x y = ifThenElse x y False
+
+or :: Boolean -> Boolean -> Boolean
+or x y = ifThenElse x True y
+
+not :: Boolean -> Boolean
+not x = ifThenElse x False True
+
+xor :: Boolean -> Boolean -> Boolean
+xor x y = ifThenElse x (not y) y
+
+mapList :: 
+  forall (a :: Type) (b :: Type) . 
+  (a -> b) -> 
+  Array a ->
+  Array b
+mapList f ell = case ell of 
+  Nil -> Nil
+  Cons x xs -> Cons (f x) (mapList f xs)
+
+filterList :: 
+  forall (a :: Type) . 
+  (a -> Boolean) -> 
+  Array a -> 
+  Array a
+filterList f ell = case ell of 
+  Nil -> Nil
+  Cons x xs -> if f x
+               then Cons x (filterList f xs)
+               else filterList f xs
+
+takeList :: 
+  forall (a :: Type) . 
+  Int -> 
+  Array a -> 
+  Array a
+takeList count ell = 
+  if lessThanEqualsInteger count 0
+  then Nil
+  else case ell of 
+          Nil -> Nil
+          Cons x xs -> Cons x (takeList (subtractInteger 1) xs)
+
+dropList :: 
+  forall (a :: Type) . 
+  Int -> 
+  Array a -> 
+  Array a
+dropList count ell = 
+  if lessThanEqualsInteger count 0
+  then ell
+  else case ell of 
+           Nil -> Nil
+           Cons _ xs -> dropList (subtractInteger 1) xs
+
+zipWithList :: 
+  forall (a :: Type) (b :: Type) (c :: Type) . 
+  (a -> b -> c) -> 
+  Array a -> 
+  Array b -> 
+  Array c
+zipWithList f ell1 ell2 = case ell1 of 
+  Nil -> Nil
+  Cons x xs -> case ell2 of 
+                   Nil -> Nil
+                   Cons y ys -> Cons (f x y) (zipWithList f xs ys)
+
+appendList :: 
+  forall (a :: Type) . 
+  Array a -> 
+  Array a -> 
+  Array a
+appendList ell1 ell2 = case ell1 of 
+  Nil -> ell2
+  Cons x xs -> Cons x (appendList xs ell2)
+
+lengthList :: 
+  forall (a :: Type) . 
+  Array a -> 
+  Int
+lengthList ell = case ell of 
+  Nil -> 0
+  Cons _ xs -> addInteger 1 (lengthList xs)
+
+anyList :: 
+  forall (a :: Type) . 
+  (a -> Boolean) -> 
+  Array a -> 
+  Boolean
+anyList p ell = case ell of 
+  Nil -> False
+  Cons x xs -> if p x
+               then True
+               else anyList p xs
+
+allList ::
+  forall (a :: Type) . 
+  (a -> Boolean) -> 
+  Array a -> 
+  Boolean
+allList p ell = case ell of 
+  Nil -> True
+  Cons x xs -> if p x
+               then allList p xs
+               else False
+
+sumList :: Array Int -> Int
+sumList ell = case ell of 
+  Nil -> 0
+  Cons x xs -> addInteger x (sumList xs)
+
+productList :: Array Int -> Int
+productList ell = case ell of 
+  Nil -> 1
+  Cons x xs -> multiplyInteger x (productList xs)
+
+compose :: 
+  forall (a :: Type) (b :: Type) (c :: Type) .
+  (a -> b) -> 
+  (c -> a) -> 
+  c ->
+  a
+compose f g x = f (g x)
+
+infixr 9 compose as .
+
+apply :: 
+  forall (a :: Type) (b :: Type) . 
+  (a -> b) -> 
+  a -> 
+  b
+apply f x = f x
+
+infixr 0 apply as $
+
+flip :: 
+  forall (a :: Type) (b :: Type) (c :: Type) . 
+  (a -> b -> c) -> 
+  b ->
+  a -> 
+  c
+flip f x y = f y x
