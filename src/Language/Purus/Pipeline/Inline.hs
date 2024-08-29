@@ -47,7 +47,7 @@ import Language.PureScript.Types (
   isMonoType,
  )
 
-import Language.Purus.Debug ( doTrace, doTraceM, prettify )
+import Language.Purus.Debug (doTrace, doTraceM, prettify)
 import Language.Purus.IR (
   BVar (..),
   BindE (..),
@@ -93,7 +93,7 @@ import Language.Purus.Pipeline.Lift.Types (
   unHole,
   pattern LiftedHole,
  )
-import Language.Purus.Pipeline.Monad ( Inline, MonadCounter(next) )
+import Language.Purus.Pipeline.Monad (Inline, MonadCounter (next))
 import Language.Purus.Pretty.Common (prettyStr)
 
 import Algebra.Graph.AdjacencyMap (

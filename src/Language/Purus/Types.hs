@@ -9,13 +9,17 @@ import Data.Map qualified as M
 
 import Data.Text (Text)
 
-import Language.PureScript.Names
-    ( Ident, ProperName, ProperNameType(TypeName), Qualified )
+import Language.PureScript.Names (
+  Ident,
+  ProperName,
+  ProperNameType (TypeName),
+  Qualified,
+ )
 
 import PlutusCore qualified as PLC
 import PlutusIR qualified as PIR
 
-import Control.Lens.TH ( makeLenses )
+import Control.Lens.TH (makeLenses)
 
 type PIRDatatype =
   PIR.Datatype
@@ -28,7 +32,7 @@ type PIRType = PIR.Type PIR.TyName PLC.DefaultUni ()
 
 type PIRTerm = PIR.Term PIR.TyName PIR.Name PLC.DefaultUni PLC.DefaultFun ()
 
-type PLCTerm = PLC.Term PLC.TyName PLC.Name PLC.DefaultUni PLC.DefaultFun () 
+type PLCTerm = PLC.Term PLC.TyName PLC.Name PLC.DefaultUni PLC.DefaultFun ()
 
 data DatatypeDictionary = DatatypeDictionary
   { _pirDatatypes :: Map (Qualified (ProperName 'TypeName)) PIRDatatype

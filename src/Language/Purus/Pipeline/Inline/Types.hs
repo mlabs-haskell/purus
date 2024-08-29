@@ -2,11 +2,11 @@ module Language.Purus.Pipeline.Inline.Types where
 
 import Prelude
 
-import Language.PureScript.Names ( Ident )
+import Language.PureScript.Names (Ident)
 
-import Language.Purus.Pipeline.Lift.Types ( MonoScoped )
+import Language.Purus.Pipeline.Lift.Types (MonoScoped)
 
-import Prettyprinter ( Pretty )
+import Prettyprinter (Pretty)
 
 newtype LoopBreakerScore = LoopBreakerScore {getScore :: ((Ident, Int), Maybe Int)} deriving (Show, Eq, Ord)
 

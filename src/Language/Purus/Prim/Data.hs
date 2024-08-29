@@ -9,7 +9,7 @@
    We also create tuples here. They're directly exposed to users
    (albeit in the somewhat ugly Tuple1, Tuple2, ... form), but, more importantly,
    we need tuples (qua anonymous products) to eliminate Records (which
-   Plutus has no notion of). 
+   Plutus has no notion of).
 
 -}
 
@@ -23,7 +23,7 @@ import Data.Map qualified as M
 import Data.Text (Text)
 import Data.Text qualified as T
 
-import Language.PureScript.AST.SourcePos (pattern NullSourceAnn, SourceAnn)
+import Language.PureScript.AST.SourcePos (SourceAnn, pattern NullSourceAnn)
 import Language.PureScript.Constants.Prim qualified as C
 import Language.PureScript.CoreFn.Desugar.Utils (properToIdent)
 import Language.PureScript.CoreFn.Expr
@@ -45,11 +45,13 @@ import Language.PureScript.Names (
   Qualified (..),
   QualifiedBy (ByModuleName),
  )
-import Language.PureScript.Types (Type (..), SourceType)
+import Language.PureScript.Types (SourceType, Type (..))
 
-import Language.Purus.IR
-    ( Kind(KindType), Ty(TyVar, TyApp, TyCon) )
-import Language.Purus.Config ( maxTupleSize )
+import Language.Purus.Config (maxTupleSize)
+import Language.Purus.IR (
+  Kind (KindType),
+  Ty (TyApp, TyCon, TyVar),
+ )
 
 import Control.Lens ((<&>), (^.))
 
@@ -58,7 +60,6 @@ pattern ArrayCons = Qualified (ByModuleName C.M_Prim) (Ident "Cons")
 
 pattern ArrayNil :: Qualified Ident
 pattern ArrayNil = Qualified (ByModuleName C.M_Prim) (Ident "Nil")
-
 
 mkProdFields :: [t] -> [(Ident, t)]
 mkProdFields = map (UnusedIdent,)

@@ -32,9 +32,9 @@ import Language.PureScript.Names (
   runModuleName,
  )
 
+import Language.Purus.Eval
 import Language.Purus.IR.Utils (IR_Decl, foldBinds)
 import Language.Purus.Pipeline.CompileToPIR (compileToPIR)
-import Language.Purus.Eval
 import Language.Purus.Pipeline.DesugarCore (desugarCoreModule)
 import Language.Purus.Pipeline.DesugarObjects (
   desugarObjects,
@@ -58,7 +58,7 @@ import Language.Purus.Pipeline.Monad (
  )
 import Language.Purus.Pretty.Common (prettyStr)
 import Language.Purus.Prim.Data (primDataPS)
-import Language.Purus.Types (PIRTerm, initDatatypeDict, PLCTerm)
+import Language.Purus.Types (PIRTerm, PLCTerm, initDatatypeDict)
 import Language.Purus.Utils (
   decodeModuleIO,
   findDeclBodyWithIndex,
@@ -77,10 +77,9 @@ import Algebra.Graph.AdjacencyMap.Algorithm (topSort)
 import System.FilePath.Glob qualified as Glob
 
 import PlutusCore.Evaluation.Result (EvaluationResult)
+
 -- import Debug.Trace (traceM)
---import PlutusIR.Core.Instance.Pretty.Readable (prettyPirReadable)
-
-
+-- import PlutusIR.Core.Instance.Pretty.Readable (prettyPirReadable)
 
 {-  Compiles a main function to PIR, given its module name, dependencies, and a
     Prim module that will be compiled before anything else. (This is kind of a hack-ey shim
@@ -113,38 +112,39 @@ compile primModule orderedModules mainModuleName mainFunctionName =
     go :: CounterT (Either String) PIRTerm
     go = do
       (summedModule, dsCxt) <- runDesugarCore $ desugarCoreModules primModule orderedModules
-      let --traceBracket lbl msg = traceM ("\n" <> lbl <> "\n\n" <> msg <> "\n\n")
-          decls = moduleDecls summedModule
-          declIdentsSet = foldBinds (\acc nm _ -> S.insert nm acc) S.empty decls
-          couldn'tFindMain n =
-            "Error: Could not find a main function with the name ("
-              <> show (n :: Int)
-              <> ") '"
-              <> T.unpack (runIdent mainFunctionName)
-              <> "' in module "
-              <> T.unpack (runModuleName mainModuleName)
-              <> "\nin declarations:\n"
-              <> prettyStr (S.toList declIdentsSet)
+      let
+        -- traceBracket lbl msg = traceM ("\n" <> lbl <> "\n\n" <> msg <> "\n\n")
+        decls = moduleDecls summedModule
+        declIdentsSet = foldBinds (\acc nm _ -> S.insert nm acc) S.empty decls
+        couldn'tFindMain n =
+          "Error: Could not find a main function with the name ("
+            <> show (n :: Int)
+            <> ") '"
+            <> T.unpack (runIdent mainFunctionName)
+            <> "' in module "
+            <> T.unpack (runModuleName mainModuleName)
+            <> "\nin declarations:\n"
+            <> prettyStr (S.toList declIdentsSet)
       mainFunctionIx <- note (couldn'tFindMain 1) $ dsCxt ^? globalScope . at mainModuleName . folded . at mainFunctionName . folded
-      --traceM $ "Found main function Index: " <> show mainFunctionIx
+      -- traceM $ "Found main function Index: " <> show mainFunctionIx
       mainFunctionBody <- note (couldn'tFindMain 2) $ findDeclBodyWithIndex mainFunctionName mainFunctionIx decls
-      --traceM "Found main function body"
+      -- traceM "Found main function body"
       inlined <- runInline summedModule $ lift (mainFunctionName, mainFunctionIx) mainFunctionBody >>= inline
-      --traceBracket "Done inlining. Result:" $ prettyStr inlined
+      -- traceBracket "Done inlining. Result:" $ prettyStr inlined
       let !instantiated = applyPolyRowArgs $ instantiateTypes inlined
-      --traceBracket "Done instantiating types. Result:" $ prettyStr instantiated
+      -- traceBracket "Done instantiating types. Result:" $ prettyStr instantiated
       withoutObjects <- instantiateTypes <$> runCounter (desugarObjects instantiated)
-      --traceBracket  "Desugared objects. Result:\n" $ prettyStr withoutObjects
+      -- traceBracket  "Desugared objects. Result:\n" $ prettyStr withoutObjects
       datatypes <- runCounter $ desugarObjectsInDatatypes (moduleDataTypes summedModule)
-      --traceM "Desugared datatypes"
+      -- traceM "Desugared datatypes"
       runPlutusContext initDatatypeDict $ do
         generateDatatypes datatypes
-        --traceM "Generated PIR datatypes"
+        -- traceM "Generated PIR datatypes"
         withoutCases <- eliminateCases datatypes withoutObjects
-        --traceM "Eliminated case expressions. Compiling to PIR..."
+        -- traceM "Eliminated case expressions. Compiling to PIR..."
         compileToPIR datatypes withoutCases
-        --traceM . docString $ prettyPirReadable pirTerm
 
+-- traceM . docString $ prettyPirReadable pirTerm
 
 modulesInDependencyOrder :: [[FilePath]] -> IO [Module (Bind Ann) PurusType PurusType Ann]
 modulesInDependencyOrder (concat -> paths) = do
@@ -218,9 +218,8 @@ makeForTest main = make "tests/purus/passing/Misc" "Lib" main Nothing
 evalForTest_ :: Text -> IO ()
 evalForTest_ main = evalForTest main >>= print
 
-evalForTest :: Text -> IO (EvaluationResult PLCTerm,[Text])
+evalForTest :: Text -> IO (EvaluationResult PLCTerm, [Text])
 evalForTest main = makeForTest main >>= evaluateTerm
-
 
 -- TODO put this somewhere else
 note :: (MonadError String m) => String -> Maybe a -> m a

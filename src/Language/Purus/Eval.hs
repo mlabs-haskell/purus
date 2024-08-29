@@ -1,11 +1,11 @@
 {-# LANGUAGE TypeApplications #-}
 
 module Language.Purus.Eval (
-    compileToUPLC,
-    evaluateTerm,
-    -- temporary for GHCI testing. TODO move these to the test suite
-    passing
-  ) where
+  compileToUPLC,
+  evaluateTerm,
+  -- temporary for GHCI testing. TODO move these to the test suite
+  passing,
+) where
 
 import Prelude
 

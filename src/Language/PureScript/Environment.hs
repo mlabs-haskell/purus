@@ -30,12 +30,12 @@ import Language.PureScript.AST.SourcePos (nullSourceAnn, pattern NullSourceAnn)
 import Language.PureScript.Constants.Prim qualified as C
 import Language.PureScript.Constants.Purus qualified as PLC
 import Language.PureScript.Crash (internalError)
-import Language.PureScript.Names (Ident(..), ProperName (..), ProperNameType (..), Qualified (..), QualifiedBy (..), coerceProperName, disqualify)
+import Language.PureScript.Names (Ident (..), ProperName (..), ProperNameType (..), Qualified (..), QualifiedBy (..), coerceProperName, disqualify)
 import Language.PureScript.Roles (Role (..))
 import Language.PureScript.TypeClassDictionaries (NamedDict)
 import Language.PureScript.Types (SourceConstraint, SourceType, Type (..), TypeVarVisibility (..), eqType, freeTypeVariables, quantify, srcTypeApp, srcTypeConstructor)
 
-import Language.Purus.Config ( maxTupleSize )
+import Language.Purus.Config (maxTupleSize)
 
 -- | The @Environment@ defines all values and types which are currently in scope:
 data Environment = Environment
@@ -113,16 +113,17 @@ instance A.ToJSON FunctionalDependency where
       , "determined" .= fdDetermined
       ]
 
--- | The initial environment with only builtin PLC functions and Prim PureScript types defined
--- TODO: Move all of the purus-specific stuff out of this module,
---       reset the initEnvironment to the default, and
---       modify it at the call site (Language.PureScript.Make)
---
---       This will improve the dependency structure of the project, but also,
---       allows someone else to adapt Purus for another purpose. The pipeline up to
---       up to `GenerateDataTypes` is more-or-less backend agnostic, so
---       someone could easily use this to compile PureScript to another typed
---       functional language using the IR.
+{- | The initial environment with only builtin PLC functions and Prim PureScript types defined
+TODO: Move all of the purus-specific stuff out of this module,
+      reset the initEnvironment to the default, and
+      modify it at the call site (Language.PureScript.Make)
+
+      This will improve the dependency structure of the project, but also,
+      allows someone else to adapt Purus for another purpose. The pipeline up to
+      up to `GenerateDataTypes` is more-or-less backend agnostic, so
+      someone could easily use this to compile PureScript to another typed
+      functional language using the IR.
+-}
 initEnvironment :: Environment
 initEnvironment = Environment (builtinFunctions <> primFunctions) allPrimTypes primCtors M.empty M.empty allPrimClasses
 
@@ -489,7 +490,7 @@ primTypes =
       , (C.Int, (kindType, ExternData []))
       , (C.Boolean, (kindType, boolData))
       , (C.Partial <&> coerceProperName, (kindConstraint, ExternData []))
-      , (C.Unit, (kindType,ExternData [])) 
+      , (C.Unit, (kindType, ExternData []))
       ]
   where
     boolData =
@@ -952,7 +953,7 @@ tyByteString :: SourceType
 tyByteString = srcTypeConstructor PLC.BuiltinByteString
 
 tyUnit :: SourceType
-tyUnit = srcTypeConstructor C.Unit 
+tyUnit = srcTypeConstructor C.Unit
 
 -- just for readability
 (#@) :: Qualified Ident -> SourceType -> (Qualified Ident, SourceType)
@@ -972,7 +973,7 @@ builtinTypes =
     , (PLC.BuiltinByteString, (kindType, ExternData []))
     ]
 
-primFunctions :: M.Map (Qualified Ident) (SourceType,NameKind,NameVisibility)
+primFunctions :: M.Map (Qualified Ident) (SourceType, NameKind, NameVisibility)
 primFunctions = M.singleton (Qualified (ByModuleName C.M_Prim) (Ident "unit")) (tyUnit, Public, Defined)
 
 builtinFunctions :: M.Map (Qualified Ident) (SourceType, NameKind, NameVisibility)
@@ -993,7 +994,7 @@ builtinCxt =
     , PLC.I_modInteger #@ tyInt -:> tyInt -:> tyInt
     , PLC.I_equalsInteger #@ tyInt -:> tyInt -:> tyBoolean
     , PLC.I_lessThanInteger #@ tyInt -:> tyInt -:> tyBoolean
-    , PLC.I_lessThanEqualsInteger #@ tyInt -:> tyInt -:> tyBoolean 
+    , PLC.I_lessThanEqualsInteger #@ tyInt -:> tyInt -:> tyBoolean
     , -- ByteStrings
       PLC.I_appendByteString #@ tyByteString -:> tyByteString -:> tyByteString
     , -- \/ Check the implications of the variant semantics for this (https://github.com/IntersectMBO/plutus/blob/973e03bbccbe3b860e2c8bf70c2f49418811a6ce/plutus-core/plutus-core/src/PlutusCore/Default/Builtins.hs#L1179-L1207)
@@ -1018,11 +1019,11 @@ builtinCxt =
     , PLC.I_decodeUtf8 #@ tyByteString -:> tyString
     , -- Bool
       -- NOTE: Specializing this to "Type", which miiiight not be what we want depending on how we do the data encoding
-      PLC.I_ifThenElse #@ forallT "x" $ \x -> tyBoolean -:> x -:> x -:> x 
+      PLC.I_ifThenElse #@ forallT "x" $ \x -> tyBoolean -:> x -:> x -:> x
     , -- Unit
       PLC.I_chooseUnit #@ forallT "x" $ \x -> tyUnit -:> x -:> x
     , -- Tracing
-      PLC.I_trace #@ forallT "x" $ \x -> tyString -:> x -:> x 
+      PLC.I_trace #@ forallT "x" $ \x -> tyString -:> x -:> x
     , -- Pairs
       PLC.I_fstPair #@ forallT "a" $ \a -> forallT "b" $ \b -> tyBuiltinPair a b -:> a
     , PLC.I_sndPair #@ forallT "a" $ \a -> forallT "b" $ \b -> tyBuiltinPair a b -:> b
@@ -1053,6 +1054,6 @@ builtinCxt =
       PLC.I_mkPairData #@ tyBuiltinData -:> tyBuiltinData -:> tyBuiltinPair tyBuiltinData tyBuiltinData
     , PLC.I_mkNilData #@ tyUnit -:> tyBuiltinList tyBuiltinData
     , PLC.I_mkNilPairData #@ tyUnit -:> tyBuiltinList (tyBuiltinPair tyBuiltinData tyBuiltinData)
-     -- TODO: the Bls12 crypto primfuns
+    -- TODO: the Bls12 crypto primfuns
     -- NOTE: IntegerToByteString & ByteStringToInteger don't appear to be in the version of PlutusCore we have?
     ]

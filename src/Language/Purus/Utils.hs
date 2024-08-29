@@ -11,14 +11,17 @@ import Language.PureScript.CoreFn.Ann (Ann)
 import Language.PureScript.CoreFn.Expr (Bind, PurusType)
 import Language.PureScript.CoreFn.FromJSON ()
 import Language.PureScript.CoreFn.Module (Module (..))
-import Language.PureScript.Names
-    ( pattern ByNullSourcePos, Ident(Ident), Qualified(..) )
+import Language.PureScript.Names (
+  Ident (Ident),
+  Qualified (..),
+  pattern ByNullSourcePos,
+ )
 
-import Language.Purus.Debug ( doTrace )
-import Language.Purus.IR ( BVar, BindE(..), Exp )
+import Language.Purus.Debug (doTrace)
+import Language.Purus.IR (BVar, BindE (..), Exp)
 import Language.Purus.IR.Utils (IR_Decl, Vars, WithObjects, foldBinds, toExp)
 
-import Control.Exception ( throwIO )
+import Control.Exception (throwIO)
 
 import Data.List (find)
 
@@ -30,8 +33,7 @@ import Data.Text qualified as T
 
 import Data.Aeson qualified as Aeson
 
-import Bound ( Scope )
-
+import Bound (Scope)
 
 {- IO utility. Reads a CoreFn module from a source file.
 

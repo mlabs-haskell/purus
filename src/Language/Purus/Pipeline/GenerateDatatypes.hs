@@ -1,7 +1,6 @@
 {- Generates the PIR Datatype declarations which must be let- bound in order for
-   our modules to compile. 
+   our modules to compile.
 -}
-
 {-# LANGUAGE GADTs #-}
 {-# LANGUAGE PolyKinds #-}
 {-# OPTIONS_GHC -Wno-orphans #-}
@@ -9,8 +8,8 @@
 module Language.Purus.Pipeline.GenerateDatatypes (
   generateDatatypes,
   toPIRType,
-  mkKind
-  ) where
+  mkKind,
+) where
 
 import Prelude
 
@@ -54,7 +53,7 @@ import Language.PureScript.Types (
 import Language.Purus.Debug (doTraceM)
 import Language.Purus.IR (
   Ty (..),
-  ppTy
+  ppTy,
  )
 import Language.Purus.IR qualified as IR
 import Language.Purus.Pipeline.GenerateDatatypes.Utils (
@@ -85,7 +84,7 @@ import PlutusIR qualified as PIR
 import Control.Lens (
   over,
   to,
-  (^.)
+  (^.),
  )
 import Control.Monad.Except (
   MonadError (throwError),
@@ -110,9 +109,9 @@ import Control.Monad.Except (
 generateDatatypes ::
   Datatypes IR.Kind Ty ->
   PlutusContext ()
-generateDatatypes datatypes  = mkPIRDatatypes datatypes allTypeConstructors
+generateDatatypes datatypes = mkPIRDatatypes datatypes allTypeConstructors
   where
-    allTypeConstructors ::  S.Set (Qualified (ProperName 'TypeName))
+    allTypeConstructors :: S.Set (Qualified (ProperName 'TypeName))
     allTypeConstructors = datatypes ^. tyDict . to M.keys . to S.fromList
 
 mkPIRDatatypes ::

@@ -17,20 +17,11 @@ import Data.Foldable (Foldable (foldl'), foldrM, traverse_)
 import Data.List (sort, sortOn)
 import Data.Maybe (fromJust, isJust)
 
-import Data.Bifunctor (Bifunctor (first,second))
+import Data.Bifunctor (Bifunctor (first, second))
 
-import Control.Monad.Reader ( join, unless, MonadReader(local) )
+import Control.Monad.Reader (MonadReader (local), join, unless)
 import Control.Monad.State (get, modify)
 
-import Language.PureScript.Names
-    ( runIdent,
-      Ident(..),
-      ModuleName(ModuleName),
-      ProperName(ProperName),
-      Qualified(Qualified),
-      QualifiedBy(ByModuleName),
-      coerceProperName,
-      disqualify )
 import Language.PureScript.AST.Literals (Literal (..))
 import Language.PureScript.Constants.Prim qualified as C
 import Language.PureScript.CoreFn.Ann (Ann, nullAnn)
@@ -46,6 +37,16 @@ import Language.PureScript.CoreFn.Module (Datatypes, Module (..))
 import Language.PureScript.CoreFn.TypeLike (TypeLike (..))
 import Language.PureScript.CoreFn.Utils (exprType)
 import Language.PureScript.Environment (mkCtorTy, mkTupleTyName)
+import Language.PureScript.Names (
+  Ident (..),
+  ModuleName (ModuleName),
+  ProperName (ProperName),
+  Qualified (Qualified),
+  QualifiedBy (ByModuleName),
+  coerceProperName,
+  disqualify,
+  runIdent,
+ )
 import Language.PureScript.Types (Type (..))
 
 import Language.Purus.Debug (
@@ -64,14 +65,21 @@ import Language.Purus.IR (
   Pat (..),
   expTy,
  )
-import Language.Purus.IR.Utils
-    ( foldBinds, WithObjects, Vars, IR_Decl, mapBind, viaExp )
-import Language.Purus.Pipeline.Monad
-    ( globalScope,
-      DesugarContext(DesugarContext),
-      DesugarCore,
-      localScope,
-      MonadCounter(next) )
+import Language.Purus.IR.Utils (
+  IR_Decl,
+  Vars,
+  WithObjects,
+  foldBinds,
+  mapBind,
+  viaExp,
+ )
+import Language.Purus.Pipeline.Monad (
+  DesugarContext (DesugarContext),
+  DesugarCore,
+  MonadCounter (next),
+  globalScope,
+  localScope,
+ )
 import Language.Purus.Pretty (prettyStr, prettyTypeStr, renderExprStr)
 import Language.Purus.Pretty.Common qualified as PC
 
@@ -137,9 +145,8 @@ isCtorOrPrim = \case
 {- We don't bind anything b/c the type level isn't `Bound` -}
 tyAbs :: forall x t. Text -> KindOf t -> Exp x t (Vars t) -> DesugarCore (Exp x t (Vars t))
 tyAbs nm k exp' = do
-      u <- next
-      pure $ TyAbs (BVar u k (Ident nm)) exp'
-
+  u <- next
+  pure $ TyAbs (BVar u k (Ident nm)) exp'
 
 tyAbsMany :: forall x t. [(Text, KindOf t)] -> Exp x t (Vars t) -> DesugarCore (Exp x t (Vars t))
 tyAbsMany vars expr = foldrM (uncurry tyAbs) expr vars
@@ -405,7 +412,6 @@ toPat = \case
           tupTyName = mkTupleTyName len
           tupCtorName = coerceProperName <$> tupTyName
       ConP tupTyName tupCtorName <$> traverse (toPat . snd) fs
-
 
 desugarLit :: Literal (Expr Ann) -> DesugarCore (Lit WithObjects (Exp WithObjects PurusType (Vars PurusType)))
 desugarLit (NumericLiteral (Left int)) = pure $ IntL int

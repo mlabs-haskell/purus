@@ -20,8 +20,10 @@ import Language.PureScript.CoreFn.Expr (
   PurusType,
  )
 import Language.PureScript.CoreFn.FromJSON ()
-import Language.PureScript.CoreFn.Module
-    ( bitraverseDatatypes, Datatypes )
+import Language.PureScript.CoreFn.Module (
+  Datatypes,
+  bitraverseDatatypes,
+ )
 import Language.PureScript.CoreFn.TypeLike (TypeLike (..))
 import Language.PureScript.Environment (kindType, mkTupleTyName, pattern RecordT, pattern (:->))
 import Language.PureScript.Names (Ident (..), coerceProperName)
@@ -35,7 +37,7 @@ import Language.PureScript.Types (
   srcTypeApp,
   srcTypeConstructor,
  )
-import Language.Purus.Debug ( doTraceM )
+import Language.Purus.Debug (doTraceM)
 import Language.Purus.IR (
   Alt (..),
   BVar (..),
@@ -50,17 +52,24 @@ import Language.Purus.IR (
   ppExp,
   pattern (:~>),
  )
-import Language.Purus.IR.Utils
-    ( WithObjects, Vars, WithoutObjects, fromExp, toExp )
-import Language.Purus.Pipeline.Monad
-    ( Counter, MonadCounter(next) )
-import Language.Purus.Pretty.Common ( prettyStr )
-import Language.Purus.Pretty.Types ( prettyTypeStr )
+import Language.Purus.IR.Utils (
+  Vars,
+  WithObjects,
+  WithoutObjects,
+  fromExp,
+  toExp,
+ )
+import Language.Purus.Pipeline.Monad (
+  Counter,
+  MonadCounter (next),
+ )
+import Language.Purus.Pretty.Common (prettyStr)
+import Language.Purus.Pretty.Types (prettyTypeStr)
 import Language.Purus.Utils (mkFieldMap)
 import Prelude
 
 import Bound (Var (..))
-import Bound.Scope ( toScope )
+import Bound.Scope (toScope)
 
 import Control.Lens (ix, (&), (.~))
 
@@ -406,7 +415,6 @@ assembleDesugaredObjectLit :: forall x a. Exp x Ty a -> Ty -> [Exp x Ty a] -> Co
 assembleDesugaredObjectLit expr (_ :~> b) (arg : args) = assembleDesugaredObjectLit (AppE expr arg) b args
 assembleDesugaredObjectLit expr _ [] = pure expr -- TODO better error
 assembleDesugaredObjectLit _ _ _ = error "something went wrong in assembleDesugaredObjectLit"
-
 
 purusTypeToKind :: SourceType -> Either String Kind
 purusTypeToKind _t =

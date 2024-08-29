@@ -18,8 +18,8 @@ import Control.Monad (
 import Control.Monad.Except (MonadError (..))
 import Data.Bifunctor (Bifunctor (..))
 
-import Language.PureScript.Constants.Prim qualified as C
 import Language.PureScript.Constants.PLC (defaultFunMap)
+import Language.PureScript.Constants.Prim qualified as C
 import Language.PureScript.CoreFn.FromJSON ()
 import Language.PureScript.CoreFn.Module (
   Datatypes,
@@ -27,7 +27,9 @@ import Language.PureScript.CoreFn.Module (
 import Language.PureScript.CoreFn.TypeLike (TypeLike (..))
 import Language.PureScript.Names (
   Ident (..),
-  runIdent, Qualified (..), QualifiedBy (ByModuleName),
+  Qualified (..),
+  QualifiedBy (ByModuleName),
+  runIdent,
  )
 import Language.PureScript.PSString (prettyPrintString)
 
@@ -101,18 +103,18 @@ compileToPIR' datatypes _exp =
       F Unit -> pure $ mkConstant () ()
       F (FVar _ ident@(Qualified _ (runIdent -> nm))) ->
         case M.lookup (T.unpack nm) defaultFunMap of
-              Just aBuiltinFun -> case M.lookup aBuiltinFun builtinSubstitutions of
-                Nothing -> pure $ Builtin () aBuiltinFun
-                Just substBuiltin -> substBuiltin
-              Nothing -> do
-                getConstructorName ident >>= \case
-                  Just aCtorNm -> pure $ PIR.Var () aCtorNm
-                  Nothing -> throwError $
-                            T.unpack nm
-                            <> " isn't a builtin, and it shouldn't be possible to have a"
-                            <> " free variable that's anything but a builtin. Please "
-                            <> "report this bug to the Purus authors. "
-
+          Just aBuiltinFun -> case M.lookup aBuiltinFun builtinSubstitutions of
+            Nothing -> pure $ Builtin () aBuiltinFun
+            Just substBuiltin -> substBuiltin
+          Nothing -> do
+            getConstructorName ident >>= \case
+              Just aCtorNm -> pure $ PIR.Var () aCtorNm
+              Nothing ->
+                throwError $
+                  T.unpack nm
+                    <> " isn't a builtin, and it shouldn't be possible to have a"
+                    <> " free variable that's anything but a builtin. Please "
+                    <> "report this bug to the Purus authors. "
       B (BVar bvix _ (runIdent -> nm)) -> pure $ PIR.Var () (Name nm $ Unique bvix)
     LitE _ lit -> compileToPIRLit lit
     lam@(LamE (BVar bvIx bvT bvNm) body) -> do

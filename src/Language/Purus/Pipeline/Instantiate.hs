@@ -17,13 +17,19 @@ import Data.Text (Text)
 import Language.PureScript.Constants.Prim qualified as C
 import Language.PureScript.CoreFn.Expr (PurusType)
 import Language.PureScript.CoreFn.TypeLike (TypeLike (..), instantiates)
-import Language.PureScript.Names ( Ident(Ident) )
+import Language.PureScript.Names (Ident (Ident))
 import Language.PureScript.Types (Type (..))
 
-import Language.Purus.Debug ( doTrace, prettify )
+import Language.Purus.Debug (doTrace, prettify)
 import Language.Purus.IR (BVar (..), Exp (..), analyzeApp, expTy)
-import Language.Purus.IR.Utils
-    ( WithObjects, Vars, mapAlt, mapBind, transformTypesInExp, viaExp )
+import Language.Purus.IR.Utils (
+  Vars,
+  WithObjects,
+  mapAlt,
+  mapBind,
+  transformTypesInExp,
+  viaExp,
+ )
 import Language.Purus.Pretty.Common (prettyStr)
 
 import Control.Lens (transform, view, _2)

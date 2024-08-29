@@ -4,11 +4,11 @@ module Language.Purus.Prim.Ledger (
   ledgerTypes,
   ledgerCons,
   ledgerConstructorsEnv,
-  ledgerConstructorsEnvReadable
- ) where
+  ledgerConstructorsEnvReadable,
+) where
 
 import Data.Map qualified as M
- 
+
 import Data.Bifunctor (first)
 import Data.List (foldl')
 import Language.PureScript.AST.SourcePos (SourceAnn, nullSourceAnn)
@@ -37,32 +37,38 @@ import Language.PureScript.Types (
   Type (TypeConstructor, TypeVar),
  )
 import Language.Purus.IR ()
-import Language.Purus.Prim.LedgerData ( ledgerDecls )
-import Language.Purus.Prim.Utils
-    ( arm,
-      listOf,
-      mapOf,
-      maybeOf,
-      monoType,
-      mononym,
-      newtypeOf,
-      nominalVar,
-      polyNewtypeOf,
-      polyRecordType,
-      polySumType,
-      polyType,
-      primName,
-      recordType,
-      sumType,
-      tuple2Of,
-      tyApp,
-      tyCon,
-      tyVar )
+import Language.Purus.Prim.LedgerData (ledgerDecls)
+import Language.Purus.Prim.Utils (
+  arm,
+  listOf,
+  mapOf,
+  maybeOf,
+  monoType,
+  mononym,
+  newtypeOf,
+  nominalVar,
+  polyNewtypeOf,
+  polyRecordType,
+  polySumType,
+  polyType,
+  primName,
+  recordType,
+  sumType,
+  tuple2Of,
+  tyApp,
+  tyCon,
+  tyVar,
+ )
 import Prelude
 
 import Language.Purus.Pretty.Common (docString)
-import Prettyprinter
-    ( Pretty(pretty), (<+>), hardline, punctuate, vcat )
+import Prettyprinter (
+  Pretty (pretty),
+  hardline,
+  punctuate,
+  vcat,
+  (<+>),
+ )
 
 -- | Ledger API (V2) types, as per https://github.com/IntersectMBO/plutus/blob/master/plutus-ledger-api/src/PlutusLedgerApi/V2.hs
 ledgerTypes :: [(Qualified (ProperName 'TypeName), (Type SourceAnn, TypeKind))]

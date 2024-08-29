@@ -32,31 +32,33 @@ module Language.Purus.IR.Utils (
   allBoundVars,
   stripSkolems,
   stripSkolemsFromExpr,
-  ) where
+) where
 
 import Prelude
 
-import Bound ( Scope, Var(..), abstract, fromScope )
-import Control.Monad ( join )
+import Bound (Scope, Var (..), abstract, fromScope)
+import Control.Monad (join)
 import Data.Void (Void)
 import Language.PureScript.CoreFn.Expr (PurusType)
-import Language.PureScript.CoreFn.TypeLike ( TypeLike(KindOf) )
-import Language.PureScript.Names
-    ( Ident(Ident),
-      ModuleName(ModuleName),
-      Qualified(..),
-      QualifiedBy(ByModuleName) )
-import Language.Purus.IR
-    ( BindE(..),
-      FVar(..),
-      BVar(..),
-      Exp(..),
-      Alt(..),
-      Lit(ObjectL, IntL, StringL, CharL),
-      Pat(ConP, VarP, LitP),
-      XAccessor,
-      XObjectLiteral,
-      XObjectUpdate )
+import Language.PureScript.CoreFn.TypeLike (TypeLike (KindOf))
+import Language.PureScript.Names (
+  Ident (Ident),
+  ModuleName (ModuleName),
+  Qualified (..),
+  QualifiedBy (ByModuleName),
+ )
+import Language.Purus.IR (
+  Alt (..),
+  BVar (..),
+  BindE (..),
+  Exp (..),
+  FVar (..),
+  Lit (CharL, IntL, ObjectL, StringL),
+  Pat (ConP, LitP, VarP),
+  XAccessor,
+  XObjectLiteral,
+  XObjectUpdate,
+ )
 import Prettyprinter (Pretty)
 
 import Data.Set (Set)

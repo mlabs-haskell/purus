@@ -9,9 +9,8 @@
 
    GenerateDatatypes, EliminateCases, and CompileToPIR run in the PlutusContext Monad.
 
-   Intantiate is pure. 
+   Intantiate is pure.
 -}
-
 {-# LANGUAGE StandaloneDeriving #-}
 {-# LANGUAGE StarIsType #-}
 {-# LANGUAGE TemplateHaskell #-}
@@ -24,23 +23,32 @@ import Prelude
 import Data.Map (Map)
 import Data.Map qualified as M
 
-import Language.PureScript.CoreFn.Ann ( Ann )
-import Language.PureScript.CoreFn.Expr ( PurusType )
-import Language.PureScript.CoreFn.Module ( Module )
-import Language.PureScript.Names ( Ident, ModuleName )
-import Language.Purus.IR.Utils ( IR_Decl )
-import Language.Purus.Types ( DatatypeDictionary )
+import Language.PureScript.CoreFn.Ann (Ann)
+import Language.PureScript.CoreFn.Expr (PurusType)
+import Language.PureScript.CoreFn.Module (Module)
+import Language.PureScript.Names (Ident, ModuleName)
+import Language.Purus.IR.Utils (IR_Decl)
+import Language.Purus.Types (DatatypeDictionary)
 
-import Control.Monad.Except (MonadError)
-import Control.Monad.Reader ( MonadReader(..), MonadTrans(..) )
-import Control.Monad.State
-    ( evalStateT, StateT(..), MonadState(get, put), gets )
-import Control.Lens.Operators ( (%=), (+=), (.=) )
+import Control.Lens.Operators ((%=), (+=), (.=))
 import Control.Lens.TH (makeLenses)
+import Control.Monad.Except (MonadError)
+import Control.Monad.Reader (MonadReader (..), MonadTrans (..))
+import Control.Monad.State (
+  MonadState (get, put),
+  StateT (..),
+  evalStateT,
+  gets,
+ )
 
-import Prettyprinter
-    ( Pretty(pretty), (<+>), align, hardline, indent, vcat )
-
+import Prettyprinter (
+  Pretty (pretty),
+  align,
+  hardline,
+  indent,
+  vcat,
+  (<+>),
+ )
 
 newtype CounterT m a = CounterT {runCounterT :: StateT Int m a}
   deriving newtype (Functor, Applicative, Monad, MonadTrans)

@@ -14,8 +14,8 @@ module Language.Purus.Pipeline.GenerateDatatypes.Utils (
   mkConstrName,
   mkNewTyVar,
   mkTyName,
-  note 
-  ) where
+  note,
+) where
 
 import Prelude
 
