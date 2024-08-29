@@ -3,7 +3,7 @@
 {-# HLINT ignore "Use <&>" #-}
 {-# HLINT ignore "Move concatMap out" #-}
 
-module Language.Purus.Pipeline.Lift where
+module Language.Purus.Pipeline.Lift (lift) where
 
 import Prelude
 
@@ -42,7 +42,6 @@ import Language.Purus.IR.Utils (
   stripSkolems,
   stripSkolemsFromExpr,
   toExp,
-  unBVar,
   viaExp,
  )
 import Language.Purus.Pipeline.Lift.Types
@@ -529,31 +528,6 @@ lift mainNm _e = do
           WildP -> []
           LitP (ObjectL _ ps) -> concatMap (extractPatVarBinders . snd) ps
           _ -> []
-
-usedModuleDecls :: MonoExp -> Inline [MonoBind]
-usedModuleDecls e = do
-  modDict <- mkModDict
-  let deps =
-        S.fromList
-          . filter (`M.member` modDict)
-          . mapMaybe (\case (V (B bv)) -> Just (unBVar bv); _ -> Nothing)
-          $ directDeps
-  let usedIdents = S.toList $ go modDict deps
-  pure $ (\nm@(idn, ind) -> NonRecursive idn ind (modDict M.! nm)) <$> usedIdents
-  where
-    go :: Map (Ident, Int) MonoScoped -> Set (Ident, Int) -> Set (Ident, Int)
-    go dict visited =
-      let nextRound = S.foldl' (\acc nm -> dict M.! nm : acc) [] visited
-          nextRoundDeps =
-            S.fromList
-              . filter (\x -> S.notMember x visited && M.member x dict)
-              . mapMaybe (\case (V (B bv)) -> Just (unBVar bv); _ -> Nothing)
-              $ concatMap (toListOf cosmos . toExp) nextRound
-       in case S.null nextRoundDeps of
-            True -> visited
-            False -> go dict (visited <> nextRoundDeps)
-
-    directDeps = e ^.. cosmos
 
 mkModDict :: Inline (Map (Ident, Int) MonoScoped)
 mkModDict = do

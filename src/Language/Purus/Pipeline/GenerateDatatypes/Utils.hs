@@ -1,26 +1,37 @@
 {-# OPTIONS_GHC -Wno-orphans #-}
 
-module Language.Purus.Pipeline.GenerateDatatypes.Utils where
+module Language.Purus.Pipeline.GenerateDatatypes.Utils (
+  bindTV,
+  getConstructorName,
+  analyzeTyApp,
+  foldr1Err,
+  freshName,
+  funResultTy,
+  getDestructorTy,
+  prettyQI,
+  prettyQPN,
+  getBoundTyVarName,
+  mkConstrName,
+  mkNewTyVar,
+  mkTyName,
+  note 
+  ) where
 
 import Prelude
 
-import Data.Map (Map)
 import Data.Map qualified as M
 import Data.Text (Text)
 import Data.Text qualified as T
 
 import Control.Monad.State (gets, modify)
-import Data.Foldable (foldl')
 import Debug.Trace (traceM)
 
-import Language.PureScript.Constants.Prim qualified as C
 import Language.PureScript.CoreFn.TypeLike
 import Language.PureScript.Names (
   Ident (..),
   ProperName (..),
   ProperNameType (..),
   Qualified (..),
-  QualifiedBy (ByModuleName),
   disqualify,
   runIdent,
   showIdent,
@@ -29,7 +40,6 @@ import Language.PureScript.Names (
 
 import Language.Purus.Debug (doTraceM)
 import Language.Purus.IR (
-  BVar (BVar),
   Ty (..),
  )
 import Language.Purus.IR qualified as IR
@@ -43,7 +53,6 @@ import Language.Purus.Types (
   destructors,
   tyNames,
   tyVars,
-  vars,
  )
 
 import PlutusCore qualified as PLC
@@ -57,9 +66,7 @@ import Control.Lens (
   at,
   folded,
   over,
-  preview,
   view,
-  (^.),
   (^?),
   _1,
  )
@@ -104,25 +111,12 @@ mkNewTyVar nm =
     uniq <- next
     pure . PIR.TyName $ PIR.Name nm $ PLC.Unique uniq
 
--- | Only gives you a Name, doesn't insert anything into the context
-mkNewVar :: Text -> PlutusContext PIR.Name
-mkNewVar nm = doTraceM "mkNewVar" (T.unpack nm) >> PIR.Name nm . PLC.Unique <$> next
-
 freshName :: PlutusContext PIR.Name
 freshName = do
   uniq <- next
   let c = pseudoRandomChar uniq
   let nm = T.pack (c : '#' : show uniq)
   pure $ PIR.Name nm (PLC.Unique uniq)
-
-mkVar :: Text -> PlutusContext PIR.Name
-mkVar nm =
-  doTraceM "mkVar" (T.unpack nm) >> gets (view vars) >>= \names -> case M.lookup nm names of
-    Nothing -> do
-      var <- mkNewVar nm
-      modify $ over vars (M.insert nm var)
-      pure var
-    Just var -> pure var
 
 getBoundTyVarName :: Text -> PlutusContext PIR.TyName
 getBoundTyVarName nm =
@@ -132,25 +126,11 @@ getBoundTyVarName nm =
       Just tyName -> pure tyName
       Nothing -> error $ "Free type variable in IR: " <> T.unpack nm
 
--- Sometimes (e.g. when typing lambdas) we have to branch on whether the tv is already bound
-lookupTyVar :: Text -> PlutusContext (Maybe PIR.TyName)
-lookupTyVar nm = gets (preview (tyVars . at nm . folded))
-
 bindTV :: Text -> PIR.TyName -> PlutusContext ()
 bindTV txt nm = modify $ over tyVars (M.insert txt nm)
 
-insertMany :: forall k v. (Ord k) => [(k, v)] -> Map k v -> Map k v
-insertMany new acc = foldl' (flip $ uncurry M.insert) acc new
-
-deleteMany :: forall k v. (Ord k) => [k] -> Map k v -> Map k v
-deleteMany xs acc = foldl' (flip M.delete) acc xs
-
 note :: String -> Maybe a -> PlutusContext a
 note msg = maybe (throwError msg) pure
-
-isTupleCtor :: Qualified (ProperName a) -> Bool
-isTupleCtor (Qualified (ByModuleName C.M_Prim) (ProperName xs)) = T.isPrefixOf "Tuple" xs
-isTupleCtor _ = False
 
 getDestructorTy :: Qualified (ProperName 'TypeName) -> PlutusContext PLC.Name
 getDestructorTy qn = do
@@ -181,9 +161,6 @@ prettyQI = T.unpack . showQualified runIdent
 
 instance Pretty (Qualified Ident) where
   pretty = pretty . prettyQI
-
-bvTy :: BVar ty -> ty
-bvTy (BVar _ t _) = t
 
 funResultTy :: (TypeLike t) => t -> t
 funResultTy = last . splitFunTyParts

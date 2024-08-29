@@ -39,7 +39,7 @@ import Language.PureScript.Names (
   ProperNameType (..),
   Qualified (..),
   runIdent,
-  showQualified, ModuleName (..), QualifiedBy (..),
+  showQualified,
  )
 import Language.PureScript.Types (
   TypeVarVisibility (TypeVarVisible),
@@ -93,7 +93,6 @@ import Control.Lens (
   (^.),
  )
 import Control.Lens.Combinators (transform)
-import Control.Lens.Plated (transformM)
 
 import Control.Monad.Except (
   MonadError (throwError),
@@ -667,17 +666,6 @@ desugarLiteralPatterns :: Exp WithoutObjects Ty (Var (BVar Ty) (FVar Ty))
 desugarLiteralPatterns = transform desugarLiteralPattern
 
 
-{- TODO/FIXME (8/28): This is currently broken because we use the Builtins.equalsInteger/String/etc
-                      which return a PLC `bool` not a SOP `Boolean`.
-
-                      The only sensible solution is to replace the equality test with some specific
-                      free variable (maybe qualified by a "$COMPILER" ModuleName) that represents the
-                      equality test for the correct primitive type, and replace those variables
-                      during final PIR compilation.
-
-                      Actually we can get away with $COMPILER.boolToBoolean :: forall x. x -> Boolean,
-                      don't need to catch anything else
--}
 desugarLiteralPattern ::
   Exp WithoutObjects Ty (Var (BVar Ty) (FVar Ty)) ->
   Exp WithoutObjects Ty (Var (BVar Ty) (FVar Ty))
@@ -748,6 +736,8 @@ data CtorCase = CtorCase
   , scrutType :: Ty
   }
 
+-- I think we can replace this with Language.Purus.Pipeline.Instantiate.instantiateTypes but I'm terrified to
+-- change anything now that the compiler seems to work....
 -- FIXME/REVIEW: I don't think we'll have to do this anymore if we re-instantiate after object desugaring. I should test this.
 ezMonomorphize ::
   Exp WithoutObjects Ty (Var (BVar Ty) (FVar Ty)) ->

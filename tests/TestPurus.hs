@@ -2,8 +2,9 @@
 module TestPurus where
 
 import Prelude
+import Data.Text (Text)
 import Command.Compile ( compileForTests, PSCMakeOptions(..) )
-import Control.Monad (when,unless,void)
+import Control.Monad (when,unless)
 import System.FilePath
 import Language.PureScript qualified as P
 import Data.Set qualified as S
@@ -11,14 +12,10 @@ import Data.Foldable (traverse_)
 import System.Directory (removeDirectoryRecursive, doesDirectoryExist, createDirectory)
 import System.FilePath.Glob qualified as Glob
 import Data.Function (on)
-import Data.List (sort, sortBy, stripPrefix, groupBy, find)
-import Control.Exception.Base
-import Language.Purus.Pipeline.CompileToPIR
-import PlutusCore.Core
-import Test.Tasty
-import PlutusCore.Evaluation.Machine.Ck (EvaluationResult(..))
-import PlutusCore
-import PlutusCore.Default
+import Data.List (sortBy, stripPrefix, groupBy)
+import Language.Purus.Make
+import Language.Purus.Eval
+import PlutusIR.Core.Instance.Pretty.Readable (prettyPirReadable)
 
 shouldPassTests :: IO ()
 shouldPassTests = do
@@ -73,6 +70,13 @@ runPurusDefault path = runPurus P.CoreFn path
 
 runPurusGolden :: FilePath -> IO ()
 runPurusGolden path = runPurus P.CheckCoreFn path
+
+runFullPipeline :: FilePath -> Text -> Text -> IO ()
+runFullPipeline targetDir mainModuleName mainFunctionName = do
+  runPurusDefault targetDir
+  pir <- make targetDir mainModuleName mainFunctionName Nothing
+  result <- evaluateTerm pir
+  print $ prettyPirReadable result
 
 
 shouldPass :: [FilePath]

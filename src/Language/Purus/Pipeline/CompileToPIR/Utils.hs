@@ -9,32 +9,22 @@ import Prelude
 import Data.Map (Map)
 import Data.Map qualified as M
 
-import Data.Kind qualified as GHC
-import Data.List (foldl')
-import Data.List.NonEmpty qualified as NE
-
 import Language.Purus.IR (Ty (..))
 import Language.Purus.Pipeline.GenerateDatatypes (toPIRType)
 import Language.Purus.Pipeline.GenerateDatatypes.Utils (
-  freshName, getConstructorName, note, getDestructorTy,
+  freshName, getConstructorName, note, getDestructorTy, 
  )
 import Language.Purus.Pipeline.Monad (PlutusContext)
 import Language.Purus.Types (PIRTerm, PIRType)
 
 import PlutusCore qualified as PLC
 import PlutusIR (
-  Binding (TermBind),
-  Recursivity (NonRec),
-  Strictness (..),
   Type (TyBuiltin),
  )
 import PlutusIR qualified as PIR
 import PlutusIR.MkPir (mkConstant)
 import Language.Purus.Prim.Utils ( properToIdent )
 
-import Control.Monad.Except (
-  liftEither,
- )
 import Language.PureScript.Constants.Prim qualified as C
 import Language.PureScript.Constants.Purus qualified as C
 
@@ -45,12 +35,14 @@ import Language.PureScript.Constants.Purus qualified as C
 tyBuiltinBool :: PIRType
 tyBuiltinBool = PLC.TyBuiltin () (PLC.SomeTypeIn PLC.DefaultUniBool)
 
+{- Mainly used for type abstraction/instantiation, it should be the "smallest" thing we can use (or close to it) -}
 unit :: PIRType
 unit = PLC.TyBuiltin () (PLC.SomeTypeIn PLC.DefaultUniUnit)
 
 unitTerm :: PIRTerm
 unitTerm = mkConstant () ()
 
+{- A la plutarch, helper for writing the other functions in this module-}
 (#) :: PIRTerm -> PIRTerm -> PIRTerm
 e1 # e2 = PIR.Apply () e1 e2
 -- I think this is the right fixity? TODO: Check plutarch
@@ -72,7 +64,9 @@ pirBooleanToBool psBool = do
   boolDctor <- PIR.Var () <$> getDestructorTy C.Boolean
   pure $ PIR.TyInst () (boolDctor # psBool #  mkConstant () True # mkConstant () False) tyBuiltinBool
 
-{- This is the *lazy*
+{- This is *NOT* the thing that we desugar `Builtin.IfThenElse` to. This is a *lazy* if-then-else
+   (using TyAbs/TyInst to emulate force/delay since PIR lacks force/delay). You have to pass in the
+   return type.
 -}
 pirIfThen :: PIRType -> PIRTerm -> PIRTerm -> PIRTerm -> PlutusContext PIRTerm
 pirIfThen resTy cond troo fawlse = do
@@ -80,7 +74,8 @@ pirIfThen resTy cond troo fawlse = do
   fawlse' <- pirDelay fawlse
   pure . pirForce $ pirTyInst (PIR.TyFun () unit resTy) (PIR.Builtin () PLC.IfThenElse) # cond # troo' # fawlse'
 
--- utility for constructing LamAbs w/ a fresh variable name. We do this a lot in the case analysis stuff
+{- A utility for constructing LamAbs w/ a fresh variable name. Only serves to make this module more readable.
+-}
 freshLam ::
   Ty -> -- type of the fresh var being created
   (PIRType -> PIRTerm -> PlutusContext PIRTerm) -> -- fn from that fresh var to a term
@@ -90,7 +85,7 @@ freshLam t f = do
   t' <- toPIRType t
   PIR.LamAbs () name t' <$> f t' (PIR.Var () name)
 
--- Variant of the above function but accepts a PIR Type (useful in a few contexts)
+{- Variant of the above function but accepts a PIR Type (useful in a few contexts) -}
 freshLam' ::
   PIRType -> -- type of the fresh var being created
   (PIRType -> PIRTerm -> PlutusContext PIRTerm) -> -- fn from that fresh var to a term
@@ -99,16 +94,12 @@ freshLam' t f = do
   name <- freshName
   PIR.LamAbs () name t <$> f t (PIR.Var () name)
 
-
-
+{- Type instantiation -}
 pirTyInst :: PIRType -> PIRTerm -> PIRTerm
 pirTyInst ty term = PIR.TyInst () term ty
 
-tyInstMany :: PIRTerm -> [PIRType] -> PIRTerm
-tyInstMany = foldl' (flip pirTyInst)
 
-
-
+{- Delay/Force implemented with type abstraction/instantiation -}
 pirDelay :: PIRTerm -> PlutusContext PIRTerm
 pirDelay term = do
   nm <- freshName
@@ -117,7 +108,7 @@ pirDelay term = do
 pirForce :: PIRTerm -> PIRTerm
 pirForce term = PIR.Apply () term unitTerm
 
--- Assumes the kind is *
+{- This assumes that the kind is * -}
 pirTyAbs :: (PIRType -> PlutusContext PIRTerm) -> PlutusContext PIRTerm
 pirTyAbs f = do
   tName <- PIR.TyName <$> freshName
@@ -127,27 +118,10 @@ pirTyAbs f = do
 
 
 {- REVIEW: Is this right? Is that what we *want*?
+   TODO: Add a "fake" function to Language.PureScript.Environment so that users can... use this...
 -}
 pirError :: PIRType -> PlutusContext PIRTerm
 pirError t = pirForce <$> pirDelay (PIR.Error () t)
-
--- for builtin booleans jfc why don't they have thiiiisss
-pirAnd :: PIRTerm -> PIRTerm -> PlutusContext PIRTerm
-pirAnd t1 t2 = do
-  tBranch <- pirIfThen tyBuiltinBool t2 (mkConstant () True) (mkConstant () False)
-  pirIfThen tyBuiltinBool t1 tBranch (mkConstant () False)
-
-pirLetNonRec ::
-  PIRType -> -- type of the expression we're let- binding
-  PIRTerm ->
-  (PIRTerm -> PlutusContext PIRTerm) ->
-  PlutusContext PIRTerm
-pirLetNonRec ty toLet f = do
-  nm <- freshName
-  let myvar = PIR.Var () nm
-      varDecl = PIR.VarDecl () nm ty
-      binding = TermBind () NonStrict varDecl toLet
-  PIR.Let () NonRec (NE.singleton binding) <$> f myvar
 
 
 {- Builtin function substitutions. Each builtin function with a Purus type that contains
@@ -239,7 +213,7 @@ pirEqualsData = wrapBoolToBoolean2 tyData PLC.EqualsData
 --      will be represented as an ADT Prim.Boolean
 --      so we need to turn it into a con bool
 --      (also we're not adding force/delay here)
--- forall x. Bool -> x -> x ->
+-- forall x. Bool -> x -> x -> x
 pirIfThenElse :: PlutusContext PIRTerm
 pirIfThenElse
   = pirTyAbs $ \tv ->

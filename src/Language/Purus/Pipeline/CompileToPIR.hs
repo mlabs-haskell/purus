@@ -27,7 +27,6 @@ import Language.PureScript.CoreFn.Module (
 import Language.PureScript.CoreFn.TypeLike (TypeLike (..))
 import Language.PureScript.Names (
   Ident (..),
-  disqualify,
   runIdent, Qualified (..), QualifiedBy (ByModuleName),
  )
 import Language.PureScript.PSString (prettyPrintString)
@@ -100,7 +99,7 @@ compileToPIR' datatypes _exp =
   doTraceM "compileToPIR'" (prettyStr _exp) >> case _exp of
     V x -> case x of
       F Unit -> pure $ mkConstant () ()
-      F (FVar _ ident@(Qualified qb (runIdent -> nm))) ->
+      F (FVar _ ident@(Qualified _ (runIdent -> nm))) ->
         case M.lookup (T.unpack nm) defaultFunMap of
               Just aBuiltinFun -> case M.lookup aBuiltinFun builtinSubstitutions of
                 Nothing -> pure $ Builtin () aBuiltinFun

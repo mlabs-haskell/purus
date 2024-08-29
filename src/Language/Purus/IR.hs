@@ -18,7 +18,7 @@ import Prelude
 
 import Protolude.List (ordNub)
 
-import Control.Monad
+import Control.Monad ( join, ap )
 import Data.Bifunctor (Bifunctor (first))
 import Data.Kind qualified as GHC
 import Data.List (elemIndex, sortOn)
@@ -30,6 +30,7 @@ import Data.Text qualified as T
 
 import Language.PureScript.Constants.Prim qualified as C
 import Language.PureScript.CoreFn.TypeLike
+    ( instantiateWithArgs, TypeLike(..) )
 import Language.PureScript.Names (Ident (..), ProperName (..), ProperNameType (..), Qualified (..), QualifiedBy (..), disqualify, runIdent, runModuleName, showIdent, showQualified)
 import Language.PureScript.PSString (PSString, decodeStringWithReplacement, prettyPrintString)
 import Language.PureScript.Types (
@@ -42,18 +43,35 @@ import Language.Purus.Debug (doTrace)
 import Language.Purus.Pretty ((<::>))
 import Language.Purus.Pretty.Common (prettyStr)
 
-import Bound
+import Bound ( Bound(..), Var(..), Scope, fromScope )
 import Bound.Scope (instantiateEither)
 
-import Control.Lens.Plated
+import Control.Lens.Plated ( Plated(..) )
 import Control.Lens.TH (makePrisms)
 
 import Data.Functor.Classes
+    ( Eq1(..), Ord1(..), Show1(liftShowsPrec) )
 
 import Prettyprinter
+    ( Doc,
+      Pretty(pretty),
+      viaShow,
+      layoutPretty,
+      (<+>),
+      align,
+      defaultLayoutOptions,
+      encloseSep,
+      group,
+      hardline,
+      hsep,
+      indent,
+      vcat,
+      vsep,
+      dot,
+      parens )
 import Prettyprinter.Render.Text (renderStrict)
 
-import Text.Show.Deriving
+import Text.Show.Deriving ( deriveShow1, makeLiftShowsPrec )
 
 -- The final representation of types and terms, where all constructions that
 

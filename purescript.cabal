@@ -408,12 +408,12 @@ library
 
     Language.Purus.Config
     Language.Purus.Debug
+    Language.Purus.Eval 
     Language.Purus.IR
     Language.Purus.IR.Utils
     Language.Purus.Make
     Language.Purus.Pipeline.Monad
     Language.Purus.Pipeline.CompileToPIR
-    Language.Purus.Pipeline.CompileToPIR.Eval
     Language.Purus.Pipeline.CompileToPIR.Utils
     Language.Purus.Pipeline.DesugarCore
     Language.Purus.Pipeline.DesugarObjects

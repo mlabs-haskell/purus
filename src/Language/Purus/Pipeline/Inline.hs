@@ -1,4 +1,4 @@
-module Language.Purus.Pipeline.Inline where
+module Language.Purus.Pipeline.Inline (inline) where
 
 import Prelude
 
@@ -230,7 +230,7 @@ handleSelfRecursive (nm, indx) body
           updatedOriginalBody = viaExp (deepMapMaybeBound f) body
           updatedOriginalDecl = ((nm, indx), updatedOriginalBody)
           abstr = abstract $ \case B bv -> Just bv; _ -> Nothing
-          newBreakerDecl = ((newNm, u), (abstr . V . B $ BVar indx bodyTy nm))
+          newBreakerDecl = ((newNm, u), abstr . V . B $ BVar indx bodyTy nm)
       pure $ M.fromList [updatedOriginalDecl, newBreakerDecl]
 
 inlineWithData :: MonoExp -> InlineState MonoExp
@@ -292,13 +292,6 @@ doneInlining me = do
           ]
   doTraceM "doneInlining" msg
   pure result
-
-remainingInlineTargets :: MonoExp -> InlineState (Set (Ident, Int))
-remainingInlineTargets me = do
-  dct <- get
-  let allInlineable = M.keysSet $ M.filter notALoopBreaker dct
-      allHoles = S.fromList $ mapMaybe (fmap unHole . toHole) (me ^.. cosmos)
-  pure $ S.intersection allHoles allInlineable
 
 prettyDict :: Map (Ident, Int) InlineBodyData -> String
 prettyDict =
@@ -463,14 +456,3 @@ inlineInLifted decls = do
                   KindedType _ t1 t2 -> isRow t1 || isRow t2
                   TypeApp _ t1 t2 -> isRow t1 || isRow t2
                   _ -> False
-findDeclGroup ::
-  (Ident, Int) ->
-  [BindE ty (Exp x ty) a] ->
-  Maybe (BindE ty (Exp x ty) a)
-findDeclGroup _ [] = Nothing
-findDeclGroup (ident, indx) (NonRecursive ident' bvix expr : rest)
-  | ident == ident' && bvix == indx = Just $ NonRecursive ident' bvix expr
-  | otherwise = findDeclGroup (ident, indx) rest
-findDeclGroup nm (Recursive xs : rest) = case find (\x -> fst x == nm) xs of
-  Nothing -> findDeclGroup nm rest
-  Just _ -> Just (Recursive xs)

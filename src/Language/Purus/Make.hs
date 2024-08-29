@@ -34,7 +34,7 @@ import Language.PureScript.Names (
 
 import Language.Purus.IR.Utils (IR_Decl, foldBinds)
 import Language.Purus.Pipeline.CompileToPIR (compileToPIR)
-import Language.Purus.Pipeline.CompileToPIR.Eval
+import Language.Purus.Eval
 import Language.Purus.Pipeline.DesugarCore (desugarCoreModule)
 import Language.Purus.Pipeline.DesugarObjects (
   desugarObjects,
@@ -56,7 +56,7 @@ import Language.Purus.Pipeline.Monad (
   runInline,
   runPlutusContext,
  )
-import Language.Purus.Pretty.Common (docString, prettyStr)
+import Language.Purus.Pretty.Common (prettyStr)
 import Language.Purus.Prim.Data (primDataPS)
 import Language.Purus.Types (PIRTerm, initDatatypeDict, PLCTerm)
 import Language.Purus.Utils (
@@ -76,87 +76,22 @@ import Algebra.Graph.AdjacencyMap.Algorithm (topSort)
 
 import System.FilePath.Glob qualified as Glob
 
-import Debug.Trace (traceM)
-
-import PlutusIR.Core.Instance.Pretty.Readable (prettyPirReadable)
 import PlutusCore.Evaluation.Result (EvaluationResult)
+-- import Debug.Trace (traceM)
+--import PlutusIR.Core.Instance.Pretty.Readable (prettyPirReadable)
 
-{-
-decodeModuleIR :: FilePath -> IO (Module IR_Decl SourceType SourceType Ann, (Int, M.Map Ident Int))
-decodeModuleIR path = do
-  myMod <- decodeModuleIO path
-  case desugarCoreModule myMod of
-    Left err -> throwIO $ userError err
-    Right myModIR -> pure myModIR
 
-testDesugarObjects :: FilePath -> Text -> IO (Exp WithoutObjects Ty (Vars Ty))
-testDesugarObjects path decl = do
-  (myMod, ds) <- decodeModuleIR path
-  Just myDecl <- pure . fmap snd $ findDeclBody decl myMod
-  case runMonomorphize myMod [] (toExp myDecl) of
-    Left (MonoError msg) -> throwIO $ userError $ "Couldn't monomorphize " <> T.unpack decl <> "\nReason:\n" <> msg
-    Right body -> case evalStateT (tryConvertExpr body) ds of
-      Left convertErr -> throwIO $ userError convertErr
-      Right e -> do
-        putStrLn (ppExp e)
-        pure e
 
-prepPIR ::
-  FilePath ->
-  Text ->
-  IO (Exp WithoutObjects Ty (Vars Ty), Datatypes Kind Ty)
-prepPIR path decl = do
-  (myMod@Module {..}, ds) <- decodeModuleIR path
-
-  desugaredExpr <- case snd <$> findDeclBody decl myMod of
-    Nothing -> throwIO $ userError "findDeclBody"
-    Just expr -> pure expr
-  case runMonomorphize myMod [] (toExp desugaredExpr) of
-    Left (MonoError msg) ->
-      throwIO $
-        userError $
-          "Couldn't monomorphize "
-            <> T.unpack (runModuleName moduleName <> ".main")
-            <> "\nReason:\n"
-            <> msg
-    Right body -> do
-      putStrLn (ppExp body)
-      case evalStateT (tryConvertExpr body) ds of
-        Left convertErr -> throwIO $ userError convertErr
-        Right e -> do
-          moduleDataTypes' <-
-            either (throwIO . userError) pure $
-              bitraverseDatatypes
-                tryConvertKind
-                tryConvertType
-                moduleDataTypes
-          putStrLn $ "tryConvertExpr result:\n" <> ppExp e <> "\n" <> replicate 20 '-'
-          pure (e, moduleDataTypes')
+{-  Compiles a main function to PIR, given its module name, dependencies, and a
+    Prim module that will be compiled before anything else. (This is kind of a hack-ey shim
+    to let us write e.g. serialization functions and provide them by default without a
+    more sophisticated build system).
 -}
-
-{- Arguments are:
-     - A CoreFn `Prim` module containing the *primitive-but-not-builtin-functions*
-       (e.g. serialization and deserialization functions). This always gets processed first
-
-     - The parsed set of CoreFn modules needed for compilation, *sorted in dependency order)
-       (e.g. so that the module containing the `main` function comes *last* and all depdencies
-        are prior to the modules that they depend upon)
-
-     - The name of the module containing the main function
-
-     - The name of the main function
--}
-
-note :: (MonadError String m) => String -> Maybe a -> m a
-note msg = \case
-  Nothing -> throwError msg
-  Just x -> pure x
-
 compile ::
-  Module (Bind Ann) PurusType PurusType Ann ->
-  [Module (Bind Ann) PurusType PurusType Ann] ->
-  ModuleName ->
-  Ident ->
+  Module (Bind Ann) PurusType PurusType Ann -> -- The Prim Module, or, if there isn't one, the first module to be compiles
+  [Module (Bind Ann) PurusType PurusType Ann] -> -- The rest of the modules, sorted in dependency order (e.g. so Main comes last)
+  ModuleName -> -- Name of the module with the main function (will probably be hardcoded to "Main")
+  Ident -> -- Name of the main function (will probably be hardcoded to "main")
   Either String PIRTerm
 compile primModule orderedModules mainModuleName mainFunctionName =
   evalStateT (runCounterT go) 0
@@ -178,12 +113,12 @@ compile primModule orderedModules mainModuleName mainFunctionName =
     go :: CounterT (Either String) PIRTerm
     go = do
       (summedModule, dsCxt) <- runDesugarCore $ desugarCoreModules primModule orderedModules
-      let traceBracket lbl msg = traceM ("\n" <> lbl <> "\n\n" <> msg <> "\n\n")
+      let --traceBracket lbl msg = traceM ("\n" <> lbl <> "\n\n" <> msg <> "\n\n")
           decls = moduleDecls summedModule
           declIdentsSet = foldBinds (\acc nm _ -> S.insert nm acc) S.empty decls
           couldn'tFindMain n =
             "Error: Could not find a main function with the name ("
-              <> show n
+              <> show (n :: Int)
               <> ") '"
               <> T.unpack (runIdent mainFunctionName)
               <> "' in module "
@@ -191,25 +126,25 @@ compile primModule orderedModules mainModuleName mainFunctionName =
               <> "\nin declarations:\n"
               <> prettyStr (S.toList declIdentsSet)
       mainFunctionIx <- note (couldn'tFindMain 1) $ dsCxt ^? globalScope . at mainModuleName . folded . at mainFunctionName . folded
-      traceM $ "Found main function Index: " <> show mainFunctionIx
+      --traceM $ "Found main function Index: " <> show mainFunctionIx
       mainFunctionBody <- note (couldn'tFindMain 2) $ findDeclBodyWithIndex mainFunctionName mainFunctionIx decls
-      traceM "Found main function body"
+      --traceM "Found main function body"
       inlined <- runInline summedModule $ lift (mainFunctionName, mainFunctionIx) mainFunctionBody >>= inline
-      traceBracket "Done inlining. Result:" $ prettyStr inlined
+      --traceBracket "Done inlining. Result:" $ prettyStr inlined
       let !instantiated = applyPolyRowArgs $ instantiateTypes inlined
-      traceBracket "Done instantiating types. Result:" $ prettyStr instantiated
+      --traceBracket "Done instantiating types. Result:" $ prettyStr instantiated
       withoutObjects <- instantiateTypes <$> runCounter (desugarObjects instantiated)
-      traceBracket  "Desugared objects. Result:\n" $ prettyStr withoutObjects
+      --traceBracket  "Desugared objects. Result:\n" $ prettyStr withoutObjects
       datatypes <- runCounter $ desugarObjectsInDatatypes (moduleDataTypes summedModule)
-      traceM "Desugared datatypes"
+      --traceM "Desugared datatypes"
       runPlutusContext initDatatypeDict $ do
-        generateDatatypes datatypes withoutObjects
-        traceM "Generated PIR datatypes"
+        generateDatatypes datatypes
+        --traceM "Generated PIR datatypes"
         withoutCases <- eliminateCases datatypes withoutObjects
-        traceM "Eliminated case expressions. Compiling to PIR..."
-        pirTerm <- compileToPIR datatypes withoutCases
-        traceM . docString $ prettyPirReadable pirTerm
-        pure pirTerm
+        --traceM "Eliminated case expressions. Compiling to PIR..."
+        compileToPIR datatypes withoutCases
+        --traceM . docString $ prettyPirReadable pirTerm
+
 
 modulesInDependencyOrder :: [[FilePath]] -> IO [Module (Bind Ann) PurusType PurusType Ann]
 modulesInDependencyOrder (concat -> paths) = do
@@ -285,3 +220,10 @@ evalForTest_ main = evalForTest main >>= print
 
 evalForTest :: Text -> IO (EvaluationResult PLCTerm,[Text])
 evalForTest main = makeForTest main >>= evaluateTerm
+
+
+-- TODO put this somewhere else
+note :: (MonadError String m) => String -> Maybe a -> m a
+note msg = \case
+  Nothing -> throwError msg
+  Just x -> pure x

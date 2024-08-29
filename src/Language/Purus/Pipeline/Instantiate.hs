@@ -3,7 +3,7 @@
    typecheck in PIR (and also to simplify some of our own subsequent compiler passes).
 -}
 
-module Language.Purus.Pipeline.Instantiate where
+module Language.Purus.Pipeline.Instantiate (instantiateTypes, applyPolyRowArgs) where
 
 import Prelude
 
@@ -29,6 +29,11 @@ import Language.Purus.Pretty.Common (prettyStr)
 import Control.Lens (transform, view, _2)
 import Prettyprinter (Pretty)
 
+{- After inlining and instantiating, we're left abstracted type variables and instantiated types which
+   may be of kind `Row Type`. That's bad! We need to "apply" the instantiations to the abstractions so
+   that we have concrete rows (or as concrete as they can possibly be at any rate) before we
+   do object desugaring.
+-}
 applyPolyRowArgs ::
   Exp WithObjects PurusType (Vars PurusType) ->
   Exp WithObjects PurusType (Vars PurusType)
@@ -38,6 +43,8 @@ applyPolyRowArgs = transform $ \case
     _ -> instE
   other -> other
 
+{- Instantiates every type abstraction wherever it is possible to deduce the instantiation.
+-}
 instantiateTypes :: forall x (t :: *). (TypeLike t, Pretty t, Pretty (KindOf t)) => Exp x t (Vars t) -> Exp x t (Vars t)
 instantiateTypes = \case
   V v -> V v
