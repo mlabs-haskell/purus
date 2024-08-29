@@ -46,6 +46,9 @@ polyType tyName vars tyDef = (primName tyName, (go vars, tyDef))
       [] -> kindType
       (_ : vs) -> kindType -:> go vs
 
+builtinName :: Text -> Qualified (ProperName 'TypeName)
+builtinName nm = Qualified (ByModuleName (ModuleName "Builtin")) (ProperName nm)
+
 primName :: Text -> Qualified (ProperName 'TypeName)
 primName tyName = Qualified (ByModuleName (ModuleName "Prim")) (ProperName tyName)
 
@@ -68,6 +71,9 @@ polyRecordType conName vars fields =
 
 tyCon :: Text -> Type SourceAnn
 tyCon = TypeConstructor nullSourceAnn . primName
+
+tyConBuiltin :: Text -> Type SourceAnn
+tyConBuiltin = TypeConstructor nullSourceAnn . builtinName 
 
 mkRecordT :: Type SourceAnn -> Type SourceAnn
 mkRecordT = TypeApp nullSourceAnn (TypeConstructor nullSourceAnn C.Record)
@@ -198,6 +204,9 @@ mapTy k = TypeApp nullSourceAnn (TypeApp nullSourceAnn (TypeConstructor nullSour
 
 primTyCon :: Text -> SourceType
 primTyCon = TypeConstructor nullSourceAnn . primName
+
+builtinTyCon :: Text -> SourceType
+builtinTyCon = TypeConstructor nullSourceAnn . builtinName
 
 maybeTy :: SourceType -> SourceType
 maybeTy = TypeApp nullSourceAnn (TypeConstructor nullSourceAnn . primName $ "Maybe")
