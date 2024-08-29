@@ -37,7 +37,7 @@ import Language.Purus.Prim.Utils (
   primTyCon,
   recordDecl,
   sumDecl,
-  tuple2Ty,
+  tuple2Ty, builtinTyCon,
  )
 
 -- | Ledger API data declarations, as per https://github.com/IntersectMBO/plutus/blob/master/plutus-ledger-api/src/PlutusLedgerApi/V2.hs
@@ -104,7 +104,7 @@ scriptPurposeDecl =
     ]
 
 ledgerBytesDecl :: (Qualified (ProperName 'TypeName), DataDecl SourceType SourceType)
-ledgerBytesDecl = newtypeDecl "LedgerBytes" . primTyCon $ "BuiltinByteString"
+ledgerBytesDecl = newtypeDecl "LedgerBytes" . builtinTyCon $ "BuiltinByteString"
 
 dcertDecl :: (Qualified (ProperName 'TypeName), DataDecl SourceType SourceType)
 dcertDecl =
@@ -144,10 +144,10 @@ valueDecl =
     $ "Int"
 
 currencySymbolDecl :: (Qualified (ProperName 'TypeName), DataDecl SourceType SourceType)
-currencySymbolDecl = newtypeDecl "CurrencySymbol" . primTyCon $ "BuiltinByteString"
+currencySymbolDecl = newtypeDecl "CurrencySymbol" . builtinTyCon $ "BuiltinByteString"
 
 tokenNameDecl :: (Qualified (ProperName 'TypeName), DataDecl SourceType SourceType)
-tokenNameDecl = newtypeDecl "TokenName" . primTyCon $ "BuiltinByteString"
+tokenNameDecl = newtypeDecl "TokenName" . builtinTyCon $ "BuiltinByteString"
 
 lovelaceDecl :: (Qualified (ProperName 'TypeName), DataDecl SourceType SourceType)
 lovelaceDecl = newtypeDecl "Lovelace" . primTyCon $ "Int"
@@ -164,10 +164,10 @@ addressDecl =
     ]
 
 pubKeyHashDecl :: (Qualified (ProperName 'TypeName), DataDecl SourceType SourceType)
-pubKeyHashDecl = newtypeDecl "PubKeyHash" . primTyCon $ "BuiltinByteString"
+pubKeyHashDecl = newtypeDecl "PubKeyHash" . builtinTyCon $ "BuiltinByteString"
 
 txIdDecl :: (Qualified (ProperName 'TypeName), DataDecl SourceType SourceType)
-txIdDecl = newtypeDecl "TxId" . primTyCon $ "BuiltinByteString"
+txIdDecl = newtypeDecl "TxId" . builtinTyCon $ "BuiltinByteString"
 
 txInfoDecl :: (Qualified (ProperName 'TypeName), DataDecl SourceType SourceType)
 txInfoDecl =
@@ -255,16 +255,16 @@ assocMapDecl :: (Qualified (ProperName 'TypeName), DataDecl SourceType SourceTyp
 assocMapDecl = polyNewtypeDecl "AssocMap" ["k", "v"] (listTy (tuple2Ty (TypeVar nullSourceAnn "k" kindType) (TypeVar nullSourceAnn "v" kindType)))
 
 scriptHashDecl :: (Qualified (ProperName 'TypeName), DataDecl SourceType SourceType)
-scriptHashDecl = newtypeDecl "ScriptHash" . primTyCon $ "BuiltinByteString"
+scriptHashDecl = newtypeDecl "ScriptHash" . builtinTyCon $ "BuiltinByteString"
 
 redeemerDecl :: (Qualified (ProperName 'TypeName), DataDecl SourceType SourceType)
-redeemerDecl = newtypeDecl "Redeemer" . primTyCon $ "BuiltinData"
+redeemerDecl = newtypeDecl "Redeemer" . builtinTyCon $ "BuiltinData"
 
 redeemerHashDecl :: (Qualified (ProperName 'TypeName), DataDecl SourceType SourceType)
-redeemerHashDecl = newtypeDecl "RedeemerHash" . primTyCon $ "BuiltinByteString"
+redeemerHashDecl = newtypeDecl "RedeemerHash" . builtinTyCon  $ "BuiltinByteString"
 
 datumDecl :: (Qualified (ProperName 'TypeName), DataDecl SourceType SourceType)
-datumDecl = newtypeDecl "Datum" . primTyCon $ "BuiltinData"
+datumDecl = newtypeDecl "Datum" . builtinTyCon  $ "BuiltinData"
 
 datumHashDecl :: (Qualified (ProperName 'TypeName), DataDecl SourceType SourceType)
-datumHashDecl = newtypeDecl "Datumhash" . primTyCon $ "BuiltinByteString"
+datumHashDecl = newtypeDecl "Datumhash" . builtinTyCon $ "BuiltinByteString"
