@@ -371,7 +371,8 @@ deserializeExtended f dat =
 
 serializeLowerBound :: 
   forall (a :: Type) . (a -> Builtin.BuiltinData) -> LowerBound a -> Builtin.BuiltinData
-serializeLowerBound f (LowerBound e) = Builtin.constrData 0 (serializeExtended f e)
+serializeLowerBound f (LowerBound e) = 
+  Builtin.constrData 0 (Builtin.mkCons (serializeExtended f e) (Builtin.mkNilData unit))
 
 deserializeLowerBound :: 
   forall (a :: Type) . (Builtin.BuiltinData -> a) -> Builtin.BuiltinData -> LowerBound a
@@ -383,7 +384,8 @@ deserializeLowerBound f dat =
 
 serializeUpperBound :: 
   forall (a :: Type) . (a -> Builtin.BuiltinData) -> UpperBound a -> Builtin.BuiltinData
-serializeUpperBound f (UpperBound e) = Builtin.constrData 0 (serializeExtended f e)
+serializeUpperBound f (UpperBound e) = 
+  Builtin.constrData 0 (Builtin.mkCons (serializeExtended f e) (Builtin.mkNilData unit))
 
 deserializeUpperBound :: 
   forall (a :: Type) . (Builtin.BuiltinData -> a) -> Builtin.BuiltinData -> UpperBound a
@@ -463,18 +465,23 @@ deserializeByteString = Builtin.unBData
 
 serializeList :: 
   forall (a :: Type) . (a -> Builtin.BuiltinData) -> Array a -> Builtin.BuiltinData
-serializeList f arr = case arr of 
-  Nil -> Builtin.mkNilData unit
-  Cons x xs -> Builtin.mkCons (f x) (serializeList f xs)
-
+serializeList f arr = Builtin.listData (go arr)
+  where
+    go :: Array a -> Builtin.BuiltinList Builtin.BuiltinData
+    go = case _ of 
+             Nil -> Builtin.mkNilData unit
+             Cons x xs -> Builtin.mkCons (f x) (go xs)
+  
 deserializeList :: 
   forall (a :: Type) . (Builtin.BuiltinData -> a) -> Builtin.BuiltinData -> Array a
-deserializeList f dat = go (Builtin.unListData dat)
-  where
-    go :: Array Builtin.BuiltinData -> Array a
-    go arr = case arr of 
-      Nil -> Nil
-      Cons d ds -> Cons (f d) (go ds)
+deserializeList f dat = 
+  let unlisted = Builtin.unListData dat
+   in go unlisted
+   where
+     go :: Array Builtin.BuiltinData -> Array a
+     go = case _ of
+              Nil -> Nil
+              Cons x xs -> Cons (f x) (go xs)
 
 serializeTuple2 :: 
   forall (a :: Type) (b :: Type) . 
