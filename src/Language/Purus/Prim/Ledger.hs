@@ -57,7 +57,7 @@ import Language.Purus.Prim.Utils (
   tuple2Of,
   tyApp,
   tyCon,
-  tyVar,
+  tyVar, builtinTyCon,
  )
 import Prelude
 
@@ -113,6 +113,8 @@ ledgerTypes =
   , redeemerHashType
   , datumType
   , datumHashType
+    -- Primitive Maybe
+  , maybeType
   ]
 
 -- | Ledger API (V2) constructors, as per https://github.com/IntersectMBO/plutus/blob/master/plutus-ledger-api/src/PlutusLedgerApi/V2.hs
@@ -172,6 +174,9 @@ ledgerCons =
   , redeemerHashCon
   , datumCon
   , datumHashCon
+    -- Primitive Maybe
+  , nothingCon
+  , justCon
   ]
 
 scriptContextType :: (Qualified (ProperName 'TypeName), (Type SourceAnn, TypeKind))
@@ -208,7 +213,7 @@ certifyingCon :: (Qualified Ident, Qualified (ProperName 'TypeName))
 certifyingCon = arm "Certifying" "ScriptPurpose"
 
 ledgerBytesType :: (Qualified (ProperName 'TypeName), (Type SourceAnn, TypeKind))
-ledgerBytesType = newtypeOf "LedgerBytes" (tyCon "BuiltinByteString")
+ledgerBytesType = newtypeOf "LedgerBytes" (builtinTyCon "BuiltinByteString")
 
 ledgerBytesCon :: (Qualified Ident, Qualified (ProperName 'TypeName))
 ledgerBytesCon = mononym "LedgerBytes"
@@ -282,13 +287,13 @@ valueCon :: (Qualified Ident, Qualified (ProperName 'TypeName))
 valueCon = mononym "Value"
 
 currencySymbolType :: (Qualified (ProperName 'TypeName), (Type SourceAnn, TypeKind))
-currencySymbolType = newtypeOf "CurrencySymbol" (tyCon "BuiltinByteString")
+currencySymbolType = newtypeOf "CurrencySymbol" (builtinTyCon "BuiltinByteString")
 
 currencySymbolCon :: (Qualified Ident, Qualified (ProperName 'TypeName))
 currencySymbolCon = mononym "CurrencySymbol"
 
 tokenNameType :: (Qualified (ProperName 'TypeName), (Type SourceAnn, TypeKind))
-tokenNameType = newtypeOf "TokenName" (tyCon "BuiltinByteString")
+tokenNameType = newtypeOf "TokenName" (builtinTyCon "BuiltinByteString")
 
 tokenNameCon :: (Qualified Ident, Qualified (ProperName 'TypeName))
 tokenNameCon = mononym "TokenName"
@@ -317,13 +322,13 @@ addressCon :: (Qualified Ident, Qualified (ProperName 'TypeName))
 addressCon = mononym "Address"
 
 pubKeyHashType :: (Qualified (ProperName 'TypeName), (Type SourceAnn, TypeKind))
-pubKeyHashType = newtypeOf "PubKeyHash" (tyCon "BuiltinByteString")
+pubKeyHashType = newtypeOf "PubKeyHash" (builtinTyCon "BuiltinByteString")
 
 pubKeyHashCon :: (Qualified Ident, Qualified (ProperName 'TypeName))
 pubKeyHashCon = mononym "PubKeyHash"
 
 txIdType :: (Qualified (ProperName 'TypeName), (Type SourceAnn, TypeKind))
-txIdType = newtypeOf "TxId" (tyCon "BuiltinByteString")
+txIdType = newtypeOf "TxId" (builtinTyCon "BuiltinByteString")
 
 txIdCon :: (Qualified Ident, Qualified (ProperName 'TypeName))
 txIdCon = mononym "TxId"
@@ -365,7 +370,7 @@ txOutCon = mononym "TxOut"
 txOutRefType :: (Qualified (ProperName 'TypeName), (Type SourceAnn, TypeKind))
 txOutRefType =
   monoType "TxOutRef"
-    . recordType "TxOut"
+    . recordType "TxOutRef"
     $ [ ("id", tyCon "TxId")
       , ("idx", tyCon "Int")
       ]
@@ -465,28 +470,42 @@ scriptHashCon :: (Qualified Ident, Qualified (ProperName 'TypeName))
 scriptHashCon = mononym "ScriptHash"
 
 redeemerType :: (Qualified (ProperName 'TypeName), (Type SourceAnn, TypeKind))
-redeemerType = newtypeOf "Redeemer" (tyCon "BuiltinData")
+redeemerType = newtypeOf "Redeemer" (builtinTyCon "BuiltinData")
 
 redeemerCon :: (Qualified Ident, Qualified (ProperName 'TypeName))
 redeemerCon = mononym "Redeemer"
 
 redeemerHashType :: (Qualified (ProperName 'TypeName), (Type SourceAnn, TypeKind))
-redeemerHashType = newtypeOf "RedeemerHash" (tyCon "BuiltinByteString")
+redeemerHashType = newtypeOf "RedeemerHash" (builtinTyCon "BuiltinByteString")
 
 redeemerHashCon :: (Qualified Ident, Qualified (ProperName 'TypeName))
 redeemerHashCon = mononym "RedeemerHash"
 
 datumType :: (Qualified (ProperName 'TypeName), (Type SourceAnn, TypeKind))
-datumType = newtypeOf "Datum" (tyCon "BuiltinData")
+datumType = newtypeOf "Datum" (builtinTyCon "BuiltinData")
 
 datumCon :: (Qualified Ident, Qualified (ProperName 'TypeName))
 datumCon = mononym "Datum"
 
 datumHashType :: (Qualified (ProperName 'TypeName), (Type SourceAnn, TypeKind))
-datumHashType = newtypeOf "DatumHash" (tyCon "BuiltinByteString")
+datumHashType = newtypeOf "DatumHash" (builtinTyCon "BuiltinByteString")
 
 datumHashCon :: (Qualified Ident, Qualified (ProperName 'TypeName))
 datumHashCon = mononym "DatumHash"
+
+maybeType :: (Qualified (ProperName 'TypeName), (Type SourceAnn, TypeKind))
+maybeType = 
+  polyType "Maybe" ["a"] . 
+  polySumType ["a"] $ [
+    ("Nothing", []),
+    ("Just", [tyVar "a"])
+    ]
+
+nothingCon :: (Qualified Ident, Qualified (ProperName 'TypeName))
+nothingCon = arm "Nothing" "Maybe"
+
+justCon :: (Qualified Ident, Qualified (ProperName 'TypeName))
+justCon = arm "Just" "Maybe"
 
 ledgerConstructorsEnv ::
   M.Map
