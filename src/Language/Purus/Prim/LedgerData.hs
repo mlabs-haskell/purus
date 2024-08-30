@@ -6,10 +6,9 @@ import Language.PureScript.CoreFn.Module (
   DataDecl (DataDecl),
  )
 import Language.PureScript.Environment (
-  DataDeclType (Data, Newtype),
+  DataDeclType (Data),
   TypeKind (DataType),
   kindType,
-  (-:>),
  )
 import Language.PureScript.Names (
   Ident (Ident, UnusedIdent),
@@ -83,6 +82,8 @@ ledgerDecls =
   , redeemerHashDecl
   , datumDecl
   , datumHashDecl
+    -- Primitive Maybe
+  , maybeDecl
   ]
 
 scriptContextDecl :: (Qualified (ProperName 'TypeName), DataDecl SourceType SourceType)
@@ -267,4 +268,17 @@ datumDecl :: (Qualified (ProperName 'TypeName), DataDecl SourceType SourceType)
 datumDecl = newtypeDecl "Datum" . builtinTyCon  $ "BuiltinData"
 
 datumHashDecl :: (Qualified (ProperName 'TypeName), DataDecl SourceType SourceType)
-datumHashDecl = newtypeDecl "Datumhash" . builtinTyCon $ "BuiltinByteString"
+datumHashDecl = newtypeDecl "DatumHash" . builtinTyCon $ "BuiltinByteString"
+
+maybeDecl :: (Qualified (ProperName 'TypeName), DataDecl SourceType SourceType)
+maybeDecl = 
+  let name = primName "Maybe"
+    in ( name
+       , DataDecl
+         Data
+         name
+         [("a", kindType)]
+         [ CtorDecl (primIdent "Nothing") []
+         , CtorDecl (primIdent "Just") [(UnusedIdent, TypeVar nullSourceAnn "a" kindType)]
+         ]
+       )

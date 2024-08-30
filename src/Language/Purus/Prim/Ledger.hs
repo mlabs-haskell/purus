@@ -113,6 +113,8 @@ ledgerTypes =
   , redeemerHashType
   , datumType
   , datumHashType
+    -- Primitive Maybe
+  , maybeType
   ]
 
 -- | Ledger API (V2) constructors, as per https://github.com/IntersectMBO/plutus/blob/master/plutus-ledger-api/src/PlutusLedgerApi/V2.hs
@@ -172,6 +174,9 @@ ledgerCons =
   , redeemerHashCon
   , datumCon
   , datumHashCon
+    -- Primitive Maybe
+  , nothingCon
+  , justCon
   ]
 
 scriptContextType :: (Qualified (ProperName 'TypeName), (Type SourceAnn, TypeKind))
@@ -487,6 +492,20 @@ datumHashType = newtypeOf "DatumHash" (builtinTyCon "BuiltinByteString")
 
 datumHashCon :: (Qualified Ident, Qualified (ProperName 'TypeName))
 datumHashCon = mononym "DatumHash"
+
+maybeType :: (Qualified (ProperName 'TypeName), (Type SourceAnn, TypeKind))
+maybeType = 
+  polyType "Maybe" ["a"] . 
+  polySumType ["a"] $ [
+    ("Nothing", []),
+    ("Just", [tyVar "a"])
+    ]
+
+nothingCon :: (Qualified Ident, Qualified (ProperName 'TypeName))
+nothingCon = arm "Nothing" "Maybe"
+
+justCon :: (Qualified Ident, Qualified (ProperName 'TypeName))
+justCon = arm "Just" "Maybe"
 
 ledgerConstructorsEnv ::
   M.Map

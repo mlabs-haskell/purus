@@ -163,10 +163,10 @@ deserializeLovelace :: Builtin.BuiltinData -> Lovelace
 deserializeLovelace dat = Lovelace (deserializeInt dat)
 
 serializePOSIXTime :: POSIXTime -> Builtin.BuiltinData
-serializePOSIXTIme (POSIXTime t) = serializeInt t
+serializePOSIXTime (POSIXTime t) = serializeInt t
 
 deserializePOSIXTime :: Builtin.BuiltinData -> POSIXTime
-deserializePOSIXTIme dat = POSIXTime (deserializeInt dat)
+deserializePOSIXTime dat = POSIXTime (deserializeInt dat)
 
 serializeAddress :: Address -> Builtin.BuiltinData
 serializeAddress (Address rec) = 
@@ -180,7 +180,7 @@ deserializeAddress dat =
       unlisted = Builtin.unListData dat'
       credential = deserializeCredential (Builtin.headList unlisted)
       unlisted' = Builtin.tailList unlisted
-      stakingCredential = deserializeMaybe deserializeStakingCredential unlisted'
+      stakingCredential = deserializeMaybe deserializeStakingCredential (Builtin.headList unlisted')
     in Address { credential: credential, stakingCredential: stakingCredential }
 
 serializePubKeyHash :: PubKeyHash -> Builtin.BuiltinData
@@ -210,36 +210,33 @@ serializeTxInfo (TxInfo rec) =
                            (Builtin.mkCons (serializeValue rec.mint)
                               (Builtin.mkCons (serializeList serializeDCert rec.dCert)
                                  (Builtin.mkCons (serializeAssocMap serializeStakingCredential serializeInt rec.wdrl)
-                                    (Builtin.mkCons (serializeInterval go rec.validTimeRange)
+                                    (Builtin.mkCons (serializeInterval serializePOSIXTime rec.validRange)
                                        (Builtin.mkCons (serializeList serializePubKeyHash rec.signatories)
                                           (Builtin.mkCons (serializeAssocMap serializeScriptPurpose serializeRedeemer rec.redeemers)
                                              (Builtin.mkCons (serializeAssocMap serializeDatumHash serializeDatum rec.data)
                                                 (Builtin.mkCons (serializeTxId rec.id)
                                                    (Builtin.mkNilData unit)))))))))))))
-  where
-    go :: POSIXTime -> Builtin.BuiltinData
-    go (POSIXTime t) = serializeInt t
 
 deserializeTxInfo :: Builtin.BuiltinData -> TxInfo
 deserializeTxInfo dat = 
   let unlisted = Builtin.unListData (Builtin.sndPair (Builtin.unConstrData dat))
-      inputs =  deserializeTxInInfo (Builtin.headList unlisted)
+      inputs =  deserializeList deserializeTxInInfo (Builtin.headList unlisted)
       unlisted1 = Builtin.tailList unlisted
-      referenceInputs =  deserializeTxInInfo (Builtin.headList unlisted1)
+      referenceInputs = deserializeList deserializeTxInInfo (Builtin.headList unlisted1)
       unlisted2 = Builtin.tailList unlisted1
-      outputs =  deserializeTxOut (Builtin.headList unlisted2)
+      outputs =  deserializeList deserializeTxOut (Builtin.headList unlisted2)
       unlisted3 = Builtin.tailList unlisted2
       fee = deserializeValue (Builtin.headList unlisted3)
       unlisted4 = Builtin.tailList unlisted3
       mint = deserializeValue (Builtin.headList unlisted4)
       unlisted5 = Builtin.tailList unlisted4
-      dCert =  deserializeDCert (Builtin.headList unlisted5)
+      dCert = deserializeList deserializeDCert (Builtin.headList unlisted5)
       unlisted6 = Builtin.tailList unlisted5
       wdrl = deserializeAssocMap deserializeStakingCredential deserializeInt (Builtin.headList unlisted6)
       unlisted7 = Builtin.tailList unlisted6
-      validTimeRange = deserializeInterval go (Builtin.headList unlisted7)
+      validTimeRange = deserializeInterval deserializePOSIXTime (Builtin.headList unlisted7)
       unlisted8 = Builtin.tailList unlisted7
-      signatories =  deserializePubKeyHash (Builtin.headList unlisted8)
+      signatories = deserializeList deserializePubKeyHash (Builtin.headList unlisted8)
       unlisted9 = Builtin.tailList unlisted8
       redeemers = deserializeAssocMap deserializeScriptPurpose deserializeRedeemer (Builtin.headList unlisted9)
       unlisted10 = Builtin.tailList unlisted9
@@ -253,21 +250,18 @@ deserializeTxInfo dat =
                 mint: mint,
                 dCert: dCert,
                 wdrl: wdrl,
-                validTimeRange: validTimeRange,
+                validRange: validTimeRange,
                 signatories: signatories,
                 redeemers: redeemers,
                 data: data1,
                 id: id1
               }
-  where
-    go :: Builtin.BuiltinData -> POSIXTime
-    go t = POSIXTime (deserializeInt t)
 
 serializeTxOut :: TxOut -> Builtin.BuiltinData
 serializeTxOut (TxOut rec) = 
   Builtin.constrData 0 (Builtin.mkCons (serializeAddress rec.address)
                   (Builtin.mkCons (serializeValue rec.value)
-                     (Builtin.mkCons (serializeOutputDatum rec.outputDatum)
+                     (Builtin.mkCons (serializeOutputDatum rec.datum)
                         (Builtin.mkCons (serializeMaybe serializeScriptHash rec.referenceScript)
                            (Builtin.mkNilData unit)))))
 
@@ -283,7 +277,7 @@ deserializeTxOut dat =
       referenceScript = deserializeMaybe deserializeScriptHash (Builtin.headList unlisted3)
     in TxOut { address: address,
                value: value,
-               outputDatum: outputDatum,
+               datum: outputDatum,
                referenceScript: referenceScript
              }
 
@@ -303,17 +297,17 @@ deserializeTxOutRef dat =
 
 serializeTxInInfo :: TxInInfo -> Builtin.BuiltinData
 serializeTxInInfo (TxInInfo rec) = 
-  Builtin.constrData 0 (Builtin.mkCons (serializeTxOutRef rec.outRef)
+  Builtin.constrData 0 (Builtin.mkCons (serializeTxOutRef rec.txOutRef)
                   (Builtin.mkCons (serializeTxOut rec.resolved)
                      (Builtin.mkNilData unit)))
 
 deserializeTxInInfo :: Builtin.BuiltinData -> TxInInfo
 deserializeTxInInfo dat = 
   let unlisted = Builtin.unListData (Builtin.sndPair (Builtin.unConstrData dat))
-      outRef = deserializeTxOutRef (Builtin.headList dat)
+      outRef = deserializeTxOutRef (Builtin.headList unlisted)
       unlisted' = Builtin.tailList unlisted
       resolved = deserializeTxOut (Builtin.headList unlisted')
-    in TxInInfo { outRef: outRef, resolved: resolved }
+    in TxInInfo { txOutRef: outRef, resolved: resolved }
 
 serializeOutputDatum :: OutputDatum -> Builtin.BuiltinData
 serializeOutputDatum od = case od of 
@@ -403,10 +397,14 @@ serializeAssocMap ::
   Builtin.BuiltinData
 serializeAssocMap fK fV (AssocMap ell) = Builtin.mapData (go ell)
   where
-    go :: Array (Tuple2 k v) -> Array Builtin.BuiltinData
-    go arr = case arr of 
-      Nil -> Nil
-      Cons x xs -> Cons (serializeTuple2 fK fV x) (go xs)
+    go :: 
+      Array (Tuple2 k v) -> 
+      Builtin.BuiltinList (Builtin.BuiltinPair Builtin.BuiltinData Builtin.BuiltinData)
+    go = case _ of 
+             Cons p xs -> 
+               let Tuple2 x y = p 
+                  in Builtin.mkCons (Builtin.mkPairData (fK x) (fV y)) (go xs)
+             Nil -> Builtin.mkNilPairData unit 
 
 deserializeAssocMap :: 
   forall (k :: Type) (v :: Type) . 
@@ -416,10 +414,16 @@ deserializeAssocMap ::
   AssocMap k v
 deserializeAssocMap fK fV dat = AssocMap (go (Builtin.unMapData dat))
   where
-    go :: Array Builtin.BuiltinData -> Array (Tuple2 k v)
-    go arr = case arr of 
-      Nil -> Nil
-      Cons d ds -> Cons (deserializeTuple2 fK fV d) (go ds)
+    go :: 
+      Builtin.BuiltinList (Builtin.BuiltinPair Builtin.BuiltinData Builtin.BuiltinData) ->
+      Array (Tuple2 k v)
+    go ell = if Builtin.nullList ell
+             then Nil
+             else let p = Builtin.headList ell
+                      t = Builtin.tailList ell
+                      x = Builtin.fstPair p
+                      y = Builtin.sndPair p
+                    in Cons (Tuple2 (fK x) (fV y)) (go t)
 
 serializeScriptHash :: ScriptHash -> Builtin.BuiltinData
 serializeScriptHash (ScriptHash dat) = serializeByteString dat
@@ -478,10 +482,12 @@ deserializeList f dat =
   let unlisted = Builtin.unListData dat
    in go unlisted
    where
-     go :: Array Builtin.BuiltinData -> Array a
-     go = case _ of
-              Nil -> Nil
-              Cons x xs -> Cons (f x) (go xs)
+     go :: Builtin.BuiltinList Builtin.BuiltinData -> Array a
+     go ell = if Builtin.nullList ell
+              then Nil
+              else let h = Builtin.headList ell
+                       t = Builtin.tailList ell
+                     in Cons (f h) (go t)
 
 serializeTuple2 :: 
   forall (a :: Type) (b :: Type) . 
@@ -505,8 +511,6 @@ deserializeTuple2 fA fB dat =
         unlisted' = Builtin.tailList unlisted
         y = fB (Builtin.headList unlisted') 
       in Tuple2 x y
-
-data Maybe (a :: Type) = Nothing | Just a
 
 serializeMaybe :: 
   forall (a :: Type) . 
