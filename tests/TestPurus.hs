@@ -38,7 +38,9 @@ runPurus :: P.CodegenTarget -> FilePath ->  IO ()
 runPurus target dir =  do
     outDirExists <- doesDirectoryExist outputDir
     when (target /= P.CheckCoreFn) $ do
-      when outDirExists $ removeDirectoryRecursive outputDir
+      when outDirExists $ do
+        removeDirectoryRecursive outputDir
+        createDirectory outputDir
       unless outDirExists $ createDirectory outputDir
     files <- concat <$> getTestFiles dir
     print files
@@ -46,7 +48,7 @@ runPurus target dir =  do
     compileForTests (makeOpts files)
     print ("Done with " <> dir)
   where
-    outputDir = "tests" </> "purus" </> dir </> "output"
+    outputDir = dir </> "output"
 
     makeOpts :: [FilePath] -> PSCMakeOptions
     makeOpts files = PSCMakeOptions {
@@ -82,7 +84,7 @@ runFullPipeline targetDir mainModuleName mainFunctionName = do
 shouldPass :: [FilePath]
 shouldPass = map (prefix </>) paths
   where
-    prefix = "passing"
+    prefix = "tests/purus/passing"
     paths = [
       {-  "2018",
         "2138",
@@ -124,7 +126,7 @@ shouldPass = map (prefix </>) paths
 
 getTestFiles :: FilePath -> IO [[FilePath]]
 getTestFiles testDir = do
-  let dir = "tests" </> "purus" </> testDir
+  let dir =  testDir
   getFiles dir <$> testGlob dir
   where
   -- A glob for all purs and js files within a test directory
