@@ -475,14 +475,14 @@ infer' v@(Literal _ (NumericLiteral (Right _))) = return $ TypedValue' True v ty
 infer' v@(Literal _ (StringLiteral _)) = return $ TypedValue' True v tyString
 infer' v@(Literal _ (CharLiteral _)) = return $ TypedValue' True v tyChar
 infer' v@(Literal _ (BooleanLiteral _)) = return $ TypedValue' True v tyBoolean
-infer' (Literal ss (ArrayLiteral vals)) = do
+infer' (Literal ss (ListLiteral vals)) = do
   ts <- traverse infer vals
   els <- freshTypeWithKind kindType
   ts' <- forM ts $ \(TypedValue' ch val t) -> do
     (val', t') <- instantiatePolyTypeWithUnknowns val t
     unifyTypes els t'
     return (TypedValue ch val' t')
-  return $ TypedValue' True (Literal ss (ArrayLiteral ts')) (srcTypeApp tyArray els)
+  return $ TypedValue' True (Literal ss (ListLiteral ts')) (srcTypeApp tyList els)
 infer' (Literal ss (ObjectLiteral ps)) = do
   ensureNoDuplicateProperties ps
   typedFields <- inferProperties ps
@@ -777,10 +777,10 @@ inferBinder val (LiteralBinder _ (ObjectLiteral props)) = do
       m1 <- inferBinder propTy binder
       m2 <- inferRowProperties nrow (srcRCons (Label name) propTy row) binders
       return $ m1 `M.union` m2
-inferBinder val (LiteralBinder _ (ArrayLiteral binders)) = do
+inferBinder val (LiteralBinder _ (ListLiteral binders)) = do
   el <- freshTypeWithKind kindType
   m1 <- M.unions <$> traverse (inferBinder el) binders
-  unifyTypes val (srcTypeApp tyArray el)
+  unifyTypes val (srcTypeApp tyList el)
   return m1
 inferBinder val (NamedBinder ss name binder) =
   warnAndRethrowWithPositionTC ss $ do
@@ -955,9 +955,9 @@ check' v@(Literal _ (CharLiteral _)) t
 check' v@(Literal _ (BooleanLiteral _)) t
   | t == tyBoolean =
       return $ TypedValue' True v t
-check' (Literal ss (ArrayLiteral vals)) t@(TypeApp _ a ty) = do
-  unifyTypes a tyArray
-  array <- Literal ss . ArrayLiteral . map tvToExpr <$> forM vals (`check` ty)
+check' (Literal ss (ListLiteral vals)) t@(TypeApp _ a ty) = do
+  unifyTypes a tyList
+  array <- Literal ss . ListLiteral . map tvToExpr <$> forM vals (`check` ty)
   return $ TypedValue' True array t
 check' (Abs binder ret) ty@(TypeApp _ (TypeApp _ t argTy) retTy)
   | VarBinder ss arg <- binder = do

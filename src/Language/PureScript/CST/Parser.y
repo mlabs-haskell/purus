@@ -450,7 +450,7 @@ exprAtom :: { Expr () }
   | char { uncurry (ExprChar ()) $1 }
   | string { uncurry (ExprString ()) $1 }
   | number { uncurry (ExprNumber ()) $1 }
-  | delim('[', expr, ',', ']') { ExprArray () $1 }
+  | delim('[', expr, ',', ']') { ExprList () $1 }
   | delim('{', recordLabel, ',', '}') { ExprRecord () $1 }
   | '(' expr ')' { ExprParens () (Wrapped $1 $2 $3) }
 
@@ -598,7 +598,7 @@ binderAtom :: { Binder () }
   | char { uncurry (BinderChar ()) $1 }
   | string { uncurry (BinderString ()) $1 }
   | number { uncurry (BinderNumber () Nothing) $1 }
-  | delim('[', binder, ',', ']') { BinderArray () $1 }
+  | delim('[', binder, ',', ']') { BinderList () $1 }
   | delim('{', recordBinder, ',', '}') { BinderRecord () $1 }
   | '(' binder ')' { BinderParens () (Wrapped $1 $2 $3) }
 

@@ -402,7 +402,7 @@ toPat = \case
     StringLiteral pss -> pure . LitP $ StringL pss
     CharLiteral c -> pure . LitP $ CharL c
     BooleanLiteral _ -> error "boolean literal patterns shouldn't exist anymore"
-    ArrayLiteral _ -> error "array literal patterns shouldn't exist anymore"
+    ListLiteral _ -> error "array literal patterns shouldn't exist anymore"
     ObjectLiteral fs' -> do
       -- REVIEW/FIXME:
       -- this isn't right, we need to make sure the positions of the binders are correct,
@@ -413,13 +413,15 @@ toPat = \case
           tupCtorName = coerceProperName <$> tupTyName
       ConP tupTyName tupCtorName <$> traverse (toPat . snd) fs
 
+-- N.B. We expect the various kinds of literals here to be eliminated prior to this phase of desugaring
+--      (they should be eliminated when converting AST to CoreFn)
 desugarLit :: Literal (Expr Ann) -> DesugarCore (Lit WithObjects (Exp WithObjects PurusType (Vars PurusType)))
 desugarLit (NumericLiteral (Left int)) = pure $ IntL int
 desugarLit (NumericLiteral (Right _)) = error "TODO: Remove Number lits from all preceding ASTs" -- pure $ NumL number
 desugarLit (StringLiteral string) = pure $ StringL string
 desugarLit (CharLiteral char) = pure $ CharL char
 desugarLit (BooleanLiteral _) = error "TODO: Remove BooleanLiteral from all preceding ASTs"
-desugarLit (ArrayLiteral _) = error "TODO: Remove ArrayLiteral from IR AST" -- ArrayL <$> traverse desugarCore arr
+desugarLit (ListLiteral _) = error "TODO: Remove ListLiteral from IR AST" -- ListL <$> traverse desugarCore arr
 desugarLit (ObjectLiteral object) = ObjectL () <$> desugarObjectMembers object
 
 -- this looks like existing monadic combinator but I couldn't find it

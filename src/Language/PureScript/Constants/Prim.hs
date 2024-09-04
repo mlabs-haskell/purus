@@ -13,7 +13,7 @@ import Language.PureScript.Names (ModuleName)
 $( TH.declare do
     TH.mod "Prim" do
       TH.cls "Partial"
-      TH.dty "Array" ["Nil", "Cons"]
+      TH.dty "List" ["Nil", "Cons"]
       TH.dty "Boolean" ["False", "True"]
       traverse_ (\x -> TH.dty ("Tuple" <> show x) ["Tuple" <> show x]) [1 .. 100] -- tuples
       TH.ty "Char"

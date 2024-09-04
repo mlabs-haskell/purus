@@ -30,8 +30,8 @@ data Literal a -- a ~ Expr Ann
     BooleanLiteral Bool
   | -- |
     -- An array literal
-    ArrayLiteral [a]
-  | -- | ArrayLiteral [Literal Void]
+    ListLiteral [a]
+  | -- | ListLiteral [Literal Void]
     -- |
     -- An object literal
     ObjectLiteral [(PSString, a)]

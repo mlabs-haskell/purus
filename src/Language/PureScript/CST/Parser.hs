@@ -22359,7 +22359,7 @@ happyReduction_192 _ = notHappyAtAll
 happyReduce_193 = happySpecReduce_1 68 happyReduction_193
 happyReduction_193 (HappyAbsSyn133 happy_var_1) =
   HappyAbsSyn59
-    ( ExprArray () happy_var_1
+    ( ExprList () happy_var_1
     )
 happyReduction_193 _ = notHappyAtAll
 
@@ -22866,7 +22866,7 @@ happyReduction_243 _ = notHappyAtAll
 happyReduce_244 = happySpecReduce_1 91 happyReduction_244
 happyReduction_244 (HappyAbsSyn132 happy_var_1) =
   HappyAbsSyn88
-    ( BinderArray () happy_var_1
+    ( BinderList () happy_var_1
     )
 happyReduction_244 _ = notHappyAtAll
 

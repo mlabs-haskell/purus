@@ -369,7 +369,7 @@ identsFromBinders :: [Binder a] -> [Ident]
 identsFromBinders = foldMap identsFromBinder
   where
     identsFromBinder = \case
-      LiteralBinder _ (ArrayLiteral xs) -> identsFromBinders xs
+      LiteralBinder _ (ListLiteral xs) -> identsFromBinders xs
       LiteralBinder _ (ObjectLiteral xs) -> identsFromBinders (map snd xs)
       VarBinder _ ident _ -> [ident]
       ConstructorBinder _ _ _ xs -> identsFromBinders xs

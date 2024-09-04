@@ -55,11 +55,11 @@ import Language.Purus.IR (
 
 import Control.Lens ((<&>), (^.))
 
-pattern ArrayCons :: Qualified Ident
-pattern ArrayCons = Qualified (ByModuleName C.M_Prim) (Ident "Cons")
+pattern ListCons :: Qualified Ident
+pattern ListCons = Qualified (ByModuleName C.M_Prim) (Ident "Cons")
 
-pattern ArrayNil :: Qualified Ident
-pattern ArrayNil = Qualified (ByModuleName C.M_Prim) (Ident "Nil")
+pattern ListNil :: Qualified Ident
+pattern ListNil = Qualified (ByModuleName C.M_Prim) (Ident "Nil")
 
 mkProdFields :: [t] -> [(Ident, t)]
 mkProdFields = map (UnusedIdent,)
@@ -77,10 +77,10 @@ primData = tupleDatatypes <> Datatypes tDict cDict
           (\x -> (x ^. dDataTyName, x))
           [ DataDecl
               Data
-              C.Array
+              C.List
               [("a", KindType)]
-              [ CtorDecl ArrayNil []
-              , CtorDecl ArrayCons $ mkProdFields [TyVar "a" KindType, TyApp (TyCon C.Array) (TyVar "a" KindType)]
+              [ CtorDecl ListNil []
+              , CtorDecl ListCons $ mkProdFields [TyVar "a" KindType, TyApp (TyCon C.List) (TyVar "a" KindType)]
               ]
           , DataDecl
               Data
@@ -94,8 +94,8 @@ primData = tupleDatatypes <> Datatypes tDict cDict
     cDict :: Map (Qualified Ident) (Qualified (ProperName 'TypeName))
     cDict =
       M.fromList
-        [ (ArrayCons, C.Array)
-        , (ArrayNil, C.Array)
+        [ (ListCons, C.List)
+        , (ListNil, C.List)
         , (properToIdent <$> C.C_True, C.Boolean)
         , (properToIdent <$> C.C_False, C.Boolean)
         ]
@@ -136,10 +136,10 @@ primDataPS = tupleDatatypesPS <> Datatypes tDict cDict
           (\x -> (x ^. dDataTyName, x))
           [ DataDecl
               Data
-              C.Array
+              C.List
               [("a", kindType)]
-              [ CtorDecl ArrayNil []
-              , CtorDecl ArrayCons $ mkProdFields [TypeVar na "a" kindType, TypeApp na (TypeConstructor na C.Array) (TypeVar na "a" kindType)]
+              [ CtorDecl ListNil []
+              , CtorDecl ListCons $ mkProdFields [TypeVar na "a" kindType, TypeApp na (TypeConstructor na C.List) (TypeVar na "a" kindType)]
               ]
           , DataDecl
               Data
@@ -153,8 +153,8 @@ primDataPS = tupleDatatypesPS <> Datatypes tDict cDict
     cDict :: Map (Qualified Ident) (Qualified (ProperName 'TypeName))
     cDict =
       M.fromList
-        [ (ArrayCons, C.Array)
-        , (ArrayNil, C.Array)
+        [ (ListCons, C.List)
+        , (ListNil, C.List)
         , (properToIdent <$> C.C_True, C.Boolean)
         , (properToIdent <$> C.C_False, C.Boolean)
         ]

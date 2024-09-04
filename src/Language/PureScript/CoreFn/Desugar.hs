@@ -50,7 +50,7 @@ import Language.PureScript.CoreFn.Desugar.Utils (
   instantiate,
   instantiatePolyType,
   lookupDictType,
-  mkArray,
+  mkList,
   properToIdent,
   purusTy,
   reExportsToCoreFn,
@@ -83,7 +83,7 @@ import Language.PureScript.Environment (
   tyInt,
   tyNumber,
   tyString,
-  pattern ArrayT,
+  pattern ListT,
   pattern RecordT,
   pattern (:->),
  )
@@ -221,10 +221,10 @@ lookupType sp tn = do
       traceM $ "lookupType: " <> showIdent' tn <> " :: " <> ppType 10 ty
       pure (ty, nv)
 
-getInnerArrayTy :: Type a -> Maybe (Type a)
-getInnerArrayTy (ArrayT arr) = Just arr
-getInnerArrayTy (ForAll _ _ _ _ ty _) = getInnerArrayTy ty
-getInnerArrayTy _ = Nothing
+getInnerListTy :: Type a -> Maybe (Type a)
+getInnerListTy (ListT arr) = Just arr
+getInnerListTy (ForAll _ _ _ _ ty _) = getInnerListTy ty
+getInnerListTy _ = Nothing
 
 -- | Extracts inner type of an object if it is behind foralls
 getInnerObjectTy :: Type a -> Maybe (Type a)
@@ -313,15 +313,15 @@ declToCoreFn _ _ = pure []
 
 -- Desugars expressions from AST to typed CoreFn representation.
 exprToCoreFn :: forall m. (M m) => ModuleName -> SourceSpan -> Maybe SourceType -> A.Expr -> m (Expr Ann)
--- Array & Object literals can contain non-literal expressions. Both of these types should always be tagged
+-- List & Object literals can contain non-literal expressions. Both of these types should always be tagged
 -- (i.e. returned as an AST.TypedValue) after the initial typechecking phase, so we expect the type to be passed in
-exprToCoreFn mn ss (Just arrT) astlit@(A.Literal _ (ArrayLiteral ts))
-  | Just ty <- getInnerArrayTy arrT =
+exprToCoreFn mn ss (Just arrT) astlit@(A.Literal _ (ListLiteral ts))
+  | Just ty <- getInnerListTy arrT =
       wrapTrace ("exprToCoreFn ARRAYLIT " <> renderValue 100 astlit) $ do
         traceM $ ppType 100 arrT
-        mkArray ty <$> traverse (exprToCoreFn mn ss (Just ty)) ts
-exprToCoreFn _ _ Nothing astlit@(A.Literal _ (ArrayLiteral _)) =
-  internalError $ "Error while desugaring Array Literal. No type provided for literal:\n" <> renderValue 100 astlit
+        mkList ty <$> traverse (exprToCoreFn mn ss (Just ty)) ts
+exprToCoreFn _ _ Nothing astlit@(A.Literal _ (ListLiteral _)) =
+  internalError $ "Error while desugaring List Literal. No type provided for literal:\n" <> renderValue 100 astlit
 exprToCoreFn mn ss (Just recTy) (A.Literal _ (ObjectLiteral objFields))
   | Just row <- getInnerObjectTy recTy =
       objectToCoreFn mn ss recTy row objFields
@@ -742,9 +742,9 @@ inferBinder' val (A.LiteralBinder _ (ObjectLiteral props)) = wrapTrace "inferBin
         x <- inferBinder' ty bndr
         xs <- deduceRowProperties types rest
         pure $ M.union x xs
--- TODO: Remove ArrayT pattern synonym
-inferBinder' (ArrayT val) (A.LiteralBinder _ (ArrayLiteral binders)) = wrapTrace "inferBinder' ARRAYLIT" $ M.unions <$> traverse (inferBinder' val) binders
-inferBinder' _ (A.LiteralBinder _ (ArrayLiteral _)) = internalError "bad type in array binder "
+-- TODO: Remove ListT pattern synonym
+inferBinder' (ListT val) (A.LiteralBinder _ (ListLiteral binders)) = wrapTrace "inferBinder' ARRAYLIT" $ M.unions <$> traverse (inferBinder' val) binders
+inferBinder' _ (A.LiteralBinder _ (ListLiteral _)) = internalError "bad type in array binder "
 inferBinder' val (A.NamedBinder ss name binder) = wrapTrace ("inferBinder' NAMEDBINDER " <> T.unpack (runIdent name)) $
   warnAndRethrowWithPositionTC ss $ do
     m <- inferBinder' val binder

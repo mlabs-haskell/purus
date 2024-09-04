@@ -138,7 +138,7 @@ prettyPrintLiteralValue _ (StringLiteral s) = text $ T.unpack $ prettyPrintStrin
 prettyPrintLiteralValue _ (CharLiteral c) = text $ show c
 prettyPrintLiteralValue _ (BooleanLiteral True) = text "true"
 prettyPrintLiteralValue _ (BooleanLiteral False) = text "false"
-prettyPrintLiteralValue d (ArrayLiteral xs) = list '[' ']' (prettyPrintValue (d - 1)) xs
+prettyPrintLiteralValue d (ListLiteral xs) = list '[' ']' (prettyPrintValue (d - 1)) xs
 prettyPrintLiteralValue d (ObjectLiteral ps) = prettyPrintObject (d - 1) $ second Just `map` ps
 
 prettyPrintDeclaration :: Int -> Declaration -> Box
@@ -232,7 +232,7 @@ prettyPrintLiteralBinder (ObjectLiteral bs) =
   where
     prettyPrintObjectPropertyBinder :: (PSString, Binder) -> Text
     prettyPrintObjectPropertyBinder (key, binder) = prettyPrintObjectKey key Monoid.<> ": " Monoid.<> prettyPrintBinder binder
-prettyPrintLiteralBinder (ArrayLiteral bs) =
+prettyPrintLiteralBinder (ListLiteral bs) =
   "[ "
     Monoid.<> T.intercalate ", " (map prettyPrintBinder bs)
     Monoid.<> " ]"

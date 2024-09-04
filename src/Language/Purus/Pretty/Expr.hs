@@ -291,7 +291,7 @@ prettyLiteralValue (StringLiteral s) = ignoreFmt $ pretty . T.unpack $ prettyPri
 prettyLiteralValue (CharLiteral c) = ignoreFmt $ viaShow . show $ c
 prettyLiteralValue (BooleanLiteral True) = ignoreFmt "true"
 prettyLiteralValue (BooleanLiteral False) = ignoreFmt "false"
-prettyLiteralValue (ArrayLiteral xs) = printer oneLine multiLine
+prettyLiteralValue (ListLiteral xs) = printer oneLine multiLine
   where
     oneLine = oneLineList $ asOneLine prettyValue <$> xs
     -- N.B. I think it makes more sense to ensure that list *elements* are always oneLine
@@ -363,7 +363,7 @@ prettyLiteralBinder (ObjectLiteral bs) = recordLike =<< traverse prettyObjectPro
       key' <- prettyObjectKey key
       binder' <- prettyBinder binder
       pure $ key' <:> binder'
-prettyLiteralBinder (ArrayLiteral bs) = list <$> traverse prettyBinder bs
+prettyLiteralBinder (ListLiteral bs) = list <$> traverse prettyBinder bs
 
 prettyBinder :: Binder a -> Printer ann
 prettyBinder (ConstructorBinder _ _ ctor []) = pure . pretty $ runProperName (disqualify ctor)

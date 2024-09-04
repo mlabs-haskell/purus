@@ -215,7 +215,7 @@ traverseLit f = \case
   StringLiteral x -> pure $ StringLiteral x
   CharLiteral x -> pure $ CharLiteral x
   BooleanLiteral x -> pure $ BooleanLiteral x
-  ArrayLiteral xs -> ArrayLiteral <$> traverse f xs
+  ListLiteral xs -> ListLiteral <$> traverse f xs
   ObjectLiteral xs -> ObjectLiteral <$> traverse (\(str, x) -> (str,) <$> f x) xs
 
 -- Wrapper around instantiatePolyType to provide a better interface
@@ -626,11 +626,11 @@ properToIdent = Ident . runProperName
 
 -- Desugars case binders from AST to CoreFn representation. Doesn't need to be monadic / essentially the same as the old version.
 binderToCoreFn :: M.Map Ident SourceType -> Environment -> ModuleName -> SourceSpan -> A.Binder -> Binder Ann
-binderToCoreFn dict env mn _ss (A.LiteralBinder ss (ArrayLiteral bs)) = case bs of
+binderToCoreFn dict env mn _ss (A.LiteralBinder ss (ListLiteral bs)) = case bs of
   [] -> nilP
   (bx : bxs) ->
     let bx' = binderToCoreFn dict env mn _ss bx
-        bxs' = binderToCoreFn dict env mn _ss $ A.LiteralBinder ss (ArrayLiteral bxs)
+        bxs' = binderToCoreFn dict env mn _ss $ A.LiteralBinder ss (ListLiteral bxs)
      in consP [bx', bxs']
 binderToCoreFn _ _ _ _ss (A.LiteralBinder _ (BooleanLiteral b)) =
   if b then truePat else falsePat
@@ -709,7 +709,7 @@ false = Var NoAnn Boolean (properToIdent <$> C.C_False)
 isFalse :: Expr Ann -> Bool
 isFalse e = e == false
 
--- "Array" (List) constants
+-- "List" (List) constants
 
 mkConsE :: Expr Ann -> Expr Ann -> Expr Ann
 mkConsE x xs = (consE `appExp` x) `appExp` xs
@@ -720,21 +720,21 @@ consE :: Expr Ann
 consE = Var NoAnn (quantify $ x -:> srcTypeApp listTyCon x -:> srcTypeApp listTyCon x) (properToIdent <$> C.C_Cons)
   where
     x = srcTypeVar "x" kindType
-    listTyCon = srcTypeConstructor C.Array
+    listTyCon = srcTypeConstructor C.List
 
 nilE :: SourceType -> Expr Ann
 nilE ty = Var NoAnn (srcTypeApp listTyCon ty) (properToIdent <$> C.C_Nil)
   where
-    listTyCon = srcTypeConstructor C.Array
+    listTyCon = srcTypeConstructor C.List
 
-mkArray :: SourceType -> [Expr Ann] -> Expr Ann
-mkArray ty = foldr mkConsE (nilE ty)
+mkList :: SourceType -> [Expr Ann] -> Expr Ann
+mkList ty = foldr mkConsE (nilE ty)
 
 consP :: [Binder Ann] -> Binder Ann
-consP bs = ConstructorBinder NoAnn C.Array C.C_Cons bs
+consP bs = ConstructorBinder NoAnn C.List C.C_Cons bs
 
 nilP :: Binder Ann
-nilP = ConstructorBinder NoAnn C.Array C.C_Nil []
+nilP = ConstructorBinder NoAnn C.List C.C_Nil []
 
 -- misc patterns
 

@@ -90,9 +90,9 @@ literalToJSON _ (BooleanLiteral b) =
     [ "literalType" .= "BooleanLiteral"
     , "value" .= b
     ]
-literalToJSON t (ArrayLiteral xs) =
+literalToJSON t (ListLiteral xs) =
   object
-    [ "literalType" .= "ArrayLiteral"
+    [ "literalType" .= "ListLiteral"
     , "value" .= map t xs
     ]
 literalToJSON t (ObjectLiteral xs) =

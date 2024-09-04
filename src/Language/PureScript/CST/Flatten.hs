@@ -75,7 +75,7 @@ flattenBinder = \case
   BinderChar _ a _ -> pure a
   BinderString _ a _ -> pure a
   BinderNumber _ a b _ -> foldMap pure a <> pure b
-  BinderArray _ a -> flattenWrapped (foldMap (flattenSeparated flattenBinder)) a
+  BinderList _ a -> flattenWrapped (foldMap (flattenSeparated flattenBinder)) a
   BinderRecord _ a ->
     flattenWrapped (foldMap (flattenSeparated (flattenRecordLabeled flattenBinder))) a
   BinderParens _ a -> flattenWrapped flattenBinder a
@@ -140,7 +140,7 @@ flattenExpr = \case
   ExprChar _ a _ -> pure a
   ExprString _ a _ -> pure a
   ExprNumber _ a _ -> pure a
-  ExprArray _ a -> flattenWrapped (foldMap (flattenSeparated flattenExpr)) a
+  ExprList _ a -> flattenWrapped (foldMap (flattenSeparated flattenExpr)) a
   ExprRecord _ a ->
     flattenWrapped (foldMap (flattenSeparated (flattenRecordLabeled flattenExpr))) a
   ExprParens _ a -> flattenWrapped flattenExpr a

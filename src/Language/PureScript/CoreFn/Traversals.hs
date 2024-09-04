@@ -43,7 +43,7 @@ everywhereOnValues f g h = (f', g', h')
         }
 
     handleLiteral :: (a -> a) -> Literal a -> Literal a
-    handleLiteral i (ArrayLiteral ls) = ArrayLiteral (map i ls)
+    handleLiteral i (ListLiteral ls) = ListLiteral (map i ls)
     handleLiteral i (ObjectLiteral ls) = ObjectLiteral (map (fmap i) ls)
     handleLiteral _ other = other
 
@@ -83,6 +83,6 @@ traverseCoreFn f g h i = (f', g', h', i')
     i' ca = CaseAlternative <$> traverse h (caseAlternativeBinders ca) <*> bitraverse (traverse $ bitraverse g g) g (caseAlternativeResult ca)
 
     handleLiteral withItem = \case
-      ArrayLiteral ls -> ArrayLiteral <$> traverse withItem ls
+      ListLiteral ls -> ListLiteral <$> traverse withItem ls
       ObjectLiteral ls -> ObjectLiteral <$> traverse (traverse withItem) ls
       other -> pure other

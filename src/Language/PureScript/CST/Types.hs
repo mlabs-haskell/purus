@@ -353,7 +353,7 @@ data Expr a
   | ExprChar a SourceToken Char
   | ExprString a SourceToken PSString
   | ExprNumber a SourceToken (Either Integer Double)
-  | ExprArray a (Delimited (Expr a))
+  | ExprList a (Delimited (Expr a))
   | ExprRecord a (Delimited (RecordLabeled (Expr a)))
   | ExprParens a (Wrapped (Expr a))
   | ExprTyped a (Expr a) SourceToken (Type a)
@@ -465,7 +465,7 @@ data Binder a
   | BinderChar a SourceToken Char
   | BinderString a SourceToken PSString
   | BinderNumber a (Maybe SourceToken) SourceToken (Either Integer Double)
-  | BinderArray a (Delimited (Binder a))
+  | BinderList a (Delimited (Binder a))
   | BinderRecord a (Delimited (RecordLabeled (Binder a)))
   | BinderParens a (Wrapped (Binder a))
   | BinderTyped a (Binder a) SourceToken (Type a)

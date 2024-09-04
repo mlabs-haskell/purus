@@ -287,7 +287,7 @@ exprRange = \case
   ExprChar _ a _ -> (a, a)
   ExprString _ a _ -> (a, a)
   ExprNumber _ a _ -> (a, a)
-  ExprArray _ a -> wrappedRange a
+  ExprList _ a -> wrappedRange a
   ExprRecord _ a -> wrappedRange a
   ExprParens _ a -> wrappedRange a
   ExprTyped _ a _ b -> (fst $ exprRange a, snd $ typeRange b)
@@ -332,7 +332,7 @@ binderRange = \case
   BinderNumber _ a b _
     | Just a' <- a -> (a', b)
     | otherwise -> (b, b)
-  BinderArray _ a -> wrappedRange a
+  BinderList _ a -> wrappedRange a
   BinderRecord _ a -> wrappedRange a
   BinderParens _ a -> wrappedRange a
   BinderTyped _ a _ b -> (fst $ binderRange a, snd $ typeRange b)

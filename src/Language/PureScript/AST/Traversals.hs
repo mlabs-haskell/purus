@@ -44,7 +44,7 @@ mapGuardedExpr f g (GuardedExpr guards rhs) =
 
 litM :: (Monad m) => (a -> m a) -> Literal a -> m (Literal a)
 litM go (ObjectLiteral as) = ObjectLiteral <$> traverse (sndM go) as
-litM go (ArrayLiteral as) = ArrayLiteral <$> traverse go as
+litM go (ListLiteral as) = ListLiteral <$> traverse go as
 litM _ other = pure other
 
 everywhereOnValues ::
@@ -99,7 +99,7 @@ everywhereOnValues f g h = (f', g', h')
     h' other = h other
 
     lit :: (a -> a) -> Literal a -> Literal a
-    lit go (ArrayLiteral as) = ArrayLiteral (fmap go as)
+    lit go (ListLiteral as) = ListLiteral (fmap go as)
     lit go (ObjectLiteral as) = ObjectLiteral (fmap (fmap go) as)
     lit _ other = other
 
@@ -315,7 +315,7 @@ everythingOnValues (<>.) f g h i j = (f', g', h', i', j')
     h' b = h b
 
     lit :: r -> (a -> r) -> Literal a -> r
-    lit r go (ArrayLiteral as) = foldl (<>.) r (fmap go as)
+    lit r go (ListLiteral as) = foldl (<>.) r (fmap go as)
     lit r go (ObjectLiteral as) = foldl (<>.) r (fmap (go . snd) as)
     lit r _ _ = r
 
@@ -400,7 +400,7 @@ everythingWithContextOnValues s0 r0 (<>.) f g h i j = (f'' s0, g'' s0, h'' s0, i
     h' _ _ = r0
 
     lit :: (s -> a -> r) -> s -> Literal a -> r
-    lit go s (ArrayLiteral as) = foldl (<>.) r0 (fmap (go s) as)
+    lit go s (ListLiteral as) = foldl (<>.) r0 (fmap (go s) as)
     lit go s (ObjectLiteral as) = foldl (<>.) r0 (fmap (go s . snd) as)
     lit _ _ _ = r0
 
@@ -507,7 +507,7 @@ everywhereWithContextOnValuesM s0 f g h i j k = (f'' s0, g'' s0, h'' s0, i'' s0,
     h' _ other = return other
 
     lit :: (s -> a -> m a) -> s -> Literal a -> m (Literal a)
-    lit go s (ArrayLiteral as) = ArrayLiteral <$> traverse (go s) as
+    lit go s (ListLiteral as) = ListLiteral <$> traverse (go s) as
     lit go s (ObjectLiteral as) = ObjectLiteral <$> traverse (sndM (go s)) as
     lit _ _ other = return other
 
@@ -622,7 +622,7 @@ everythingWithScope f g h i j = (f'', g'', h'', i'', \s -> snd . j'' s)
     h' _ _ = mempty
 
     lit :: (S.Set ScopedIdent -> a -> r) -> S.Set ScopedIdent -> Literal a -> r
-    lit go s (ArrayLiteral as) = foldMap (go s) as
+    lit go s (ListLiteral as) = foldMap (go s) as
     lit go s (ObjectLiteral as) = foldMap (go s . snd) as
     lit _ _ _ = mempty
 

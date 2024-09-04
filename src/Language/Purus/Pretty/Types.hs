@@ -9,7 +9,7 @@ import Data.Text (Text)
 import Language.PureScript.Environment (
   tyFunction,
   tyRecord,
-  pattern ArrayT,
+  pattern ListT,
  )
 import Language.PureScript.Names (OpName (..), ProperName (..), showQualified)
 import Language.PureScript.PSString (prettyPrintString)
@@ -51,10 +51,10 @@ import Prettyprinter.Render.Text (renderStrict)
 prettyType :: forall a ann. (Show a) => Type a -> Printer ann
 prettyType t =
   group <$> case t of
-    ArrayT tx -> do
+    ListT tx -> do
       -- this is a stupid hack, figure out the proper fix later
       inner <- parens <$> prettyType tx
-      pure $ "Array" <+> inner
+      pure $ "List" <+> inner
     TUnknown _ n -> pure $ "t" <> pretty n
     TypeVar _ txt ki -> do
       ki' <- prettyType ki

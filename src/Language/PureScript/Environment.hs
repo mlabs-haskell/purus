@@ -372,8 +372,8 @@ tyBoolean :: SourceType
 tyBoolean = srcTypeConstructor C.Boolean
 
 -- | Type constructor for arrays
-tyArray :: SourceType
-tyArray = srcTypeConstructor C.Array
+tyList :: SourceType
+tyList = srcTypeConstructor C.List
 
 -- | Type constructor for records
 tyRecord :: SourceType
@@ -404,12 +404,12 @@ pattern a :-> b <-
     (TypeApp _ (TypeConstructor _ C.Function) a)
     b
 
-pattern ArrayT :: Type a -> Type a
-pattern ArrayT a <-
-  TypeApp _ (TypeConstructor _ C.Array) a
+pattern ListT :: Type a -> Type a
+pattern ListT a <-
+  TypeApp _ (TypeConstructor _ C.List) a
 
 arrayT :: SourceType -> SourceType
-arrayT = TypeApp NullSourceAnn (TypeConstructor NullSourceAnn C.Array)
+arrayT = TypeApp NullSourceAnn (TypeConstructor NullSourceAnn C.List)
 
 pattern RecordT :: Type a -> Type a
 pattern RecordT a <-
@@ -443,8 +443,8 @@ primCtors =
     <> M.fromList
       [ (mkCtor "True", (Data, disqualify C.Boolean, srcTypeConstructor C.Boolean, []))
       , (mkCtor "False", (Data, disqualify C.Boolean, srcTypeConstructor C.Boolean, []))
-      , (mkCtor "Nil", (Data, disqualify C.Array, forallT "x" $ \x -> arrayT x, []))
-      , (mkCtor "Cons", (Data, disqualify C.Array, forallT "x" $ \x -> x -:> arrayT x -:> arrayT x, []))
+      , (mkCtor "Nil", (Data, disqualify C.List, forallT "x" $ \x -> arrayT x, []))
+      , (mkCtor "Cons", (Data, disqualify C.List, forallT "x" $ \x -> x -:> arrayT x -:> arrayT x, []))
       ]
 
 mkCtor :: Text -> Qualified (ProperName 'ConstructorName)
@@ -482,7 +482,7 @@ primTypes =
       , (C.Symbol, (kindType, ExternData []))
       , (C.Row, (kindType -:> kindType, ExternData [Phantom]))
       , (C.Function, (kindType -:> kindType -:> kindType, ExternData [Representational, Representational]))
-      , (C.Array, (kindType -:> kindType, listData))
+      , (C.List, (kindType -:> kindType, listData))
       , (C.Record, (kindRow kindType -:> kindType, ExternData [Representational]))
       , (C.String, (kindType, ExternData []))
       , (C.Char, (kindType, ExternData []))

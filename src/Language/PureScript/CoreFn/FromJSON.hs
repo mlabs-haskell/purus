@@ -94,14 +94,14 @@ literalFromJSON t = withObject "Literal" literalFromObj
         "StringLiteral" -> StringLiteral <$> o .: "value"
         "CharLiteral" -> CharLiteral <$> o .: "value"
         "BooleanLiteral" -> BooleanLiteral <$> o .: "value"
-        "ArrayLiteral" -> parseArrayLiteral o
+        "ListLiteral" -> parseListLiteral o
         "ObjectLiteral" -> parseObjectLiteral o
         _ -> fail ("error parsing Literal: " ++ show o)
 
-    parseArrayLiteral o = do
+    parseListLiteral o = do
       val <- o .: "value"
       as <- mapM t (V.toList val)
-      return $ ArrayLiteral as
+      return $ ListLiteral as
 
     parseObjectLiteral o = do
       val <- o .: "value"

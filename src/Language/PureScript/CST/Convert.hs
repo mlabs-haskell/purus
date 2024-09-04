@@ -401,7 +401,7 @@ convertExpr fileName = go
       ExprNumber _ a b -> do
         let ann = sourceAnnCommented fileName a a
         pure $ positioned ann . AST.Literal (fst ann) $ AST.NumericLiteral b
-      ExprArray _ (Wrapped a bs c) -> do
+      ExprList _ (Wrapped a bs c) -> do
         let
           ann = sourceAnnCommented fileName a c
           vals = case bs of
@@ -410,7 +410,7 @@ convertExpr fileName = go
               x' <- go x
               pure $ x' : xs'
             Nothing -> pure []
-        positioned ann . AST.Literal (fst ann) . AST.ArrayLiteral <$> vals
+        positioned ann . AST.Literal (fst ann) . AST.ListLiteral <$> vals
       ExprRecord z (Wrapped a bs c) -> do
         let
           ann = sourceAnnCommented fileName a c
@@ -567,7 +567,7 @@ convertBinder fileName = go
             | isJust n = bimap negate negate b
             | otherwise = b
         pure $ positioned ann . AST.LiteralBinder (fst ann) $ AST.NumericLiteral b'
-      BinderArray _ (Wrapped a bs c) -> do
+      BinderList _ (Wrapped a bs c) -> do
         let
           ann = sourceAnnCommented fileName a c
           vals = case bs of
@@ -576,7 +576,7 @@ convertBinder fileName = go
               xs' <- traverse (go . snd) xs
               pure $ x' : xs'
             Nothing -> pure []
-        positioned ann . AST.LiteralBinder (fst ann) . AST.ArrayLiteral <$> vals
+        positioned ann . AST.LiteralBinder (fst ann) . AST.ListLiteral <$> vals
       BinderRecord z (Wrapped a bs c) -> do
         let
           ann = sourceAnnCommented fileName a c

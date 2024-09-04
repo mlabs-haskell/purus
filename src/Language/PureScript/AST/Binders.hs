@@ -137,7 +137,7 @@ binderNamesWithSpans = go []
     go ns (TypedBinder _ b) = go ns b
     go ns _ = ns
     lit ns (ObjectLiteral bs) = foldl go ns (map snd bs)
-    lit ns (ArrayLiteral bs) = foldl go ns bs
+    lit ns (ListLiteral bs) = foldl go ns bs
     lit ns _ = ns
 
 isIrrefutable :: Binder -> Bool

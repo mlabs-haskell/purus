@@ -41,7 +41,7 @@ primDocsModule = Module
       ]
   , modDeclarations =
       [ function
-      , array
+      , list
       , record
       , number
       , int
@@ -261,7 +261,7 @@ kindRow = primType P.Row $ T.unlines
   , "The most common use of `Row` is `Row Type`, a row mapping labels to basic (of kind `Type`) types:"
   , ""
   , "    type ExampleRow :: Row Type"
-  , "    type ExampleRow = ( name :: String, values :: Array Int )"
+  , "    type ExampleRow = ( name :: String, values :: List Int )"
   , ""
   , "This is the kind of `Row` expected by the `Record` type constructor."
   , "More advanced row kinds like `Row (Type -> Type)` are used much less frequently."
@@ -286,15 +286,12 @@ function = primType P.Function $ T.unlines
   , "    f :: (->) Number Number"
   ]
 
-array :: Declaration
-array = primType P.Array $ T.unlines
-  [ "An Array: a data structure supporting efficient random access. In"
-  , "the JavaScript backend, values of this type are represented as JavaScript"
-  , "Arrays at runtime."
-  , ""
+list :: Declaration
+list = primType P.List $ T.unlines
+  [ "A List: a data structure supporting efficient access cons/uncons operations."
   , "Construct values using literals:"
   , ""
-  , "    x = [1,2,3,4,5] :: Array Int"
+  , "    x = [1,2,3,4,5] :: List Int"
   ]
 
 record :: Declaration
@@ -454,7 +451,7 @@ coercible = primClass P.Coercible $ T.unlines
   , ""
   , "Newtype constructors have to be in scope to preserve abstraction. It's"
   , "common to declare a newtype to encode some invariants (non emptiness of"
-  , "arrays with `Data.Array.NonEmpty.NonEmptyArray` for example), hide its"
+  , "lists with `Data.List.NonEmpty.NonEmptyList` for example), hide its"
   , "constructor and export smart constructors instead. Without this restriction,"
   , "the guarantees provided by such newtypes would be void."
   , ""

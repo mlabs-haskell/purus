@@ -7,7 +7,6 @@ import Prelude
 
 import Control.Monad.State (MonadState (..), State, gets, modify, runState, (>=>))
 
-import Data.Functor ((<&>))
 import Data.List (find)
 import Data.Map qualified as M
 import Data.Maybe (fromJust, fromMaybe)
@@ -16,7 +15,7 @@ import Data.Text qualified as T
 
 import Control.Lens
 import Data.Char (isUpper)
-import Language.PureScript.CoreFn (Ann, Bind (..), Binder (..), CaseAlternative (..), Expr (..), Literal (..), Module (..))
+import Language.PureScript.CoreFn (Ann, Bind (..), Binder (..), CaseAlternative (..), Expr (..), Literal (..))
 import Language.PureScript.CoreFn.Module
 import Language.PureScript.Names (Ident (..), Qualified (..), disqualify, isBySourcePos, isPlainIdent, runIdent, showIdent)
 import Language.PureScript.Traversals (eitherM, pairM, sndM)
@@ -194,7 +193,7 @@ renameInValue (Let ann ds v) =
 Renames within literals.
 -}
 renameInLiteral :: (a -> Rename a) -> Literal a -> Rename (Literal a)
-renameInLiteral rename (ArrayLiteral bs) = ArrayLiteral <$> traverse rename bs
+renameInLiteral rename (ListLiteral bs) = ListLiteral <$> traverse rename bs
 renameInLiteral rename (ObjectLiteral bs) = ObjectLiteral <$> traverse (sndM rename) bs
 renameInLiteral _ l = return l
 
