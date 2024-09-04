@@ -1,0 +1,28 @@
+Foo (tests/purus/passing/ExplicitImportReExport/Foo.purs)
+
+Imported Modules: 
+------------------------------
+  Builtin,
+  Prim
+
+Exports: 
+------------------------------
+  foo
+
+Re-Exports: 
+------------------------------
+  
+
+Foreign: 
+------------------------------
+  
+
+Datatypes: 
+------------------------------
+
+
+
+Declarations: 
+------------------------------
+foo :: Prim.Int
+foo = (3: Prim.Int)

@@ -1,30 +1,30 @@
-module Language.PureScript.Make.BuildPlan
-  ( BuildPlan(bpEnv, bpIndex)
-  , BuildJobResult(..)
-  , buildJobSuccess
-  , construct
-  , getResult
-  , collectResults
-  , markComplete
-  , needsRebuild
-  ) where
+module Language.PureScript.Make.BuildPlan (
+  BuildPlan (bpEnv, bpIndex),
+  BuildJobResult (..),
+  buildJobSuccess,
+  construct,
+  getResult,
+  collectResults,
+  markComplete,
+  needsRebuild,
+) where
 
 import Prelude
 
 import Control.Concurrent.Async.Lifted as A
 import Control.Concurrent.Lifted as C
-import Control.Monad.Base (liftBase)
 import Control.Monad (foldM)
-import Control.Monad.Trans.Control (MonadBaseControl(..))
-import Control.Monad.Trans.Maybe (MaybeT(..), runMaybeT)
+import Control.Monad.Base (liftBase)
+import Control.Monad.Trans.Control (MonadBaseControl (..))
+import Control.Monad.Trans.Maybe (MaybeT (..), runMaybeT)
 import Data.Foldable (foldl')
 import Data.Map qualified as M
 import Data.Maybe (fromMaybe, mapMaybe)
 import Data.Time.Clock (UTCTime)
 import Language.PureScript.AST (Module, getModuleName)
-import Language.PureScript.Crash (internalError)
 import Language.PureScript.CST qualified as CST
-import Language.PureScript.Errors (MultipleErrors(..))
+import Language.PureScript.Crash (internalError)
+import Language.PureScript.Errors (MultipleErrors (..))
 import Language.PureScript.Externs (ExternsFile)
 import Language.PureScript.Make.Actions as Actions
 import Language.PureScript.Make.Cache (CacheDb, CacheInfo, checkChanged)
@@ -32,8 +32,9 @@ import Language.PureScript.Names (ModuleName)
 import Language.PureScript.Sugar.Names.Env (Env, primEnv)
 import System.Directory (getCurrentDirectory)
 
--- | The BuildPlan tracks information about our build progress, and holds all
--- prebuilt modules for incremental builds.
+{- | The BuildPlan tracks information about our build progress, and holds all
+prebuilt modules for incremental builds.
+-}
 data BuildPlan = BuildPlan
   { bpPrebuilt :: M.Map ModuleName Prebuilt
   , bpBuildJobs :: M.Map ModuleName BuildJob
@@ -48,45 +49,45 @@ data Prebuilt = Prebuilt
 
 newtype BuildJob = BuildJob
   { bjResult :: C.MVar BuildJobResult
-    -- ^ Note: an empty MVar indicates that the build job has not yet finished.
+  -- ^ Note: an empty MVar indicates that the build job has not yet finished.
   }
 
 data BuildJobResult
-  = BuildJobSucceeded !MultipleErrors !ExternsFile
-  -- ^ Succeeded, with warnings and externs
-  --
-  | BuildJobFailed !MultipleErrors
-  -- ^ Failed, with errors
-
-  | BuildJobSkipped
-  -- ^ The build job was not run, because an upstream build job failed
+  = -- | Succeeded, with warnings and externs
+    BuildJobSucceeded !MultipleErrors !ExternsFile
+  | -- | Failed, with errors
+    BuildJobFailed !MultipleErrors
+  | -- | The build job was not run, because an upstream build job failed
+    BuildJobSkipped
 
 buildJobSuccess :: BuildJobResult -> Maybe (MultipleErrors, ExternsFile)
 buildJobSuccess (BuildJobSucceeded warnings externs) = Just (warnings, externs)
 buildJobSuccess _ = Nothing
 
--- | Information obtained about a particular module while constructing a build
--- plan; used to decide whether a module needs rebuilding.
+{- | Information obtained about a particular module while constructing a build
+plan; used to decide whether a module needs rebuilding.
+-}
 data RebuildStatus = RebuildStatus
   { statusModuleName :: ModuleName
   , statusRebuildNever :: Bool
   , statusNewCacheInfo :: Maybe CacheInfo
-    -- ^ New cache info for this module which should be stored for subsequent
-    -- incremental builds. A value of Nothing indicates that cache info for
-    -- this module should not be stored in the build cache, because it is being
-    -- rebuilt according to a RebuildPolicy instead.
+  -- ^ New cache info for this module which should be stored for subsequent
+  -- incremental builds. A value of Nothing indicates that cache info for
+  -- this module should not be stored in the build cache, because it is being
+  -- rebuilt according to a RebuildPolicy instead.
   , statusPrebuilt :: Maybe Prebuilt
-    -- ^ Prebuilt externs and timestamp for this module, if any.
+  -- ^ Prebuilt externs and timestamp for this module, if any.
   }
 
--- | Called when we finished compiling a module and want to report back the
--- compilation result, as well as any potential errors that were thrown.
-markComplete
-  :: (MonadBaseControl IO m)
-  => BuildPlan
-  -> ModuleName
-  -> BuildJobResult
-  -> m ()
+{- | Called when we finished compiling a module and want to report back the
+compilation result, as well as any potential errors that were thrown.
+-}
+markComplete ::
+  (MonadBaseControl IO m) =>
+  BuildPlan ->
+  ModuleName ->
+  BuildJobResult ->
+  m ()
 markComplete buildPlan moduleName result = do
   let BuildJob rVar = fromMaybe (internalError "make: markComplete no barrier") $ M.lookup moduleName (bpBuildJobs buildPlan)
   putMVar rVar result
@@ -95,25 +96,27 @@ markComplete buildPlan moduleName result = do
 needsRebuild :: BuildPlan -> ModuleName -> Bool
 needsRebuild bp moduleName = M.member moduleName (bpBuildJobs bp)
 
--- | Collects results for all prebuilt as well as rebuilt modules. This will
--- block until all build jobs are finished. Prebuilt modules always return no
--- warnings.
-collectResults
-  :: (MonadBaseControl IO m)
-  => BuildPlan
-  -> m (M.Map ModuleName BuildJobResult)
+{- | Collects results for all prebuilt as well as rebuilt modules. This will
+block until all build jobs are finished. Prebuilt modules always return no
+warnings.
+-}
+collectResults ::
+  (MonadBaseControl IO m) =>
+  BuildPlan ->
+  m (M.Map ModuleName BuildJobResult)
 collectResults buildPlan = do
   let prebuiltResults = M.map (BuildJobSucceeded (MultipleErrors []) . pbExternsFile) (bpPrebuilt buildPlan)
   barrierResults <- traverse (readMVar . bjResult) $ bpBuildJobs buildPlan
   pure (M.union prebuiltResults barrierResults)
 
--- | Gets the the build result for a given module name independent of whether it
--- was rebuilt or prebuilt. Prebuilt modules always return no warnings.
-getResult
-  :: (MonadBaseControl IO m)
-  => BuildPlan
-  -> ModuleName
-  -> m (Maybe (MultipleErrors, ExternsFile))
+{- | Gets the the build result for a given module name independent of whether it
+was rebuilt or prebuilt. Prebuilt modules always return no warnings.
+-}
+getResult ::
+  (MonadBaseControl IO m) =>
+  BuildPlan ->
+  ModuleName ->
+  m (Maybe (MultipleErrors, ExternsFile))
 getResult buildPlan moduleName =
   case M.lookup moduleName (bpPrebuilt buildPlan) of
     Just es ->
@@ -122,22 +125,24 @@ getResult buildPlan moduleName =
       r <- readMVar $ bjResult $ fromMaybe (internalError "make: no barrier") $ M.lookup moduleName (bpBuildJobs buildPlan)
       pure $ buildJobSuccess r
 
--- | Constructs a BuildPlan for the given module graph.
---
--- The given MakeActions are used to collect various timestamps in order to
--- determine whether a module needs rebuilding.
-construct
-  :: forall m. MonadBaseControl IO m
-  => MakeActions m
-  -> CacheDb
-  -> ([CST.PartialResult Module], [(ModuleName, [ModuleName])])
-  -> m (BuildPlan, CacheDb)
-construct MakeActions{..} cacheDb (sorted, graph) = do
+{- | Constructs a BuildPlan for the given module graph.
+
+The given MakeActions are used to collect various timestamps in order to
+determine whether a module needs rebuilding.
+-}
+construct ::
+  forall m.
+  (MonadBaseControl IO m) =>
+  MakeActions m ->
+  CacheDb ->
+  ([CST.PartialResult Module], [(ModuleName, [ModuleName])]) ->
+  m (BuildPlan, CacheDb)
+construct MakeActions {..} cacheDb (sorted, graph) = do
   let sortedModuleNames = map (getModuleName . CST.resPartial) sorted
   rebuildStatuses <- A.forConcurrently sortedModuleNames getRebuildStatus
   let prebuilt =
         foldl' collectPrebuiltModules M.empty $
-          mapMaybe (\s -> (statusModuleName s, statusRebuildNever s,) <$> statusPrebuilt s) rebuildStatuses
+          mapMaybe (\s -> (statusModuleName s,statusRebuildNever s,) <$> statusPrebuilt s) rebuildStatuses
   let toBeRebuilt = filter (not . flip M.member prebuilt) sortedModuleNames
   buildJobs <- foldM makeBuildJob M.empty toBeRebuilt
   env <- C.newMVar primEnv
@@ -147,7 +152,7 @@ construct MakeActions{..} cacheDb (sorted, graph) = do
     , let
         update = flip $ \s ->
           M.alter (const (statusNewCacheInfo s)) (statusModuleName s)
-      in
+       in
         foldl' update cacheDb rebuildStatuses
     )
   where
@@ -161,19 +166,23 @@ construct MakeActions{..} cacheDb (sorted, graph) = do
       case inputInfo of
         Left RebuildNever -> do
           prebuilt <- findExistingExtern moduleName
-          pure (RebuildStatus
-            { statusModuleName = moduleName
-            , statusRebuildNever = True
-            , statusPrebuilt = prebuilt
-            , statusNewCacheInfo = Nothing
-            })
+          pure
+            ( RebuildStatus
+                { statusModuleName = moduleName
+                , statusRebuildNever = True
+                , statusPrebuilt = prebuilt
+                , statusNewCacheInfo = Nothing
+                }
+            )
         Left RebuildAlways -> do
-          pure (RebuildStatus
-            { statusModuleName = moduleName
-            , statusRebuildNever = False
-            , statusPrebuilt = Nothing
-            , statusNewCacheInfo = Nothing
-            })
+          pure
+            ( RebuildStatus
+                { statusModuleName = moduleName
+                , statusRebuildNever = False
+                , statusPrebuilt = Nothing
+                , statusNewCacheInfo = Nothing
+                }
+            )
         Right cacheInfo -> do
           cwd <- liftBase getCurrentDirectory
           (newCacheInfo, isUpToDate) <- checkChanged cacheDb moduleName cwd cacheInfo
@@ -181,12 +190,14 @@ construct MakeActions{..} cacheDb (sorted, graph) = do
             if isUpToDate
               then findExistingExtern moduleName
               else pure Nothing
-          pure (RebuildStatus
-            { statusModuleName = moduleName
-            , statusRebuildNever = False
-            , statusPrebuilt = prebuilt
-            , statusNewCacheInfo = Just newCacheInfo
-            })
+          pure
+            ( RebuildStatus
+                { statusModuleName = moduleName
+                , statusRebuildNever = False
+                , statusPrebuilt = prebuilt
+                , statusNewCacheInfo = Just newCacheInfo
+                }
+            )
 
     findExistingExtern :: ModuleName -> m (Maybe Prebuilt)
     findExistingExtern moduleName = runMaybeT $ do
@@ -207,10 +218,11 @@ construct MakeActions{..} cacheDb (sorted, graph) = do
               prev
             Just modTimes ->
               case maximumMaybe modTimes of
-                Just depModTime | pbModificationTime pb < depModTime ->
-                  prev
+                Just depModTime
+                  | pbModificationTime pb < depModTime ->
+                      prev
                 _ -> M.insert moduleName pb prev
 
-maximumMaybe :: Ord a => [a] -> Maybe a
+maximumMaybe :: (Ord a) => [a] -> Maybe a
 maximumMaybe [] = Nothing
 maximumMaybe xs = Just $ maximum xs

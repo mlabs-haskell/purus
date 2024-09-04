@@ -1,0 +1,2893 @@
+Prelude (tests/purus/passing/prelude/Prelude.purs)
+
+Imported Modules: 
+------------------------------
+  Builtin,
+  Prelude,
+  Prim
+
+Exports: 
+------------------------------
+  serializeScriptContext,
+  deserializeScriptContext,
+  serializeScriptPurpose,
+  deserializeScriptPurpose,
+  serializeDCert,
+  deserializeDCert,
+  serializeStakingCredential,
+  deserializeStakingCredential,
+  serializeCredential,
+  deserializeCredential,
+  serializeValue,
+  deserializeValue,
+  serializeCurrencySymbol,
+  deserializeCurrencySymbol,
+  serializeTokenName,
+  deserializeTokenName,
+  serializeLovelace,
+  deserializeLovelace,
+  serializePOSIXTime,
+  deserializePOSIXTime,
+  serializeAddress,
+  deserializeAddress,
+  serializePubKeyHash,
+  deserializePubKeyHash,
+  serializeTxId,
+  deserializeTxId,
+  serializeTxInfo,
+  deserializeTxInfo,
+  serializeTxOut,
+  deserializeTxOut,
+  serializeTxOutRef,
+  deserializeTxOutRef,
+  serializeTxInInfo,
+  deserializeTxInInfo,
+  serializeOutputDatum,
+  deserializeOutputDatum,
+  serializeInterval,
+  deserializeInterval,
+  serializeExtended,
+  deserializeExtended,
+  serializeLowerBound,
+  deserializeLowerBound,
+  serializeUpperBound,
+  deserializeUpperBound,
+  serializeAssocMap,
+  deserializeAssocMap,
+  serializeScriptHash,
+  deserializeScriptHash,
+  serializeRedeemer,
+  deserializeRedeemer,
+  serializeRedeemerHash,
+  deserializeRedeemerHash,
+  serializeDatum,
+  deserializeDatum,
+  serializeDatumHash,
+  deserializeDatumHash,
+  serializeInt,
+  deserializeInt,
+  serializeByteString,
+  deserializeByteString,
+  serializeList,
+  deserializeList,
+  serializeTuple2,
+  deserializeTuple2,
+  serializeMaybe,
+  deserializeMaybe,
+  maybe,
+  fromMaybe,
+  identity,
+  const,
+  and,
+  or,
+  not,
+  xor,
+  mapList,
+  filterList,
+  takeList,
+  dropList,
+  zipWithList,
+  appendList,
+  lengthList,
+  anyList,
+  allList,
+  sumList,
+  productList,
+  apply,
+  flip
+
+Re-Exports: 
+------------------------------
+  
+
+Foreign: 
+------------------------------
+  
+
+Datatypes: 
+------------------------------
+
+
+
+Declarations: 
+------------------------------
+zipWithList :: forall (a :: Prim.Type) (b :: Prim.Type) (c :: Prim.Type). (((a :: Prim.Type) -> (((b :: Prim.Type) -> ((c :: Prim.Type))))) -> ((List ((a :: Prim.Type)) -> ((List ((b :: Prim.Type)) -> (List ((c :: Prim.Type))))))))
+zipWithList = 
+  \(f: ((a :: Prim.Type) -> (((b :: Prim.Type) -> ((c :: Prim.Type)))))) -> 
+    \(ell1: List ((a :: Prim.Type))) -> 
+      \(ell2: List ((b :: Prim.Type))) -> 
+        case (ell1: List ((a :: Prim.Type))) of 
+           Nil -> (Nil: List ((c :: Prim.Type)))
+           Cons x xs -> 
+             case (ell2: List ((b :: Prim.Type))) of 
+                Nil -> (Nil: List ((c :: Prim.Type)))
+                Cons y ys -> 
+                  (Cons: forall (x :: Prim.Type). ((x :: Prim.Type) ->
+                  ((List ((x :: Prim.Type)) -> (List ((x :: Prim.Type)))))))
+                  ((f: ((a :: Prim.Type) ->
+                   (((b :: Prim.Type) -> ((c :: Prim.Type))))))
+                   (x: (a :: Prim.Type))
+                   (y: (b :: Prim.Type)))
+                  ((zipWithList: forall (a :: Prim.Type)
+                   (b :: Prim.Type)
+                   (c :: Prim.Type). (((a :: Prim.Type) ->
+                   (((b :: Prim.Type) -> ((c :: Prim.Type))))) ->
+                   ((List ((a :: Prim.Type)) ->
+                   ((List ((b :: Prim.Type)) -> (List ((c :: Prim.Type)))))))))
+                   (f: ((a :: Prim.Type) ->
+                   (((b :: Prim.Type) -> ((c :: Prim.Type))))))
+                   (xs: List ((a :: Prim.Type)))
+                   (ys: List ((b :: Prim.Type))))
+
+takeList :: forall (a :: Prim.Type). (Prim.Int -> ((List ((a :: Prim.Type)) -> (List ((a :: Prim.Type))))))
+takeList = 
+  \(count: Prim.Int) -> 
+    \(ell: List ((a :: Prim.Type))) -> 
+      case ((lessThanEqualsInteger: (Prim.Int -> ((Prim.Int -> (Prim.Boolean))))) (count: Prim.Int) (0: Prim.Int)) of 
+         True -> (Nil: List ((a :: Prim.Type)))
+         _ -> 
+           case (ell: List ((a :: Prim.Type))) of 
+              Nil -> (Nil: List ((a :: Prim.Type)))
+              Cons x xs -> 
+                (Cons: forall (x :: Prim.Type). ((x :: Prim.Type) ->
+                ((List ((x :: Prim.Type)) -> (List ((x :: Prim.Type)))))))
+                (x: (a :: Prim.Type))
+                ((takeList: forall (a :: Prim.Type). (Prim.Int ->
+                 ((List ((a :: Prim.Type)) -> (List ((a :: Prim.Type)))))))
+                 ((subtractInteger: (Prim.Int -> ((Prim.Int -> (Prim.Int)))))
+                  (count: Prim.Int)
+                  (1: Prim.Int))
+                 (xs: List ((a :: Prim.Type))))
+
+sumList :: (List (Prim.Int) -> (Prim.Int))
+sumList = 
+  \(ell: List (Prim.Int)) -> 
+    case (ell: List (Prim.Int)) of 
+       Nil -> (0: Prim.Int)
+       Cons x xs -> 
+         (addInteger: (Prim.Int -> ((Prim.Int -> (Prim.Int)))))
+         (x: Prim.Int)
+         ((sumList: (List (Prim.Int) -> (Prim.Int))) (xs: List (Prim.Int)))
+
+serializeTuple2 :: forall (a :: Prim.Type) (b :: Prim.Type). (((a :: Prim.Type) -> (Builtin.BuiltinData)) -> ((((b :: Prim.Type) -> (Builtin.BuiltinData)) -> ((((Prim.Tuple2 ((a :: Prim.Type))) ((b :: Prim.Type))) -> (Builtin.BuiltinData))))))
+serializeTuple2 = 
+  \(fA: ((a :: Prim.Type) -> (Builtin.BuiltinData))) -> 
+    \(fB: ((b :: Prim.Type) -> (Builtin.BuiltinData))) -> 
+      \(v: ((Prim.Tuple2 ((a :: Prim.Type))) ((b :: Prim.Type)))) -> 
+        case (fA: ((a :: Prim.Type) -> (Builtin.BuiltinData))) (fB: ((b :: Prim.Type) -> (Builtin.BuiltinData))) (v: ((Prim.Tuple2 ((a :: Prim.Type))) ((b :: Prim.Type)))) of 
+           fA1 fB1 Tuple2 x y -> 
+             (constrData: (Prim.Int ->
+             (((Builtin.BuiltinList (Builtin.BuiltinData)) ->
+             (Builtin.BuiltinData)))))
+             (0: Prim.Int)
+             ((mkCons: forall (a :: Prim.Type). ((a :: Prim.Type) ->
+              (((Builtin.BuiltinList ((a :: Prim.Type))) ->
+              ((Builtin.BuiltinList ((a :: Prim.Type))))))))
+              ((fA1: ((a :: Prim.Type) -> (Builtin.BuiltinData)))
+               (x: (a :: Prim.Type)))
+              ((mkCons: forall (a :: Prim.Type). ((a :: Prim.Type) ->
+               (((Builtin.BuiltinList ((a :: Prim.Type))) ->
+               ((Builtin.BuiltinList ((a :: Prim.Type))))))))
+               ((fB1: ((b :: Prim.Type) -> (Builtin.BuiltinData)))
+                (y: (b :: Prim.Type)))
+               ((mkNilData: (Prim.Unit ->
+                ((Builtin.BuiltinList (Builtin.BuiltinData)))))
+                (unit: Prim.Unit))))
+
+serializeRedeemer :: (Prim.Redeemer -> (Builtin.BuiltinData))
+serializeRedeemer = 
+  \(v: Prim.Redeemer) -> 
+    case (v: Prim.Redeemer) of 
+       Redeemer dat -> (dat: Builtin.BuiltinData)
+
+serializeMaybe :: forall (a :: Prim.Type). (((a :: Prim.Type) -> (Builtin.BuiltinData)) -> (((Prim.Maybe ((a :: Prim.Type))) -> (Builtin.BuiltinData))))
+serializeMaybe = 
+  \(f: ((a :: Prim.Type) -> (Builtin.BuiltinData))) -> 
+    \(m: (Prim.Maybe ((a :: Prim.Type)))) -> 
+      case (m: (Prim.Maybe ((a :: Prim.Type)))) of 
+         Nothing -> 
+           (constrData: (Prim.Int ->
+           (((Builtin.BuiltinList (Builtin.BuiltinData)) ->
+           (Builtin.BuiltinData)))))
+           (0: Prim.Int)
+           ((mkNilData: (Prim.Unit ->
+            ((Builtin.BuiltinList (Builtin.BuiltinData)))))
+            (unit: Prim.Unit))
+         Just x -> 
+           (constrData: (Prim.Int ->
+           (((Builtin.BuiltinList (Builtin.BuiltinData)) ->
+           (Builtin.BuiltinData)))))
+           (1: Prim.Int)
+           ((mkCons: forall (a :: Prim.Type). ((a :: Prim.Type) ->
+            (((Builtin.BuiltinList ((a :: Prim.Type))) ->
+            ((Builtin.BuiltinList ((a :: Prim.Type))))))))
+            ((f: ((a :: Prim.Type) -> (Builtin.BuiltinData)))
+             (x: (a :: Prim.Type)))
+            ((mkNilData: (Prim.Unit ->
+             ((Builtin.BuiltinList (Builtin.BuiltinData)))))
+             (unit: Prim.Unit)))
+
+serializeList :: forall (a :: Prim.Type). (((a :: Prim.Type) -> (Builtin.BuiltinData)) -> ((List ((a :: Prim.Type)) -> (Builtin.BuiltinData))))
+serializeList = 
+  \(f: ((a :: Prim.Type) -> (Builtin.BuiltinData))) -> 
+    \(arr: List ((a :: Prim.Type))) -> 
+      let
+        go :: (List (a*7) -> ((Builtin.BuiltinList (Builtin.BuiltinData))))
+        go = 
+          \(v: List (a*7)) -> 
+            case (v: List (a*7)) of 
+               Nil -> 
+                 (mkNilData: (Prim.Unit ->
+                 ((Builtin.BuiltinList (Builtin.BuiltinData)))))
+                 (unit: Prim.Unit)
+               Cons x xs -> 
+                 (mkCons: forall (a :: Prim.Type). ((a :: Prim.Type) ->
+                 (((Builtin.BuiltinList ((a :: Prim.Type))) ->
+                 ((Builtin.BuiltinList ((a :: Prim.Type))))))))
+                 ((f: ((a :: Prim.Type) -> (Builtin.BuiltinData))) (x: a*7))
+                 ((go: (List (a*7) ->
+                  ((Builtin.BuiltinList (Builtin.BuiltinData)))))
+                  (xs: List (a*7)))
+      in (listData: ((Builtin.BuiltinList (Builtin.BuiltinData)) ->
+         (Builtin.BuiltinData)))
+         ((go: (List (a*7) -> ((Builtin.BuiltinList (Builtin.BuiltinData)))))
+          (arr: List ((a :: Prim.Type))))
+
+serializeInt :: (Prim.Int -> (Builtin.BuiltinData))
+serializeInt = (iData: (Prim.Int -> (Builtin.BuiltinData)))
+
+serializeLovelace :: (Prim.Lovelace -> (Builtin.BuiltinData))
+serializeLovelace = 
+  \(v: Prim.Lovelace) -> 
+    case (v: Prim.Lovelace) of 
+       Lovelace i -> 
+         (serializeInt: (Prim.Int -> (Builtin.BuiltinData))) (i: Prim.Int)
+
+serializePOSIXTime :: (Prim.POSIXTime -> (Builtin.BuiltinData))
+serializePOSIXTime = 
+  \(v: Prim.POSIXTime) -> 
+    case (v: Prim.POSIXTime) of 
+       POSIXTime t -> 
+         (serializeInt: (Prim.Int -> (Builtin.BuiltinData))) (t: Prim.Int)
+
+serializeExtended :: forall (a :: Prim.Type). (((a :: Prim.Type) -> (Builtin.BuiltinData)) -> (((Prim.Extended ((a :: Prim.Type))) -> (Builtin.BuiltinData))))
+serializeExtended = 
+  \(f: ((a :: Prim.Type) -> (Builtin.BuiltinData))) -> 
+    \(e: (Prim.Extended ((a :: Prim.Type)))) -> 
+      case (e: (Prim.Extended ((a :: Prim.Type)))) of 
+         NegInf -> 
+           (constrData: (Prim.Int ->
+           (((Builtin.BuiltinList (Builtin.BuiltinData)) ->
+           (Builtin.BuiltinData)))))
+           (0: Prim.Int)
+           ((mkNilData: (Prim.Unit ->
+            ((Builtin.BuiltinList (Builtin.BuiltinData)))))
+            (unit: Prim.Unit))
+         Finite x -> 
+           (constrData: (Prim.Int ->
+           (((Builtin.BuiltinList (Builtin.BuiltinData)) ->
+           (Builtin.BuiltinData)))))
+           (1: Prim.Int)
+           ((mkCons: forall (a :: Prim.Type). ((a :: Prim.Type) ->
+            (((Builtin.BuiltinList ((a :: Prim.Type))) ->
+            ((Builtin.BuiltinList ((a :: Prim.Type))))))))
+            ((f: ((a :: Prim.Type) -> (Builtin.BuiltinData)))
+             (x: (a :: Prim.Type)))
+            ((mkNilData: (Prim.Unit ->
+             ((Builtin.BuiltinList (Builtin.BuiltinData)))))
+             (unit: Prim.Unit)))
+         PosInf -> 
+           (constrData: (Prim.Int ->
+           (((Builtin.BuiltinList (Builtin.BuiltinData)) ->
+           (Builtin.BuiltinData)))))
+           (2: Prim.Int)
+           ((mkNilData: (Prim.Unit ->
+            ((Builtin.BuiltinList (Builtin.BuiltinData)))))
+            (unit: Prim.Unit))
+
+serializeLowerBound :: forall (a :: Prim.Type). (((a :: Prim.Type) -> (Builtin.BuiltinData)) -> (((Prim.LowerBound ((a :: Prim.Type))) -> (Builtin.BuiltinData))))
+serializeLowerBound = 
+  \(f: ((a :: Prim.Type) -> (Builtin.BuiltinData))) -> 
+    \(v: (Prim.LowerBound ((a :: Prim.Type)))) -> 
+      case (f: ((a :: Prim.Type) -> (Builtin.BuiltinData))) (v: (Prim.LowerBound ((a :: Prim.Type)))) of 
+         f1 LowerBound e -> 
+           (constrData: (Prim.Int ->
+           (((Builtin.BuiltinList (Builtin.BuiltinData)) ->
+           (Builtin.BuiltinData)))))
+           (0: Prim.Int)
+           ((mkCons: forall (a :: Prim.Type). ((a :: Prim.Type) ->
+            (((Builtin.BuiltinList ((a :: Prim.Type))) ->
+            ((Builtin.BuiltinList ((a :: Prim.Type))))))))
+            ((serializeExtended: forall (a :: Prim.Type). (((a :: Prim.Type) ->
+             (Builtin.BuiltinData)) ->
+             (((Prim.Extended ((a :: Prim.Type))) -> (Builtin.BuiltinData)))))
+             (f1: ((a :: Prim.Type) -> (Builtin.BuiltinData)))
+             (e: (Prim.Extended ((a :: Prim.Type)))))
+            ((mkNilData: (Prim.Unit ->
+             ((Builtin.BuiltinList (Builtin.BuiltinData)))))
+             (unit: Prim.Unit)))
+
+serializeUpperBound :: forall (a :: Prim.Type). (((a :: Prim.Type) -> (Builtin.BuiltinData)) -> (((Prim.UpperBound ((a :: Prim.Type))) -> (Builtin.BuiltinData))))
+serializeUpperBound = 
+  \(f: ((a :: Prim.Type) -> (Builtin.BuiltinData))) -> 
+    \(v: (Prim.UpperBound ((a :: Prim.Type)))) -> 
+      case (f: ((a :: Prim.Type) -> (Builtin.BuiltinData))) (v: (Prim.UpperBound ((a :: Prim.Type)))) of 
+         f1 UpperBound e -> 
+           (constrData: (Prim.Int ->
+           (((Builtin.BuiltinList (Builtin.BuiltinData)) ->
+           (Builtin.BuiltinData)))))
+           (0: Prim.Int)
+           ((mkCons: forall (a :: Prim.Type). ((a :: Prim.Type) ->
+            (((Builtin.BuiltinList ((a :: Prim.Type))) ->
+            ((Builtin.BuiltinList ((a :: Prim.Type))))))))
+            ((serializeExtended: forall (a :: Prim.Type). (((a :: Prim.Type) ->
+             (Builtin.BuiltinData)) ->
+             (((Prim.Extended ((a :: Prim.Type))) -> (Builtin.BuiltinData)))))
+             (f1: ((a :: Prim.Type) -> (Builtin.BuiltinData)))
+             (e: (Prim.Extended ((a :: Prim.Type)))))
+            ((mkNilData: (Prim.Unit ->
+             ((Builtin.BuiltinList (Builtin.BuiltinData)))))
+             (unit: Prim.Unit)))
+
+serializeInterval :: forall (a :: Prim.Type). (((a :: Prim.Type) -> (Builtin.BuiltinData)) -> (((Prim.Interval ((a :: Prim.Type))) -> (Builtin.BuiltinData))))
+serializeInterval = 
+  \(f: ((a :: Prim.Type) -> (Builtin.BuiltinData))) -> 
+    \(v: (Prim.Interval ((a :: Prim.Type)))) -> 
+      case (f: ((a :: Prim.Type) -> (Builtin.BuiltinData))) (v: (Prim.Interval ((a :: Prim.Type)))) of 
+         f1 Interval rec -> 
+           (constrData: (Prim.Int ->
+           (((Builtin.BuiltinList (Builtin.BuiltinData)) ->
+           (Builtin.BuiltinData)))))
+           (0: Prim.Int)
+           ((mkCons: forall (a :: Prim.Type). ((a :: Prim.Type) ->
+            (((Builtin.BuiltinList ((a :: Prim.Type))) ->
+            ((Builtin.BuiltinList ((a :: Prim.Type))))))))
+            ((serializeLowerBound: forall (a :: Prim.Type). (((a :: Prim.Type) ->
+             (Builtin.BuiltinData)) ->
+             (((Prim.LowerBound ((a :: Prim.Type))) -> (Builtin.BuiltinData)))))
+             (f1: ((a :: Prim.Type) -> (Builtin.BuiltinData)))
+             ((rec: {
+                      from :: (Prim.LowerBound ((a :: Prim.Type))),
+                      to :: (Prim.UpperBound ((a :: Prim.Type)))
+                    })
+             .from))
+            ((mkCons: forall (a :: Prim.Type). ((a :: Prim.Type) ->
+             (((Builtin.BuiltinList ((a :: Prim.Type))) ->
+             ((Builtin.BuiltinList ((a :: Prim.Type))))))))
+             ((serializeUpperBound: forall (a :: Prim.Type). (((a :: Prim.Type) ->
+              (Builtin.BuiltinData)) ->
+              (((Prim.UpperBound ((a :: Prim.Type))) ->
+              (Builtin.BuiltinData)))))
+              (f1: ((a :: Prim.Type) -> (Builtin.BuiltinData)))
+              ((rec: {
+                       from :: (Prim.LowerBound ((a :: Prim.Type))),
+                       to :: (Prim.UpperBound ((a :: Prim.Type)))
+                     })
+              .to))
+             ((mkNilData: (Prim.Unit ->
+              ((Builtin.BuiltinList (Builtin.BuiltinData)))))
+              (unit: Prim.Unit))))
+
+serializeDatum :: (Prim.Datum -> (Builtin.BuiltinData))
+serializeDatum = 
+  \(v: Prim.Datum) -> 
+    case (v: Prim.Datum) of 
+       Datum dat -> (dat: Builtin.BuiltinData)
+
+serializeByteString :: (Builtin.BuiltinByteString -> (Builtin.BuiltinData))
+serializeByteString = 
+  (bData: (Builtin.BuiltinByteString -> (Builtin.BuiltinData)))
+
+serializeCurrencySymbol :: (Prim.CurrencySymbol -> (Builtin.BuiltinData))
+serializeCurrencySymbol = 
+  \(v: Prim.CurrencySymbol) -> 
+    case (v: Prim.CurrencySymbol) of 
+       CurrencySymbol bs -> 
+         (serializeByteString: (Builtin.BuiltinByteString ->
+         (Builtin.BuiltinData)))
+         (bs: Builtin.BuiltinByteString)
+
+serializeDatumHash :: (Prim.DatumHash -> (Builtin.BuiltinData))
+serializeDatumHash = 
+  \(v: Prim.DatumHash) -> 
+    case (v: Prim.DatumHash) of 
+       DatumHash bs -> 
+         (serializeByteString: (Builtin.BuiltinByteString ->
+         (Builtin.BuiltinData)))
+         (bs: Builtin.BuiltinByteString)
+
+serializeOutputDatum :: (Prim.OutputDatum -> (Builtin.BuiltinData))
+serializeOutputDatum = 
+  \(od: Prim.OutputDatum) -> 
+    case (od: Prim.OutputDatum) of 
+       NoOutputDatum -> 
+         (constrData: (Prim.Int ->
+         (((Builtin.BuiltinList (Builtin.BuiltinData)) ->
+         (Builtin.BuiltinData)))))
+         (0: Prim.Int)
+         ((mkNilData: (Prim.Unit ->
+          ((Builtin.BuiltinList (Builtin.BuiltinData)))))
+          (unit: Prim.Unit))
+       OutputDatumHash h -> 
+         (constrData: (Prim.Int ->
+         (((Builtin.BuiltinList (Builtin.BuiltinData)) ->
+         (Builtin.BuiltinData)))))
+         (1: Prim.Int)
+         ((mkCons: forall (a :: Prim.Type). ((a :: Prim.Type) ->
+          (((Builtin.BuiltinList ((a :: Prim.Type))) ->
+          ((Builtin.BuiltinList ((a :: Prim.Type))))))))
+          ((serializeDatumHash: (Prim.DatumHash -> (Builtin.BuiltinData)))
+           (h: Prim.DatumHash))
+          ((mkNilData: (Prim.Unit ->
+           ((Builtin.BuiltinList (Builtin.BuiltinData)))))
+           (unit: Prim.Unit)))
+       OutputDatum d -> 
+         (constrData: (Prim.Int ->
+         (((Builtin.BuiltinList (Builtin.BuiltinData)) ->
+         (Builtin.BuiltinData)))))
+         (2: Prim.Int)
+         ((mkCons: forall (a :: Prim.Type). ((a :: Prim.Type) ->
+          (((Builtin.BuiltinList ((a :: Prim.Type))) ->
+          ((Builtin.BuiltinList ((a :: Prim.Type))))))))
+          ((serializeDatum: (Prim.Datum -> (Builtin.BuiltinData)))
+           (d: Prim.Datum))
+          ((mkNilData: (Prim.Unit ->
+           ((Builtin.BuiltinList (Builtin.BuiltinData)))))
+           (unit: Prim.Unit)))
+
+serializePubKeyHash :: (Prim.PubKeyHash -> (Builtin.BuiltinData))
+serializePubKeyHash = 
+  \(v: Prim.PubKeyHash) -> 
+    case (v: Prim.PubKeyHash) of 
+       PubKeyHash bs -> 
+         (serializeByteString: (Builtin.BuiltinByteString ->
+         (Builtin.BuiltinData)))
+         (bs: Builtin.BuiltinByteString)
+
+serializeRedeemerHash :: (Prim.RedeemerHash -> (Builtin.BuiltinData))
+serializeRedeemerHash = 
+  \(v: Prim.RedeemerHash) -> 
+    case (v: Prim.RedeemerHash) of 
+       RedeemerHash bs -> 
+         (serializeByteString: (Builtin.BuiltinByteString ->
+         (Builtin.BuiltinData)))
+         (bs: Builtin.BuiltinByteString)
+
+serializeScriptHash :: (Prim.ScriptHash -> (Builtin.BuiltinData))
+serializeScriptHash = 
+  \(v: Prim.ScriptHash) -> 
+    case (v: Prim.ScriptHash) of 
+       ScriptHash dat -> 
+         (serializeByteString: (Builtin.BuiltinByteString ->
+         (Builtin.BuiltinData)))
+         (dat: Builtin.BuiltinByteString)
+
+serializeCredential :: (Prim.Credential -> (Builtin.BuiltinData))
+serializeCredential = 
+  \(c: Prim.Credential) -> 
+    case (c: Prim.Credential) of 
+       PubKeyCredential pkh -> 
+         (constrData: (Prim.Int ->
+         (((Builtin.BuiltinList (Builtin.BuiltinData)) ->
+         (Builtin.BuiltinData)))))
+         (0: Prim.Int)
+         ((mkCons: forall (a :: Prim.Type). ((a :: Prim.Type) ->
+          (((Builtin.BuiltinList ((a :: Prim.Type))) ->
+          ((Builtin.BuiltinList ((a :: Prim.Type))))))))
+          ((serializePubKeyHash: (Prim.PubKeyHash -> (Builtin.BuiltinData)))
+           (pkh: Prim.PubKeyHash))
+          ((mkNilData: (Prim.Unit ->
+           ((Builtin.BuiltinList (Builtin.BuiltinData)))))
+           (unit: Prim.Unit)))
+       ScriptCredential sh -> 
+         (constrData: (Prim.Int ->
+         (((Builtin.BuiltinList (Builtin.BuiltinData)) ->
+         (Builtin.BuiltinData)))))
+         (1: Prim.Int)
+         ((mkCons: forall (a :: Prim.Type). ((a :: Prim.Type) ->
+          (((Builtin.BuiltinList ((a :: Prim.Type))) ->
+          ((Builtin.BuiltinList ((a :: Prim.Type))))))))
+          ((serializeScriptHash: (Prim.ScriptHash -> (Builtin.BuiltinData)))
+           (sh: Prim.ScriptHash))
+          ((mkNilData: (Prim.Unit ->
+           ((Builtin.BuiltinList (Builtin.BuiltinData)))))
+           (unit: Prim.Unit)))
+
+serializeStakingCredential :: (Prim.StakingCredential -> (Builtin.BuiltinData))
+serializeStakingCredential = 
+  \(sc: Prim.StakingCredential) -> 
+    case (sc: Prim.StakingCredential) of 
+       StakingHash c -> 
+         (constrData: (Prim.Int ->
+         (((Builtin.BuiltinList (Builtin.BuiltinData)) ->
+         (Builtin.BuiltinData)))))
+         (0: Prim.Int)
+         ((mkCons: forall (a :: Prim.Type). ((a :: Prim.Type) ->
+          (((Builtin.BuiltinList ((a :: Prim.Type))) ->
+          ((Builtin.BuiltinList ((a :: Prim.Type))))))))
+          ((serializeCredential: (Prim.Credential -> (Builtin.BuiltinData)))
+           (c: Prim.Credential))
+          ((mkNilData: (Prim.Unit ->
+           ((Builtin.BuiltinList (Builtin.BuiltinData)))))
+           (unit: Prim.Unit)))
+       StakingPtr i1 i2 i3 -> 
+         (constrData: (Prim.Int ->
+         (((Builtin.BuiltinList (Builtin.BuiltinData)) ->
+         (Builtin.BuiltinData)))))
+         (1: Prim.Int)
+         ((mkCons: forall (a :: Prim.Type). ((a :: Prim.Type) ->
+          (((Builtin.BuiltinList ((a :: Prim.Type))) ->
+          ((Builtin.BuiltinList ((a :: Prim.Type))))))))
+          ((serializeInt: (Prim.Int -> (Builtin.BuiltinData))) (i1: Prim.Int))
+          ((mkCons: forall (a :: Prim.Type). ((a :: Prim.Type) ->
+           (((Builtin.BuiltinList ((a :: Prim.Type))) ->
+           ((Builtin.BuiltinList ((a :: Prim.Type))))))))
+           ((serializeInt: (Prim.Int -> (Builtin.BuiltinData))) (i2: Prim.Int))
+           ((mkCons: forall (a :: Prim.Type). ((a :: Prim.Type) ->
+            (((Builtin.BuiltinList ((a :: Prim.Type))) ->
+            ((Builtin.BuiltinList ((a :: Prim.Type))))))))
+            ((serializeInt: (Prim.Int -> (Builtin.BuiltinData))) (i3: Prim.Int))
+            ((mkNilData: (Prim.Unit ->
+             ((Builtin.BuiltinList (Builtin.BuiltinData)))))
+             (unit: Prim.Unit)))))
+
+serializeDCert :: (Prim.DCert -> (Builtin.BuiltinData))
+serializeDCert = 
+  \(d: Prim.DCert) -> 
+    case (d: Prim.DCert) of 
+       DCertDelegRegKey sc -> 
+         (constrData: (Prim.Int ->
+         (((Builtin.BuiltinList (Builtin.BuiltinData)) ->
+         (Builtin.BuiltinData)))))
+         (0: Prim.Int)
+         ((mkCons: forall (a :: Prim.Type). ((a :: Prim.Type) ->
+          (((Builtin.BuiltinList ((a :: Prim.Type))) ->
+          ((Builtin.BuiltinList ((a :: Prim.Type))))))))
+          ((serializeStakingCredential: (Prim.StakingCredential ->
+           (Builtin.BuiltinData)))
+           (sc: Prim.StakingCredential))
+          ((mkNilData: (Prim.Unit ->
+           ((Builtin.BuiltinList (Builtin.BuiltinData)))))
+           (unit: Prim.Unit)))
+       DCertDelegDeRegKey sc -> 
+         (constrData: (Prim.Int ->
+         (((Builtin.BuiltinList (Builtin.BuiltinData)) ->
+         (Builtin.BuiltinData)))))
+         (1: Prim.Int)
+         ((mkCons: forall (a :: Prim.Type). ((a :: Prim.Type) ->
+          (((Builtin.BuiltinList ((a :: Prim.Type))) ->
+          ((Builtin.BuiltinList ((a :: Prim.Type))))))))
+          ((serializeStakingCredential: (Prim.StakingCredential ->
+           (Builtin.BuiltinData)))
+           (sc: Prim.StakingCredential))
+          ((mkNilData: (Prim.Unit ->
+           ((Builtin.BuiltinList (Builtin.BuiltinData)))))
+           (unit: Prim.Unit)))
+       DCertDelegDelegate sc pkh -> 
+         (constrData: (Prim.Int ->
+         (((Builtin.BuiltinList (Builtin.BuiltinData)) ->
+         (Builtin.BuiltinData)))))
+         (2: Prim.Int)
+         ((mkCons: forall (a :: Prim.Type). ((a :: Prim.Type) ->
+          (((Builtin.BuiltinList ((a :: Prim.Type))) ->
+          ((Builtin.BuiltinList ((a :: Prim.Type))))))))
+          ((serializeStakingCredential: (Prim.StakingCredential ->
+           (Builtin.BuiltinData)))
+           (sc: Prim.StakingCredential))
+          ((mkCons: forall (a :: Prim.Type). ((a :: Prim.Type) ->
+           (((Builtin.BuiltinList ((a :: Prim.Type))) ->
+           ((Builtin.BuiltinList ((a :: Prim.Type))))))))
+           ((serializePubKeyHash: (Prim.PubKeyHash -> (Builtin.BuiltinData)))
+            (pkh: Prim.PubKeyHash))
+           ((mkNilData: (Prim.Unit ->
+            ((Builtin.BuiltinList (Builtin.BuiltinData)))))
+            (unit: Prim.Unit))))
+       DCertPoolRegister pkh1 pkh2 -> 
+         (constrData: (Prim.Int ->
+         (((Builtin.BuiltinList (Builtin.BuiltinData)) ->
+         (Builtin.BuiltinData)))))
+         (3: Prim.Int)
+         ((mkCons: forall (a :: Prim.Type). ((a :: Prim.Type) ->
+          (((Builtin.BuiltinList ((a :: Prim.Type))) ->
+          ((Builtin.BuiltinList ((a :: Prim.Type))))))))
+          ((serializePubKeyHash: (Prim.PubKeyHash -> (Builtin.BuiltinData)))
+           (pkh1: Prim.PubKeyHash))
+          ((mkCons: forall (a :: Prim.Type). ((a :: Prim.Type) ->
+           (((Builtin.BuiltinList ((a :: Prim.Type))) ->
+           ((Builtin.BuiltinList ((a :: Prim.Type))))))))
+           ((serializePubKeyHash: (Prim.PubKeyHash -> (Builtin.BuiltinData)))
+            (pkh2: Prim.PubKeyHash))
+           ((mkNilData: (Prim.Unit ->
+            ((Builtin.BuiltinList (Builtin.BuiltinData)))))
+            (unit: Prim.Unit))))
+       DCertPoolRetire pkh i -> 
+         (constrData: (Prim.Int ->
+         (((Builtin.BuiltinList (Builtin.BuiltinData)) ->
+         (Builtin.BuiltinData)))))
+         (4: Prim.Int)
+         ((mkCons: forall (a :: Prim.Type). ((a :: Prim.Type) ->
+          (((Builtin.BuiltinList ((a :: Prim.Type))) ->
+          ((Builtin.BuiltinList ((a :: Prim.Type))))))))
+          ((serializePubKeyHash: (Prim.PubKeyHash -> (Builtin.BuiltinData)))
+           (pkh: Prim.PubKeyHash))
+          ((mkCons: forall (a :: Prim.Type). ((a :: Prim.Type) ->
+           (((Builtin.BuiltinList ((a :: Prim.Type))) ->
+           ((Builtin.BuiltinList ((a :: Prim.Type))))))))
+           ((serializeInt: (Prim.Int -> (Builtin.BuiltinData))) (i: Prim.Int))
+           ((mkNilData: (Prim.Unit ->
+            ((Builtin.BuiltinList (Builtin.BuiltinData)))))
+            (unit: Prim.Unit))))
+       DCertGenesis -> 
+         (constrData: (Prim.Int ->
+         (((Builtin.BuiltinList (Builtin.BuiltinData)) ->
+         (Builtin.BuiltinData)))))
+         (5: Prim.Int)
+         ((mkNilData: (Prim.Unit ->
+          ((Builtin.BuiltinList (Builtin.BuiltinData)))))
+          (unit: Prim.Unit))
+       DCertMir -> 
+         (constrData: (Prim.Int ->
+         (((Builtin.BuiltinList (Builtin.BuiltinData)) ->
+         (Builtin.BuiltinData)))))
+         (6: Prim.Int)
+         ((mkNilData: (Prim.Unit ->
+          ((Builtin.BuiltinList (Builtin.BuiltinData)))))
+          (unit: Prim.Unit))
+
+serializeTokenName :: (Prim.TokenName -> (Builtin.BuiltinData))
+serializeTokenName = 
+  \(v: Prim.TokenName) -> 
+    case (v: Prim.TokenName) of 
+       TokenName bs -> 
+         (serializeByteString: (Builtin.BuiltinByteString ->
+         (Builtin.BuiltinData)))
+         (bs: Builtin.BuiltinByteString)
+
+serializeTxId :: (Prim.TxId -> (Builtin.BuiltinData))
+serializeTxId = 
+  \(v: Prim.TxId) -> 
+    case (v: Prim.TxId) of 
+       TxId bs -> 
+         (constrData: (Prim.Int ->
+         (((Builtin.BuiltinList (Builtin.BuiltinData)) ->
+         (Builtin.BuiltinData)))))
+         (0: Prim.Int)
+         ((mkCons: forall (a :: Prim.Type). ((a :: Prim.Type) ->
+          (((Builtin.BuiltinList ((a :: Prim.Type))) ->
+          ((Builtin.BuiltinList ((a :: Prim.Type))))))))
+          ((serializeByteString: (Builtin.BuiltinByteString ->
+           (Builtin.BuiltinData)))
+           (bs: Builtin.BuiltinByteString))
+          ((mkNilData: (Prim.Unit ->
+           ((Builtin.BuiltinList (Builtin.BuiltinData)))))
+           (unit: Prim.Unit)))
+
+serializeTxOutRef :: (Prim.TxOutRef -> (Builtin.BuiltinData))
+serializeTxOutRef = 
+  \(v: Prim.TxOutRef) -> 
+    case (v: Prim.TxOutRef) of 
+       TxOutRef rec -> 
+         (constrData: (Prim.Int ->
+         (((Builtin.BuiltinList (Builtin.BuiltinData)) ->
+         (Builtin.BuiltinData)))))
+         (0: Prim.Int)
+         ((mkCons: forall (a :: Prim.Type). ((a :: Prim.Type) ->
+          (((Builtin.BuiltinList ((a :: Prim.Type))) ->
+          ((Builtin.BuiltinList ((a :: Prim.Type))))))))
+          ((serializeTxId: (Prim.TxId -> (Builtin.BuiltinData)))
+           ((rec: {   id :: Prim.TxId, idx :: Prim.Int })
+           .id))
+          ((mkCons: forall (a :: Prim.Type). ((a :: Prim.Type) ->
+           (((Builtin.BuiltinList ((a :: Prim.Type))) ->
+           ((Builtin.BuiltinList ((a :: Prim.Type))))))))
+           ((serializeInt: (Prim.Int -> (Builtin.BuiltinData)))
+            ((rec: {   id :: Prim.TxId, idx :: Prim.Int })
+            .idx))
+           ((mkNilData: (Prim.Unit ->
+            ((Builtin.BuiltinList (Builtin.BuiltinData)))))
+            (unit: Prim.Unit))))
+
+serializeScriptPurpose :: (Prim.ScriptPurpose -> (Builtin.BuiltinData))
+serializeScriptPurpose = 
+  \(sp: Prim.ScriptPurpose) -> 
+    case (sp: Prim.ScriptPurpose) of 
+       Minting cs -> 
+         (constrData: (Prim.Int ->
+         (((Builtin.BuiltinList (Builtin.BuiltinData)) ->
+         (Builtin.BuiltinData)))))
+         (0: Prim.Int)
+         ((mkCons: forall (a :: Prim.Type). ((a :: Prim.Type) ->
+          (((Builtin.BuiltinList ((a :: Prim.Type))) ->
+          ((Builtin.BuiltinList ((a :: Prim.Type))))))))
+          ((serializeCurrencySymbol: (Prim.CurrencySymbol ->
+           (Builtin.BuiltinData)))
+           (cs: Prim.CurrencySymbol))
+          ((mkNilData: (Prim.Unit ->
+           ((Builtin.BuiltinList (Builtin.BuiltinData)))))
+           (unit: Prim.Unit)))
+       Spending tor -> 
+         (constrData: (Prim.Int ->
+         (((Builtin.BuiltinList (Builtin.BuiltinData)) ->
+         (Builtin.BuiltinData)))))
+         (1: Prim.Int)
+         ((mkCons: forall (a :: Prim.Type). ((a :: Prim.Type) ->
+          (((Builtin.BuiltinList ((a :: Prim.Type))) ->
+          ((Builtin.BuiltinList ((a :: Prim.Type))))))))
+          ((serializeTxOutRef: (Prim.TxOutRef -> (Builtin.BuiltinData)))
+           (tor: Prim.TxOutRef))
+          ((mkNilData: (Prim.Unit ->
+           ((Builtin.BuiltinList (Builtin.BuiltinData)))))
+           (unit: Prim.Unit)))
+       Rewarding sc -> 
+         (constrData: (Prim.Int ->
+         (((Builtin.BuiltinList (Builtin.BuiltinData)) ->
+         (Builtin.BuiltinData)))))
+         (2: Prim.Int)
+         ((mkCons: forall (a :: Prim.Type). ((a :: Prim.Type) ->
+          (((Builtin.BuiltinList ((a :: Prim.Type))) ->
+          ((Builtin.BuiltinList ((a :: Prim.Type))))))))
+          ((serializeStakingCredential: (Prim.StakingCredential ->
+           (Builtin.BuiltinData)))
+           (sc: Prim.StakingCredential))
+          ((mkNilData: (Prim.Unit ->
+           ((Builtin.BuiltinList (Builtin.BuiltinData)))))
+           (unit: Prim.Unit)))
+       Certifying d -> 
+         (constrData: (Prim.Int ->
+         (((Builtin.BuiltinList (Builtin.BuiltinData)) ->
+         (Builtin.BuiltinData)))))
+         (3: Prim.Int)
+         ((mkCons: forall (a :: Prim.Type). ((a :: Prim.Type) ->
+          (((Builtin.BuiltinList ((a :: Prim.Type))) ->
+          ((Builtin.BuiltinList ((a :: Prim.Type))))))))
+          ((serializeDCert: (Prim.DCert -> (Builtin.BuiltinData)))
+           (d: Prim.DCert))
+          ((mkNilData: (Prim.Unit ->
+           ((Builtin.BuiltinList (Builtin.BuiltinData)))))
+           (unit: Prim.Unit)))
+
+serializeAssocMap :: forall (k :: Prim.Type) (v :: Prim.Type). (((k :: Prim.Type) -> (Builtin.BuiltinData)) -> ((((v :: Prim.Type) -> (Builtin.BuiltinData)) -> ((((Prim.AssocMap ((k :: Prim.Type))) ((v :: Prim.Type))) -> (Builtin.BuiltinData))))))
+serializeAssocMap = 
+  \(fK: ((k :: Prim.Type) -> (Builtin.BuiltinData))) -> 
+    \(fV: ((v :: Prim.Type) -> (Builtin.BuiltinData))) -> 
+      \(v: ((Prim.AssocMap ((k :: Prim.Type))) ((v :: Prim.Type)))) -> 
+        case (fK: ((k :: Prim.Type) -> (Builtin.BuiltinData))) (fV: ((v :: Prim.Type) -> (Builtin.BuiltinData))) (v: ((Prim.AssocMap ((k :: Prim.Type))) ((v :: Prim.Type)))) of 
+           fK1 fV1 AssocMap ell -> 
+             let
+               go :: (List (((Prim.Tuple2 (k*12)) (v*13))) -> ((Builtin.BuiltinList (((Builtin.BuiltinPair (Builtin.BuiltinData)) (Builtin.BuiltinData))))))
+               go = 
+                 \(v1: List (((Prim.Tuple2 (k*12)) (v*13)))) -> 
+                   case (v1: List (((Prim.Tuple2 (k*12)) (v*13)))) of 
+                      Cons p xs -> 
+                        case (p: ((Prim.Tuple2 (k*12)) (v*13))) of 
+                           Tuple2 x y -> 
+                             (mkCons: forall (a :: Prim.Type). ((a :: Prim.Type) ->
+                             (((Builtin.BuiltinList ((a :: Prim.Type))) ->
+                             ((Builtin.BuiltinList ((a :: Prim.Type))))))))
+                             ((mkPairData: (Builtin.BuiltinData ->
+                              ((Builtin.BuiltinData ->
+                              (((Builtin.BuiltinPair
+                              (Builtin.BuiltinData)) (Builtin.BuiltinData)))))))
+                              ((fK1: ((k :: Prim.Type) ->
+                               (Builtin.BuiltinData)))
+                               (x: k*12))
+                              ((fV1: ((v :: Prim.Type) ->
+                               (Builtin.BuiltinData)))
+                               (y: v*13)))
+                             ((go: (List (((Prim.Tuple2 (k*12)) (v*13))) ->
+                              ((Builtin.BuiltinList
+                              (((Builtin.BuiltinPair
+                              (Builtin.BuiltinData)) (Builtin.BuiltinData)))))))
+                              (xs: List (((Prim.Tuple2 (k*12)) (v*13)))))
+                      Nil -> 
+                        (mkNilPairData: (Prim.Unit ->
+                        ((Builtin.BuiltinList
+                        (((Builtin.BuiltinPair
+                        (Builtin.BuiltinData)) (Builtin.BuiltinData)))))))
+                        (unit: Prim.Unit)
+             in (mapData: ((Builtin.BuiltinList
+                (((Builtin.BuiltinPair
+                (Builtin.BuiltinData)) (Builtin.BuiltinData)))) ->
+                (Builtin.BuiltinData)))
+                ((go: (List (((Prim.Tuple2 (k*12)) (v*13))) ->
+                 ((Builtin.BuiltinList
+                 (((Builtin.BuiltinPair
+                 (Builtin.BuiltinData)) (Builtin.BuiltinData)))))))
+                 (ell: List (((Prim.Tuple2
+                 ((k :: Prim.Type))) ((v :: Prim.Type))))))
+
+serializeValue :: (Prim.Value -> (Builtin.BuiltinData))
+serializeValue = 
+  \(v: Prim.Value) -> 
+    case (v: Prim.Value) of 
+       Value v1 -> 
+         (serializeAssocMap: forall (k :: Prim.Type)
+         (v :: Prim.Type). (((k :: Prim.Type) -> (Builtin.BuiltinData)) ->
+         ((((v :: Prim.Type) -> (Builtin.BuiltinData)) ->
+         ((((Prim.AssocMap ((k :: Prim.Type))) ((v :: Prim.Type))) ->
+         (Builtin.BuiltinData)))))))
+         (serializeCurrencySymbol: (Prim.CurrencySymbol ->
+         (Builtin.BuiltinData)))
+         ((serializeAssocMap: forall (k :: Prim.Type)
+          (v :: Prim.Type). (((k :: Prim.Type) -> (Builtin.BuiltinData)) ->
+          ((((v :: Prim.Type) -> (Builtin.BuiltinData)) ->
+          ((((Prim.AssocMap ((k :: Prim.Type))) ((v :: Prim.Type))) ->
+          (Builtin.BuiltinData)))))))
+          (serializeTokenName: (Prim.TokenName -> (Builtin.BuiltinData)))
+          (serializeInt: (Prim.Int -> (Builtin.BuiltinData))))
+         (v1: ((Prim.AssocMap
+         (Prim.CurrencySymbol)) (((Prim.AssocMap
+         (Prim.TokenName)) (Prim.Int)))))
+
+serializeAddress :: (Prim.Address -> (Builtin.BuiltinData))
+serializeAddress = 
+  \(v: Prim.Address) -> 
+    case (v: Prim.Address) of 
+       Address rec -> 
+         (constrData: (Prim.Int ->
+         (((Builtin.BuiltinList (Builtin.BuiltinData)) ->
+         (Builtin.BuiltinData)))))
+         (0: Prim.Int)
+         ((mkCons: forall (a :: Prim.Type). ((a :: Prim.Type) ->
+          (((Builtin.BuiltinList ((a :: Prim.Type))) ->
+          ((Builtin.BuiltinList ((a :: Prim.Type))))))))
+          ((serializeCredential: (Prim.Credential -> (Builtin.BuiltinData)))
+           ((rec: {
+                    credential :: Prim.Credential,
+                    stakingCredential :: (Prim.Maybe (Prim.StakingCredential))
+                  })
+           .credential))
+          ((mkCons: forall (a :: Prim.Type). ((a :: Prim.Type) ->
+           (((Builtin.BuiltinList ((a :: Prim.Type))) ->
+           ((Builtin.BuiltinList ((a :: Prim.Type))))))))
+           ((serializeMaybe: forall (a :: Prim.Type). (((a :: Prim.Type) ->
+            (Builtin.BuiltinData)) ->
+            (((Prim.Maybe ((a :: Prim.Type))) -> (Builtin.BuiltinData)))))
+            (serializeStakingCredential: (Prim.StakingCredential ->
+            (Builtin.BuiltinData)))
+            ((rec: {
+                     credential :: Prim.Credential,
+                     stakingCredential :: (Prim.Maybe (Prim.StakingCredential))
+                   })
+            .stakingCredential))
+           ((mkNilData: (Prim.Unit ->
+            ((Builtin.BuiltinList (Builtin.BuiltinData)))))
+            (unit: Prim.Unit))))
+
+serializeTxOut :: (Prim.TxOut -> (Builtin.BuiltinData))
+serializeTxOut = 
+  \(v: Prim.TxOut) -> 
+    case (v: Prim.TxOut) of 
+       TxOut rec -> 
+         (constrData: (Prim.Int ->
+         (((Builtin.BuiltinList (Builtin.BuiltinData)) ->
+         (Builtin.BuiltinData)))))
+         (0: Prim.Int)
+         ((mkCons: forall (a :: Prim.Type). ((a :: Prim.Type) ->
+          (((Builtin.BuiltinList ((a :: Prim.Type))) ->
+          ((Builtin.BuiltinList ((a :: Prim.Type))))))))
+          ((serializeAddress: (Prim.Address -> (Builtin.BuiltinData)))
+           ((rec: {
+                    address :: Prim.Address,
+                    value :: Prim.Value,
+                    datum :: Prim.OutputDatum,
+                    referenceScript :: (Prim.Maybe (Prim.ScriptHash))
+                  })
+           .address))
+          ((mkCons: forall (a :: Prim.Type). ((a :: Prim.Type) ->
+           (((Builtin.BuiltinList ((a :: Prim.Type))) ->
+           ((Builtin.BuiltinList ((a :: Prim.Type))))))))
+           ((serializeValue: (Prim.Value -> (Builtin.BuiltinData)))
+            ((rec: {
+                     address :: Prim.Address,
+                     value :: Prim.Value,
+                     datum :: Prim.OutputDatum,
+                     referenceScript :: (Prim.Maybe (Prim.ScriptHash))
+                   })
+            .value))
+           ((mkCons: forall (a :: Prim.Type). ((a :: Prim.Type) ->
+            (((Builtin.BuiltinList ((a :: Prim.Type))) ->
+            ((Builtin.BuiltinList ((a :: Prim.Type))))))))
+            ((serializeOutputDatum: (Prim.OutputDatum -> (Builtin.BuiltinData)))
+             ((rec: {
+                      address :: Prim.Address,
+                      value :: Prim.Value,
+                      datum :: Prim.OutputDatum,
+                      referenceScript :: (Prim.Maybe (Prim.ScriptHash))
+                    })
+             .datum))
+            ((mkCons: forall (a :: Prim.Type). ((a :: Prim.Type) ->
+             (((Builtin.BuiltinList ((a :: Prim.Type))) ->
+             ((Builtin.BuiltinList ((a :: Prim.Type))))))))
+             ((serializeMaybe: forall (a :: Prim.Type). (((a :: Prim.Type) ->
+              (Builtin.BuiltinData)) ->
+              (((Prim.Maybe ((a :: Prim.Type))) -> (Builtin.BuiltinData)))))
+              (serializeScriptHash: (Prim.ScriptHash -> (Builtin.BuiltinData)))
+              ((rec: {
+                       address :: Prim.Address,
+                       value :: Prim.Value,
+                       datum :: Prim.OutputDatum,
+                       referenceScript :: (Prim.Maybe (Prim.ScriptHash))
+                     })
+              .referenceScript))
+             ((mkNilData: (Prim.Unit ->
+              ((Builtin.BuiltinList (Builtin.BuiltinData)))))
+              (unit: Prim.Unit))))))
+
+serializeTxInInfo :: (Prim.TxInInfo -> (Builtin.BuiltinData))
+serializeTxInInfo = 
+  \(v: Prim.TxInInfo) -> 
+    case (v: Prim.TxInInfo) of 
+       TxInInfo rec -> 
+         (constrData: (Prim.Int ->
+         (((Builtin.BuiltinList (Builtin.BuiltinData)) ->
+         (Builtin.BuiltinData)))))
+         (0: Prim.Int)
+         ((mkCons: forall (a :: Prim.Type). ((a :: Prim.Type) ->
+          (((Builtin.BuiltinList ((a :: Prim.Type))) ->
+          ((Builtin.BuiltinList ((a :: Prim.Type))))))))
+          ((serializeTxOutRef: (Prim.TxOutRef -> (Builtin.BuiltinData)))
+           ((rec: {   txOutRef :: Prim.TxOutRef, resolved :: Prim.TxOut })
+           .txOutRef))
+          ((mkCons: forall (a :: Prim.Type). ((a :: Prim.Type) ->
+           (((Builtin.BuiltinList ((a :: Prim.Type))) ->
+           ((Builtin.BuiltinList ((a :: Prim.Type))))))))
+           ((serializeTxOut: (Prim.TxOut -> (Builtin.BuiltinData)))
+            ((rec: {   txOutRef :: Prim.TxOutRef, resolved :: Prim.TxOut })
+            .resolved))
+           ((mkNilData: (Prim.Unit ->
+            ((Builtin.BuiltinList (Builtin.BuiltinData)))))
+            (unit: Prim.Unit))))
+
+serializeTxInfo :: (Prim.TxInfo -> (Builtin.BuiltinData))
+serializeTxInfo = 
+  \(v: Prim.TxInfo) -> 
+    case (v: Prim.TxInfo) of 
+       TxInfo rec -> 
+         (constrData: (Prim.Int ->
+         (((Builtin.BuiltinList (Builtin.BuiltinData)) ->
+         (Builtin.BuiltinData)))))
+         (0: Prim.Int)
+         ((mkCons: forall (a :: Prim.Type). ((a :: Prim.Type) ->
+          (((Builtin.BuiltinList ((a :: Prim.Type))) ->
+          ((Builtin.BuiltinList ((a :: Prim.Type))))))))
+          ((serializeList: forall (a :: Prim.Type). (((a :: Prim.Type) ->
+           (Builtin.BuiltinData)) ->
+           ((List ((a :: Prim.Type)) -> (Builtin.BuiltinData)))))
+           (serializeTxInInfo: (Prim.TxInInfo -> (Builtin.BuiltinData)))
+           ((rec: {
+                    inputs :: List (Prim.TxInInfo),
+                    referenceInputs :: List (Prim.TxInInfo),
+                    outputs :: List (Prim.TxOut),
+                    fee :: Prim.Value,
+                    mint :: Prim.Value,
+                    dCert :: List (Prim.DCert),
+                    wdrl :: ((Prim.AssocMap
+                    (Prim.StakingCredential)) (Prim.Int)),
+                    validRange :: (Prim.Interval (Prim.POSIXTime)),
+                    signatories :: List (Prim.PubKeyHash),
+                    redeemers :: ((Prim.AssocMap
+                    (Prim.ScriptPurpose)) (Prim.Redeemer)),
+                    data :: ((Prim.AssocMap (Prim.DatumHash)) (Prim.Datum)),
+                    id :: Prim.TxId
+                  })
+           .inputs))
+          ((mkCons: forall (a :: Prim.Type). ((a :: Prim.Type) ->
+           (((Builtin.BuiltinList ((a :: Prim.Type))) ->
+           ((Builtin.BuiltinList ((a :: Prim.Type))))))))
+           ((serializeList: forall (a :: Prim.Type). (((a :: Prim.Type) ->
+            (Builtin.BuiltinData)) ->
+            ((List ((a :: Prim.Type)) -> (Builtin.BuiltinData)))))
+            (serializeTxInInfo: (Prim.TxInInfo -> (Builtin.BuiltinData)))
+            ((rec: {
+                     inputs :: List (Prim.TxInInfo),
+                     referenceInputs :: List (Prim.TxInInfo),
+                     outputs :: List (Prim.TxOut),
+                     fee :: Prim.Value,
+                     mint :: Prim.Value,
+                     dCert :: List (Prim.DCert),
+                     wdrl :: ((Prim.AssocMap
+                     (Prim.StakingCredential)) (Prim.Int)),
+                     validRange :: (Prim.Interval (Prim.POSIXTime)),
+                     signatories :: List (Prim.PubKeyHash),
+                     redeemers :: ((Prim.AssocMap
+                     (Prim.ScriptPurpose)) (Prim.Redeemer)),
+                     data :: ((Prim.AssocMap (Prim.DatumHash)) (Prim.Datum)),
+                     id :: Prim.TxId
+                   })
+            .referenceInputs))
+           ((mkCons: forall (a :: Prim.Type). ((a :: Prim.Type) ->
+            (((Builtin.BuiltinList ((a :: Prim.Type))) ->
+            ((Builtin.BuiltinList ((a :: Prim.Type))))))))
+            ((serializeList: forall (a :: Prim.Type). (((a :: Prim.Type) ->
+             (Builtin.BuiltinData)) ->
+             ((List ((a :: Prim.Type)) -> (Builtin.BuiltinData)))))
+             (serializeTxOut: (Prim.TxOut -> (Builtin.BuiltinData)))
+             ((rec: {
+                      inputs :: List (Prim.TxInInfo),
+                      referenceInputs :: List (Prim.TxInInfo),
+                      outputs :: List (Prim.TxOut),
+                      fee :: Prim.Value,
+                      mint :: Prim.Value,
+                      dCert :: List (Prim.DCert),
+                      wdrl :: ((Prim.AssocMap
+                      (Prim.StakingCredential)) (Prim.Int)),
+                      validRange :: (Prim.Interval (Prim.POSIXTime)),
+                      signatories :: List (Prim.PubKeyHash),
+                      redeemers :: ((Prim.AssocMap
+                      (Prim.ScriptPurpose)) (Prim.Redeemer)),
+                      data :: ((Prim.AssocMap (Prim.DatumHash)) (Prim.Datum)),
+                      id :: Prim.TxId
+                    })
+             .outputs))
+            ((mkCons: forall (a :: Prim.Type). ((a :: Prim.Type) ->
+             (((Builtin.BuiltinList ((a :: Prim.Type))) ->
+             ((Builtin.BuiltinList ((a :: Prim.Type))))))))
+             ((serializeValue: (Prim.Value -> (Builtin.BuiltinData)))
+              ((rec: {
+                       inputs :: List (Prim.TxInInfo),
+                       referenceInputs :: List (Prim.TxInInfo),
+                       outputs :: List (Prim.TxOut),
+                       fee :: Prim.Value,
+                       mint :: Prim.Value,
+                       dCert :: List (Prim.DCert),
+                       wdrl :: ((Prim.AssocMap
+                       (Prim.StakingCredential)) (Prim.Int)),
+                       validRange :: (Prim.Interval (Prim.POSIXTime)),
+                       signatories :: List (Prim.PubKeyHash),
+                       redeemers :: ((Prim.AssocMap
+                       (Prim.ScriptPurpose)) (Prim.Redeemer)),
+                       data :: ((Prim.AssocMap (Prim.DatumHash)) (Prim.Datum)),
+                       id :: Prim.TxId
+                     })
+              .fee))
+             ((mkCons: forall (a :: Prim.Type). ((a :: Prim.Type) ->
+              (((Builtin.BuiltinList ((a :: Prim.Type))) ->
+              ((Builtin.BuiltinList ((a :: Prim.Type))))))))
+              ((serializeValue: (Prim.Value -> (Builtin.BuiltinData)))
+               ((rec: {
+                        inputs :: List (Prim.TxInInfo),
+                        referenceInputs :: List (Prim.TxInInfo),
+                        outputs :: List (Prim.TxOut),
+                        fee :: Prim.Value,
+                        mint :: Prim.Value,
+                        dCert :: List (Prim.DCert),
+                        wdrl :: ((Prim.AssocMap
+                        (Prim.StakingCredential)) (Prim.Int)),
+                        validRange :: (Prim.Interval (Prim.POSIXTime)),
+                        signatories :: List (Prim.PubKeyHash),
+                        redeemers :: ((Prim.AssocMap
+                        (Prim.ScriptPurpose)) (Prim.Redeemer)),
+                        data :: ((Prim.AssocMap (Prim.DatumHash)) (Prim.Datum)),
+                        id :: Prim.TxId
+                      })
+               .mint))
+              ((mkCons: forall (a :: Prim.Type). ((a :: Prim.Type) ->
+               (((Builtin.BuiltinList ((a :: Prim.Type))) ->
+               ((Builtin.BuiltinList ((a :: Prim.Type))))))))
+               ((serializeList: forall (a :: Prim.Type). (((a :: Prim.Type) ->
+                (Builtin.BuiltinData)) ->
+                ((List ((a :: Prim.Type)) -> (Builtin.BuiltinData)))))
+                (serializeDCert: (Prim.DCert -> (Builtin.BuiltinData)))
+                ((rec: {
+                         inputs :: List (Prim.TxInInfo),
+                         referenceInputs :: List (Prim.TxInInfo),
+                         outputs :: List (Prim.TxOut),
+                         fee :: Prim.Value,
+                         mint :: Prim.Value,
+                         dCert :: List (Prim.DCert),
+                         wdrl :: ((Prim.AssocMap
+                         (Prim.StakingCredential)) (Prim.Int)),
+                         validRange :: (Prim.Interval (Prim.POSIXTime)),
+                         signatories :: List (Prim.PubKeyHash),
+                         redeemers :: ((Prim.AssocMap
+                         (Prim.ScriptPurpose)) (Prim.Redeemer)),
+                         data :: ((Prim.AssocMap
+                         (Prim.DatumHash)) (Prim.Datum)),
+                         id :: Prim.TxId
+                       })
+                .dCert))
+               ((mkCons: forall (a :: Prim.Type). ((a :: Prim.Type) ->
+                (((Builtin.BuiltinList ((a :: Prim.Type))) ->
+                ((Builtin.BuiltinList ((a :: Prim.Type))))))))
+                ((serializeAssocMap: forall (k :: Prim.Type)
+                 (v :: Prim.Type). (((k :: Prim.Type) ->
+                 (Builtin.BuiltinData)) ->
+                 ((((v :: Prim.Type) -> (Builtin.BuiltinData)) ->
+                 ((((Prim.AssocMap ((k :: Prim.Type))) ((v :: Prim.Type))) ->
+                 (Builtin.BuiltinData)))))))
+                 (serializeStakingCredential: (Prim.StakingCredential ->
+                 (Builtin.BuiltinData)))
+                 (serializeInt: (Prim.Int -> (Builtin.BuiltinData)))
+                 ((rec: {
+                          inputs :: List (Prim.TxInInfo),
+                          referenceInputs :: List (Prim.TxInInfo),
+                          outputs :: List (Prim.TxOut),
+                          fee :: Prim.Value,
+                          mint :: Prim.Value,
+                          dCert :: List (Prim.DCert),
+                          wdrl :: ((Prim.AssocMap
+                          (Prim.StakingCredential)) (Prim.Int)),
+                          validRange :: (Prim.Interval (Prim.POSIXTime)),
+                          signatories :: List (Prim.PubKeyHash),
+                          redeemers :: ((Prim.AssocMap
+                          (Prim.ScriptPurpose)) (Prim.Redeemer)),
+                          data :: ((Prim.AssocMap
+                          (Prim.DatumHash)) (Prim.Datum)),
+                          id :: Prim.TxId
+                        })
+                 .wdrl))
+                ((mkCons: forall (a :: Prim.Type). ((a :: Prim.Type) ->
+                 (((Builtin.BuiltinList ((a :: Prim.Type))) ->
+                 ((Builtin.BuiltinList ((a :: Prim.Type))))))))
+                 ((serializeInterval: forall (a :: Prim.Type). (((a :: Prim.Type) ->
+                  (Builtin.BuiltinData)) ->
+                  (((Prim.Interval ((a :: Prim.Type))) ->
+                  (Builtin.BuiltinData)))))
+                  (serializePOSIXTime: (Prim.POSIXTime ->
+                  (Builtin.BuiltinData)))
+                  ((rec: {
+                           inputs :: List (Prim.TxInInfo),
+                           referenceInputs :: List (Prim.TxInInfo),
+                           outputs :: List (Prim.TxOut),
+                           fee :: Prim.Value,
+                           mint :: Prim.Value,
+                           dCert :: List (Prim.DCert),
+                           wdrl :: ((Prim.AssocMap
+                           (Prim.StakingCredential)) (Prim.Int)),
+                           validRange :: (Prim.Interval (Prim.POSIXTime)),
+                           signatories :: List (Prim.PubKeyHash),
+                           redeemers :: ((Prim.AssocMap
+                           (Prim.ScriptPurpose)) (Prim.Redeemer)),
+                           data :: ((Prim.AssocMap
+                           (Prim.DatumHash)) (Prim.Datum)),
+                           id :: Prim.TxId
+                         })
+                  .validRange))
+                 ((mkCons: forall (a :: Prim.Type). ((a :: Prim.Type) ->
+                  (((Builtin.BuiltinList ((a :: Prim.Type))) ->
+                  ((Builtin.BuiltinList ((a :: Prim.Type))))))))
+                  ((serializeList: forall (a :: Prim.Type). (((a :: Prim.Type) ->
+                   (Builtin.BuiltinData)) ->
+                   ((List ((a :: Prim.Type)) -> (Builtin.BuiltinData)))))
+                   (serializePubKeyHash: (Prim.PubKeyHash ->
+                   (Builtin.BuiltinData)))
+                   ((rec: {
+                            inputs :: List (Prim.TxInInfo),
+                            referenceInputs :: List (Prim.TxInInfo),
+                            outputs :: List (Prim.TxOut),
+                            fee :: Prim.Value,
+                            mint :: Prim.Value,
+                            dCert :: List (Prim.DCert),
+                            wdrl :: ((Prim.AssocMap
+                            (Prim.StakingCredential)) (Prim.Int)),
+                            validRange :: (Prim.Interval (Prim.POSIXTime)),
+                            signatories :: List (Prim.PubKeyHash),
+                            redeemers :: ((Prim.AssocMap
+                            (Prim.ScriptPurpose)) (Prim.Redeemer)),
+                            data :: ((Prim.AssocMap
+                            (Prim.DatumHash)) (Prim.Datum)),
+                            id :: Prim.TxId
+                          })
+                   .signatories))
+                  ((mkCons: forall (a :: Prim.Type). ((a :: Prim.Type) ->
+                   (((Builtin.BuiltinList ((a :: Prim.Type))) ->
+                   ((Builtin.BuiltinList ((a :: Prim.Type))))))))
+                   ((serializeAssocMap: forall (k :: Prim.Type)
+                    (v :: Prim.Type). (((k :: Prim.Type) ->
+                    (Builtin.BuiltinData)) ->
+                    ((((v :: Prim.Type) -> (Builtin.BuiltinData)) ->
+                    ((((Prim.AssocMap ((k :: Prim.Type))) ((v :: Prim.Type))) ->
+                    (Builtin.BuiltinData)))))))
+                    (serializeScriptPurpose: (Prim.ScriptPurpose ->
+                    (Builtin.BuiltinData)))
+                    (serializeRedeemer: (Prim.Redeemer ->
+                    (Builtin.BuiltinData)))
+                    ((rec: {
+                             inputs :: List (Prim.TxInInfo),
+                             referenceInputs :: List (Prim.TxInInfo),
+                             outputs :: List (Prim.TxOut),
+                             fee :: Prim.Value,
+                             mint :: Prim.Value,
+                             dCert :: List (Prim.DCert),
+                             wdrl :: ((Prim.AssocMap
+                             (Prim.StakingCredential)) (Prim.Int)),
+                             validRange :: (Prim.Interval (Prim.POSIXTime)),
+                             signatories :: List (Prim.PubKeyHash),
+                             redeemers :: ((Prim.AssocMap
+                             (Prim.ScriptPurpose)) (Prim.Redeemer)),
+                             data :: ((Prim.AssocMap
+                             (Prim.DatumHash)) (Prim.Datum)),
+                             id :: Prim.TxId
+                           })
+                    .redeemers))
+                   ((mkCons: forall (a :: Prim.Type). ((a :: Prim.Type) ->
+                    (((Builtin.BuiltinList ((a :: Prim.Type))) ->
+                    ((Builtin.BuiltinList ((a :: Prim.Type))))))))
+                    ((serializeAssocMap: forall (k :: Prim.Type)
+                     (v :: Prim.Type). (((k :: Prim.Type) ->
+                     (Builtin.BuiltinData)) ->
+                     ((((v :: Prim.Type) -> (Builtin.BuiltinData)) ->
+                     ((((Prim.AssocMap
+                     ((k :: Prim.Type))) ((v :: Prim.Type))) ->
+                     (Builtin.BuiltinData)))))))
+                     (serializeDatumHash: (Prim.DatumHash ->
+                     (Builtin.BuiltinData)))
+                     (serializeDatum: (Prim.Datum -> (Builtin.BuiltinData)))
+                     ((rec: {
+                              inputs :: List (Prim.TxInInfo),
+                              referenceInputs :: List (Prim.TxInInfo),
+                              outputs :: List (Prim.TxOut),
+                              fee :: Prim.Value,
+                              mint :: Prim.Value,
+                              dCert :: List (Prim.DCert),
+                              wdrl :: ((Prim.AssocMap
+                              (Prim.StakingCredential)) (Prim.Int)),
+                              validRange :: (Prim.Interval (Prim.POSIXTime)),
+                              signatories :: List (Prim.PubKeyHash),
+                              redeemers :: ((Prim.AssocMap
+                              (Prim.ScriptPurpose)) (Prim.Redeemer)),
+                              data :: ((Prim.AssocMap
+                              (Prim.DatumHash)) (Prim.Datum)),
+                              id :: Prim.TxId
+                            })
+                     .data))
+                    ((mkCons: forall (a :: Prim.Type). ((a :: Prim.Type) ->
+                     (((Builtin.BuiltinList ((a :: Prim.Type))) ->
+                     ((Builtin.BuiltinList ((a :: Prim.Type))))))))
+                     ((serializeTxId: (Prim.TxId -> (Builtin.BuiltinData)))
+                      ((rec: {
+                               inputs :: List (Prim.TxInInfo),
+                               referenceInputs :: List (Prim.TxInInfo),
+                               outputs :: List (Prim.TxOut),
+                               fee :: Prim.Value,
+                               mint :: Prim.Value,
+                               dCert :: List (Prim.DCert),
+                               wdrl :: ((Prim.AssocMap
+                               (Prim.StakingCredential)) (Prim.Int)),
+                               validRange :: (Prim.Interval (Prim.POSIXTime)),
+                               signatories :: List (Prim.PubKeyHash),
+                               redeemers :: ((Prim.AssocMap
+                               (Prim.ScriptPurpose)) (Prim.Redeemer)),
+                               data :: ((Prim.AssocMap
+                               (Prim.DatumHash)) (Prim.Datum)),
+                               id :: Prim.TxId
+                             })
+                      .id))
+                     ((mkNilData: (Prim.Unit ->
+                      ((Builtin.BuiltinList (Builtin.BuiltinData)))))
+                      (unit: Prim.Unit))))))))))))))
+
+serializeScriptContext :: (Prim.ScriptContext -> (Builtin.BuiltinData))
+serializeScriptContext = 
+  \(v: Prim.ScriptContext) -> 
+    case (v: Prim.ScriptContext) of 
+       ScriptContext rec -> 
+         (constrData: (Prim.Int ->
+         (((Builtin.BuiltinList (Builtin.BuiltinData)) ->
+         (Builtin.BuiltinData)))))
+         (0: Prim.Int)
+         ((mkCons: forall (a :: Prim.Type). ((a :: Prim.Type) ->
+          (((Builtin.BuiltinList ((a :: Prim.Type))) ->
+          ((Builtin.BuiltinList ((a :: Prim.Type))))))))
+          ((serializeTxInfo: (Prim.TxInfo -> (Builtin.BuiltinData)))
+           ((rec: {   txInfo :: Prim.TxInfo, purpose :: Prim.ScriptPurpose })
+           .txInfo))
+          ((mkCons: forall (a :: Prim.Type). ((a :: Prim.Type) ->
+           (((Builtin.BuiltinList ((a :: Prim.Type))) ->
+           ((Builtin.BuiltinList ((a :: Prim.Type))))))))
+           ((serializeScriptPurpose: (Prim.ScriptPurpose ->
+            (Builtin.BuiltinData)))
+            ((rec: {   txInfo :: Prim.TxInfo, purpose :: Prim.ScriptPurpose })
+            .purpose))
+           ((mkNilData: (Prim.Unit ->
+            ((Builtin.BuiltinList (Builtin.BuiltinData)))))
+            (unit: Prim.Unit))))
+
+productList :: (List (Prim.Int) -> (Prim.Int))
+productList = 
+  \(ell: List (Prim.Int)) -> 
+    case (ell: List (Prim.Int)) of 
+       Nil -> (1: Prim.Int)
+       Cons x xs -> 
+         (multiplyInteger: (Prim.Int -> ((Prim.Int -> (Prim.Int)))))
+         (x: Prim.Int)
+         ((productList: (List (Prim.Int) -> (Prim.Int))) (xs: List (Prim.Int)))
+
+or :: (Prim.Boolean -> ((Prim.Boolean -> (Prim.Boolean))))
+or = 
+  \(x: Prim.Boolean) -> 
+    \(y: Prim.Boolean) -> 
+      (ifThenElse: forall (x :: Prim.Type). (Prim.Boolean ->
+      (((x :: Prim.Type) -> (((x :: Prim.Type) -> ((x :: Prim.Type))))))))
+      (x: Prim.Boolean)
+      (True: Prim.Boolean)
+      (y: Prim.Boolean)
+
+not :: (Prim.Boolean -> (Prim.Boolean))
+not = 
+  \(x: Prim.Boolean) -> 
+    (ifThenElse: forall (x :: Prim.Type). (Prim.Boolean ->
+    (((x :: Prim.Type) -> (((x :: Prim.Type) -> ((x :: Prim.Type))))))))
+    (x: Prim.Boolean)
+    (False: Prim.Boolean)
+    (True: Prim.Boolean)
+
+xor :: (Prim.Boolean -> ((Prim.Boolean -> (Prim.Boolean))))
+xor = 
+  \(x: Prim.Boolean) -> 
+    \(y: Prim.Boolean) -> 
+      (ifThenElse: forall (x :: Prim.Type). (Prim.Boolean ->
+      (((x :: Prim.Type) -> (((x :: Prim.Type) -> ((x :: Prim.Type))))))))
+      (x: Prim.Boolean)
+      ((not: (Prim.Boolean -> (Prim.Boolean))) (y: Prim.Boolean))
+      (y: Prim.Boolean)
+
+maybe :: forall (a :: Prim.Type) (b :: Prim.Type). ((b :: Prim.Type) -> ((((a :: Prim.Type) -> ((b :: Prim.Type))) -> (((Prim.Maybe ((a :: Prim.Type))) -> ((b :: Prim.Type)))))))
+maybe = 
+  \(whenNothing: (b :: Prim.Type)) -> 
+    \(whenJust: ((a :: Prim.Type) -> ((b :: Prim.Type)))) -> 
+      \(m: (Prim.Maybe ((a :: Prim.Type)))) -> 
+        case (m: (Prim.Maybe ((a :: Prim.Type)))) of 
+           Nothing -> (whenNothing: (b :: Prim.Type))
+           Just x -> 
+             (whenJust: ((a :: Prim.Type) -> ((b :: Prim.Type))))
+             (x: (a :: Prim.Type))
+
+mapList :: forall (a :: Prim.Type) (b :: Prim.Type). (((a :: Prim.Type) -> ((b :: Prim.Type))) -> ((List ((a :: Prim.Type)) -> (List ((b :: Prim.Type))))))
+mapList = 
+  \(f: ((a :: Prim.Type) -> ((b :: Prim.Type)))) -> 
+    \(ell: List ((a :: Prim.Type))) -> 
+      case (ell: List ((a :: Prim.Type))) of 
+         Nil -> (Nil: List ((b :: Prim.Type)))
+         Cons x xs -> 
+           (Cons: forall (x :: Prim.Type). ((x :: Prim.Type) ->
+           ((List ((x :: Prim.Type)) -> (List ((x :: Prim.Type)))))))
+           ((f: ((a :: Prim.Type) -> ((b :: Prim.Type)))) (x: (a :: Prim.Type)))
+           ((mapList: forall (a :: Prim.Type)
+            (b :: Prim.Type). (((a :: Prim.Type) -> ((b :: Prim.Type))) ->
+            ((List ((a :: Prim.Type)) -> (List ((b :: Prim.Type)))))))
+            (f: ((a :: Prim.Type) -> ((b :: Prim.Type))))
+            (xs: List ((a :: Prim.Type))))
+
+lengthList :: forall (a :: Prim.Type). (List ((a :: Prim.Type)) -> (Prim.Int))
+lengthList = 
+  \(ell: List ((a :: Prim.Type))) -> 
+    case (ell: List ((a :: Prim.Type))) of 
+       Nil -> (0: Prim.Int)
+       Cons _ xs -> 
+         (addInteger: (Prim.Int -> ((Prim.Int -> (Prim.Int)))))
+         (1: Prim.Int)
+         ((lengthList: forall (a :: Prim.Type). (List ((a :: Prim.Type)) ->
+          (Prim.Int)))
+          (xs: List ((a :: Prim.Type))))
+
+identity :: forall (a :: Prim.Type). ((a :: Prim.Type) -> ((a :: Prim.Type)))
+identity = \(x: (a :: Prim.Type)) -> (x: (a :: Prim.Type))
+
+fromMaybe :: forall (a :: Prim.Type). ((a :: Prim.Type) -> (((Prim.Maybe ((a :: Prim.Type))) -> ((a :: Prim.Type)))))
+fromMaybe = 
+  \(whenNothing: (a :: Prim.Type)) -> 
+    \(m: (Prim.Maybe ((a :: Prim.Type)))) -> 
+      case (m: (Prim.Maybe ((a :: Prim.Type)))) of 
+         Nothing -> (whenNothing: (a :: Prim.Type))
+         Just x -> (x: (a :: Prim.Type))
+
+flip :: forall (a :: Prim.Type) (b :: Prim.Type) (c :: Prim.Type). (((a :: Prim.Type) -> (((b :: Prim.Type) -> ((c :: Prim.Type))))) -> (((b :: Prim.Type) -> (((a :: Prim.Type) -> ((c :: Prim.Type)))))))
+flip = 
+  \(f: ((a :: Prim.Type) -> (((b :: Prim.Type) -> ((c :: Prim.Type)))))) -> 
+    \(x: (b :: Prim.Type)) -> 
+      \(y: (a :: Prim.Type)) -> 
+        (f: ((a :: Prim.Type) -> (((b :: Prim.Type) -> ((c :: Prim.Type))))))
+        (y: (a :: Prim.Type))
+        (x: (b :: Prim.Type))
+
+filterList :: forall (a :: Prim.Type). (((a :: Prim.Type) -> (Prim.Boolean)) -> ((List ((a :: Prim.Type)) -> (List ((a :: Prim.Type))))))
+filterList = 
+  \(f: ((a :: Prim.Type) -> (Prim.Boolean))) -> 
+    \(ell: List ((a :: Prim.Type))) -> 
+      case (ell: List ((a :: Prim.Type))) of 
+         Nil -> (Nil: List ((a :: Prim.Type)))
+         Cons x xs -> 
+           case ((f: ((a :: Prim.Type) -> (Prim.Boolean))) (x: (a :: Prim.Type))) of 
+              True -> 
+                (Cons: forall (x :: Prim.Type). ((x :: Prim.Type) ->
+                ((List ((x :: Prim.Type)) -> (List ((x :: Prim.Type)))))))
+                (x: (a :: Prim.Type))
+                ((filterList: forall (a :: Prim.Type). (((a :: Prim.Type) ->
+                 (Prim.Boolean)) ->
+                 ((List ((a :: Prim.Type)) -> (List ((a :: Prim.Type)))))))
+                 (f: ((a :: Prim.Type) -> (Prim.Boolean)))
+                 (xs: List ((a :: Prim.Type))))
+              _ -> 
+                (filterList: forall (a :: Prim.Type). (((a :: Prim.Type) ->
+                (Prim.Boolean)) ->
+                ((List ((a :: Prim.Type)) -> (List ((a :: Prim.Type)))))))
+                (f: ((a :: Prim.Type) -> (Prim.Boolean)))
+                (xs: List ((a :: Prim.Type)))
+
+dropList :: forall (a :: Prim.Type). (Prim.Int -> ((List ((a :: Prim.Type)) -> (List ((a :: Prim.Type))))))
+dropList = 
+  \(count: Prim.Int) -> 
+    \(ell: List ((a :: Prim.Type))) -> 
+      case ((lessThanEqualsInteger: (Prim.Int -> ((Prim.Int -> (Prim.Boolean))))) (count: Prim.Int) (0: Prim.Int)) of 
+         True -> (ell: List ((a :: Prim.Type)))
+         _ -> 
+           case (ell: List ((a :: Prim.Type))) of 
+              Nil -> (Nil: List ((a :: Prim.Type)))
+              Cons _ xs -> 
+                (dropList: forall (a :: Prim.Type). (Prim.Int ->
+                ((List ((a :: Prim.Type)) -> (List ((a :: Prim.Type)))))))
+                ((subtractInteger: (Prim.Int -> ((Prim.Int -> (Prim.Int)))))
+                 (count: Prim.Int)
+                 (1: Prim.Int))
+                (xs: List ((a :: Prim.Type)))
+
+deserializeTuple2 :: forall (a :: Prim.Type) (b :: Prim.Type). ((Builtin.BuiltinData -> ((a :: Prim.Type))) -> (((Builtin.BuiltinData -> ((b :: Prim.Type))) -> ((Builtin.BuiltinData -> (((Prim.Tuple2 ((a :: Prim.Type))) ((b :: Prim.Type)))))))))
+deserializeTuple2 = 
+  \(fA: (Builtin.BuiltinData -> ((a :: Prim.Type)))) -> 
+    \(fB: (Builtin.BuiltinData -> ((b :: Prim.Type)))) -> 
+      \(dat: Builtin.BuiltinData) -> 
+        let
+          dat' :: Builtin.BuiltinData
+          dat' = 
+            (sndPair: forall (a :: Prim.Type)
+            (b :: Prim.Type). (((Builtin.BuiltinPair
+            ((a :: Prim.Type))) ((b :: Prim.Type))) ->
+            ((b :: Prim.Type))))
+            ((unConstrData: (Builtin.BuiltinData ->
+             (((Builtin.BuiltinPair (Prim.Int)) (Builtin.BuiltinData)))))
+             (dat: Builtin.BuiltinData))
+          unlisted :: (Builtin.BuiltinList (Builtin.BuiltinData))
+          unlisted = 
+            (unListData: (Builtin.BuiltinData ->
+            ((Builtin.BuiltinList (Builtin.BuiltinData)))))
+            (dat': Builtin.BuiltinData)
+          unlisted' :: (Builtin.BuiltinList (Builtin.BuiltinData))
+          unlisted' = 
+            (tailList: forall (a :: Prim.Type). ((Builtin.BuiltinList
+            ((a :: Prim.Type))) ->
+            ((Builtin.BuiltinList ((a :: Prim.Type))))))
+            (unlisted: (Builtin.BuiltinList (Builtin.BuiltinData)))
+          y :: (b :: Prim.Type)
+          y = 
+            (fB: (Builtin.BuiltinData -> ((b :: Prim.Type))))
+            ((headList: forall (a :: Prim.Type). ((Builtin.BuiltinList
+             ((a :: Prim.Type))) ->
+             ((a :: Prim.Type))))
+             (unlisted': (Builtin.BuiltinList (Builtin.BuiltinData))))
+          x :: (a :: Prim.Type)
+          x = 
+            (fA: (Builtin.BuiltinData -> ((a :: Prim.Type))))
+            ((headList: forall (a :: Prim.Type). ((Builtin.BuiltinList
+             ((a :: Prim.Type))) ->
+             ((a :: Prim.Type))))
+             (unlisted: (Builtin.BuiltinList (Builtin.BuiltinData))))
+        in (Tuple2: forall (t1 :: Prim.Type)
+           (t2 :: Prim.Type). ((t1 :: Prim.Type) ->
+           (((t2 :: Prim.Type) ->
+           (((Prim.Tuple2 ((t1 :: Prim.Type))) ((t2 :: Prim.Type))))))))
+           (x: a*26)
+           (y: b*27)
+
+deserializeRedeemer :: (Builtin.BuiltinData -> (Prim.Redeemer))
+deserializeRedeemer = (Redeemer: (Builtin.BuiltinData -> (Prim.Redeemer)))
+
+deserializeMaybe :: forall (a :: Prim.Type). ((Builtin.BuiltinData -> ((a :: Prim.Type))) -> ((Builtin.BuiltinData -> ((Prim.Maybe ((a :: Prim.Type)))))))
+deserializeMaybe = 
+  \(f: (Builtin.BuiltinData -> ((a :: Prim.Type)))) -> 
+    \(dat: Builtin.BuiltinData) -> 
+      let
+        p :: ((Builtin.BuiltinPair (Prim.Int)) (Builtin.BuiltinData))
+        p = 
+          (unConstrData: (Builtin.BuiltinData ->
+          (((Builtin.BuiltinPair (Prim.Int)) (Builtin.BuiltinData)))))
+          (dat: Builtin.BuiltinData)
+        tag :: Prim.Int
+        tag = 
+          (fstPair: forall (a :: Prim.Type)
+          (b :: Prim.Type). (((Builtin.BuiltinPair
+          ((a :: Prim.Type))) ((b :: Prim.Type))) ->
+          ((a :: Prim.Type))))
+          (p: ((Builtin.BuiltinPair (Prim.Int)) (Builtin.BuiltinData)))
+      in case ((equalsInteger: (Prim.Int -> ((Prim.Int -> (Prim.Boolean))))) (tag: Prim.Int) (0: Prim.Int)) of 
+            True -> (Nothing: (Prim.Maybe (a*28)))
+            _ -> 
+              let
+                unlisted :: (Builtin.BuiltinList (Builtin.BuiltinData))
+                unlisted = 
+                  (unListData: (Builtin.BuiltinData ->
+                  ((Builtin.BuiltinList (Builtin.BuiltinData)))))
+                  ((sndPair: forall (a :: Prim.Type)
+                   (b :: Prim.Type). (((Builtin.BuiltinPair
+                   ((a :: Prim.Type))) ((b :: Prim.Type))) ->
+                   ((b :: Prim.Type))))
+                   (p: ((Builtin.BuiltinPair
+                   (Prim.Int)) (Builtin.BuiltinData))))
+              in (Just: forall (a :: Prim.Type). ((a :: Prim.Type) ->
+                 ((Prim.Maybe ((a :: Prim.Type))))))
+                 ((f: (Builtin.BuiltinData -> ((a :: Prim.Type))))
+                  ((headList: forall (a :: Prim.Type). ((Builtin.BuiltinList
+                   ((a :: Prim.Type))) ->
+                   ((a :: Prim.Type))))
+                   (unlisted: (Builtin.BuiltinList (Builtin.BuiltinData)))))
+
+deserializeList :: forall (a :: Prim.Type). ((Builtin.BuiltinData -> ((a :: Prim.Type))) -> ((Builtin.BuiltinData -> (List ((a :: Prim.Type))))))
+deserializeList = 
+  \(f: (Builtin.BuiltinData -> ((a :: Prim.Type)))) -> 
+    \(dat: Builtin.BuiltinData) -> 
+      let
+        go :: ((Builtin.BuiltinList (Builtin.BuiltinData)) -> (List (a*29)))
+        go = 
+          \(ell: (Builtin.BuiltinList (Builtin.BuiltinData))) -> 
+            case ((nullList: forall (a :: Prim.Type). ((Builtin.BuiltinList ((a :: Prim.Type))) -> (Prim.Boolean))) (ell: (Builtin.BuiltinList (Builtin.BuiltinData)))) of 
+               True -> (Nil: List (a*29))
+               _ -> 
+                 let
+                   t :: (Builtin.BuiltinList (Builtin.BuiltinData))
+                   t = 
+                     (tailList: forall (a :: Prim.Type). ((Builtin.BuiltinList
+                     ((a :: Prim.Type))) ->
+                     ((Builtin.BuiltinList ((a :: Prim.Type))))))
+                     (ell: (Builtin.BuiltinList (Builtin.BuiltinData)))
+                   h :: Builtin.BuiltinData
+                   h = 
+                     (headList: forall (a :: Prim.Type). ((Builtin.BuiltinList
+                     ((a :: Prim.Type))) ->
+                     ((a :: Prim.Type))))
+                     (ell: (Builtin.BuiltinList (Builtin.BuiltinData)))
+                 in (Cons: forall (x :: Prim.Type). ((x :: Prim.Type) ->
+                    ((List ((x :: Prim.Type)) -> (List ((x :: Prim.Type)))))))
+                    ((f: (Builtin.BuiltinData -> ((a :: Prim.Type))))
+                     (h: Builtin.BuiltinData))
+                    ((go: ((Builtin.BuiltinList (Builtin.BuiltinData)) ->
+                     (List (a*29))))
+                     (t: (Builtin.BuiltinList (Builtin.BuiltinData))))
+      in let
+           unlisted :: (Builtin.BuiltinList (Builtin.BuiltinData))
+           unlisted = 
+             (unListData: (Builtin.BuiltinData ->
+             ((Builtin.BuiltinList (Builtin.BuiltinData)))))
+             (dat: Builtin.BuiltinData)
+         in (go: ((Builtin.BuiltinList (Builtin.BuiltinData)) -> (List (a*29))))
+            (unlisted: (Builtin.BuiltinList (Builtin.BuiltinData)))
+
+deserializeInt :: (Builtin.BuiltinData -> (Prim.Int))
+deserializeInt = (unIData: (Builtin.BuiltinData -> (Prim.Int)))
+
+deserializeLovelace :: (Builtin.BuiltinData -> (Prim.Lovelace))
+deserializeLovelace = 
+  \(dat: Builtin.BuiltinData) -> 
+    (Lovelace: (Prim.Int -> (Prim.Lovelace)))
+    ((deserializeInt: (Builtin.BuiltinData -> (Prim.Int)))
+     (dat: Builtin.BuiltinData))
+
+deserializePOSIXTime :: (Builtin.BuiltinData -> (Prim.POSIXTime))
+deserializePOSIXTime = 
+  \(dat: Builtin.BuiltinData) -> 
+    (POSIXTime: (Prim.Int -> (Prim.POSIXTime)))
+    ((deserializeInt: (Builtin.BuiltinData -> (Prim.Int)))
+     (dat: Builtin.BuiltinData))
+
+deserializeExtended :: forall (a :: Prim.Type). ((Builtin.BuiltinData -> ((a :: Prim.Type))) -> ((Builtin.BuiltinData -> ((Prim.Extended ((a :: Prim.Type)))))))
+deserializeExtended = 
+  \(f: (Builtin.BuiltinData -> ((a :: Prim.Type)))) -> 
+    \(dat: Builtin.BuiltinData) -> 
+      let
+        p :: ((Builtin.BuiltinPair (Prim.Int)) (Builtin.BuiltinData))
+        p = 
+          (unConstrData: (Builtin.BuiltinData ->
+          (((Builtin.BuiltinPair (Prim.Int)) (Builtin.BuiltinData)))))
+          (dat: Builtin.BuiltinData)
+        tag :: Prim.Int
+        tag = 
+          (fstPair: forall (a :: Prim.Type)
+          (b :: Prim.Type). (((Builtin.BuiltinPair
+          ((a :: Prim.Type))) ((b :: Prim.Type))) ->
+          ((a :: Prim.Type))))
+          (p: ((Builtin.BuiltinPair (Prim.Int)) (Builtin.BuiltinData)))
+      in case ((equalsInteger: (Prim.Int -> ((Prim.Int -> (Prim.Boolean))))) (tag: Prim.Int) (0: Prim.Int)) of 
+            True -> (NegInf: (Prim.Extended (a*30)))
+            _ -> 
+              case ((equalsInteger: (Prim.Int -> ((Prim.Int -> (Prim.Boolean))))) (tag: Prim.Int) (1: Prim.Int)) of 
+                 True -> 
+                   let
+                     unlisted :: (Builtin.BuiltinList (Builtin.BuiltinData))
+                     unlisted = 
+                       (unListData: (Builtin.BuiltinData ->
+                       ((Builtin.BuiltinList (Builtin.BuiltinData)))))
+                       ((sndPair: forall (a :: Prim.Type)
+                        (b :: Prim.Type). (((Builtin.BuiltinPair
+                        ((a :: Prim.Type))) ((b :: Prim.Type))) ->
+                        ((b :: Prim.Type))))
+                        (p: ((Builtin.BuiltinPair
+                        (Prim.Int)) (Builtin.BuiltinData))))
+                   in (Finite: forall (a :: Prim.Type). ((a :: Prim.Type) ->
+                      ((Prim.Extended ((a :: Prim.Type))))))
+                      ((f: (Builtin.BuiltinData -> ((a :: Prim.Type))))
+                       ((headList: forall (a :: Prim.Type). ((Builtin.BuiltinList
+                        ((a :: Prim.Type))) ->
+                        ((a :: Prim.Type))))
+                        (unlisted: (Builtin.BuiltinList
+                        (Builtin.BuiltinData)))))
+                 _ -> (PosInf: (Prim.Extended (a*30)))
+
+deserializeLowerBound :: forall (a :: Prim.Type). ((Builtin.BuiltinData -> ((a :: Prim.Type))) -> ((Builtin.BuiltinData -> ((Prim.LowerBound ((a :: Prim.Type)))))))
+deserializeLowerBound = 
+  \(f: (Builtin.BuiltinData -> ((a :: Prim.Type)))) -> 
+    \(dat: Builtin.BuiltinData) -> 
+      let
+        dat' :: Builtin.BuiltinData
+        dat' = 
+          (sndPair: forall (a :: Prim.Type)
+          (b :: Prim.Type). (((Builtin.BuiltinPair
+          ((a :: Prim.Type))) ((b :: Prim.Type))) ->
+          ((b :: Prim.Type))))
+          ((unConstrData: (Builtin.BuiltinData ->
+           (((Builtin.BuiltinPair (Prim.Int)) (Builtin.BuiltinData)))))
+           (dat: Builtin.BuiltinData))
+        unlisted :: (Builtin.BuiltinList (Builtin.BuiltinData))
+        unlisted = 
+          (unListData: (Builtin.BuiltinData ->
+          ((Builtin.BuiltinList (Builtin.BuiltinData)))))
+          (dat': Builtin.BuiltinData)
+        e :: forall (a :: Prim.Type). (Prim.Extended ((a :: Prim.Type)))
+        e = 
+          (deserializeExtended: forall (a :: Prim.Type). ((Builtin.BuiltinData ->
+          ((a :: Prim.Type))) ->
+          ((Builtin.BuiltinData -> ((Prim.Extended ((a :: Prim.Type))))))))
+          (f: (Builtin.BuiltinData -> ((a :: Prim.Type))))
+          ((headList: forall (a :: Prim.Type). ((Builtin.BuiltinList
+           ((a :: Prim.Type))) ->
+           ((a :: Prim.Type))))
+           (unlisted: (Builtin.BuiltinList (Builtin.BuiltinData))))
+      in (LowerBound: forall (a :: Prim.Type). ((Prim.Extended
+         ((a :: Prim.Type))) ->
+         ((Prim.LowerBound ((a :: Prim.Type))))))
+         (e: (Prim.Extended (a*31)))
+
+deserializeUpperBound :: forall (a :: Prim.Type). ((Builtin.BuiltinData -> ((a :: Prim.Type))) -> ((Builtin.BuiltinData -> ((Prim.UpperBound ((a :: Prim.Type)))))))
+deserializeUpperBound = 
+  \(f: (Builtin.BuiltinData -> ((a :: Prim.Type)))) -> 
+    \(dat: Builtin.BuiltinData) -> 
+      let
+        dat' :: Builtin.BuiltinData
+        dat' = 
+          (sndPair: forall (a :: Prim.Type)
+          (b :: Prim.Type). (((Builtin.BuiltinPair
+          ((a :: Prim.Type))) ((b :: Prim.Type))) ->
+          ((b :: Prim.Type))))
+          ((unConstrData: (Builtin.BuiltinData ->
+           (((Builtin.BuiltinPair (Prim.Int)) (Builtin.BuiltinData)))))
+           (dat: Builtin.BuiltinData))
+        unlisted :: (Builtin.BuiltinList (Builtin.BuiltinData))
+        unlisted = 
+          (unListData: (Builtin.BuiltinData ->
+          ((Builtin.BuiltinList (Builtin.BuiltinData)))))
+          (dat': Builtin.BuiltinData)
+        e :: forall (a :: Prim.Type). (Prim.Extended ((a :: Prim.Type)))
+        e = 
+          (deserializeExtended: forall (a :: Prim.Type). ((Builtin.BuiltinData ->
+          ((a :: Prim.Type))) ->
+          ((Builtin.BuiltinData -> ((Prim.Extended ((a :: Prim.Type))))))))
+          (f: (Builtin.BuiltinData -> ((a :: Prim.Type))))
+          ((headList: forall (a :: Prim.Type). ((Builtin.BuiltinList
+           ((a :: Prim.Type))) ->
+           ((a :: Prim.Type))))
+           (unlisted: (Builtin.BuiltinList (Builtin.BuiltinData))))
+      in (UpperBound: forall (a :: Prim.Type). ((Prim.Extended
+         ((a :: Prim.Type))) ->
+         ((Prim.UpperBound ((a :: Prim.Type))))))
+         (e: (Prim.Extended (a*32)))
+
+deserializeInterval :: forall (a :: Prim.Type). ((Builtin.BuiltinData -> ((a :: Prim.Type))) -> ((Builtin.BuiltinData -> ((Prim.Interval ((a :: Prim.Type)))))))
+deserializeInterval = 
+  \(f: (Builtin.BuiltinData -> ((a :: Prim.Type)))) -> 
+    \(dat: Builtin.BuiltinData) -> 
+      let
+        dat' :: Builtin.BuiltinData
+        dat' = 
+          (sndPair: forall (a :: Prim.Type)
+          (b :: Prim.Type). (((Builtin.BuiltinPair
+          ((a :: Prim.Type))) ((b :: Prim.Type))) ->
+          ((b :: Prim.Type))))
+          ((unConstrData: (Builtin.BuiltinData ->
+           (((Builtin.BuiltinPair (Prim.Int)) (Builtin.BuiltinData)))))
+           (dat: Builtin.BuiltinData))
+        unlisted :: (Builtin.BuiltinList (Builtin.BuiltinData))
+        unlisted = 
+          (unListData: (Builtin.BuiltinData ->
+          ((Builtin.BuiltinList (Builtin.BuiltinData)))))
+          (dat': Builtin.BuiltinData)
+        from :: forall (a :: Prim.Type). (Prim.LowerBound ((a :: Prim.Type)))
+        from = 
+          (deserializeLowerBound: forall (a :: Prim.Type). ((Builtin.BuiltinData ->
+          ((a :: Prim.Type))) ->
+          ((Builtin.BuiltinData -> ((Prim.LowerBound ((a :: Prim.Type))))))))
+          (f: (Builtin.BuiltinData -> ((a :: Prim.Type))))
+          ((headList: forall (a :: Prim.Type). ((Builtin.BuiltinList
+           ((a :: Prim.Type))) ->
+           ((a :: Prim.Type))))
+           (unlisted: (Builtin.BuiltinList (Builtin.BuiltinData))))
+        unlisted' :: (Builtin.BuiltinList (Builtin.BuiltinData))
+        unlisted' = 
+          (tailList: forall (a :: Prim.Type). ((Builtin.BuiltinList
+          ((a :: Prim.Type))) ->
+          ((Builtin.BuiltinList ((a :: Prim.Type))))))
+          (unlisted: (Builtin.BuiltinList (Builtin.BuiltinData)))
+        to :: forall (a :: Prim.Type). (Prim.UpperBound ((a :: Prim.Type)))
+        to = 
+          (deserializeUpperBound: forall (a :: Prim.Type). ((Builtin.BuiltinData ->
+          ((a :: Prim.Type))) ->
+          ((Builtin.BuiltinData -> ((Prim.UpperBound ((a :: Prim.Type))))))))
+          (f: (Builtin.BuiltinData -> ((a :: Prim.Type))))
+          ((headList: forall (a :: Prim.Type). ((Builtin.BuiltinList
+           ((a :: Prim.Type))) ->
+           ((a :: Prim.Type))))
+           (unlisted': (Builtin.BuiltinList (Builtin.BuiltinData))))
+      in (Interval: forall (a :: Prim.Type). ({
+                                                from :: (Prim.LowerBound
+                                                ((a :: Prim.Type))),
+                                                to :: (Prim.UpperBound
+                                                ((a :: Prim.Type)))
+                                              } ->
+         ((Prim.Interval ((a :: Prim.Type))))))
+         ({
+            to: (to: (Prim.UpperBound (a*33))),
+            from: (from: (Prim.LowerBound (a*33)))
+          }: {
+               from :: (Prim.LowerBound (a*33)),
+               to :: (Prim.UpperBound (a*33))
+             })
+
+deserializeDatum :: (Builtin.BuiltinData -> (Prim.Datum))
+deserializeDatum = (Datum: (Builtin.BuiltinData -> (Prim.Datum)))
+
+deserializeByteString :: (Builtin.BuiltinData -> (Builtin.BuiltinByteString))
+deserializeByteString = 
+  (unBData: (Builtin.BuiltinData -> (Builtin.BuiltinByteString)))
+
+deserializeCurrencySymbol :: (Builtin.BuiltinData -> (Prim.CurrencySymbol))
+deserializeCurrencySymbol = 
+  \(dat: Builtin.BuiltinData) -> 
+    (CurrencySymbol: (Builtin.BuiltinByteString -> (Prim.CurrencySymbol)))
+    ((deserializeByteString: (Builtin.BuiltinData ->
+     (Builtin.BuiltinByteString)))
+     (dat: Builtin.BuiltinData))
+
+deserializeDatumHash :: (Builtin.BuiltinData -> (Prim.DatumHash))
+deserializeDatumHash = 
+  \(dat: Builtin.BuiltinData) -> 
+    (DatumHash: (Builtin.BuiltinByteString -> (Prim.DatumHash)))
+    ((deserializeByteString: (Builtin.BuiltinData ->
+     (Builtin.BuiltinByteString)))
+     (dat: Builtin.BuiltinData))
+
+deserializeOutputDatum :: (Builtin.BuiltinData -> (Prim.OutputDatum))
+deserializeOutputDatum = 
+  \(dat: Builtin.BuiltinData) -> 
+    let
+      p :: ((Builtin.BuiltinPair (Prim.Int)) (Builtin.BuiltinData))
+      p = 
+        (unConstrData: (Builtin.BuiltinData ->
+        (((Builtin.BuiltinPair (Prim.Int)) (Builtin.BuiltinData)))))
+        (dat: Builtin.BuiltinData)
+      tag :: Prim.Int
+      tag = 
+        (fstPair: forall (a :: Prim.Type)
+        (b :: Prim.Type). (((Builtin.BuiltinPair
+        ((a :: Prim.Type))) ((b :: Prim.Type))) ->
+        ((a :: Prim.Type))))
+        (p: ((Builtin.BuiltinPair (Prim.Int)) (Builtin.BuiltinData)))
+    in case ((equalsInteger: (Prim.Int -> ((Prim.Int -> (Prim.Boolean))))) (tag: Prim.Int) (0: Prim.Int)) of 
+          True -> (NoOutputDatum: Prim.OutputDatum)
+          _ -> 
+            let
+              unlisted :: (Builtin.BuiltinList (Builtin.BuiltinData))
+              unlisted = 
+                (unListData: (Builtin.BuiltinData ->
+                ((Builtin.BuiltinList (Builtin.BuiltinData)))))
+                ((sndPair: forall (a :: Prim.Type)
+                 (b :: Prim.Type). (((Builtin.BuiltinPair
+                 ((a :: Prim.Type))) ((b :: Prim.Type))) ->
+                 ((b :: Prim.Type))))
+                 (p: ((Builtin.BuiltinPair (Prim.Int)) (Builtin.BuiltinData))))
+              x :: Builtin.BuiltinData
+              x = 
+                (headList: forall (a :: Prim.Type). ((Builtin.BuiltinList
+                ((a :: Prim.Type))) ->
+                ((a :: Prim.Type))))
+                (unlisted: (Builtin.BuiltinList (Builtin.BuiltinData)))
+            in case ((equalsInteger: (Prim.Int -> ((Prim.Int -> (Prim.Boolean))))) (tag: Prim.Int) (1: Prim.Int)) of 
+                  True -> 
+                    (OutputDatumHash: (Prim.DatumHash -> (Prim.OutputDatum)))
+                    ((deserializeDatumHash: (Builtin.BuiltinData ->
+                     (Prim.DatumHash)))
+                     (x: Builtin.BuiltinData))
+                  _ -> 
+                    (OutputDatum: (Prim.Datum -> (Prim.OutputDatum)))
+                    ((deserializeDatum: (Builtin.BuiltinData -> (Prim.Datum)))
+                     (x: Builtin.BuiltinData))
+
+deserializePubKeyHash :: (Builtin.BuiltinData -> (Prim.PubKeyHash))
+deserializePubKeyHash = 
+  \(dat: Builtin.BuiltinData) -> 
+    (PubKeyHash: (Builtin.BuiltinByteString -> (Prim.PubKeyHash)))
+    ((deserializeByteString: (Builtin.BuiltinData ->
+     (Builtin.BuiltinByteString)))
+     (dat: Builtin.BuiltinData))
+
+deserializeRedeemerHash :: (Builtin.BuiltinData -> (Prim.RedeemerHash))
+deserializeRedeemerHash = 
+  \(dat: Builtin.BuiltinData) -> 
+    (RedeemerHash: (Builtin.BuiltinByteString -> (Prim.RedeemerHash)))
+    ((deserializeByteString: (Builtin.BuiltinData ->
+     (Builtin.BuiltinByteString)))
+     (dat: Builtin.BuiltinData))
+
+deserializeScriptHash :: (Builtin.BuiltinData -> (Prim.ScriptHash))
+deserializeScriptHash = 
+  \(dat: Builtin.BuiltinData) -> 
+    (ScriptHash: (Builtin.BuiltinByteString -> (Prim.ScriptHash)))
+    ((deserializeByteString: (Builtin.BuiltinData ->
+     (Builtin.BuiltinByteString)))
+     (dat: Builtin.BuiltinData))
+
+deserializeCredential :: (Builtin.BuiltinData -> (Prim.Credential))
+deserializeCredential = 
+  \(dat: Builtin.BuiltinData) -> 
+    let
+      p :: ((Builtin.BuiltinPair (Prim.Int)) (Builtin.BuiltinData))
+      p = 
+        (unConstrData: (Builtin.BuiltinData ->
+        (((Builtin.BuiltinPair (Prim.Int)) (Builtin.BuiltinData)))))
+        (dat: Builtin.BuiltinData)
+      tag :: Prim.Int
+      tag = 
+        (fstPair: forall (a :: Prim.Type)
+        (b :: Prim.Type). (((Builtin.BuiltinPair
+        ((a :: Prim.Type))) ((b :: Prim.Type))) ->
+        ((a :: Prim.Type))))
+        (p: ((Builtin.BuiltinPair (Prim.Int)) (Builtin.BuiltinData)))
+      unlisted :: (Builtin.BuiltinList (Builtin.BuiltinData))
+      unlisted = 
+        (unListData: (Builtin.BuiltinData ->
+        ((Builtin.BuiltinList (Builtin.BuiltinData)))))
+        ((sndPair: forall (a :: Prim.Type)
+         (b :: Prim.Type). (((Builtin.BuiltinPair
+         ((a :: Prim.Type))) ((b :: Prim.Type))) ->
+         ((b :: Prim.Type))))
+         (p: ((Builtin.BuiltinPair (Prim.Int)) (Builtin.BuiltinData))))
+    in case ((equalsInteger: (Prim.Int -> ((Prim.Int -> (Prim.Boolean))))) (tag: Prim.Int) (0: Prim.Int)) of 
+          True -> 
+            (PubKeyCredential: (Prim.PubKeyHash -> (Prim.Credential)))
+            ((deserializePubKeyHash: (Builtin.BuiltinData -> (Prim.PubKeyHash)))
+             ((headList: forall (a :: Prim.Type). ((Builtin.BuiltinList
+              ((a :: Prim.Type))) ->
+              ((a :: Prim.Type))))
+              (unlisted: (Builtin.BuiltinList (Builtin.BuiltinData)))))
+          _ -> 
+            (ScriptCredential: (Prim.ScriptHash -> (Prim.Credential)))
+            ((deserializeScriptHash: (Builtin.BuiltinData -> (Prim.ScriptHash)))
+             ((headList: forall (a :: Prim.Type). ((Builtin.BuiltinList
+              ((a :: Prim.Type))) ->
+              ((a :: Prim.Type))))
+              (unlisted: (Builtin.BuiltinList (Builtin.BuiltinData)))))
+
+deserializeStakingCredential :: (Builtin.BuiltinData -> (Prim.StakingCredential))
+deserializeStakingCredential = 
+  \(dat: Builtin.BuiltinData) -> 
+    let
+      p :: ((Builtin.BuiltinPair (Prim.Int)) (Builtin.BuiltinData))
+      p = 
+        (unConstrData: (Builtin.BuiltinData ->
+        (((Builtin.BuiltinPair (Prim.Int)) (Builtin.BuiltinData)))))
+        (dat: Builtin.BuiltinData)
+      tag :: Prim.Int
+      tag = 
+        (fstPair: forall (a :: Prim.Type)
+        (b :: Prim.Type). (((Builtin.BuiltinPair
+        ((a :: Prim.Type))) ((b :: Prim.Type))) ->
+        ((a :: Prim.Type))))
+        (p: ((Builtin.BuiltinPair (Prim.Int)) (Builtin.BuiltinData)))
+      unlisted :: (Builtin.BuiltinList (Builtin.BuiltinData))
+      unlisted = 
+        (unListData: (Builtin.BuiltinData ->
+        ((Builtin.BuiltinList (Builtin.BuiltinData)))))
+        ((sndPair: forall (a :: Prim.Type)
+         (b :: Prim.Type). (((Builtin.BuiltinPair
+         ((a :: Prim.Type))) ((b :: Prim.Type))) ->
+         ((b :: Prim.Type))))
+         (p: ((Builtin.BuiltinPair (Prim.Int)) (Builtin.BuiltinData))))
+    in case ((equalsInteger: (Prim.Int -> ((Prim.Int -> (Prim.Boolean))))) (tag: Prim.Int) (0: Prim.Int)) of 
+          True -> 
+            (StakingHash: (Prim.Credential -> (Prim.StakingCredential)))
+            ((deserializeCredential: (Builtin.BuiltinData -> (Prim.Credential)))
+             ((headList: forall (a :: Prim.Type). ((Builtin.BuiltinList
+              ((a :: Prim.Type))) ->
+              ((a :: Prim.Type))))
+              (unlisted: (Builtin.BuiltinList (Builtin.BuiltinData)))))
+          _ -> 
+            let
+              unlisted' :: (Builtin.BuiltinList (Builtin.BuiltinData))
+              unlisted' = 
+                (tailList: forall (a :: Prim.Type). ((Builtin.BuiltinList
+                ((a :: Prim.Type))) ->
+                ((Builtin.BuiltinList ((a :: Prim.Type))))))
+                (unlisted: (Builtin.BuiltinList (Builtin.BuiltinData)))
+              unlisted'' :: (Builtin.BuiltinList (Builtin.BuiltinData))
+              unlisted'' = 
+                (tailList: forall (a :: Prim.Type). ((Builtin.BuiltinList
+                ((a :: Prim.Type))) ->
+                ((Builtin.BuiltinList ((a :: Prim.Type))))))
+                (unlisted': (Builtin.BuiltinList (Builtin.BuiltinData)))
+              i3 :: Prim.Int
+              i3 = 
+                (deserializeInt: (Builtin.BuiltinData -> (Prim.Int)))
+                ((headList: forall (a :: Prim.Type). ((Builtin.BuiltinList
+                 ((a :: Prim.Type))) ->
+                 ((a :: Prim.Type))))
+                 (unlisted'': (Builtin.BuiltinList (Builtin.BuiltinData))))
+              i2 :: Prim.Int
+              i2 = 
+                (deserializeInt: (Builtin.BuiltinData -> (Prim.Int)))
+                ((headList: forall (a :: Prim.Type). ((Builtin.BuiltinList
+                 ((a :: Prim.Type))) ->
+                 ((a :: Prim.Type))))
+                 (unlisted': (Builtin.BuiltinList (Builtin.BuiltinData))))
+              i1 :: Prim.Int
+              i1 = 
+                (deserializeInt: (Builtin.BuiltinData -> (Prim.Int)))
+                ((headList: forall (a :: Prim.Type). ((Builtin.BuiltinList
+                 ((a :: Prim.Type))) ->
+                 ((a :: Prim.Type))))
+                 (unlisted: (Builtin.BuiltinList (Builtin.BuiltinData))))
+            in (StakingPtr: (Prim.Int ->
+               ((Prim.Int -> ((Prim.Int -> (Prim.StakingCredential)))))))
+               (i1: Prim.Int)
+               (i2: Prim.Int)
+               (i3: Prim.Int)
+
+deserializeDCert :: (Builtin.BuiltinData -> (Prim.DCert))
+deserializeDCert = 
+  \(dat: Builtin.BuiltinData) -> 
+    let
+      p :: ((Builtin.BuiltinPair (Prim.Int)) (Builtin.BuiltinData))
+      p = 
+        (unConstrData: (Builtin.BuiltinData ->
+        (((Builtin.BuiltinPair (Prim.Int)) (Builtin.BuiltinData)))))
+        (dat: Builtin.BuiltinData)
+      tag :: Prim.Int
+      tag = 
+        (fstPair: forall (a :: Prim.Type)
+        (b :: Prim.Type). (((Builtin.BuiltinPair
+        ((a :: Prim.Type))) ((b :: Prim.Type))) ->
+        ((a :: Prim.Type))))
+        (p: ((Builtin.BuiltinPair (Prim.Int)) (Builtin.BuiltinData)))
+      unlisted :: (Builtin.BuiltinList (Builtin.BuiltinData))
+      unlisted = 
+        (unListData: (Builtin.BuiltinData ->
+        ((Builtin.BuiltinList (Builtin.BuiltinData)))))
+        ((sndPair: forall (a :: Prim.Type)
+         (b :: Prim.Type). (((Builtin.BuiltinPair
+         ((a :: Prim.Type))) ((b :: Prim.Type))) ->
+         ((b :: Prim.Type))))
+         (p: ((Builtin.BuiltinPair (Prim.Int)) (Builtin.BuiltinData))))
+    in case ((equalsInteger: (Prim.Int -> ((Prim.Int -> (Prim.Boolean))))) (tag: Prim.Int) (0: Prim.Int)) of 
+          True -> 
+            (DCertDelegRegKey: (Prim.StakingCredential -> (Prim.DCert)))
+            ((deserializeStakingCredential: (Builtin.BuiltinData ->
+             (Prim.StakingCredential)))
+             ((headList: forall (a :: Prim.Type). ((Builtin.BuiltinList
+              ((a :: Prim.Type))) ->
+              ((a :: Prim.Type))))
+              (unlisted: (Builtin.BuiltinList (Builtin.BuiltinData)))))
+          _ -> 
+            case ((equalsInteger: (Prim.Int -> ((Prim.Int -> (Prim.Boolean))))) (tag: Prim.Int) (1: Prim.Int)) of 
+               True -> 
+                 (DCertDelegDeRegKey: (Prim.StakingCredential -> (Prim.DCert)))
+                 ((deserializeStakingCredential: (Builtin.BuiltinData ->
+                  (Prim.StakingCredential)))
+                  ((headList: forall (a :: Prim.Type). ((Builtin.BuiltinList
+                   ((a :: Prim.Type))) ->
+                   ((a :: Prim.Type))))
+                   (unlisted: (Builtin.BuiltinList (Builtin.BuiltinData)))))
+               _ -> 
+                 case ((equalsInteger: (Prim.Int -> ((Prim.Int -> (Prim.Boolean))))) (tag: Prim.Int) (2: Prim.Int)) of 
+                    True -> 
+                      let
+                        unlisted' :: (Builtin.BuiltinList (Builtin.BuiltinData))
+                        unlisted' = 
+                          (tailList: forall (a :: Prim.Type). ((Builtin.BuiltinList
+                          ((a :: Prim.Type))) ->
+                          ((Builtin.BuiltinList ((a :: Prim.Type))))))
+                          (unlisted: (Builtin.BuiltinList
+                          (Builtin.BuiltinData)))
+                        sc :: Prim.StakingCredential
+                        sc = 
+                          (deserializeStakingCredential: (Builtin.BuiltinData ->
+                          (Prim.StakingCredential)))
+                          ((headList: forall (a :: Prim.Type). ((Builtin.BuiltinList
+                           ((a :: Prim.Type))) ->
+                           ((a :: Prim.Type))))
+                           (unlisted: (Builtin.BuiltinList
+                           (Builtin.BuiltinData))))
+                        pkh :: Prim.PubKeyHash
+                        pkh = 
+                          (deserializePubKeyHash: (Builtin.BuiltinData ->
+                          (Prim.PubKeyHash)))
+                          ((headList: forall (a :: Prim.Type). ((Builtin.BuiltinList
+                           ((a :: Prim.Type))) ->
+                           ((a :: Prim.Type))))
+                           (unlisted': (Builtin.BuiltinList
+                           (Builtin.BuiltinData))))
+                      in (DCertDelegDelegate: (Prim.StakingCredential ->
+                         ((Prim.PubKeyHash -> (Prim.DCert)))))
+                         (sc: Prim.StakingCredential)
+                         (pkh: Prim.PubKeyHash)
+                    _ -> 
+                      case ((equalsInteger: (Prim.Int -> ((Prim.Int -> (Prim.Boolean))))) (tag: Prim.Int) (3: Prim.Int)) of 
+                         True -> 
+                           let
+                             unlisted' :: (Builtin.BuiltinList (Builtin.BuiltinData))
+                             unlisted' = 
+                               (tailList: forall (a :: Prim.Type). ((Builtin.BuiltinList
+                               ((a :: Prim.Type))) ->
+                               ((Builtin.BuiltinList ((a :: Prim.Type))))))
+                               (unlisted: (Builtin.BuiltinList
+                               (Builtin.BuiltinData)))
+                             pkh2 :: Prim.PubKeyHash
+                             pkh2 = 
+                               (deserializePubKeyHash: (Builtin.BuiltinData ->
+                               (Prim.PubKeyHash)))
+                               ((headList: forall (a :: Prim.Type). ((Builtin.BuiltinList
+                                ((a :: Prim.Type))) ->
+                                ((a :: Prim.Type))))
+                                (unlisted': (Builtin.BuiltinList
+                                (Builtin.BuiltinData))))
+                             pkh1 :: Prim.PubKeyHash
+                             pkh1 = 
+                               (deserializePubKeyHash: (Builtin.BuiltinData ->
+                               (Prim.PubKeyHash)))
+                               ((headList: forall (a :: Prim.Type). ((Builtin.BuiltinList
+                                ((a :: Prim.Type))) ->
+                                ((a :: Prim.Type))))
+                                (unlisted: (Builtin.BuiltinList
+                                (Builtin.BuiltinData))))
+                           in (DCertPoolRegister: (Prim.PubKeyHash ->
+                              ((Prim.PubKeyHash -> (Prim.DCert)))))
+                              (pkh1: Prim.PubKeyHash)
+                              (pkh2: Prim.PubKeyHash)
+                         _ -> 
+                           case ((equalsInteger: (Prim.Int -> ((Prim.Int -> (Prim.Boolean))))) (tag: Prim.Int) (4: Prim.Int)) of 
+                              True -> 
+                                let
+                                  unlisted' :: (Builtin.BuiltinList (Builtin.BuiltinData))
+                                  unlisted' = 
+                                    (tailList: forall (a :: Prim.Type). ((Builtin.BuiltinList
+                                    ((a :: Prim.Type))) ->
+                                    ((Builtin.BuiltinList ((a :: Prim.Type))))))
+                                    (unlisted: (Builtin.BuiltinList
+                                    (Builtin.BuiltinData)))
+                                  pkh :: Prim.PubKeyHash
+                                  pkh = 
+                                    (deserializePubKeyHash: (Builtin.BuiltinData ->
+                                    (Prim.PubKeyHash)))
+                                    ((headList: forall (a :: Prim.Type). ((Builtin.BuiltinList
+                                     ((a :: Prim.Type))) ->
+                                     ((a :: Prim.Type))))
+                                     (unlisted: (Builtin.BuiltinList
+                                     (Builtin.BuiltinData))))
+                                  i :: Prim.Int
+                                  i = 
+                                    (deserializeInt: (Builtin.BuiltinData ->
+                                    (Prim.Int)))
+                                    ((headList: forall (a :: Prim.Type). ((Builtin.BuiltinList
+                                     ((a :: Prim.Type))) ->
+                                     ((a :: Prim.Type))))
+                                     (unlisted': (Builtin.BuiltinList
+                                     (Builtin.BuiltinData))))
+                                in (DCertPoolRetire: (Prim.PubKeyHash ->
+                                   ((Prim.Int -> (Prim.DCert)))))
+                                   (pkh: Prim.PubKeyHash)
+                                   (i: Prim.Int)
+                              _ -> 
+                                case ((equalsInteger: (Prim.Int -> ((Prim.Int -> (Prim.Boolean))))) (tag: Prim.Int) (5: Prim.Int)) of 
+                                   True -> (DCertGenesis: Prim.DCert)
+                                   _ -> (DCertMir: Prim.DCert)
+
+deserializeTokenName :: (Builtin.BuiltinData -> (Prim.TokenName))
+deserializeTokenName = 
+  \(dat: Builtin.BuiltinData) -> 
+    (TokenName: (Builtin.BuiltinByteString -> (Prim.TokenName)))
+    ((deserializeByteString: (Builtin.BuiltinData ->
+     (Builtin.BuiltinByteString)))
+     (dat: Builtin.BuiltinData))
+
+deserializeTxId :: (Builtin.BuiltinData -> (Prim.TxId))
+deserializeTxId = 
+  \(dat: Builtin.BuiltinData) -> 
+    let
+      dat' :: Builtin.BuiltinData
+      dat' = 
+        (sndPair: forall (a :: Prim.Type)
+        (b :: Prim.Type). (((Builtin.BuiltinPair
+        ((a :: Prim.Type))) ((b :: Prim.Type))) ->
+        ((b :: Prim.Type))))
+        ((unConstrData: (Builtin.BuiltinData ->
+         (((Builtin.BuiltinPair (Prim.Int)) (Builtin.BuiltinData)))))
+         (dat: Builtin.BuiltinData))
+      unlisted :: (Builtin.BuiltinList (Builtin.BuiltinData))
+      unlisted = 
+        (unListData: (Builtin.BuiltinData ->
+        ((Builtin.BuiltinList (Builtin.BuiltinData)))))
+        (dat': Builtin.BuiltinData)
+    in (TxId: (Builtin.BuiltinByteString -> (Prim.TxId)))
+       ((deserializeByteString: (Builtin.BuiltinData ->
+        (Builtin.BuiltinByteString)))
+        ((headList: forall (a :: Prim.Type). ((Builtin.BuiltinList
+         ((a :: Prim.Type))) ->
+         ((a :: Prim.Type))))
+         (unlisted: (Builtin.BuiltinList (Builtin.BuiltinData)))))
+
+deserializeTxOutRef :: (Builtin.BuiltinData -> (Prim.TxOutRef))
+deserializeTxOutRef = 
+  \(dat: Builtin.BuiltinData) -> 
+    let
+      unlisted :: (Builtin.BuiltinList (Builtin.BuiltinData))
+      unlisted = 
+        (unListData: (Builtin.BuiltinData ->
+        ((Builtin.BuiltinList (Builtin.BuiltinData)))))
+        ((sndPair: forall (a :: Prim.Type)
+         (b :: Prim.Type). (((Builtin.BuiltinPair
+         ((a :: Prim.Type))) ((b :: Prim.Type))) ->
+         ((b :: Prim.Type))))
+         ((unConstrData: (Builtin.BuiltinData ->
+          (((Builtin.BuiltinPair (Prim.Int)) (Builtin.BuiltinData)))))
+          (dat: Builtin.BuiltinData)))
+      unlisted' :: (Builtin.BuiltinList (Builtin.BuiltinData))
+      unlisted' = 
+        (tailList: forall (a :: Prim.Type). ((Builtin.BuiltinList
+        ((a :: Prim.Type))) ->
+        ((Builtin.BuiltinList ((a :: Prim.Type))))))
+        (unlisted: (Builtin.BuiltinList (Builtin.BuiltinData)))
+      idx :: Prim.Int
+      idx = 
+        (deserializeInt: (Builtin.BuiltinData -> (Prim.Int)))
+        ((headList: forall (a :: Prim.Type). ((Builtin.BuiltinList
+         ((a :: Prim.Type))) ->
+         ((a :: Prim.Type))))
+         (unlisted': (Builtin.BuiltinList (Builtin.BuiltinData))))
+      id1 :: Prim.TxId
+      id1 = 
+        (deserializeTxId: (Builtin.BuiltinData -> (Prim.TxId)))
+        ((headList: forall (a :: Prim.Type). ((Builtin.BuiltinList
+         ((a :: Prim.Type))) ->
+         ((a :: Prim.Type))))
+         (unlisted: (Builtin.BuiltinList (Builtin.BuiltinData))))
+    in (TxOutRef: ({   id :: Prim.TxId, idx :: Prim.Int } -> (Prim.TxOutRef)))
+       ({ idx: (idx: Prim.Int), id: (id1: Prim.TxId) }: {
+                                                          id :: Prim.TxId,
+                                                          idx :: Prim.Int
+                                                        })
+
+deserializeScriptPurpose :: (Builtin.BuiltinData -> (Prim.ScriptPurpose))
+deserializeScriptPurpose = 
+  \(dat: Builtin.BuiltinData) -> 
+    let
+      p :: ((Builtin.BuiltinPair (Prim.Int)) (Builtin.BuiltinData))
+      p = 
+        (unConstrData: (Builtin.BuiltinData ->
+        (((Builtin.BuiltinPair (Prim.Int)) (Builtin.BuiltinData)))))
+        (dat: Builtin.BuiltinData)
+      tag :: Prim.Int
+      tag = 
+        (fstPair: forall (a :: Prim.Type)
+        (b :: Prim.Type). (((Builtin.BuiltinPair
+        ((a :: Prim.Type))) ((b :: Prim.Type))) ->
+        ((a :: Prim.Type))))
+        (p: ((Builtin.BuiltinPair (Prim.Int)) (Builtin.BuiltinData)))
+      x :: Builtin.BuiltinData
+      x = 
+        (headList: forall (a :: Prim.Type). ((Builtin.BuiltinList
+        ((a :: Prim.Type))) ->
+        ((a :: Prim.Type))))
+        ((unListData: (Builtin.BuiltinData ->
+         ((Builtin.BuiltinList (Builtin.BuiltinData)))))
+         ((sndPair: forall (a :: Prim.Type)
+          (b :: Prim.Type). (((Builtin.BuiltinPair
+          ((a :: Prim.Type))) ((b :: Prim.Type))) ->
+          ((b :: Prim.Type))))
+          (p: ((Builtin.BuiltinPair (Prim.Int)) (Builtin.BuiltinData)))))
+    in case ((equalsInteger: (Prim.Int -> ((Prim.Int -> (Prim.Boolean))))) (0: Prim.Int) (tag: Prim.Int)) of 
+          True -> 
+            (Minting: (Prim.CurrencySymbol -> (Prim.ScriptPurpose)))
+            ((deserializeCurrencySymbol: (Builtin.BuiltinData ->
+             (Prim.CurrencySymbol)))
+             (x: Builtin.BuiltinData))
+          _ -> 
+            case ((equalsInteger: (Prim.Int -> ((Prim.Int -> (Prim.Boolean))))) (1: Prim.Int) (tag: Prim.Int)) of 
+               True -> 
+                 (Spending: (Prim.TxOutRef -> (Prim.ScriptPurpose)))
+                 ((deserializeTxOutRef: (Builtin.BuiltinData ->
+                  (Prim.TxOutRef)))
+                  (x: Builtin.BuiltinData))
+               _ -> 
+                 case ((equalsInteger: (Prim.Int -> ((Prim.Int -> (Prim.Boolean))))) (2: Prim.Int) (tag: Prim.Int)) of 
+                    True -> 
+                      (Rewarding: (Prim.StakingCredential ->
+                      (Prim.ScriptPurpose)))
+                      ((deserializeStakingCredential: (Builtin.BuiltinData ->
+                       (Prim.StakingCredential)))
+                       (x: Builtin.BuiltinData))
+                    _ -> 
+                      (Certifying: (Prim.DCert -> (Prim.ScriptPurpose)))
+                      ((deserializeDCert: (Builtin.BuiltinData -> (Prim.DCert)))
+                       (x: Builtin.BuiltinData))
+
+deserializeAssocMap :: forall (k :: Prim.Type) (v :: Prim.Type). ((Builtin.BuiltinData -> ((k :: Prim.Type))) -> (((Builtin.BuiltinData -> ((v :: Prim.Type))) -> ((Builtin.BuiltinData -> (((Prim.AssocMap ((k :: Prim.Type))) ((v :: Prim.Type)))))))))
+deserializeAssocMap = 
+  \(fK: (Builtin.BuiltinData -> ((k :: Prim.Type)))) -> 
+    \(fV: (Builtin.BuiltinData -> ((v :: Prim.Type)))) -> 
+      \(dat: Builtin.BuiltinData) -> 
+        let
+          go :: ((Builtin.BuiltinList (((Builtin.BuiltinPair (Builtin.BuiltinData)) (Builtin.BuiltinData)))) -> (List (((Prim.Tuple2 (k*34)) (v*35)))))
+          go = 
+            \(ell: (Builtin.BuiltinList
+              (((Builtin.BuiltinPair
+              (Builtin.BuiltinData)) (Builtin.BuiltinData))))) -> 
+              case ((nullList: forall (a :: Prim.Type). ((Builtin.BuiltinList ((a :: Prim.Type))) -> (Prim.Boolean))) (ell: (Builtin.BuiltinList (((Builtin.BuiltinPair (Builtin.BuiltinData)) (Builtin.BuiltinData)))))) of 
+                 True -> (Nil: List (((Prim.Tuple2 (k*34)) (v*35))))
+                 _ -> 
+                   let
+                     t :: (Builtin.BuiltinList (((Builtin.BuiltinPair (Builtin.BuiltinData)) (Builtin.BuiltinData))))
+                     t = 
+                       (tailList: forall (a :: Prim.Type). ((Builtin.BuiltinList
+                       ((a :: Prim.Type))) ->
+                       ((Builtin.BuiltinList ((a :: Prim.Type))))))
+                       (ell: (Builtin.BuiltinList
+                       (((Builtin.BuiltinPair
+                       (Builtin.BuiltinData)) (Builtin.BuiltinData)))))
+                     p :: ((Builtin.BuiltinPair (Builtin.BuiltinData)) (Builtin.BuiltinData))
+                     p = 
+                       (headList: forall (a :: Prim.Type). ((Builtin.BuiltinList
+                       ((a :: Prim.Type))) ->
+                       ((a :: Prim.Type))))
+                       (ell: (Builtin.BuiltinList
+                       (((Builtin.BuiltinPair
+                       (Builtin.BuiltinData)) (Builtin.BuiltinData)))))
+                     x :: Builtin.BuiltinData
+                     x = 
+                       (fstPair: forall (a :: Prim.Type)
+                       (b :: Prim.Type). (((Builtin.BuiltinPair
+                       ((a :: Prim.Type))) ((b :: Prim.Type))) ->
+                       ((a :: Prim.Type))))
+                       (p: ((Builtin.BuiltinPair
+                       (Builtin.BuiltinData)) (Builtin.BuiltinData)))
+                     y :: Builtin.BuiltinData
+                     y = 
+                       (sndPair: forall (a :: Prim.Type)
+                       (b :: Prim.Type). (((Builtin.BuiltinPair
+                       ((a :: Prim.Type))) ((b :: Prim.Type))) ->
+                       ((b :: Prim.Type))))
+                       (p: ((Builtin.BuiltinPair
+                       (Builtin.BuiltinData)) (Builtin.BuiltinData)))
+                   in (Cons: forall (x :: Prim.Type). ((x :: Prim.Type) ->
+                      ((List ((x :: Prim.Type)) -> (List ((x :: Prim.Type)))))))
+                      ((Tuple2: forall (t1 :: Prim.Type)
+                       (t2 :: Prim.Type). ((t1 :: Prim.Type) ->
+                       (((t2 :: Prim.Type) ->
+                       (((Prim.Tuple2
+                       ((t1 :: Prim.Type))) ((t2 :: Prim.Type))))))))
+                       ((fK: (Builtin.BuiltinData -> ((k :: Prim.Type))))
+                        (x: Builtin.BuiltinData))
+                       ((fV: (Builtin.BuiltinData -> ((v :: Prim.Type))))
+                        (y: Builtin.BuiltinData)))
+                      ((go: ((Builtin.BuiltinList
+                       (((Builtin.BuiltinPair
+                       (Builtin.BuiltinData)) (Builtin.BuiltinData)))) ->
+                       (List (((Prim.Tuple2 (k*34)) (v*35))))))
+                       (t: (Builtin.BuiltinList
+                       (((Builtin.BuiltinPair
+                       (Builtin.BuiltinData)) (Builtin.BuiltinData))))))
+        in (AssocMap: forall (k :: Prim.Type)
+           (v :: Prim.Type). (List (((Prim.Tuple2
+           ((k :: Prim.Type))) ((v :: Prim.Type)))) ->
+           (((Prim.AssocMap ((k :: Prim.Type))) ((v :: Prim.Type))))))
+           ((go: ((Builtin.BuiltinList
+            (((Builtin.BuiltinPair
+            (Builtin.BuiltinData)) (Builtin.BuiltinData)))) ->
+            (List (((Prim.Tuple2 (k*34)) (v*35))))))
+            ((unMapData: (Builtin.BuiltinData ->
+             ((Builtin.BuiltinList
+             (((Builtin.BuiltinPair
+             (Builtin.BuiltinData)) (Builtin.BuiltinData)))))))
+             (dat: Builtin.BuiltinData)))
+
+deserializeValue :: (Builtin.BuiltinData -> (Prim.Value))
+deserializeValue = 
+  \(dat: Builtin.BuiltinData) -> 
+    (Value: (((Prim.AssocMap
+    (Prim.CurrencySymbol)) (((Prim.AssocMap (Prim.TokenName)) (Prim.Int)))) ->
+    (Prim.Value)))
+    ((deserializeAssocMap: forall (k :: Prim.Type)
+     (v :: Prim.Type). ((Builtin.BuiltinData -> ((k :: Prim.Type))) ->
+     (((Builtin.BuiltinData -> ((v :: Prim.Type))) ->
+     ((Builtin.BuiltinData ->
+     (((Prim.AssocMap ((k :: Prim.Type))) ((v :: Prim.Type))))))))))
+     (deserializeCurrencySymbol: (Builtin.BuiltinData -> (Prim.CurrencySymbol)))
+     ((deserializeAssocMap: forall (k :: Prim.Type)
+      (v :: Prim.Type). ((Builtin.BuiltinData -> ((k :: Prim.Type))) ->
+      (((Builtin.BuiltinData -> ((v :: Prim.Type))) ->
+      ((Builtin.BuiltinData ->
+      (((Prim.AssocMap ((k :: Prim.Type))) ((v :: Prim.Type))))))))))
+      (deserializeTokenName: (Builtin.BuiltinData -> (Prim.TokenName)))
+      (deserializeInt: (Builtin.BuiltinData -> (Prim.Int))))
+     (dat: Builtin.BuiltinData))
+
+deserializeAddress :: (Builtin.BuiltinData -> (Prim.Address))
+deserializeAddress = 
+  \(dat: Builtin.BuiltinData) -> 
+    let
+      dat' :: Builtin.BuiltinData
+      dat' = 
+        (sndPair: forall (a :: Prim.Type)
+        (b :: Prim.Type). (((Builtin.BuiltinPair
+        ((a :: Prim.Type))) ((b :: Prim.Type))) ->
+        ((b :: Prim.Type))))
+        ((unConstrData: (Builtin.BuiltinData ->
+         (((Builtin.BuiltinPair (Prim.Int)) (Builtin.BuiltinData)))))
+         (dat: Builtin.BuiltinData))
+      unlisted :: (Builtin.BuiltinList (Builtin.BuiltinData))
+      unlisted = 
+        (unListData: (Builtin.BuiltinData ->
+        ((Builtin.BuiltinList (Builtin.BuiltinData)))))
+        (dat': Builtin.BuiltinData)
+      unlisted' :: (Builtin.BuiltinList (Builtin.BuiltinData))
+      unlisted' = 
+        (tailList: forall (a :: Prim.Type). ((Builtin.BuiltinList
+        ((a :: Prim.Type))) ->
+        ((Builtin.BuiltinList ((a :: Prim.Type))))))
+        (unlisted: (Builtin.BuiltinList (Builtin.BuiltinData)))
+      stakingCredential :: (Prim.Maybe (Prim.StakingCredential))
+      stakingCredential = 
+        (deserializeMaybe: forall (a :: Prim.Type). ((Builtin.BuiltinData ->
+        ((a :: Prim.Type))) ->
+        ((Builtin.BuiltinData -> ((Prim.Maybe ((a :: Prim.Type))))))))
+        (deserializeStakingCredential: (Builtin.BuiltinData ->
+        (Prim.StakingCredential)))
+        ((headList: forall (a :: Prim.Type). ((Builtin.BuiltinList
+         ((a :: Prim.Type))) ->
+         ((a :: Prim.Type))))
+         (unlisted': (Builtin.BuiltinList (Builtin.BuiltinData))))
+      credential :: Prim.Credential
+      credential = 
+        (deserializeCredential: (Builtin.BuiltinData -> (Prim.Credential)))
+        ((headList: forall (a :: Prim.Type). ((Builtin.BuiltinList
+         ((a :: Prim.Type))) ->
+         ((a :: Prim.Type))))
+         (unlisted: (Builtin.BuiltinList (Builtin.BuiltinData))))
+    in (Address: ({
+                    credential :: Prim.Credential,
+                    stakingCredential :: (Prim.Maybe (Prim.StakingCredential))
+                  } ->
+       (Prim.Address)))
+       ({
+          stakingCredential: (stakingCredential: (Prim.Maybe
+          (Prim.StakingCredential))),
+          credential: (credential: Prim.Credential)
+        }: {
+             credential :: Prim.Credential,
+             stakingCredential :: (Prim.Maybe (Prim.StakingCredential))
+           })
+
+deserializeTxOut :: (Builtin.BuiltinData -> (Prim.TxOut))
+deserializeTxOut = 
+  \(dat: Builtin.BuiltinData) -> 
+    let
+      unlisted :: (Builtin.BuiltinList (Builtin.BuiltinData))
+      unlisted = 
+        (unListData: (Builtin.BuiltinData ->
+        ((Builtin.BuiltinList (Builtin.BuiltinData)))))
+        ((sndPair: forall (a :: Prim.Type)
+         (b :: Prim.Type). (((Builtin.BuiltinPair
+         ((a :: Prim.Type))) ((b :: Prim.Type))) ->
+         ((b :: Prim.Type))))
+         ((unConstrData: (Builtin.BuiltinData ->
+          (((Builtin.BuiltinPair (Prim.Int)) (Builtin.BuiltinData)))))
+          (dat: Builtin.BuiltinData)))
+      unlisted1 :: (Builtin.BuiltinList (Builtin.BuiltinData))
+      unlisted1 = 
+        (tailList: forall (a :: Prim.Type). ((Builtin.BuiltinList
+        ((a :: Prim.Type))) ->
+        ((Builtin.BuiltinList ((a :: Prim.Type))))))
+        (unlisted: (Builtin.BuiltinList (Builtin.BuiltinData)))
+      unlisted2 :: (Builtin.BuiltinList (Builtin.BuiltinData))
+      unlisted2 = 
+        (tailList: forall (a :: Prim.Type). ((Builtin.BuiltinList
+        ((a :: Prim.Type))) ->
+        ((Builtin.BuiltinList ((a :: Prim.Type))))))
+        (unlisted1: (Builtin.BuiltinList (Builtin.BuiltinData)))
+      unlisted3 :: (Builtin.BuiltinList (Builtin.BuiltinData))
+      unlisted3 = 
+        (tailList: forall (a :: Prim.Type). ((Builtin.BuiltinList
+        ((a :: Prim.Type))) ->
+        ((Builtin.BuiltinList ((a :: Prim.Type))))))
+        (unlisted2: (Builtin.BuiltinList (Builtin.BuiltinData)))
+      value :: Prim.Value
+      value = 
+        (deserializeValue: (Builtin.BuiltinData -> (Prim.Value)))
+        ((headList: forall (a :: Prim.Type). ((Builtin.BuiltinList
+         ((a :: Prim.Type))) ->
+         ((a :: Prim.Type))))
+         (unlisted1: (Builtin.BuiltinList (Builtin.BuiltinData))))
+      referenceScript :: (Prim.Maybe (Prim.ScriptHash))
+      referenceScript = 
+        (deserializeMaybe: forall (a :: Prim.Type). ((Builtin.BuiltinData ->
+        ((a :: Prim.Type))) ->
+        ((Builtin.BuiltinData -> ((Prim.Maybe ((a :: Prim.Type))))))))
+        (deserializeScriptHash: (Builtin.BuiltinData -> (Prim.ScriptHash)))
+        ((headList: forall (a :: Prim.Type). ((Builtin.BuiltinList
+         ((a :: Prim.Type))) ->
+         ((a :: Prim.Type))))
+         (unlisted3: (Builtin.BuiltinList (Builtin.BuiltinData))))
+      outputDatum :: Prim.OutputDatum
+      outputDatum = 
+        (deserializeOutputDatum: (Builtin.BuiltinData -> (Prim.OutputDatum)))
+        ((headList: forall (a :: Prim.Type). ((Builtin.BuiltinList
+         ((a :: Prim.Type))) ->
+         ((a :: Prim.Type))))
+         (unlisted2: (Builtin.BuiltinList (Builtin.BuiltinData))))
+      address :: Prim.Address
+      address = 
+        (deserializeAddress: (Builtin.BuiltinData -> (Prim.Address)))
+        ((headList: forall (a :: Prim.Type). ((Builtin.BuiltinList
+         ((a :: Prim.Type))) ->
+         ((a :: Prim.Type))))
+         (unlisted: (Builtin.BuiltinList (Builtin.BuiltinData))))
+    in (TxOut: ({
+                  address :: Prim.Address,
+                  value :: Prim.Value,
+                  datum :: Prim.OutputDatum,
+                  referenceScript :: (Prim.Maybe (Prim.ScriptHash))
+                } ->
+       (Prim.TxOut)))
+       ({
+          referenceScript: (referenceScript: (Prim.Maybe (Prim.ScriptHash))),
+          datum: (outputDatum: Prim.OutputDatum),
+          value: (value: Prim.Value),
+          address: (address: Prim.Address)
+        }: {
+             address :: Prim.Address,
+             value :: Prim.Value,
+             datum :: Prim.OutputDatum,
+             referenceScript :: (Prim.Maybe (Prim.ScriptHash))
+           })
+
+deserializeTxInInfo :: (Builtin.BuiltinData -> (Prim.TxInInfo))
+deserializeTxInInfo = 
+  \(dat: Builtin.BuiltinData) -> 
+    let
+      unlisted :: (Builtin.BuiltinList (Builtin.BuiltinData))
+      unlisted = 
+        (unListData: (Builtin.BuiltinData ->
+        ((Builtin.BuiltinList (Builtin.BuiltinData)))))
+        ((sndPair: forall (a :: Prim.Type)
+         (b :: Prim.Type). (((Builtin.BuiltinPair
+         ((a :: Prim.Type))) ((b :: Prim.Type))) ->
+         ((b :: Prim.Type))))
+         ((unConstrData: (Builtin.BuiltinData ->
+          (((Builtin.BuiltinPair (Prim.Int)) (Builtin.BuiltinData)))))
+          (dat: Builtin.BuiltinData)))
+      unlisted' :: (Builtin.BuiltinList (Builtin.BuiltinData))
+      unlisted' = 
+        (tailList: forall (a :: Prim.Type). ((Builtin.BuiltinList
+        ((a :: Prim.Type))) ->
+        ((Builtin.BuiltinList ((a :: Prim.Type))))))
+        (unlisted: (Builtin.BuiltinList (Builtin.BuiltinData)))
+      resolved :: Prim.TxOut
+      resolved = 
+        (deserializeTxOut: (Builtin.BuiltinData -> (Prim.TxOut)))
+        ((headList: forall (a :: Prim.Type). ((Builtin.BuiltinList
+         ((a :: Prim.Type))) ->
+         ((a :: Prim.Type))))
+         (unlisted': (Builtin.BuiltinList (Builtin.BuiltinData))))
+      outRef :: Prim.TxOutRef
+      outRef = 
+        (deserializeTxOutRef: (Builtin.BuiltinData -> (Prim.TxOutRef)))
+        ((headList: forall (a :: Prim.Type). ((Builtin.BuiltinList
+         ((a :: Prim.Type))) ->
+         ((a :: Prim.Type))))
+         (unlisted: (Builtin.BuiltinList (Builtin.BuiltinData))))
+    in (TxInInfo: ({   txOutRef :: Prim.TxOutRef, resolved :: Prim.TxOut } ->
+       (Prim.TxInInfo)))
+       ({
+          resolved: (resolved: Prim.TxOut),
+          txOutRef: (outRef: Prim.TxOutRef)
+        }: { txOutRef :: Prim.TxOutRef, resolved :: Prim.TxOut })
+
+deserializeTxInfo :: (Builtin.BuiltinData -> (Prim.TxInfo))
+deserializeTxInfo = 
+  \(dat: Builtin.BuiltinData) -> 
+    let
+      unlisted :: (Builtin.BuiltinList (Builtin.BuiltinData))
+      unlisted = 
+        (unListData: (Builtin.BuiltinData ->
+        ((Builtin.BuiltinList (Builtin.BuiltinData)))))
+        ((sndPair: forall (a :: Prim.Type)
+         (b :: Prim.Type). (((Builtin.BuiltinPair
+         ((a :: Prim.Type))) ((b :: Prim.Type))) ->
+         ((b :: Prim.Type))))
+         ((unConstrData: (Builtin.BuiltinData ->
+          (((Builtin.BuiltinPair (Prim.Int)) (Builtin.BuiltinData)))))
+          (dat: Builtin.BuiltinData)))
+      unlisted1 :: (Builtin.BuiltinList (Builtin.BuiltinData))
+      unlisted1 = 
+        (tailList: forall (a :: Prim.Type). ((Builtin.BuiltinList
+        ((a :: Prim.Type))) ->
+        ((Builtin.BuiltinList ((a :: Prim.Type))))))
+        (unlisted: (Builtin.BuiltinList (Builtin.BuiltinData)))
+      unlisted2 :: (Builtin.BuiltinList (Builtin.BuiltinData))
+      unlisted2 = 
+        (tailList: forall (a :: Prim.Type). ((Builtin.BuiltinList
+        ((a :: Prim.Type))) ->
+        ((Builtin.BuiltinList ((a :: Prim.Type))))))
+        (unlisted1: (Builtin.BuiltinList (Builtin.BuiltinData)))
+      unlisted3 :: (Builtin.BuiltinList (Builtin.BuiltinData))
+      unlisted3 = 
+        (tailList: forall (a :: Prim.Type). ((Builtin.BuiltinList
+        ((a :: Prim.Type))) ->
+        ((Builtin.BuiltinList ((a :: Prim.Type))))))
+        (unlisted2: (Builtin.BuiltinList (Builtin.BuiltinData)))
+      unlisted4 :: (Builtin.BuiltinList (Builtin.BuiltinData))
+      unlisted4 = 
+        (tailList: forall (a :: Prim.Type). ((Builtin.BuiltinList
+        ((a :: Prim.Type))) ->
+        ((Builtin.BuiltinList ((a :: Prim.Type))))))
+        (unlisted3: (Builtin.BuiltinList (Builtin.BuiltinData)))
+      unlisted5 :: (Builtin.BuiltinList (Builtin.BuiltinData))
+      unlisted5 = 
+        (tailList: forall (a :: Prim.Type). ((Builtin.BuiltinList
+        ((a :: Prim.Type))) ->
+        ((Builtin.BuiltinList ((a :: Prim.Type))))))
+        (unlisted4: (Builtin.BuiltinList (Builtin.BuiltinData)))
+      unlisted6 :: (Builtin.BuiltinList (Builtin.BuiltinData))
+      unlisted6 = 
+        (tailList: forall (a :: Prim.Type). ((Builtin.BuiltinList
+        ((a :: Prim.Type))) ->
+        ((Builtin.BuiltinList ((a :: Prim.Type))))))
+        (unlisted5: (Builtin.BuiltinList (Builtin.BuiltinData)))
+      unlisted7 :: (Builtin.BuiltinList (Builtin.BuiltinData))
+      unlisted7 = 
+        (tailList: forall (a :: Prim.Type). ((Builtin.BuiltinList
+        ((a :: Prim.Type))) ->
+        ((Builtin.BuiltinList ((a :: Prim.Type))))))
+        (unlisted6: (Builtin.BuiltinList (Builtin.BuiltinData)))
+      unlisted8 :: (Builtin.BuiltinList (Builtin.BuiltinData))
+      unlisted8 = 
+        (tailList: forall (a :: Prim.Type). ((Builtin.BuiltinList
+        ((a :: Prim.Type))) ->
+        ((Builtin.BuiltinList ((a :: Prim.Type))))))
+        (unlisted7: (Builtin.BuiltinList (Builtin.BuiltinData)))
+      unlisted9 :: (Builtin.BuiltinList (Builtin.BuiltinData))
+      unlisted9 = 
+        (tailList: forall (a :: Prim.Type). ((Builtin.BuiltinList
+        ((a :: Prim.Type))) ->
+        ((Builtin.BuiltinList ((a :: Prim.Type))))))
+        (unlisted8: (Builtin.BuiltinList (Builtin.BuiltinData)))
+      unlisted10 :: (Builtin.BuiltinList (Builtin.BuiltinData))
+      unlisted10 = 
+        (tailList: forall (a :: Prim.Type). ((Builtin.BuiltinList
+        ((a :: Prim.Type))) ->
+        ((Builtin.BuiltinList ((a :: Prim.Type))))))
+        (unlisted9: (Builtin.BuiltinList (Builtin.BuiltinData)))
+      unlisted11 :: (Builtin.BuiltinList (Builtin.BuiltinData))
+      unlisted11 = 
+        (tailList: forall (a :: Prim.Type). ((Builtin.BuiltinList
+        ((a :: Prim.Type))) ->
+        ((Builtin.BuiltinList ((a :: Prim.Type))))))
+        (unlisted10: (Builtin.BuiltinList (Builtin.BuiltinData)))
+      validTimeRange :: (Prim.Interval (Prim.POSIXTime))
+      validTimeRange = 
+        (deserializeInterval: forall (a :: Prim.Type). ((Builtin.BuiltinData ->
+        ((a :: Prim.Type))) ->
+        ((Builtin.BuiltinData -> ((Prim.Interval ((a :: Prim.Type))))))))
+        (deserializePOSIXTime: (Builtin.BuiltinData -> (Prim.POSIXTime)))
+        ((headList: forall (a :: Prim.Type). ((Builtin.BuiltinList
+         ((a :: Prim.Type))) ->
+         ((a :: Prim.Type))))
+         (unlisted7: (Builtin.BuiltinList (Builtin.BuiltinData))))
+      wdrl :: ((Prim.AssocMap (Prim.StakingCredential)) (Prim.Int))
+      wdrl = 
+        (deserializeAssocMap: forall (k :: Prim.Type)
+        (v :: Prim.Type). ((Builtin.BuiltinData -> ((k :: Prim.Type))) ->
+        (((Builtin.BuiltinData -> ((v :: Prim.Type))) ->
+        ((Builtin.BuiltinData ->
+        (((Prim.AssocMap ((k :: Prim.Type))) ((v :: Prim.Type))))))))))
+        (deserializeStakingCredential: (Builtin.BuiltinData ->
+        (Prim.StakingCredential)))
+        (deserializeInt: (Builtin.BuiltinData -> (Prim.Int)))
+        ((headList: forall (a :: Prim.Type). ((Builtin.BuiltinList
+         ((a :: Prim.Type))) ->
+         ((a :: Prim.Type))))
+         (unlisted6: (Builtin.BuiltinList (Builtin.BuiltinData))))
+      signatories :: List (Prim.PubKeyHash)
+      signatories = 
+        (deserializeList: forall (a :: Prim.Type). ((Builtin.BuiltinData ->
+        ((a :: Prim.Type))) ->
+        ((Builtin.BuiltinData -> (List ((a :: Prim.Type)))))))
+        (deserializePubKeyHash: (Builtin.BuiltinData -> (Prim.PubKeyHash)))
+        ((headList: forall (a :: Prim.Type). ((Builtin.BuiltinList
+         ((a :: Prim.Type))) ->
+         ((a :: Prim.Type))))
+         (unlisted8: (Builtin.BuiltinList (Builtin.BuiltinData))))
+      referenceInputs :: List (Prim.TxInInfo)
+      referenceInputs = 
+        (deserializeList: forall (a :: Prim.Type). ((Builtin.BuiltinData ->
+        ((a :: Prim.Type))) ->
+        ((Builtin.BuiltinData -> (List ((a :: Prim.Type)))))))
+        (deserializeTxInInfo: (Builtin.BuiltinData -> (Prim.TxInInfo)))
+        ((headList: forall (a :: Prim.Type). ((Builtin.BuiltinList
+         ((a :: Prim.Type))) ->
+         ((a :: Prim.Type))))
+         (unlisted1: (Builtin.BuiltinList (Builtin.BuiltinData))))
+      redeemers :: ((Prim.AssocMap (Prim.ScriptPurpose)) (Prim.Redeemer))
+      redeemers = 
+        (deserializeAssocMap: forall (k :: Prim.Type)
+        (v :: Prim.Type). ((Builtin.BuiltinData -> ((k :: Prim.Type))) ->
+        (((Builtin.BuiltinData -> ((v :: Prim.Type))) ->
+        ((Builtin.BuiltinData ->
+        (((Prim.AssocMap ((k :: Prim.Type))) ((v :: Prim.Type))))))))))
+        (deserializeScriptPurpose: (Builtin.BuiltinData ->
+        (Prim.ScriptPurpose)))
+        (deserializeRedeemer: (Builtin.BuiltinData -> (Prim.Redeemer)))
+        ((headList: forall (a :: Prim.Type). ((Builtin.BuiltinList
+         ((a :: Prim.Type))) ->
+         ((a :: Prim.Type))))
+         (unlisted9: (Builtin.BuiltinList (Builtin.BuiltinData))))
+      outputs :: List (Prim.TxOut)
+      outputs = 
+        (deserializeList: forall (a :: Prim.Type). ((Builtin.BuiltinData ->
+        ((a :: Prim.Type))) ->
+        ((Builtin.BuiltinData -> (List ((a :: Prim.Type)))))))
+        (deserializeTxOut: (Builtin.BuiltinData -> (Prim.TxOut)))
+        ((headList: forall (a :: Prim.Type). ((Builtin.BuiltinList
+         ((a :: Prim.Type))) ->
+         ((a :: Prim.Type))))
+         (unlisted2: (Builtin.BuiltinList (Builtin.BuiltinData))))
+      mint :: Prim.Value
+      mint = 
+        (deserializeValue: (Builtin.BuiltinData -> (Prim.Value)))
+        ((headList: forall (a :: Prim.Type). ((Builtin.BuiltinList
+         ((a :: Prim.Type))) ->
+         ((a :: Prim.Type))))
+         (unlisted4: (Builtin.BuiltinList (Builtin.BuiltinData))))
+      inputs :: List (Prim.TxInInfo)
+      inputs = 
+        (deserializeList: forall (a :: Prim.Type). ((Builtin.BuiltinData ->
+        ((a :: Prim.Type))) ->
+        ((Builtin.BuiltinData -> (List ((a :: Prim.Type)))))))
+        (deserializeTxInInfo: (Builtin.BuiltinData -> (Prim.TxInInfo)))
+        ((headList: forall (a :: Prim.Type). ((Builtin.BuiltinList
+         ((a :: Prim.Type))) ->
+         ((a :: Prim.Type))))
+         (unlisted: (Builtin.BuiltinList (Builtin.BuiltinData))))
+      id1 :: Prim.TxId
+      id1 = 
+        (deserializeTxId: (Builtin.BuiltinData -> (Prim.TxId)))
+        ((headList: forall (a :: Prim.Type). ((Builtin.BuiltinList
+         ((a :: Prim.Type))) ->
+         ((a :: Prim.Type))))
+         (unlisted11: (Builtin.BuiltinList (Builtin.BuiltinData))))
+      fee :: Prim.Value
+      fee = 
+        (deserializeValue: (Builtin.BuiltinData -> (Prim.Value)))
+        ((headList: forall (a :: Prim.Type). ((Builtin.BuiltinList
+         ((a :: Prim.Type))) ->
+         ((a :: Prim.Type))))
+         (unlisted3: (Builtin.BuiltinList (Builtin.BuiltinData))))
+      data1 :: ((Prim.AssocMap (Prim.DatumHash)) (Prim.Datum))
+      data1 = 
+        (deserializeAssocMap: forall (k :: Prim.Type)
+        (v :: Prim.Type). ((Builtin.BuiltinData -> ((k :: Prim.Type))) ->
+        (((Builtin.BuiltinData -> ((v :: Prim.Type))) ->
+        ((Builtin.BuiltinData ->
+        (((Prim.AssocMap ((k :: Prim.Type))) ((v :: Prim.Type))))))))))
+        (deserializeDatumHash: (Builtin.BuiltinData -> (Prim.DatumHash)))
+        (deserializeDatum: (Builtin.BuiltinData -> (Prim.Datum)))
+        ((headList: forall (a :: Prim.Type). ((Builtin.BuiltinList
+         ((a :: Prim.Type))) ->
+         ((a :: Prim.Type))))
+         (unlisted10: (Builtin.BuiltinList (Builtin.BuiltinData))))
+      dCert :: List (Prim.DCert)
+      dCert = 
+        (deserializeList: forall (a :: Prim.Type). ((Builtin.BuiltinData ->
+        ((a :: Prim.Type))) ->
+        ((Builtin.BuiltinData -> (List ((a :: Prim.Type)))))))
+        (deserializeDCert: (Builtin.BuiltinData -> (Prim.DCert)))
+        ((headList: forall (a :: Prim.Type). ((Builtin.BuiltinList
+         ((a :: Prim.Type))) ->
+         ((a :: Prim.Type))))
+         (unlisted5: (Builtin.BuiltinList (Builtin.BuiltinData))))
+    in (TxInfo: ({
+                   inputs :: List (Prim.TxInInfo),
+                   referenceInputs :: List (Prim.TxInInfo),
+                   outputs :: List (Prim.TxOut),
+                   fee :: Prim.Value,
+                   mint :: Prim.Value,
+                   dCert :: List (Prim.DCert),
+                   wdrl :: ((Prim.AssocMap
+                   (Prim.StakingCredential)) (Prim.Int)),
+                   validRange :: (Prim.Interval (Prim.POSIXTime)),
+                   signatories :: List (Prim.PubKeyHash),
+                   redeemers :: ((Prim.AssocMap
+                   (Prim.ScriptPurpose)) (Prim.Redeemer)),
+                   data :: ((Prim.AssocMap (Prim.DatumHash)) (Prim.Datum)),
+                   id :: Prim.TxId
+                 } ->
+       (Prim.TxInfo)))
+       ({
+          id: (id1: Prim.TxId),
+          data: (data1: ((Prim.AssocMap (Prim.DatumHash)) (Prim.Datum))),
+          redeemers: (redeemers: ((Prim.AssocMap
+          (Prim.ScriptPurpose)) (Prim.Redeemer))),
+          signatories: (signatories: List (Prim.PubKeyHash)),
+          validRange: (validTimeRange: (Prim.Interval (Prim.POSIXTime))),
+          wdrl: (wdrl: ((Prim.AssocMap (Prim.StakingCredential)) (Prim.Int))),
+          dCert: (dCert: List (Prim.DCert)),
+          mint: (mint: Prim.Value),
+          fee: (fee: Prim.Value),
+          outputs: (outputs: List (Prim.TxOut)),
+          referenceInputs: (referenceInputs: List (Prim.TxInInfo)),
+          inputs: (inputs: List (Prim.TxInInfo))
+        }: {
+             inputs :: List (Prim.TxInInfo),
+             referenceInputs :: List (Prim.TxInInfo),
+             outputs :: List (Prim.TxOut),
+             fee :: Prim.Value,
+             mint :: Prim.Value,
+             dCert :: List (Prim.DCert),
+             wdrl :: ((Prim.AssocMap (Prim.StakingCredential)) (Prim.Int)),
+             validRange :: (Prim.Interval (Prim.POSIXTime)),
+             signatories :: List (Prim.PubKeyHash),
+             redeemers :: ((Prim.AssocMap
+             (Prim.ScriptPurpose)) (Prim.Redeemer)),
+             data :: ((Prim.AssocMap (Prim.DatumHash)) (Prim.Datum)),
+             id :: Prim.TxId
+           })
+
+deserializeScriptContext :: (Builtin.BuiltinData -> (Prim.ScriptContext))
+deserializeScriptContext = 
+  \(dat: Builtin.BuiltinData) -> 
+    let
+      dat' :: Builtin.BuiltinData
+      dat' = 
+        (sndPair: forall (a :: Prim.Type)
+        (b :: Prim.Type). (((Builtin.BuiltinPair
+        ((a :: Prim.Type))) ((b :: Prim.Type))) ->
+        ((b :: Prim.Type))))
+        ((unConstrData: (Builtin.BuiltinData ->
+         (((Builtin.BuiltinPair (Prim.Int)) (Builtin.BuiltinData)))))
+         (dat: Builtin.BuiltinData))
+      unlisted :: (Builtin.BuiltinList (Builtin.BuiltinData))
+      unlisted = 
+        (unListData: (Builtin.BuiltinData ->
+        ((Builtin.BuiltinList (Builtin.BuiltinData)))))
+        (dat': Builtin.BuiltinData)
+      txInfo :: Prim.TxInfo
+      txInfo = 
+        (deserializeTxInfo: (Builtin.BuiltinData -> (Prim.TxInfo)))
+        ((headList: forall (a :: Prim.Type). ((Builtin.BuiltinList
+         ((a :: Prim.Type))) ->
+         ((a :: Prim.Type))))
+         (unlisted: (Builtin.BuiltinList (Builtin.BuiltinData))))
+      unlisted' :: (Builtin.BuiltinList (Builtin.BuiltinData))
+      unlisted' = 
+        (tailList: forall (a :: Prim.Type). ((Builtin.BuiltinList
+        ((a :: Prim.Type))) ->
+        ((Builtin.BuiltinList ((a :: Prim.Type))))))
+        (unlisted: (Builtin.BuiltinList (Builtin.BuiltinData)))
+      purpose :: Prim.ScriptPurpose
+      purpose = 
+        (deserializeScriptPurpose: (Builtin.BuiltinData ->
+        (Prim.ScriptPurpose)))
+        ((headList: forall (a :: Prim.Type). ((Builtin.BuiltinList
+         ((a :: Prim.Type))) ->
+         ((a :: Prim.Type))))
+         (unlisted': (Builtin.BuiltinList (Builtin.BuiltinData))))
+    in (ScriptContext: ({
+                          txInfo :: Prim.TxInfo,
+                          purpose :: Prim.ScriptPurpose
+                        } ->
+       (Prim.ScriptContext)))
+       ({
+          purpose: (purpose: Prim.ScriptPurpose),
+          txInfo: (txInfo: Prim.TxInfo)
+        }: { txInfo :: Prim.TxInfo, purpose :: Prim.ScriptPurpose })
+
+const :: forall (a :: Prim.Type) (b :: Prim.Type). ((a :: Prim.Type) -> (((b :: Prim.Type) -> ((b :: Prim.Type)))))
+const = 
+  \(v: (a :: Prim.Type)) -> \(x: (b :: Prim.Type)) -> (x: (b :: Prim.Type))
+
+apply :: forall (a :: Prim.Type) (b :: Prim.Type). (((a :: Prim.Type) -> ((b :: Prim.Type))) -> (((a :: Prim.Type) -> ((b :: Prim.Type)))))
+apply = 
+  \(f: ((a :: Prim.Type) -> ((b :: Prim.Type)))) -> 
+    \(x: (a :: Prim.Type)) -> 
+      (f: ((a :: Prim.Type) -> ((b :: Prim.Type)))) (x: (a :: Prim.Type))
+
+appendList :: forall (a :: Prim.Type). (List ((a :: Prim.Type)) -> ((List ((a :: Prim.Type)) -> (List ((a :: Prim.Type))))))
+appendList = 
+  \(ell1: List ((a :: Prim.Type))) -> 
+    \(ell2: List ((a :: Prim.Type))) -> 
+      case (ell1: List ((a :: Prim.Type))) of 
+         Nil -> (ell2: List ((a :: Prim.Type)))
+         Cons x xs -> 
+           (Cons: forall (x :: Prim.Type). ((x :: Prim.Type) ->
+           ((List ((x :: Prim.Type)) -> (List ((x :: Prim.Type)))))))
+           (x: (a :: Prim.Type))
+           ((appendList: forall (a :: Prim.Type). (List ((a :: Prim.Type)) ->
+            ((List ((a :: Prim.Type)) -> (List ((a :: Prim.Type)))))))
+            (xs: List ((a :: Prim.Type)))
+            (ell2: List ((a :: Prim.Type))))
+
+anyList :: forall (a :: Prim.Type). (((a :: Prim.Type) -> (Prim.Boolean)) -> ((List ((a :: Prim.Type)) -> (Prim.Boolean))))
+anyList = 
+  \(p: ((a :: Prim.Type) -> (Prim.Boolean))) -> 
+    \(ell: List ((a :: Prim.Type))) -> 
+      case (ell: List ((a :: Prim.Type))) of 
+         Nil -> (False: Prim.Boolean)
+         Cons x xs -> 
+           case ((p: ((a :: Prim.Type) -> (Prim.Boolean))) (x: (a :: Prim.Type))) of 
+              True -> (True: Prim.Boolean)
+              _ -> 
+                (anyList: forall (a :: Prim.Type). (((a :: Prim.Type) ->
+                (Prim.Boolean)) ->
+                ((List ((a :: Prim.Type)) -> (Prim.Boolean)))))
+                (p: ((a :: Prim.Type) -> (Prim.Boolean)))
+                (xs: List ((a :: Prim.Type)))
+
+and :: (Prim.Boolean -> ((Prim.Boolean -> (Prim.Boolean))))
+and = 
+  \(x: Prim.Boolean) -> 
+    \(y: Prim.Boolean) -> 
+      (ifThenElse: forall (x :: Prim.Type). (Prim.Boolean ->
+      (((x :: Prim.Type) -> (((x :: Prim.Type) -> ((x :: Prim.Type))))))))
+      (x: Prim.Boolean)
+      (y: Prim.Boolean)
+      (False: Prim.Boolean)
+
+allList :: forall (a :: Prim.Type). (((a :: Prim.Type) -> (Prim.Boolean)) -> ((List ((a :: Prim.Type)) -> (Prim.Boolean))))
+allList = 
+  \(p: ((a :: Prim.Type) -> (Prim.Boolean))) -> 
+    \(ell: List ((a :: Prim.Type))) -> 
+      case (ell: List ((a :: Prim.Type))) of 
+         Nil -> (True: Prim.Boolean)
+         Cons x xs -> 
+           case ((p: ((a :: Prim.Type) -> (Prim.Boolean))) (x: (a :: Prim.Type))) of 
+              True -> 
+                (allList: forall (a :: Prim.Type). (((a :: Prim.Type) ->
+                (Prim.Boolean)) ->
+                ((List ((a :: Prim.Type)) -> (Prim.Boolean)))))
+                (p: ((a :: Prim.Type) -> (Prim.Boolean)))
+                (xs: List ((a :: Prim.Type)))
+              _ -> (False: Prim.Boolean)

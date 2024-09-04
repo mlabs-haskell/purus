@@ -8,41 +8,46 @@
 -- Maintainer  : Christoph Hegemann <christoph.hegemann1337@gmail.com>
 -- Stability   : experimental
 --
--- |
--- Generally useful functions
+
 -----------------------------------------------------------------------------
 
-module Language.PureScript.Ide.Util
-  ( identifierFromIdeDeclaration
-  , unwrapMatch
-  , namespaceForDeclaration
-  , encodeT
-  , decodeT
-  , discardAnn
-  , withEmptyAnn
-  , valueOperatorAliasT
-  , typeOperatorAliasT
-  , properNameT
-  , identT
-  , opNameT
-  , ideReadFile
-  , module Language.PureScript.Ide.Logging
-  ) where
+{- |
+Generally useful functions
+-}
+module Language.PureScript.Ide.Util (
+  identifierFromIdeDeclaration,
+  unwrapMatch,
+  namespaceForDeclaration,
+  encodeT,
+  decodeT,
+  discardAnn,
+  withEmptyAnn,
+  valueOperatorAliasT,
+  typeOperatorAliasT,
+  properNameT,
+  identT,
+  opNameT,
+  ideReadFile,
+  module Language.PureScript.Ide.Logging,
+) where
 
-import Protolude                           hiding (decodeUtf8,
-                                                      encodeUtf8, to)
+import Protolude hiding (
+  decodeUtf8,
+  encodeUtf8,
+  to,
+ )
 
 import Control.Lens (Getting, to, (^.))
 import Data.Aeson (FromJSON, ToJSON, eitherDecode, encode)
 import Data.Text qualified as T
 import Data.Text.Lazy qualified as TL
-import Data.Text.Lazy.Encoding             as TLE
+import Data.Text.Lazy.Encoding as TLE
 import Language.PureScript qualified as P
-import Language.PureScript.Ide.Error (IdeError(..))
+import Language.PureScript.Ide.Error (IdeError (..))
 import Language.PureScript.Ide.Logging
-import Language.PureScript.Ide.Types (IdeDeclaration(..), IdeDeclarationAnn(..), IdeNamespace(..), Match(..), emptyAnn, ideDtorName, ideSynonymName, ideTCName, ideTypeName, ideTypeOpName, ideValueIdent, ideValueOpName)
-import System.IO.UTF8 (readUTF8FileT)
+import Language.PureScript.Ide.Types (IdeDeclaration (..), IdeDeclarationAnn (..), IdeNamespace (..), Match (..), emptyAnn, ideDtorName, ideSynonymName, ideTCName, ideTypeName, ideTypeOpName, ideValueIdent, ideValueOpName)
 import System.Directory (makeAbsolute)
+import System.IO.UTF8 (readUTF8FileT)
 
 identifierFromIdeDeclaration :: IdeDeclaration -> Text
 identifierFromIdeDeclaration d = case d of
@@ -75,13 +80,13 @@ withEmptyAnn = IdeDeclarationAnn emptyAnn
 unwrapMatch :: Match a -> a
 unwrapMatch (Match (_, ed)) = ed
 
-valueOperatorAliasT
-  :: P.Qualified (Either P.Ident (P.ProperName 'P.ConstructorName)) -> Text
+valueOperatorAliasT ::
+  P.Qualified (Either P.Ident (P.ProperName 'P.ConstructorName)) -> Text
 valueOperatorAliasT =
   P.showQualified $ either P.runIdent P.runProperName
 
-typeOperatorAliasT
-  :: P.Qualified (P.ProperName 'P.TypeName) -> Text
+typeOperatorAliasT ::
+  P.Qualified (P.ProperName 'P.TypeName) -> Text
 typeOperatorAliasT =
   P.showQualified P.runProperName
 
@@ -100,25 +105,29 @@ identT = to P.runIdent
 opNameT :: Getting r (P.OpName a) Text
 opNameT = to P.runOpName
 
-ideReadFile'
-  :: (MonadIO m, MonadError IdeError m)
-  => (FilePath -> IO Text)
-  -> FilePath
-  -> m (FilePath, Text)
+ideReadFile' ::
+  (MonadIO m, MonadError IdeError m) =>
+  (FilePath -> IO Text) ->
+  FilePath ->
+  m (FilePath, Text)
 ideReadFile' fileReader fp = do
-  absPath <- liftIO (try (makeAbsolute fp)) >>= \case
-    Left (err :: IOException) ->
-      throwError
-        (GeneralError
-          ("Couldn't resolve path for: " <> show fp <> ", Error: " <> show err))
-    Right absPath -> pure absPath
-  contents <- liftIO (try (fileReader absPath)) >>= \case
-    Left (err :: IOException) ->
-      throwError
-        (GeneralError
-          ("Couldn't find file at: " <> show absPath <> ", Error: " <> show err))
-    Right contents ->
-      pure contents
+  absPath <-
+    liftIO (try (makeAbsolute fp)) >>= \case
+      Left (err :: IOException) ->
+        throwError
+          ( GeneralError
+              ("Couldn't resolve path for: " <> show fp <> ", Error: " <> show err)
+          )
+      Right absPath -> pure absPath
+  contents <-
+    liftIO (try (fileReader absPath)) >>= \case
+      Left (err :: IOException) ->
+        throwError
+          ( GeneralError
+              ("Couldn't find file at: " <> show absPath <> ", Error: " <> show err)
+          )
+      Right contents ->
+        pure contents
   pure (absPath, contents)
 
 ideReadFile :: (MonadIO m, MonadError IdeError m) => FilePath -> m (FilePath, Text)

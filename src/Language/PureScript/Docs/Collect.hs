@@ -1,7 +1,6 @@
-
-module Language.PureScript.Docs.Collect
-  ( collectDocs
-  ) where
+module Language.PureScript.Docs.Collect (
+  collectDocs,
+) where
 
 import Protolude hiding (check)
 
@@ -17,7 +16,7 @@ import System.IO.UTF8 (readUTF8FileT, readUTF8FilesT)
 
 import Language.PureScript.Docs.Convert.ReExports (updateReExports)
 import Language.PureScript.Docs.Prim (primModules)
-import Language.PureScript.Docs.Types (InPackage(..), Module(..), asModule, displayPackageError, ignorePackage)
+import Language.PureScript.Docs.Types (InPackage (..), Module (..), asModule, displayPackageError, ignorePackage)
 
 import Language.PureScript.AST qualified as P
 import Language.PureScript.CST qualified as P
@@ -30,16 +29,16 @@ import Language.PureScript.Options qualified as P
 
 import Web.Bower.PackageMeta (PackageName)
 
--- |
--- Given a compiler output directory, a list of input PureScript source files,
--- and a list of dependency PureScript source files, produce documentation for
--- the input files in the intermediate documentation format. Note that
--- dependency files are not included in the result.
---
--- If the output directory is not up to date with respect to the provided input
--- and dependency files, the files will be built as if with just the "docs"
--- codegen target, i.e. "purs compile --codegen docs".
---
+{- |
+Given a compiler output directory, a list of input PureScript source files,
+and a list of dependency PureScript source files, produce documentation for
+the input files in the intermediate documentation format. Note that
+dependency files are not included in the result.
+
+If the output directory is not up to date with respect to the provided input
+and dependency files, the files will be built as if with just the "docs"
+codegen target, i.e. "purs compile --codegen docs".
+-}
 collectDocs ::
   forall m.
   (MonadError P.MultipleErrors m, MonadIO m) =>
@@ -60,27 +59,26 @@ collectDocs outputDir inputFiles depsFiles = do
 
   docsModules <- go modulePaths
   pure (filter (shouldKeep . modName . snd) docsModules, modulesDeps)
-
   where
-  packageDiscriminators modulesDeps =
-    let
-      shouldKeep mn = isLocal mn && not (P.isBuiltinModuleName mn)
+    packageDiscriminators modulesDeps =
+      let
+        shouldKeep mn = isLocal mn && not (P.isBuiltinModuleName mn)
 
-      withPackage :: P.ModuleName -> InPackage P.ModuleName
-      withPackage mn =
-        case Map.lookup mn modulesDeps of
-          Just pkgName -> FromDep pkgName mn
-          Nothing -> Local mn
+        withPackage :: P.ModuleName -> InPackage P.ModuleName
+        withPackage mn =
+          case Map.lookup mn modulesDeps of
+            Just pkgName -> FromDep pkgName mn
+            Nothing -> Local mn
 
-      isLocal :: P.ModuleName -> Bool
-      isLocal = not . flip Map.member modulesDeps
-    in
-      (withPackage, shouldKeep)
+        isLocal :: P.ModuleName -> Bool
+        isLocal = not . flip Map.member modulesDeps
+       in
+        (withPackage, shouldKeep)
 
--- |
--- Compile with just the 'docs' codegen target, writing results into the given
--- output directory.
---
+{- |
+Compile with just the 'docs' codegen target, writing results into the given
+output directory.
+-}
 compileForDocs ::
   forall m.
   (MonadError P.MultipleErrors m, MonadIO m) =>
@@ -100,22 +98,24 @@ compileForDocs outputDir inputFiles = do
               }
       P.make makeActions (map snd ms)
   either throwError return result
-
   where
-  testOptions :: P.Options
-  testOptions = P.defaultOptions { P.optionsCodegenTargets = Set.singleton P.Docs }
+    testOptions :: P.Options
+    testOptions = P.defaultOptions {P.optionsCodegenTargets = Set.singleton P.Docs}
 
 parseDocsJsonFile :: FilePath -> P.ModuleName -> IO Module
 parseDocsJsonFile outputDir mn =
   let
     filePath = outputDir </> T.unpack (P.runModuleName mn) </> "docs.json"
-  in do
-    str <- BS.readFile filePath
-    case ABE.parseStrict asModule str of
-      Right m -> pure m
-      Left err -> P.internalError $
-        "Failed to decode: " ++ filePath ++
-        intercalate "\n" (map T.unpack (ABE.displayError displayPackageError err))
+   in
+    do
+      str <- BS.readFile filePath
+      case ABE.parseStrict asModule str of
+        Right m -> pure m
+        Left err ->
+          P.internalError $
+            "Failed to decode: "
+              ++ filePath
+              ++ intercalate "\n" (map T.unpack (ABE.displayError displayPackageError err))
 
 addReExports ::
   (MonadError P.MultipleErrors m) =>
@@ -133,21 +133,23 @@ addReExports withPackage docsModules externs = do
   -- here.
   let moduleMap =
         Map.fromList
-          (map (modName &&& identity)
-               (docsModules ++ primModules))
+          ( map
+              (modName &&& identity)
+              (docsModules ++ primModules)
+          )
 
   let withReExports = updateReExports externs withPackage moduleMap
   pure (Map.elems withReExports)
 
--- |
--- Perform an operation on a list of things which are tagged, and reassociate
--- the things with their tags afterwards.
---
+{- |
+Perform an operation on a list of things which are tagged, and reassociate
+the things with their tags afterwards.
+-}
 operateAndRetag ::
   forall m a b key tag.
-  Monad m =>
-  Ord key =>
-  Show key =>
+  (Monad m) =>
+  (Ord key) =>
+  (Show key) =>
   (a -> key) ->
   (b -> key) ->
   ([a] -> m [b]) ->
@@ -156,44 +158,45 @@ operateAndRetag ::
 operateAndRetag keyA keyB operation input =
   map retag <$> operation (map snd input)
   where
-  tags :: Map key tag
-  tags = Map.fromList $ map (\(tag, a) -> (keyA a, tag)) input
+    tags :: Map key tag
+    tags = Map.fromList $ map (\(tag, a) -> (keyA a, tag)) input
 
-  findTag :: key -> tag
-  findTag key =
-    case Map.lookup key tags of
-      Just tag -> tag
-      Nothing -> P.internalError ("Missing tag for: " ++ show key)
+    findTag :: key -> tag
+    findTag key =
+      case Map.lookup key tags of
+        Just tag -> tag
+        Nothing -> P.internalError ("Missing tag for: " ++ show key)
 
-  retag :: b -> (tag, b)
-  retag b = (findTag (keyB b), b)
+    retag :: b -> (tag, b)
+    retag b = (findTag (keyB b), b)
 
--- |
--- Given:
---
---    * A list of local source files
---    * A list of source files from external dependencies, together with their
---      package names
---
--- This function does the following:
---
---    * Partially parse all of the input and dependency source files to get
---      the module name of each module
---    * Associate each dependency module with its package name, thereby
---      distinguishing these from local modules
---    * Return the file paths paired with the names of the modules they
---      contain, and a Map of module names to package names for modules which
---      come from dependencies. If a module does not exist in the map, it can
---      safely be
---      assumed to be local.
+{- |
+Given:
+
+   * A list of local source files
+   * A list of source files from external dependencies, together with their
+     package names
+
+This function does the following:
+
+   * Partially parse all of the input and dependency source files to get
+     the module name of each module
+   * Associate each dependency module with its package name, thereby
+     distinguishing these from local modules
+   * Return the file paths paired with the names of the modules they
+     contain, and a Map of module names to package names for modules which
+     come from dependencies. If a module does not exist in the map, it can
+     safely be
+     assumed to be local.
+-}
 getModulePackageInfo ::
   (MonadError P.MultipleErrors m, MonadIO m) =>
-  [FilePath]
-  -> [(PackageName, FilePath)]
-  -> m ([(FilePath, P.ModuleName)], Map P.ModuleName PackageName)
+  [FilePath] ->
+  [(PackageName, FilePath)] ->
+  m ([(FilePath, P.ModuleName)], Map P.ModuleName PackageName)
 getModulePackageInfo inputFiles depsFiles = do
   inputFiles' <- traverse (readFileAs . Local) inputFiles
-  depsFiles'  <- traverse (readFileAs . uncurry FromDep) depsFiles
+  depsFiles' <- traverse (readFileAs . uncurry FromDep) depsFiles
 
   moduleNames <- getModuleNames (inputFiles' ++ depsFiles')
 
@@ -202,24 +205,23 @@ getModulePackageInfo inputFiles depsFiles = do
           mapMaybe (\(pkgPath, mn) -> (mn,) <$> getPkgName pkgPath) moduleNames
 
   pure (map (first ignorePackage) moduleNames, mnMap)
-
   where
-  getModuleNames ::
-    (MonadError P.MultipleErrors m) =>
-    [(InPackage FilePath, Text)]
-    -> m [(InPackage FilePath, P.ModuleName)]
-  getModuleNames =
-    fmap (map (second (P.getModuleName . P.resPartial)))
-    . either throwError return
-    . P.parseModulesFromFiles ignorePackage
+    getModuleNames ::
+      (MonadError P.MultipleErrors m) =>
+      [(InPackage FilePath, Text)] ->
+      m [(InPackage FilePath, P.ModuleName)]
+    getModuleNames =
+      fmap (map (second (P.getModuleName . P.resPartial)))
+        . either throwError return
+        . P.parseModulesFromFiles ignorePackage
 
-  getPkgName = \case
-    Local _ -> Nothing
-    FromDep pkgName _ -> Just pkgName
+    getPkgName = \case
+      Local _ -> Nothing
+      FromDep pkgName _ -> Just pkgName
 
-  readFileAs ::
-    (MonadIO m) =>
-    InPackage FilePath ->
-    m (InPackage FilePath, Text)
-  readFileAs fi =
-    liftIO . fmap (fi,) $ readUTF8FileT (ignorePackage fi)
+    readFileAs ::
+      (MonadIO m) =>
+      InPackage FilePath ->
+      m (InPackage FilePath, Text)
+    readFileAs fi =
+      liftIO . fmap (fi,) $ readUTF8FileT (ignorePackage fi)

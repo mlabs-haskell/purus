@@ -1,66 +1,56 @@
--- |
--- Case binders
---
+{- |
+Case binders
+-}
 module Language.PureScript.AST.Binders where
 
 import Prelude
 
+import Language.PureScript.AST.Literals (Literal (..))
 import Language.PureScript.AST.SourcePos (SourceSpan)
-import Language.PureScript.AST.Literals (Literal(..))
-import Language.PureScript.Names (Ident, OpName, OpNameType(..), ProperName, ProperNameType(..), Qualified)
 import Language.PureScript.Comments (Comment)
+import Language.PureScript.Names (Ident, OpName, OpNameType (..), ProperName, ProperNameType (..), Qualified)
 import Language.PureScript.Types (SourceType)
 
--- |
--- Data type for binders
---
+{- |
+Data type for binders
+-}
 data Binder
-  -- |
-  -- Wildcard binder
-  --
-  = NullBinder
-  -- |
-  -- A binder which matches a literal
-  --
-  | LiteralBinder SourceSpan (Literal Binder)
-  -- |
-  -- A binder which binds an identifier
-  --
-  | VarBinder SourceSpan Ident
-  -- |
-  -- A binder which matches a data constructor
-  --
-  | ConstructorBinder SourceSpan (Qualified (ProperName 'ConstructorName)) [Binder]
-  -- |
-  -- A operator alias binder. During the rebracketing phase of desugaring,
-  -- this data constructor will be removed.
-  --
-  | OpBinder SourceSpan (Qualified (OpName 'ValueOpName))
-  -- |
-  -- Binary operator application. During the rebracketing phase of desugaring,
-  -- this data constructor will be removed.
-  --
-  | BinaryNoParensBinder Binder Binder Binder
-  -- |
-  -- Explicit parentheses. During the rebracketing phase of desugaring, this
-  -- data constructor will be removed.
-  --
-  -- Note: although it seems this constructor is not used, it _is_ useful,
-  -- since it prevents certain traversals from matching.
-  --
-  | ParensInBinder Binder
-  -- |
-  -- A binder which binds its input to an identifier
-  --
-  | NamedBinder SourceSpan Ident Binder
-  -- |
-  -- A binder with source position information
-  --
-  | PositionedBinder SourceSpan [Comment] Binder
-  -- |
-  -- A binder with a type annotation
-  --
-  | TypedBinder SourceType Binder
+  = -- |
+    -- Wildcard binder
+    NullBinder
+  | -- |
+    -- A binder which matches a literal
+    LiteralBinder SourceSpan (Literal Binder)
+  | -- |
+    -- A binder which binds an identifier
+    VarBinder SourceSpan Ident
+  | -- |
+    -- A binder which matches a data constructor
+    ConstructorBinder SourceSpan (Qualified (ProperName 'ConstructorName)) [Binder]
+  | -- |
+    -- A operator alias binder. During the rebracketing phase of desugaring,
+    -- this data constructor will be removed.
+    OpBinder SourceSpan (Qualified (OpName 'ValueOpName))
+  | -- |
+    -- Binary operator application. During the rebracketing phase of desugaring,
+    -- this data constructor will be removed.
+    BinaryNoParensBinder Binder Binder Binder
+  | -- |
+    -- Explicit parentheses. During the rebracketing phase of desugaring, this
+    -- data constructor will be removed.
+    --
+    -- Note: although it seems this constructor is not used, it _is_ useful,
+    -- since it prevents certain traversals from matching.
+    ParensInBinder Binder
+  | -- |
+    -- A binder which binds its input to an identifier
+    NamedBinder SourceSpan Ident Binder
+  | -- |
+    -- A binder with source position information
+    PositionedBinder SourceSpan [Comment] Binder
+  | -- |
+    -- A binder with a type annotation
+    TypedBinder SourceType Binder
   deriving (Show)
 
 -- Manual Eq and Ord instances for `Binder` were added on 2018-03-05. Comparing
@@ -115,41 +105,40 @@ instance Ord Binder where
     compare ty ty' <> compare b b'
   compare binder binder' =
     compare (orderOf binder) (orderOf binder')
-      where
-        orderOf :: Binder -> Int
-        orderOf NullBinder = 0
-        orderOf LiteralBinder{} = 1
-        orderOf VarBinder{} = 2
-        orderOf ConstructorBinder{} = 3
-        orderOf OpBinder{} = 4
-        orderOf BinaryNoParensBinder{} = 5
-        orderOf ParensInBinder{} = 6
-        orderOf NamedBinder{} = 7
-        orderOf PositionedBinder{} = 8
-        orderOf TypedBinder{} = 9
+    where
+      orderOf :: Binder -> Int
+      orderOf NullBinder = 0
+      orderOf LiteralBinder {} = 1
+      orderOf VarBinder {} = 2
+      orderOf ConstructorBinder {} = 3
+      orderOf OpBinder {} = 4
+      orderOf BinaryNoParensBinder {} = 5
+      orderOf ParensInBinder {} = 6
+      orderOf NamedBinder {} = 7
+      orderOf PositionedBinder {} = 8
+      orderOf TypedBinder {} = 9
 
--- |
--- Collect all names introduced in binders in an expression
---
+{- |
+Collect all names introduced in binders in an expression
+-}
 binderNames :: Binder -> [Ident]
 binderNames = map snd . binderNamesWithSpans
 
 binderNamesWithSpans :: Binder -> [(SourceSpan, Ident)]
 binderNamesWithSpans = go []
   where
-  go ns (LiteralBinder _ b) = lit ns b
-  go ns (VarBinder ss name) = (ss, name) : ns
-  go ns (ConstructorBinder _ _ bs) = foldl go ns bs
-  go ns (BinaryNoParensBinder b1 b2 b3) = foldl go ns [b1, b2, b3]
-  go ns (ParensInBinder b) = go ns b
-  go ns (NamedBinder ss name b) = go ((ss, name) : ns) b
-  go ns (PositionedBinder _ _ b) = go ns b
-  go ns (TypedBinder _ b) = go ns b
-  go ns _ = ns
-  lit ns (ObjectLiteral bs) = foldl go ns (map snd bs)
-  lit ns (ArrayLiteral bs) = foldl go ns bs
-  lit ns _ = ns
-
+    go ns (LiteralBinder _ b) = lit ns b
+    go ns (VarBinder ss name) = (ss, name) : ns
+    go ns (ConstructorBinder _ _ bs) = foldl go ns bs
+    go ns (BinaryNoParensBinder b1 b2 b3) = foldl go ns [b1, b2, b3]
+    go ns (ParensInBinder b) = go ns b
+    go ns (NamedBinder ss name b) = go ((ss, name) : ns) b
+    go ns (PositionedBinder _ _ b) = go ns b
+    go ns (TypedBinder _ b) = go ns b
+    go ns _ = ns
+    lit ns (ObjectLiteral bs) = foldl go ns (map snd bs)
+    lit ns (ListLiteral bs) = foldl go ns bs
+    lit ns _ = ns
 
 isIrrefutable :: Binder -> Bool
 isIrrefutable NullBinder = True

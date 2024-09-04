@@ -1,18 +1,18 @@
-module Language.PureScript.Ide.Completion
-       ( getCompletions
-       , getExactMatches
-       , getExactCompletions
-       , simpleExport
-       , completionFromMatch
-       , CompletionOptions(..)
-       , defaultCompletionOptions
-       , applyCompletionOptions
-       ) where
+module Language.PureScript.Ide.Completion (
+  getCompletions,
+  getExactMatches,
+  getExactCompletions,
+  simpleExport,
+  completionFromMatch,
+  CompletionOptions (..),
+  defaultCompletionOptions,
+  applyCompletionOptions,
+) where
 
-import Protolude hiding ((<&>), moduleName)
+import Protolude hiding (moduleName, (<&>))
 
 import Control.Lens ((.~), (<&>), (^.))
-import Data.Aeson (FromJSON(..), withObject, (.!=), (.:?))
+import Data.Aeson (FromJSON (..), withObject, (.!=), (.:?))
 import Data.Map qualified as Map
 import Data.Text qualified as T
 import Language.PureScript qualified as P
@@ -22,34 +22,35 @@ import Language.PureScript.Ide.Matcher (Matcher, runMatcher)
 import Language.PureScript.Ide.Types
 import Language.PureScript.Ide.Util (identT, identifierFromIdeDeclaration, namespaceForDeclaration, properNameT, typeOperatorAliasT, valueOperatorAliasT)
 
--- | Applies the CompletionFilters and the Matcher to the given Modules
---   and sorts the found Completions according to the Matching Score
-getCompletions
-  :: [Filter]
-  -> Matcher IdeDeclarationAnn
-  -> CompletionOptions
-  -> ModuleMap [IdeDeclarationAnn]
-  -> [Completion]
+{- | Applies the CompletionFilters and the Matcher to the given Modules
+  and sorts the found Completions according to the Matching Score
+-}
+getCompletions ::
+  [Filter] ->
+  Matcher IdeDeclarationAnn ->
+  CompletionOptions ->
+  ModuleMap [IdeDeclarationAnn] ->
+  [Completion]
 getCompletions filters matcher options modules =
   modules
-  & applyFilters filters
-  & matchesFromModules
-  & runMatcher matcher
-  & applyCompletionOptions options
-  <&> completionFromMatch
+    & applyFilters filters
+    & matchesFromModules
+    & runMatcher matcher
+    & applyCompletionOptions options
+    <&> completionFromMatch
 
 getExactMatches :: Text -> [Filter] -> ModuleMap [IdeDeclarationAnn] -> [Match IdeDeclarationAnn]
 getExactMatches search filters modules =
   modules
-  & applyFilters (exactFilter search : filters)
-  & matchesFromModules
+    & applyFilters (exactFilter search : filters)
+    & matchesFromModules
 
 getExactCompletions :: Text -> [Filter] -> ModuleMap [IdeDeclarationAnn] -> [Completion]
 getExactCompletions search filters modules =
   modules
-  & getExactMatches search filters
-  <&> simpleExport
-  <&> completionFromMatch
+    & getExactMatches search filters
+    <&> simpleExport
+    <&> completionFromMatch
 
 matchesFromModules :: ModuleMap [IdeDeclarationAnn] -> [Match IdeDeclarationAnn]
 matchesFromModules = Map.foldMapWithKey completionFromModule
@@ -66,19 +67,24 @@ instance FromJSON CompletionOptions where
   parseJSON = withObject "CompletionOptions" $ \o -> do
     maxResults <- o .:? "maxResults"
     groupReexports <- o .:? "groupReexports" .!= False
-    pure (CompletionOptions { coMaxResults = maxResults
-                            , coGroupReexports = groupReexports
-                            })
+    pure
+      ( CompletionOptions
+          { coMaxResults = maxResults
+          , coGroupReexports = groupReexports
+          }
+      )
 
 defaultCompletionOptions :: CompletionOptions
-defaultCompletionOptions = CompletionOptions { coMaxResults = Nothing, coGroupReexports = False }
+defaultCompletionOptions = CompletionOptions {coMaxResults = Nothing, coGroupReexports = False}
 
 applyCompletionOptions :: CompletionOptions -> [Match IdeDeclarationAnn] -> [(Match IdeDeclarationAnn, [P.ModuleName])]
-applyCompletionOptions co decls =  decls
-  & (if coGroupReexports co
-      then groupCompletionReexports
-      else map simpleExport)
-  & maybe identity take (coMaxResults co)
+applyCompletionOptions co decls =
+  decls
+    & ( if coGroupReexports co
+          then groupCompletionReexports
+          else map simpleExport
+      )
+    & maybe identity take (coMaxResults co)
 
 simpleExport :: Match a -> (Match a, [P.ModuleName])
 simpleExport match@(Match (moduleName, _)) = (match, [moduleName])
@@ -90,15 +96,19 @@ groupCompletionReexports initial =
     go (Match (moduleName, d@(IdeDeclarationAnn ann decl))) =
       let
         origin = fromMaybe moduleName (ann ^. annExportedFrom)
-      in
+       in
         Map.alter
-        (insertDeclaration moduleName origin d)
-        (Namespaced (namespaceForDeclaration decl)
-         (P.runModuleName origin <> "." <> identifierFromIdeDeclaration decl))
+          (insertDeclaration moduleName origin d)
+          ( Namespaced
+              (namespaceForDeclaration decl)
+              (P.runModuleName origin <> "." <> identifierFromIdeDeclaration decl)
+          )
     insertDeclaration moduleName origin d old = case old of
-      Nothing -> Just ( Match (origin, d & idaAnnotation . annExportedFrom .~ Nothing)
-                      , [moduleName]
-                      )
+      Nothing ->
+        Just
+          ( Match (origin, d & idaAnnotation . annExportedFrom .~ Nothing)
+          , [moduleName]
+          )
       Just x -> Just (second (moduleName :) x)
 
 data Namespaced a = Namespaced IdeNamespace a
@@ -137,5 +147,4 @@ completionFromMatch (Match (m, IdeDeclarationAnn ann decl), mns) =
             P.Infix -> "infix"
             P.Infixl -> "infixl"
             P.Infixr -> "infixr"
-      in T.unwords [asso, show p, r, "as", P.runOpName o]
-
+       in T.unwords [asso, show p, r, "as", P.runOpName o]

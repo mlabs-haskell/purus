@@ -1,59 +1,60 @@
 -- | Functions relating to skolemization used during typechecking
-module Language.PureScript.TypeChecker.Skolems
-  ( newSkolemConstant
-  , introduceSkolemScope
-  , newSkolemScope
-  , skolemize
-  , skolemizeTypesInValue
-  , skolemEscapeCheck
-  ) where
+module Language.PureScript.TypeChecker.Skolems (
+  newSkolemConstant,
+  introduceSkolemScope,
+  newSkolemScope,
+  skolemize,
+  skolemizeTypesInValue,
+  skolemEscapeCheck,
+) where
 
 import Prelude
 
-import Control.Monad.Error.Class (MonadError(..))
-import Control.Monad.State.Class (MonadState(..), gets, modify)
+import Control.Monad.Error.Class (MonadError (..))
+import Control.Monad.State.Class (MonadState (..), gets, modify)
 import Data.Foldable (traverse_)
-import Data.Functor.Identity (Identity(), runIdentity)
+import Data.Functor.Identity (Identity (), runIdentity)
 import Data.Set (Set, fromList, notMember)
 import Data.Text (Text)
-import Language.PureScript.AST (Binder(..), ErrorMessageHint(..), Expr(..), SourceAnn, SourceSpan, everythingWithContextOnValues, everywhereWithContextOnValuesM, nonEmptySpan)
+import Language.PureScript.AST (Binder (..), ErrorMessageHint (..), Expr (..), SourceAnn, SourceSpan, everythingWithContextOnValues, everywhereWithContextOnValuesM, nonEmptySpan)
 import Language.PureScript.Crash (internalError)
-import Language.PureScript.Errors (ErrorMessage(..), MultipleErrors, SimpleErrorMessage(..), positionedError, singleError)
+import Language.PureScript.Errors (ErrorMessage (..), MultipleErrors, SimpleErrorMessage (..), positionedError, singleError)
 import Language.PureScript.Traversals (defS)
-import Language.PureScript.TypeChecker.Monad (CheckState(..))
-import Language.PureScript.Types (SkolemScope(..), SourceType, Type(..), everythingOnTypes, everywhereOnTypesM, replaceTypeVars)
+import Language.PureScript.TypeChecker.Monad (CheckState (..))
+import Language.PureScript.Types (SkolemScope (..), SourceType, Type (..), everythingOnTypes, everywhereOnTypesM, replaceTypeVars)
 
 -- | Generate a new skolem constant
-newSkolemConstant :: MonadState CheckState m => m Int
+newSkolemConstant :: (MonadState CheckState m) => m Int
 newSkolemConstant = do
   s <- gets checkNextSkolem
-  modify $ \st -> st { checkNextSkolem = s + 1 }
+  modify $ \st -> st {checkNextSkolem = s + 1}
   return s
 
 -- | Introduce skolem scope at every occurrence of a ForAll
-introduceSkolemScope :: MonadState CheckState m => Type a -> m (Type a)
+introduceSkolemScope :: (MonadState CheckState m) => Type a -> m (Type a)
 introduceSkolemScope = everywhereOnTypesM go
   where
-  go (ForAll ann vis ident mbK ty Nothing) = ForAll ann vis ident mbK ty <$> (Just <$> newSkolemScope)
-  go other = return other
+    go (ForAll ann vis ident mbK ty Nothing) = ForAll ann vis ident mbK ty <$> (Just <$> newSkolemScope)
+    go other = return other
 
 -- | Generate a new skolem scope
-newSkolemScope :: MonadState CheckState m => m SkolemScope
+newSkolemScope :: (MonadState CheckState m) => m SkolemScope
 newSkolemScope = do
   s <- gets checkNextSkolemScope
-  modify $ \st -> st { checkNextSkolemScope = s + 1 }
+  modify $ \st -> st {checkNextSkolemScope = s + 1}
   return $ SkolemScope s
 
 -- | Skolemize a type variable by replacing its instances with fresh skolem constants
-skolemize :: a -> Text -> Maybe (Type a) -> Int -> SkolemScope -> Type a -> Type a
+skolemize :: a -> Text -> (Type a) -> Int -> SkolemScope -> Type a -> Type a
 skolemize ann ident mbK sko scope = replaceTypeVars ident (Skolem ann ident mbK sko scope)
 
--- | This function skolemizes type variables appearing in any type signatures or
--- 'DeferredDictionary' placeholders. These type variables are the only places
--- where scoped type variables can appear in expressions.
-skolemizeTypesInValue :: SourceAnn -> Text -> Maybe SourceType -> Int -> SkolemScope -> Expr -> Expr
+{- | This function skolemizes type variables appearing in any type signatures or
+'DeferredDictionary' placeholders. These type variables are the only places
+where scoped type variables can appear in expressions.
+-}
+skolemizeTypesInValue :: SourceAnn -> Text -> SourceType -> Int -> SkolemScope -> Expr -> Expr
 skolemizeTypesInValue ann ident mbK sko scope =
-    runIdentity . onExpr'
+  runIdentity . onExpr'
   where
     onExpr' :: Expr -> Identity Expr
     (_, onExpr', _, _, _, _) = everywhereWithContextOnValuesM [] defS onExpr onBinder defS defS defS
@@ -76,37 +77,39 @@ skolemizeTypesInValue ann ident mbK sko scope =
     peelTypeVars (ForAll _ _ i _ ty _) = i : peelTypeVars ty
     peelTypeVars _ = []
 
--- | Ensure skolem variables do not escape their scope
---
--- Every skolem variable is created when a 'ForAll' type is skolemized.
--- This determines the scope of that skolem variable, which is copied from
--- the 'SkolemScope' field of the 'ForAll' constructor.
---
--- This function traverses the tree top-down, and collects any 'SkolemScope's
--- introduced by 'ForAll's. If a 'Skolem' is encountered whose 'SkolemScope' is
--- not in the current list, then we have found an escaped skolem variable.
-skolemEscapeCheck :: MonadError MultipleErrors m => Expr -> m ()
+{- | Ensure skolem variables do not escape their scope
+
+Every skolem variable is created when a 'ForAll' type is skolemized.
+This determines the scope of that skolem variable, which is copied from
+the 'SkolemScope' field of the 'ForAll' constructor.
+
+This function traverses the tree top-down, and collects any 'SkolemScope's
+introduced by 'ForAll's. If a 'Skolem' is encountered whose 'SkolemScope' is
+not in the current list, then we have found an escaped skolem variable.
+-}
+skolemEscapeCheck :: (MonadError MultipleErrors m) => Expr -> m ()
 skolemEscapeCheck (TypedValue False _ _) = return ()
-skolemEscapeCheck expr@TypedValue{} =
-    traverse_ (throwError . singleError) (toSkolemErrors expr)
+skolemEscapeCheck expr@TypedValue {} =
+  traverse_ (throwError . singleError) (toSkolemErrors expr)
   where
     toSkolemErrors :: Expr -> [ErrorMessage]
     (_, toSkolemErrors, _, _, _) = everythingWithContextOnValues (mempty, Nothing) [] (<>) def go def def def
 
     def s _ = (s, [])
 
-    go :: (Set SkolemScope, Maybe SourceSpan)
-       -> Expr
-       -> ((Set SkolemScope, Maybe SourceSpan), [ErrorMessage])
+    go ::
+      (Set SkolemScope, Maybe SourceSpan) ->
+      Expr ->
+      ((Set SkolemScope, Maybe SourceSpan), [ErrorMessage])
     go (scopes, _) (PositionedValue ss _ _) = ((scopes, Just ss), [])
     go (scopes, ssUsed) val@(TypedValue _ _ ty) =
-        ( (allScopes, ssUsed)
-        , [ ErrorMessage (maybe id ((:) . positionedError) ssUsed [ ErrorInExpression val ]) $
-              EscapedSkolem name (nonEmptySpan ssBound) ty
-          | (ssBound, name, scope) <- collectSkolems ty
-          , notMember scope allScopes
-          ]
-        )
+      ( (allScopes, ssUsed)
+      , [ ErrorMessage (maybe id ((:) . positionedError) ssUsed [ErrorInExpression val]) $
+          EscapedSkolem name (nonEmptySpan ssBound) ty
+        | (ssBound, name, scope) <- collectSkolems ty
+        , notMember scope allScopes
+        ]
+      )
       where
         -- Any new skolem scopes introduced by universal quantifiers
         newScopes :: [SkolemScope]
@@ -119,13 +122,14 @@ skolemEscapeCheck expr@TypedValue{} =
         -- Collect any scopes appearing in quantifiers at the top level
         collectScopes :: SourceType -> [SkolemScope]
         collectScopes (ForAll _ _ _ _ t (Just sco)) = sco : collectScopes t
-        collectScopes ForAll{} = internalError "skolemEscapeCheck: No skolem scope"
+        collectScopes ForAll {} = internalError "skolemEscapeCheck: No skolem scope"
         collectScopes _ = []
 
         -- Collect any skolem variables appearing in a type
         collectSkolems :: SourceType -> [(SourceAnn, Text, SkolemScope)]
-        collectSkolems = everythingOnTypes (++) collect where
-          collect (Skolem ss name _ _ scope) = [(ss, name, scope)]
-          collect _ = []
+        collectSkolems = everythingOnTypes (++) collect
+          where
+            collect (Skolem ss name _ _ scope) = [(ss, name, scope)]
+            collect _ = []
     go scos _ = (scos, [])
 skolemEscapeCheck _ = internalError "skolemEscapeCheck: untyped value"

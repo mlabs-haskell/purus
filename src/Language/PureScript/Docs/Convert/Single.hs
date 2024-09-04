@@ -1,7 +1,7 @@
-module Language.PureScript.Docs.Convert.Single
-  ( convertSingleModule
-  , convertComments
-  ) where
+module Language.PureScript.Docs.Convert.Single (
+  convertSingleModule,
+  convertComments,
+) where
 
 import Protolude hiding (moduleName)
 
@@ -9,7 +9,7 @@ import Control.Category ((>>>))
 
 import Data.Text qualified as T
 
-import Language.PureScript.Docs.Types (ChildDeclaration(..), ChildDeclarationInfo(..), Declaration(..), DeclarationInfo(..), KindInfo(..), Module(..), Type', convertFundepsToStrings, isType, isTypeClass)
+import Language.PureScript.Docs.Types (ChildDeclaration (..), ChildDeclarationInfo (..), Declaration (..), DeclarationInfo (..), KindInfo (..), Module (..), Type', convertFundepsToStrings, isType, isTypeClass)
 
 import Language.PureScript.AST qualified as P
 import Language.PureScript.Comments qualified as P
@@ -18,59 +18,61 @@ import Language.PureScript.Names qualified as P
 import Language.PureScript.Roles qualified as P
 import Language.PureScript.Types qualified as P
 
--- |
--- Convert a single Module, but ignore re-exports; any re-exported types or
--- values will not appear in the result.
---
+{- |
+Convert a single Module, but ignore re-exports; any re-exported types or
+values will not appear in the result.
+-}
 convertSingleModule :: P.Module -> Module
-convertSingleModule m@(P.Module _ coms moduleName  _ _) =
+convertSingleModule m@(P.Module _ coms moduleName _ _) =
   Module moduleName comments (declarations m) []
   where
-  comments = convertComments coms
-  declarations =
-    P.exportedDeclarations
-    >>> mapMaybe (\d -> getDeclarationTitle d >>= convertDeclaration d)
-    >>> augmentDeclarations
+    comments = convertComments coms
+    declarations =
+      P.exportedDeclarations
+        >>> mapMaybe (\d -> getDeclarationTitle d >>= convertDeclaration d)
+        >>> augmentDeclarations
 
 -- | Different declarations we can augment
 data AugmentType
-  = AugmentClass
-  -- ^ Augment documentation for a type class
-  | AugmentType
-  -- ^ Augment documentation for a type constructor
+  = -- | Augment documentation for a type class
+    AugmentClass
+  | -- | Augment documentation for a type constructor
+    AugmentType
 
--- | The data type for an intermediate stage which we go through during
--- converting.
---
--- In the first pass, we take all top level declarations in the module, and
--- collect other information which will later be used to augment the top level
--- declarations. These two situation correspond to the Right and Left
--- constructors, respectively.
---
--- In the second pass, we go over all of the Left values and augment the
--- relevant declarations, leaving only the augmented Right values.
---
--- Note that in the Left case, we provide a [Text] as well as augment
--- information. The [Text] value should be a list of titles of declarations
--- that the augmentation should apply to. For example, for a type instance
--- declaration, that would be any types or type classes mentioned in the
--- instance. For a fixity declaration, it would be just the relevant operator's
--- name.
-type IntermediateDeclaration
-  = Either ([(Text, AugmentType)], DeclarationAugment) Declaration
+{- | The data type for an intermediate stage which we go through during
+converting.
 
--- | Some data which will be used to augment a Declaration in the
--- output.
---
--- The AugmentChild constructor allows us to move all children under their
--- respective parents. It is only necessary for type instance declarations,
--- since they appear at the top level in the AST, and since they might need to
--- appear as children in two places (for example, if a data type defined in a
--- module is an instance of a type class also defined in that module).
---
--- The AugmentKindSig constructor allows us to add a kind signature
--- to its corresponding declaration. Comments for both declarations
--- are also merged together.
+In the first pass, we take all top level declarations in the module, and
+collect other information which will later be used to augment the top level
+declarations. These two situation correspond to the Right and Left
+constructors, respectively.
+
+In the second pass, we go over all of the Left values and augment the
+relevant declarations, leaving only the augmented Right values.
+
+Note that in the Left case, we provide a [Text] as well as augment
+information. The [Text] value should be a list of titles of declarations
+that the augmentation should apply to. For example, for a type instance
+declaration, that would be any types or type classes mentioned in the
+instance. For a fixity declaration, it would be just the relevant operator's
+name.
+-}
+type IntermediateDeclaration =
+  Either ([(Text, AugmentType)], DeclarationAugment) Declaration
+
+{- | Some data which will be used to augment a Declaration in the
+output.
+
+The AugmentChild constructor allows us to move all children under their
+respective parents. It is only necessary for type instance declarations,
+since they appear at the top level in the AST, and since they might need to
+appear as children in two places (for example, if a data type defined in a
+module is an instance of a type class also defined in that module).
+
+The AugmentKindSig constructor allows us to add a kind signature
+to its corresponding declaration. Comments for both declarations
+are also merged together.
+-}
 data DeclarationAugment
   = AugmentChild ChildDeclaration
   | AugmentKindSig KindSignatureInfo
@@ -82,50 +84,54 @@ data KindSignatureInfo = KindSignatureInfo
   , ksiKind :: Type'
   }
 
--- | Augment top-level declarations; the second pass. See the comments under
--- the type synonym IntermediateDeclaration for more information.
+{- | Augment top-level declarations; the second pass. See the comments under
+the type synonym IntermediateDeclaration for more information.
+-}
 augmentDeclarations :: [IntermediateDeclaration] -> [Declaration]
 augmentDeclarations (partitionEithers -> (augments, toplevels)) =
   foldl' go toplevels augments
   where
-  go ds (parentTitles, a) =
-    map (\d ->
-      if any (matches d) parentTitles
-        then augmentWith a d
-        else d) ds
+    go ds (parentTitles, a) =
+      map
+        ( \d ->
+            if any (matches d) parentTitles
+              then augmentWith a d
+              else d
+        )
+        ds
 
-  matches d (name, AugmentType) = isType d && declTitle d == name
-  matches d (name, AugmentClass) = isTypeClass d && declTitle d == name
+    matches d (name, AugmentType) = isType d && declTitle d == name
+    matches d (name, AugmentClass) = isTypeClass d && declTitle d == name
 
-  augmentWith (AugmentChild child) d =
-    d { declChildren = declChildren d ++ [child] }
-  augmentWith (AugmentKindSig KindSignatureInfo{..}) d =
-    d { declComments = mergeComments ksiComments $ declComments d
-      , declKind = Just $ KindInfo { kiKeyword = ksiKeyword, kiKind = ksiKind }
-      }
-  augmentWith (AugmentRole comms roles) d =
-    d { declComments = mergeComments (declComments d) comms
-      , declInfo = insertRoles
-      }
-    where
-      insertRoles = case declInfo d of
-        DataDeclaration dataDeclType args [] ->
-          DataDeclaration dataDeclType args roles
-        DataDeclaration _ _ _ ->
-          P.internalError "augmentWith: could not add a second role declaration to a data declaration"
+    augmentWith (AugmentChild child) d =
+      d {declChildren = declChildren d ++ [child]}
+    augmentWith (AugmentKindSig KindSignatureInfo {..}) d =
+      d
+        { declComments = mergeComments ksiComments $ declComments d
+        , declKind = Just $ KindInfo {kiKeyword = ksiKeyword, kiKind = ksiKind}
+        }
+    augmentWith (AugmentRole comms roles) d =
+      d
+        { declComments = mergeComments (declComments d) comms
+        , declInfo = insertRoles
+        }
+      where
+        insertRoles = case declInfo d of
+          DataDeclaration dataDeclType args [] ->
+            DataDeclaration dataDeclType args roles
+          DataDeclaration _ _ _ ->
+            P.internalError "augmentWith: could not add a second role declaration to a data declaration"
+          ExternDataDeclaration kind [] ->
+            ExternDataDeclaration kind roles
+          ExternDataDeclaration _ _ ->
+            P.internalError "augmentWith: could not add a second role declaration to an FFI declaration"
+          _ -> P.internalError "augmentWith: could not add role to declaration"
 
-        ExternDataDeclaration kind [] ->
-          ExternDataDeclaration kind roles
-        ExternDataDeclaration _ _ ->
-          P.internalError "augmentWith: could not add a second role declaration to an FFI declaration"
-
-        _ -> P.internalError "augmentWith: could not add role to declaration"
-
-  mergeComments :: Maybe Text -> Maybe Text -> Maybe Text
-  mergeComments Nothing bot = bot
-  mergeComments top Nothing = top
-  mergeComments (Just topComs) (Just bottomComs) =
-    Just $ topComs <> "\n" <> bottomComs
+    mergeComments :: Maybe Text -> Maybe Text -> Maybe Text
+    mergeComments Nothing bot = bot
+    mergeComments top Nothing = top
+    mergeComments (Just topComs) (Just bottomComs) =
+      Just $ topComs <> "\n" <> bottomComs
 
 getDeclarationTitle :: P.Declaration -> Maybe Text
 getDeclarationTitle (P.ValueDeclaration vd) = Just (P.showIdent (P.valdeclIdent vd))
@@ -138,19 +144,20 @@ getDeclarationTitle (P.TypeInstanceDeclaration _ _ _ _ name _ _ _ _) = Just $ ei
 getDeclarationTitle (P.TypeFixityDeclaration _ _ _ op) = Just ("type " <> P.showOp op)
 getDeclarationTitle (P.ValueFixityDeclaration _ _ _ op) = Just (P.showOp op)
 getDeclarationTitle (P.KindDeclaration _ _ n _) = Just (P.runProperName n)
-getDeclarationTitle (P.RoleDeclaration P.RoleDeclarationData{..}) = Just (P.runProperName rdeclIdent)
+getDeclarationTitle (P.RoleDeclaration P.RoleDeclarationData {..}) = Just (P.runProperName rdeclIdent)
 getDeclarationTitle _ = Nothing
 
 -- | Create a basic Declaration value.
 mkDeclaration :: P.SourceAnn -> Text -> DeclarationInfo -> Declaration
 mkDeclaration (ss, com) title info =
-  Declaration { declTitle      = title
-              , declComments   = convertComments com
-              , declSourceSpan = Just ss -- TODO: make this non-optional when we next break the format
-              , declChildren   = []
-              , declInfo       = info
-              , declKind       = Nothing -- kind sigs are added in augment pass
-              }
+  Declaration
+    { declTitle = title
+    , declComments = convertComments com
+    , declSourceSpan = Just ss -- TODO: make this non-optional when we next break the format
+    , declChildren = []
+    , declInfo = info
+    , declKind = Nothing -- kind sigs are added in augment pass
+    }
 
 basicDeclaration :: P.SourceAnn -> Text -> DeclarationInfo -> Maybe IntermediateDeclaration
 basicDeclaration sa title = Just . Right . mkDeclaration sa title
@@ -165,40 +172,40 @@ convertDeclaration (P.ValueDecl sa _ _ _ _) title =
 convertDeclaration (P.ExternDeclaration sa _ ty) title =
   basicDeclaration sa title (ValueDeclaration (ty $> ()))
 convertDeclaration (P.DataDeclaration sa dtype _ args ctors) title =
-  Just (Right (mkDeclaration sa title info) { declChildren = children })
+  Just (Right (mkDeclaration sa title info) {declChildren = children})
   where
-  info = DataDeclaration dtype (fmap (fmap (fmap ($> ()))) args) []
-  children = map convertCtor ctors
-  convertCtor :: P.DataConstructorDeclaration -> ChildDeclaration
-  convertCtor P.DataConstructorDeclaration{..} =
-    let (sourceSpan, comments) = dataCtorAnn
-    in ChildDeclaration (P.runProperName dataCtorName) (convertComments comments) (Just sourceSpan) (ChildDataConstructor (fmap (($> ()) . snd) dataCtorFields))
+    info = DataDeclaration dtype (fmap (fmap ($> ())) args) []
+    children = map convertCtor ctors
+    convertCtor :: P.DataConstructorDeclaration -> ChildDeclaration
+    convertCtor P.DataConstructorDeclaration {..} =
+      let (sourceSpan, comments) = dataCtorAnn
+       in ChildDeclaration (P.runProperName dataCtorName) (convertComments comments) (Just sourceSpan) (ChildDataConstructor (fmap (($> ()) . snd) dataCtorFields))
 convertDeclaration (P.ExternDataDeclaration sa _ kind') title =
   basicDeclaration sa title (ExternDataDeclaration (kind' $> ()) [])
 convertDeclaration (P.TypeSynonymDeclaration sa _ args ty) title =
-  basicDeclaration sa title (TypeSynonymDeclaration (fmap (fmap (fmap ($> ()))) args) (ty $> ()))
+  basicDeclaration sa title (TypeSynonymDeclaration (fmap (fmap ($> ())) args) (ty $> ()))
 convertDeclaration (P.TypeClassDeclaration sa _ args implies fundeps ds) title =
-  Just (Right (mkDeclaration sa title info) { declChildren = children })
+  Just (Right (mkDeclaration sa title info) {declChildren = children})
   where
-  args' = fmap (fmap (fmap ($> ()))) args
-  info = TypeClassDeclaration args' (fmap ($> ()) implies) (convertFundepsToStrings args' fundeps)
-  children = map convertClassMember ds
-  convertClassMember (P.TypeDeclaration (P.TypeDeclarationData (ss, com) ident' ty)) =
-    ChildDeclaration (P.showIdent ident') (convertComments com) (Just ss) (ChildTypeClassMember (ty $> ()))
-  convertClassMember _ =
-    P.internalError "convertDeclaration: Invalid argument to convertClassMember."
+    args' = fmap (fmap ($> ())) args
+    info = TypeClassDeclaration args' (fmap ($> ()) implies) (convertFundepsToStrings args' fundeps)
+    children = map convertClassMember ds
+    convertClassMember (P.TypeDeclaration (P.TypeDeclarationData (ss, com) ident' ty)) =
+      ChildDeclaration (P.showIdent ident') (convertComments com) (Just ss) (ChildTypeClassMember (ty $> ()))
+    convertClassMember _ =
+      P.internalError "convertDeclaration: Invalid argument to convertClassMember."
 convertDeclaration (P.TypeInstanceDeclaration (ss, com) _ _ _ _ constraints className tys _) title =
-  Just (Left ((classNameString, AugmentClass) : map (, AugmentType) typeNameStrings, AugmentChild childDecl))
+  Just (Left ((classNameString, AugmentClass) : map (,AugmentType) typeNameStrings, AugmentChild childDecl))
   where
-  classNameString = unQual className
-  typeNameStrings = ordNub (concatMap (P.everythingOnTypes (++) extractProperNames) tys)
-  unQual x = let (P.Qualified _ y) = x in P.runProperName y
+    classNameString = unQual className
+    typeNameStrings = ordNub (concatMap (P.everythingOnTypes (++) extractProperNames) tys)
+    unQual x = let (P.Qualified _ y) = x in P.runProperName y
 
-  extractProperNames (P.TypeConstructor _ n) = [unQual n]
-  extractProperNames _ = []
+    extractProperNames (P.TypeConstructor _ n) = [unQual n]
+    extractProperNames _ = []
 
-  childDecl = ChildDeclaration title (convertComments com) (Just ss) (ChildInstance (fmap ($> ()) constraints) (classApp $> ()))
-  classApp = foldl' P.srcTypeApp (P.srcTypeConstructor (fmap P.coerceProperName className)) tys
+    childDecl = ChildDeclaration title (convertComments com) (Just ss) (ChildInstance (fmap ($> ()) constraints) (classApp $> ()))
+    classApp = foldl' P.srcTypeApp (P.srcTypeConstructor (fmap P.coerceProperName className)) tys
 convertDeclaration (P.ValueFixityDeclaration sa fixity (P.Qualified mn alias) _) title =
   Just . Right $ mkDeclaration sa title (AliasDeclaration fixity (P.Qualified mn (Right alias)))
 convertDeclaration (P.TypeFixityDeclaration sa fixity (P.Qualified mn alias) _) title =
@@ -207,12 +214,11 @@ convertDeclaration (P.KindDeclaration sa keyword _ kind) title =
   Just $ Left ([(title, AugmentType), (title, AugmentClass)], AugmentKindSig ksi)
   where
     comms = convertComments $ snd sa
-    ksi = KindSignatureInfo { ksiComments = comms, ksiKeyword = keyword, ksiKind = kind $> () }
-convertDeclaration (P.RoleDeclaration P.RoleDeclarationData{..}) title =
+    ksi = KindSignatureInfo {ksiComments = comms, ksiKeyword = keyword, ksiKind = kind $> ()}
+convertDeclaration (P.RoleDeclaration P.RoleDeclarationData {..}) title =
   Just $ Left ([(title, AugmentType)], AugmentRole comms rdeclRoles)
   where
     comms = convertComments $ snd rdeclSourceAnn
-
 convertDeclaration _ _ = Nothing
 
 convertComments :: [P.Comment] -> Maybe Text
@@ -221,15 +227,14 @@ convertComments cs = do
   let docs = mapMaybe stripPipe raw
   guard (not (null docs))
   pure (T.unlines docs)
-
   where
-  toLines (P.LineComment s) = [s]
-  toLines (P.BlockComment s) = T.lines s
+    toLines (P.LineComment s) = [s]
+    toLines (P.BlockComment s) = T.lines s
 
-  stripPipe =
-    T.dropWhile (== ' ')
-    >>> T.stripPrefix "|"
-    >>> fmap (dropPrefix " ")
+    stripPipe =
+      T.dropWhile (== ' ')
+        >>> T.stripPrefix "|"
+        >>> fmap (dropPrefix " ")
 
-  dropPrefix prefix str =
-    fromMaybe str (T.stripPrefix prefix str)
+    dropPrefix prefix str =
+      fromMaybe str (T.stripPrefix prefix str)

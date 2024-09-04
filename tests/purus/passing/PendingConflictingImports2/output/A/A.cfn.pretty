@@ -1,0 +1,28 @@
+A (tests/purus/passing/PendingConflictingImports2/A.purs)
+
+Imported Modules: 
+------------------------------
+  Builtin,
+  Prim
+
+Exports: 
+------------------------------
+  thing
+
+Re-Exports: 
+------------------------------
+  
+
+Foreign: 
+------------------------------
+  
+
+Datatypes: 
+------------------------------
+
+
+
+Declarations: 
+------------------------------
+thing :: Prim.Int
+thing = (1: Prim.Int)

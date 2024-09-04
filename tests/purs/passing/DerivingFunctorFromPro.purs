@@ -9,7 +9,7 @@ import Prelude
 import Effect.Console (log)
 
 data Test a
-  = Test1 ((Array a -> Int) -> Int)
+  = Test1 ((List a -> Int) -> Int)
   | Test2 { f :: ({ a :: a } -> Int) -> Int }
 derive instance Functor Test
 

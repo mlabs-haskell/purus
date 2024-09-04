@@ -1,21 +1,21 @@
-module Language.PureScript.CST.Errors
-  ( ParserErrorInfo(..)
-  , ParserErrorType(..)
-  , ParserWarningType(..)
-  , ParserError
-  , ParserWarning
-  , prettyPrintError
-  , prettyPrintErrorMessage
-  , prettyPrintWarningMessage
-  ) where
+module Language.PureScript.CST.Errors (
+  ParserErrorInfo (..),
+  ParserErrorType (..),
+  ParserWarningType (..),
+  ParserError,
+  ParserWarning,
+  prettyPrintError,
+  prettyPrintErrorMessage,
+  prettyPrintWarningMessage,
+) where
 
 import Prelude
 
-import Data.Text qualified as Text
 import Data.Char (isSpace, toUpper)
+import Data.Text qualified as Text
 import Language.PureScript.CST.Layout (LayoutStack)
 import Language.PureScript.CST.Print (printToken)
-import Language.PureScript.CST.Types (SourcePos(..), SourceRange(..), SourceToken(..), Token(..))
+import Language.PureScript.CST.Types (SourcePos (..), SourceRange (..), SourceToken (..), Token (..))
 import Text.Printf (printf)
 
 data ParserErrorType
@@ -71,18 +71,19 @@ data ParserErrorInfo a = ParserErrorInfo
   , errToks :: [SourceToken]
   , errStack :: LayoutStack
   , errType :: a
-  } deriving (Show, Eq)
+  }
+  deriving (Show, Eq)
 
 type ParserError = ParserErrorInfo ParserErrorType
 type ParserWarning = ParserErrorInfo ParserWarningType
 
 prettyPrintError :: ParserError -> String
-prettyPrintError pe@ParserErrorInfo { errRange } =
+prettyPrintError pe@ParserErrorInfo {errRange} =
   prettyPrintErrorMessage pe <> " at " <> errPos
   where
-  errPos = case errRange of
-    SourceRange (SourcePos line col) _ ->
-      "line " <> show line <> ", column " <> show col
+    errPos = case errRange of
+      SourceRange (SourcePos line col) _ ->
+        "line " <> show line <> ", column " <> show col
 
 prettyPrintErrorMessage :: ParserError -> String
 prettyPrintErrorMessage ParserErrorInfo {..} = case errType of
@@ -126,8 +127,9 @@ prettyPrintErrorMessage ParserErrorInfo {..} = case errType of
     "Unexpected quoted label in record pun, perhaps due to a missing ':'"
   ErrEof ->
     "Unexpected end of input"
-  ErrLexeme (Just (hd : _)) _ | isSpace hd ->
-    "Illegal whitespace character " <> displayCodePoint hd
+  ErrLexeme (Just (hd : _)) _
+    | isSpace hd ->
+        "Illegal whitespace character " <> displayCodePoint hd
   ErrLexeme (Just a) _ ->
     "Unexpected " <> a
   ErrLineFeedInString ->
@@ -167,22 +169,21 @@ prettyPrintErrorMessage ParserErrorInfo {..} = case errType of
     basicError
   ErrCustom err ->
     err
-
   where
-  basicError = case errToks of
-    tok : _ -> basicTokError (tokValue tok)
-    [] -> "Unexpected input"
+    basicError = case errToks of
+      tok : _ -> basicTokError (tokValue tok)
+      [] -> "Unexpected input"
 
-  basicTokError = \case
-    TokLayoutStart -> "Unexpected or mismatched indentation"
-    TokLayoutSep   -> "Unexpected or mismatched indentation"
-    TokLayoutEnd   -> "Unexpected or mismatched indentation"
-    TokEof         -> "Unexpected end of input"
-    tok            -> "Unexpected token '" <> Text.unpack (printToken tok) <> "'"
+    basicTokError = \case
+      TokLayoutStart -> "Unexpected or mismatched indentation"
+      TokLayoutSep -> "Unexpected or mismatched indentation"
+      TokLayoutEnd -> "Unexpected or mismatched indentation"
+      TokEof -> "Unexpected end of input"
+      tok -> "Unexpected token '" <> Text.unpack (printToken tok) <> "'"
 
-  displayCodePoint :: Char -> String
-  displayCodePoint x =
-    "U+" <> map toUpper (printf "%0.4x" (fromEnum x))
+    displayCodePoint :: Char -> String
+    displayCodePoint x =
+      "U+" <> map toUpper (printf "%0.4x" (fromEnum x))
 
 prettyPrintWarningMessage :: ParserWarning -> String
 prettyPrintWarningMessage ParserErrorInfo {..} = case errType of

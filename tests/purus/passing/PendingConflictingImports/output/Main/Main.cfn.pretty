@@ -1,0 +1,30 @@
+Main (tests/purus/passing/PendingConflictingImports/PendingConflictingImports.purs)
+
+Imported Modules: 
+------------------------------
+  A,
+  B,
+  Builtin,
+  Prim
+
+Exports: 
+------------------------------
+  main
+
+Re-Exports: 
+------------------------------
+  
+
+Foreign: 
+------------------------------
+  
+
+Datatypes: 
+------------------------------
+
+
+
+Declarations: 
+------------------------------
+main :: Prim.String
+main = ("Done": Prim.String)

@@ -10,10 +10,10 @@ import Effect.Console (log)
 data Test f a b
   = Test0
   | Test1 (Predicate a) b
-  | Test2 Int (forall a. Array a -> Array a)
+  | Test2 Int (forall a. List a -> List a)
   | Test3 Int (f a b) (f a Int) (f Int b)
-  | Test4 (Array (a -> Int)) (Tuple b Int)
-  | Test5 { nested :: Array { x :: f { a :: a } { b :: b } } }
+  | Test4 (List (a -> Int)) (Tuple b Int)
+  | Test5 { nested :: List { x :: f { a :: a } { b :: b } } }
 derive instance Profunctor f => Profunctor (Test f)
 
 main = log "Done"

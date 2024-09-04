@@ -1,11 +1,11 @@
-module Language.PureScript.Ide.Filter.Declaration
-       ( DeclarationType(..)
-       ) where
+module Language.PureScript.Ide.Filter.Declaration (
+  DeclarationType (..),
+) where
 
-import Protolude                     hiding (isPrefixOf)
+import Protolude hiding (isPrefixOf)
 
 import Control.Monad.Fail (fail)
-import Data.Aeson (FromJSON(..), ToJSON(..), withText)
+import Data.Aeson (FromJSON (..), ToJSON (..), withText)
 
 data DeclarationType
   = Value
@@ -20,23 +20,24 @@ data DeclarationType
 
 instance FromJSON DeclarationType where
   parseJSON = withText "Declaration type tag" $ \case
-    "value"             -> pure Value
-    "type"              -> pure Type
-    "synonym"           -> pure Synonym
-    "dataconstructor"   -> pure DataConstructor
-    "typeclass"         -> pure TypeClass
-    "valueoperator"     -> pure ValueOperator
-    "typeoperator"      -> pure TypeOperator
-    "module"            -> pure Module
-    s                   -> fail ("Unknown declaration type: " <> show s)
+    "value" -> pure Value
+    "type" -> pure Type
+    "synonym" -> pure Synonym
+    "dataconstructor" -> pure DataConstructor
+    "typeclass" -> pure TypeClass
+    "valueoperator" -> pure ValueOperator
+    "typeoperator" -> pure TypeOperator
+    "module" -> pure Module
+    s -> fail ("Unknown declaration type: " <> show s)
 
 instance ToJSON DeclarationType where
-  toJSON = toJSON . \case
-    Value           -> "value" :: Text
-    Type            -> "type"
-    Synonym         -> "synonym"
-    DataConstructor -> "dataconstructor"
-    TypeClass       -> "typeclass"
-    ValueOperator   -> "valueoperator"
-    TypeOperator    -> "typeoperator"
-    Module          -> "module"
+  toJSON =
+    toJSON . \case
+      Value -> "value" :: Text
+      Type -> "type"
+      Synonym -> "synonym"
+      DataConstructor -> "dataconstructor"
+      TypeClass -> "typeclass"
+      ValueOperator -> "valueoperator"
+      TypeOperator -> "typeoperator"
+      Module -> "module"

@@ -16,7 +16,7 @@ h = \o -> case o of
   a@[_,_,_] -> a
   _ -> []
 
-isDesc :: Array Number -> Boolean
+isDesc :: List Number -> Boolean
 isDesc [x, y] | x > y = true
 isDesc _ = false
 

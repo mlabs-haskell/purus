@@ -8,20 +8,22 @@
 -- Maintainer  : Christoph Hegemann <christoph.hegemann1337@gmail.com>
 -- Stability   : experimental
 --
--- |
--- Casesplitting and adding function clauses
+
 -----------------------------------------------------------------------------
 
-module Language.PureScript.Ide.CaseSplit
-       ( WildcardAnnotations()
-       , explicitAnnotations
-       , noAnnotations
-       , makePattern
-       , addClause
-       , caseSplit
-       ) where
+{- |
+Casesplitting and adding function clauses
+-}
+module Language.PureScript.Ide.CaseSplit (
+  WildcardAnnotations (),
+  explicitAnnotations,
+  noAnnotations,
+  makePattern,
+  addClause,
+  caseSplit,
+) where
 
-import Protolude                     hiding (Constructor)
+import Protolude hiding (Constructor)
 
 import Data.List.NonEmpty qualified as NE
 import Data.Map qualified as M
@@ -29,8 +31,8 @@ import Data.Text qualified as T
 import Language.PureScript qualified as P
 import Language.PureScript.CST qualified as CST
 
-import Language.PureScript.Externs (ExternsDeclaration(..), ExternsFile(..))
-import Language.PureScript.Ide.Error (IdeError(..))
+import Language.PureScript.Externs (ExternsDeclaration (..), ExternsFile (..))
+import Language.PureScript.Ide.Error (IdeError (..))
 import Language.PureScript.Ide.State (cachedRebuild, getExternFiles)
 import Language.PureScript.Ide.Types (Ide)
 
@@ -44,12 +46,12 @@ explicitAnnotations = WildcardAnnotations True
 noAnnotations :: WildcardAnnotations
 noAnnotations = WildcardAnnotations False
 
-type DataType = ([(Text, Maybe P.SourceType, P.Role)], [(P.ProperName 'P.ConstructorName, [P.SourceType])])
+type DataType = ([(Text, P.SourceType, P.Role)], [(P.ProperName 'P.ConstructorName, [P.SourceType])])
 
-caseSplit
-  :: (Ide m, MonadError IdeError m)
-  => Text
-  -> m [Constructor]
+caseSplit ::
+  (Ide m, MonadError IdeError m) =>
+  Text ->
+  m [Constructor]
 caseSplit q = do
   type' <- parseType' q
   (tc, args) <- splitTypeConstructor type'
@@ -58,10 +60,10 @@ caseSplit q = do
   let appliedCtors = map (second (map applyTypeVars)) ctors
   pure appliedCtors
 
-findTypeDeclaration
-  :: (Ide m, MonadError IdeError m)
-  => P.ProperName 'P.TypeName
-  -> m DataType
+findTypeDeclaration ::
+  (Ide m, MonadError IdeError m) =>
+  P.ProperName 'P.TypeName ->
+  m DataType
 findTypeDeclaration q = do
   efs <- getExternFiles
   efs' <- maybe efs (flip (uncurry M.insert) efs) <$> cachedRebuild
@@ -70,18 +72,25 @@ findTypeDeclaration q = do
     Just mn -> pure mn
     Nothing -> throwError (GeneralError "Not Found")
 
-findTypeDeclaration'
-  :: P.ProperName 'P.TypeName
-  -> ExternsFile
-  -> First DataType
-findTypeDeclaration' t ExternsFile{..} =
-  First $ head $ mapMaybe (\case
+findTypeDeclaration' ::
+  P.ProperName 'P.TypeName ->
+  ExternsFile ->
+  First DataType
+findTypeDeclaration' t ExternsFile {..} =
+  First $
+    head $
+      mapMaybe
+        ( \case
             EDType tn _ (P.DataType _ typeVars ctors)
               | tn == t -> Just (typeVars, ctors)
-            _ -> Nothing) efDeclarations
+            _ -> Nothing
+        )
+        efDeclarations
 
-splitTypeConstructor :: (MonadError IdeError m) =>
-                        P.Type a -> m (P.ProperName 'P.TypeName, [P.Type a])
+splitTypeConstructor ::
+  (MonadError IdeError m) =>
+  P.Type a ->
+  m (P.ProperName 'P.TypeName, [P.Type a])
 splitTypeConstructor = go []
   where
     go acc (P.TypeApp _ ty arg) = go (arg : acc) ty
@@ -91,8 +100,11 @@ splitTypeConstructor = go []
 prettyCtor :: WildcardAnnotations -> Constructor -> Text
 prettyCtor _ (ctorName, []) = P.runProperName ctorName
 prettyCtor wsa (ctorName, ctorArgs) =
-  "(" <> P.runProperName ctorName <> " "
-  <> T.unwords (map (prettyPrintWildcard wsa) ctorArgs) <> ")"
+  "("
+    <> P.runProperName ctorName
+    <> " "
+    <> T.unwords (map (prettyPrintWildcard wsa) ctorArgs)
+    <> ")"
 
 prettyPrintWildcard :: WildcardAnnotations -> P.Type a -> Text
 prettyPrintWildcard (WildcardAnnotations True) = prettyWildcard
@@ -102,12 +114,18 @@ prettyWildcard :: P.Type a -> Text
 prettyWildcard t = "( _ :: " <> T.strip (T.pack (P.prettyPrintTypeAtom maxBound t)) <> ")"
 
 -- | Constructs Patterns to insert into a sourcefile
-makePattern :: Text -- ^ Current line
-            -> Int -- ^ Begin of the split
-            -> Int -- ^ End of the split
-            -> WildcardAnnotations -- ^ Whether to explicitly type the splits
-            -> [Constructor] -- ^ Constructors to split
-            -> [Text]
+makePattern ::
+  -- | Current line
+  Text ->
+  -- | Begin of the split
+  Int ->
+  -- | End of the split
+  Int ->
+  -- | Whether to explicitly type the splits
+  WildcardAnnotations ->
+  -- | Constructors to split
+  [Constructor] ->
+  [Text]
 makePattern t x y wsa = makePattern' (T.take x t) (T.drop y t)
   where
     makePattern' lhs rhs = map (\ctor -> lhs <> prettyCtor wsa ctor <> rhs)
@@ -116,32 +134,45 @@ addClause :: (MonadError IdeError m) => Text -> WildcardAnnotations -> m [Text]
 addClause s wca = do
   (fName, fType) <- parseTypeDeclaration' s
   let args = splitFunctionType fType
-      template = P.runIdent fName <> " " <>
-        T.unwords (map (prettyPrintWildcard wca) args) <>
-        " = ?" <> (T.strip . P.runIdent $ fName)
+      template =
+        P.runIdent fName
+          <> " "
+          <> T.unwords (map (prettyPrintWildcard wca) args)
+          <> " = ?"
+          <> (T.strip . P.runIdent $ fName)
   pure [s, template]
 
-parseType' :: (MonadError IdeError m) =>
-              Text -> m P.SourceType
+parseType' ::
+  (MonadError IdeError m) =>
+  Text ->
+  m P.SourceType
 parseType' s =
   case CST.runTokenParser CST.parseType $ CST.lex s of
-    Right type' -> pure $ CST.convertType "<purs-ide>" $ snd type'
+    Right type' -> pure $ CST.runConvert . CST.convertType "<purs-ide>" $ snd type'
     Left err ->
-      throwError (GeneralError ("Parsing the splittype failed with:"
-                                <> show err))
+      throwError
+        ( GeneralError
+            ( "Parsing the splittype failed with:"
+                <> show err
+            )
+        )
 
 parseTypeDeclaration' :: (MonadError IdeError m) => Text -> m (P.Ident, P.SourceType)
 parseTypeDeclaration' s =
-  let x = fmap (CST.convertDeclaration "<purs-ide>" . snd)
-        $ CST.runTokenParser CST.parseDecl
-        $ CST.lex s
-  in
-    case x of
-      Right [P.TypeDeclaration td] -> pure (P.unwrapTypeDeclaration td)
-      Right _ -> throwError (GeneralError "Found a non-type-declaration")
-      Left errs ->
-        throwError (GeneralError ("Parsing the type signature failed with: "
-                                   <> toS (CST.prettyPrintErrorMessage $ NE.head errs)))
+  let x =
+        fmap (CST.runConvert . CST.convertDeclaration "<purs-ide>" . snd) $
+          CST.runTokenParser CST.parseDecl $
+            CST.lex s
+   in case x of
+        Right [P.TypeDeclaration td] -> pure (P.unwrapTypeDeclaration td)
+        Right _ -> throwError (GeneralError "Found a non-type-declaration")
+        Left errs ->
+          throwError
+            ( GeneralError
+                ( "Parsing the type signature failed with: "
+                    <> toS (CST.prettyPrintErrorMessage $ NE.head errs)
+                )
+            )
 
 splitFunctionType :: P.Type a -> [P.Type a]
 splitFunctionType t = fromMaybe [] arguments
@@ -151,5 +182,5 @@ splitFunctionType t = fromMaybe [] arguments
     splitType' (P.ForAll _ _ _ _ t' _) = splitType' t'
     splitType' (P.ConstrainedType _ _ t') = splitType' t'
     splitType' (P.TypeApp _ (P.TypeApp _ t' lhs) rhs)
-          | P.eqType t' P.tyFunction = lhs : splitType' rhs
+      | P.eqType t' P.tyFunction = lhs : splitType' rhs
     splitType' t' = [t']

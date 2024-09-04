@@ -12,5 +12,5 @@ memptyB = B l r where
   r _ = mempty
 
 main = do
-  logShow $ case (memptyB :: B (Int -> Array Unit)) of B l r -> l 0 == r 0
+  logShow $ case (memptyB :: B (Int -> List Unit)) of B l r -> l 0 == r 0
   log "Done"

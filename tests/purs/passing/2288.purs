@@ -3,11 +3,11 @@ module Main where
 import Prelude
 import Effect
 import Effect.Console
-import Data.Array
-import Data.Array.Partial as P
+import Data.List
+import Data.List.Partial as P
 import Partial.Unsafe
 
-length :: forall a. Array a -> Int
+length :: forall a. List a -> Int
 length = go 0 where
   go acc arr =
     if null arr

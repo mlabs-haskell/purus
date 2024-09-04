@@ -43,7 +43,7 @@ class HigherKindedTypeParams :: (Type -> Type) -> (Type -> Type) -> Constraint
 class HigherKindedTypeParams f g where
   hktp :: f Int -> g Int -> Int
 
-instance HigherKindedTypeParams Array (Either Int) where
+instance HigherKindedTypeParams List (Either Int) where
   hktp _ _ = 0
 
 
@@ -51,9 +51,9 @@ class HigherKindedTypeParamsChain :: (Type -> Type) -> (Type -> Type) -> Constra
 class HigherKindedTypeParamsChain f g where
   hktpChain :: f Int -> g Int -> Int
 
-instance HigherKindedTypeParamsChain Array (Either Int) where
+instance HigherKindedTypeParamsChain List (Either Int) where
   hktpChain _ _ = 0
-else instance HigherKindedTypeParamsChain (Either Int) Array where
+else instance HigherKindedTypeParamsChain (Either Int) List where
   hktpChain _ _ = 0
 
 

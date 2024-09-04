@@ -1,8 +1,8 @@
--- |
--- The core functional representation
---
+{- |
+The core functional representation
+-}
 module Language.PureScript.CoreFn (
-  module C
+  module C,
 ) where
 
 import Language.PureScript.AST.Literals as C

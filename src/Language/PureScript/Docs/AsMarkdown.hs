@@ -1,27 +1,27 @@
-module Language.PureScript.Docs.AsMarkdown
-  ( Docs
-  , runDocs
-  , moduleAsMarkdown
-  , codeToString
-  ) where
+module Language.PureScript.Docs.AsMarkdown (
+  Docs,
+  runDocs,
+  moduleAsMarkdown,
+  codeToString,
+) where
 
 import Prelude
 
 import Control.Monad (unless, zipWithM_)
-import Control.Monad.Writer (Writer, tell, execWriter)
+import Control.Monad.Writer (Writer, execWriter, tell)
 
 import Data.Foldable (for_)
 import Data.List (partition)
 import Data.Text (Text)
 import Data.Text qualified as T
 
-import Language.PureScript.Docs.RenderedCode (RenderedCode, RenderedCodeElement(..), outputWith)
-import Language.PureScript.Docs.Types (ChildDeclaration(..), ChildDeclarationInfo(..), Declaration(..), Module(..), ignorePackage)
 import Language.PureScript qualified as P
 import Language.PureScript.Docs.Render qualified as Render
+import Language.PureScript.Docs.RenderedCode (RenderedCode, RenderedCodeElement (..), outputWith)
+import Language.PureScript.Docs.Types (ChildDeclaration (..), ChildDeclarationInfo (..), Declaration (..), Module (..), ignorePackage)
 
 moduleAsMarkdown :: Module -> Docs
-moduleAsMarkdown Module{..} = do
+moduleAsMarkdown Module {..} = do
   headerLevel 2 $ "Module " <> P.runModuleName modName
   spacer
   for_ modComments tell'
@@ -34,7 +34,7 @@ moduleAsMarkdown Module{..} = do
     mapM_ declAsMarkdown decls
 
 declAsMarkdown :: Declaration -> Docs
-declAsMarkdown decl@Declaration{..} = do
+declAsMarkdown decl@Declaration {..} = do
   headerLevel 4 (ticks declTitle)
   spacer
 
@@ -50,21 +50,19 @@ declAsMarkdown decl@Declaration{..} = do
     headerLevel 5 "Instances"
     fencedBlock $ mapM_ (tell' . childToString NotFirst) instances
     spacer
-
   where
-  isChildInstance (ChildInstance _ _) = True
-  isChildInstance _ = False
+    isChildInstance (ChildInstance _ _) = True
+    isChildInstance _ = False
 
 codeToString :: RenderedCode -> Text
 codeToString = outputWith elemAsMarkdown
   where
-  elemAsMarkdown (Syntax x)     = x
-  elemAsMarkdown (Keyword x)    = x
-  elemAsMarkdown Space          = " "
-  elemAsMarkdown (Symbol _ x _) = x
-
-  -- roles aren't rendered in markdown
-  elemAsMarkdown (Role _) = ""
+    elemAsMarkdown (Syntax x) = x
+    elemAsMarkdown (Keyword x) = x
+    elemAsMarkdown Space = " "
+    elemAsMarkdown (Symbol _ x _) = x
+    -- roles aren't rendered in markdown
+    elemAsMarkdown (Role _) = ""
 
 -- fixityAsMarkdown :: P.Fixity -> Docs
 -- fixityAsMarkdown (P.Fixity associativity precedence) =
@@ -81,17 +79,17 @@ codeToString = outputWith elemAsMarkdown
 --     P.Infix  -> "non-associative"
 
 childToString :: First -> ChildDeclaration -> Text
-childToString f decl@ChildDeclaration{..} =
+childToString f decl@ChildDeclaration {..} =
   case cdeclInfo of
     ChildDataConstructor _ ->
       let c = if f == First then "=" else "|"
-      in  "  " <> c <> " " <> str
+       in "  " <> c <> " " <> str
     ChildTypeClassMember _ ->
       "  " <> str
     ChildInstance _ _ ->
       str
   where
-  str = codeToString $ Render.renderChildDeclaration decl
+    str = codeToString $ Render.renderChildDeclaration decl
 
 data First
   = First
@@ -104,7 +102,7 @@ runDocs :: Docs -> Text
 runDocs = T.unlines . execWriter
 
 tell' :: Text -> Docs
-tell' = tell . (:[])
+tell' = tell . (: [])
 
 spacer :: Docs
 spacer = tell' ""

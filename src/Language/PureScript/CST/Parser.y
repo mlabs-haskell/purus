@@ -284,9 +284,23 @@ boolean :: { (SourceToken, Bool) }
   : 'true' { toBoolean $1 }
   | 'false' { toBoolean $1 }
 
+kind :: { Type () }
+  : kind1 %shift { $1 }
+  | kind1 '->' kind { TypeArr () $1 $2 $3 }
+
+kind1 :: { Type () }
+  : kindAtom { $1 }
+  | kind1 kindAtom { TypeApp () $1 $2 }
+
+kindAtom :: { Type () }
+  : '_' { TypeWildcard () $1 }
+  | qualProperName { TypeConstructor () (getQualifiedProperName $1) }
+  | hole { TypeHole () $1 }
+  | '(' kind ')' { TypeParens () (Wrapped $1 $2 $3) }
+
 type :: { Type () }
   : type1 %shift { $1 }
-  | type1 '::' type { TypeKinded () $1 $2 $3 }
+  | type1 '::' kind { TypeKinded () $1 $2 $3 }
 
 type1 :: { Type () }
   : type2 { $1 }
@@ -319,9 +333,9 @@ typeAtom :: { Type ()}
   | hole { TypeHole () $1 }
   | '(->)' { TypeArrName () $1 }
   | '{' row '}' { TypeRecord () (Wrapped $1 $2 $3) }
-  | '(' row ')' { TypeRow () (Wrapped $1 $2 $3) }
+  | '[' row ']' { TypeRow () (Wrapped $1 $2 $3) }
   | '(' type1 ')' { TypeParens () (Wrapped $1 $2 $3) }
-  | '(' typeKindedAtom '::' type ')' { TypeParens () (Wrapped $1 (TypeKinded () $2 $3 $4) $5) }
+  | '(' typeKindedAtom '::' kind ')' %shift { TypeParens () (Wrapped $1 (TypeKinded () $2 $3 $4) $5) }
 
 -- Due to a conflict between row syntax and kinded type syntax, we require
 -- kinded type variables to be wrapped in parens. Thus `(a :: Foo)` is always a
@@ -333,9 +347,9 @@ typeKindedAtom :: { Type () }
   | int { uncurry (TypeInt () Nothing) $1 }
   | hole { TypeHole () $1 }
   | '{' row '}' { TypeRecord () (Wrapped $1 $2 $3) }
-  | '(' row ')' { TypeRow () (Wrapped $1 $2 $3) }
+  | '[' row ']' { TypeRow () (Wrapped $1 $2 $3) }
   | '(' type1 ')' { TypeParens () (Wrapped $1 $2 $3) }
-  | '(' typeKindedAtom '::' type ')' { TypeParens () (Wrapped $1 (TypeKinded () $2 $3 $4) $5) }
+  | '(' typeKindedAtom '::' kind ')' { TypeParens () (Wrapped $1 (TypeKinded () $2 $3 $4) $5) }
 
 row :: { Row () }
   : {- empty -} { Row Nothing Nothing }
@@ -349,12 +363,12 @@ rowLabel :: { Labeled Label (Type ()) }
 typeVarBinding :: { TypeVarBinding () }
   : ident { TypeVarName (Nothing, $1) }
   | '@' ident { TypeVarName (Just $1, $2) }
-  | '(' ident '::' type ')' {% checkNoWildcards $4 *> pure (TypeVarKinded (Wrapped $1 (Labeled (Nothing, $2) $3 $4) $5)) }
-  | '(' '@' ident '::' type ')' {% checkNoWildcards $5 *> pure (TypeVarKinded (Wrapped $1 (Labeled (Just $2, $3) $4 $5) $6)) }
+  | '(' ident '::' kind ')' {% checkNoWildcards $4 *> pure (TypeVarKinded (Wrapped $1 (Labeled (Nothing, $2) $3 $4) $5)) }
+  | '(' '@' ident '::' kind ')' {% checkNoWildcards $5 *> pure (TypeVarKinded (Wrapped $1 (Labeled (Just $2, $3) $4 $5) $6)) }
 
 typeVarBindingPlain :: { TypeVarBinding () }
   : ident { TypeVarName (Nothing, $1) }
-  | '(' ident '::' type ')' {% checkNoWildcards $4 *> pure (TypeVarKinded (Wrapped $1 (Labeled (Nothing, $2) $3 $4) $5)) }
+  | '(' ident '::' kind ')' {% checkNoWildcards $4 *> pure (TypeVarKinded (Wrapped $1 (Labeled (Nothing, $2) $3 $4) $5)) }
 
 forall :: { SourceToken }
   : 'forall' { $1 }
@@ -436,7 +450,7 @@ exprAtom :: { Expr () }
   | char { uncurry (ExprChar ()) $1 }
   | string { uncurry (ExprString ()) $1 }
   | number { uncurry (ExprNumber ()) $1 }
-  | delim('[', expr, ',', ']') { ExprArray () $1 }
+  | delim('[', expr, ',', ']') { ExprList () $1 }
   | delim('{', recordLabel, ',', '}') { ExprRecord () $1 }
   | '(' expr ')' { ExprParens () (Wrapped $1 $2 $3) }
 
@@ -584,7 +598,7 @@ binderAtom :: { Binder () }
   | char { uncurry (BinderChar ()) $1 }
   | string { uncurry (BinderString ()) $1 }
   | number { uncurry (BinderNumber () Nothing) $1 }
-  | delim('[', binder, ',', ']') { BinderArray () $1 }
+  | delim('[', binder, ',', ']') { BinderList () $1 }
   | delim('{', recordBinder, ',', '}') { BinderRecord () $1 }
   | '(' binder ')' { BinderParens () (Wrapped $1 $2 $3) }
 
@@ -736,14 +750,17 @@ classMember :: { Labeled (Name Ident) (Type ()) }
   : ident '::' type {% checkNoWildcards $3 *> pure (Labeled $1 $2 $3) }
 
 instHead :: { InstanceHead () }
-  : 'instance' constraints '=>' qualProperName manyOrEmpty(typeAtom)
-      { InstanceHead $1 Nothing (Just ($2, $3)) (getQualifiedProperName $4) $5 }
+  : 'instance' instForall constraints '=>' qualProperName manyOrEmpty(typeAtom)
+    { InstanceHead $1 (Just $2) Nothing (Just ($3, $4)) (getQualifiedProperName $5) $6 }
+  | 'instance' instForall qualProperName manyOrEmpty(typeAtom)
+    { InstanceHead $1 (Just $2) Nothing Nothing (getQualifiedProperName $3) $4 }
+  | 'instance' constraints '=>' qualProperName manyOrEmpty(typeAtom)
+    { InstanceHead $1 Nothing Nothing (Just ($2, $3)) (getQualifiedProperName $4) $5 }
   | 'instance' qualProperName manyOrEmpty(typeAtom)
-      { InstanceHead $1 Nothing Nothing (getQualifiedProperName $2) $3 }
-  | 'instance' ident '::' constraints '=>' qualProperName manyOrEmpty(typeAtom)
-      { InstanceHead $1 (Just ($2, $3)) (Just ($4, $5)) (getQualifiedProperName $6) $7 }
-  | 'instance' ident '::' qualProperName manyOrEmpty(typeAtom)
-      { InstanceHead $1 (Just ($2, $3)) Nothing (getQualifiedProperName $4) $5 }
+    { InstanceHead $1 Nothing Nothing Nothing (getQualifiedProperName $2) $3 }
+
+instForall :: { (SourceToken, NE.NonEmpty (TypeVarBinding ())) }
+  : forall many(typeVarBinding) '.' { ( $1, $2 ) }
 
 constraints :: { OneOrDelimited (Constraint ()) }
   : constraint { One $1 }

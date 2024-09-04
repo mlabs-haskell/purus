@@ -3,4 +3,4 @@ module Main where
 
 import Prelude
 
-data D (a :: (~>) Array) = D
+data D (a :: (~>) List) = D

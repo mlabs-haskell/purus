@@ -1,32 +1,33 @@
--- | A compatibility module that allows a restricted set of purs.json manifest
--- | files to be used for publishing. The manifest must described a package
--- | available on GitHub, and it must be convertable to a Bower manifest.
--- |
--- | Fully supporting the registry manifest format will require `purs publish`
--- | and by extension Pursuit to relax the requirement that packages are hosted
--- | on GitHub, because the registry does not have this requirement.
+{- | A compatibility module that allows a restricted set of purs.json manifest
+| files to be used for publishing. The manifest must described a package
+| available on GitHub, and it must be convertable to a Bower manifest.
+|
+| Fully supporting the registry manifest format will require `purs publish`
+| and by extension Pursuit to relax the requirement that packages are hosted
+| on GitHub, because the registry does not have this requirement.
+-}
 module Language.PureScript.Publish.Registry.Compat where
 
-import Protolude
+import Data.Aeson.BetterErrors (Parse, asText, eachInObject, key, keyMay, throwCustomError)
+import Data.Bitraversable (Bitraversable (..))
 import Data.Map qualified as Map
+import Protolude
 import Web.Bower.PackageMeta qualified as Bower
-import Data.Bitraversable (Bitraversable(..))
-import Data.Aeson.BetterErrors (key, asText, keyMay, eachInObject, Parse, throwCustomError)
 
 -- | Convert a valid purs.json manifest into a bower.json manifest
 toBowerPackage :: PursJson -> Either Bower.BowerError Bower.PackageMeta
-toBowerPackage PursJson{..} = do
+toBowerPackage PursJson {..} = do
   bowerName <- Bower.parsePackageName ("purescript-" <> pursJsonName)
   let
     bowerDescription = pursJsonDescription
     bowerMain = []
     bowerModuleType = []
-    bowerLicense = [ pursJsonLicense ]
+    bowerLicense = [pursJsonLicense]
     bowerIgnore = []
     bowerKeywords = []
     bowerAuthors = []
     bowerHomepage = Just pursJsonLocation
-    bowerRepository = Just $ Bower.Repository { repositoryUrl = pursJsonLocation, repositoryType = "git" }
+    bowerRepository = Just $ Bower.Repository {repositoryUrl = pursJsonLocation, repositoryType = "git"}
     bowerDevDependencies = []
     bowerResolutions = []
     bowerPrivate = False
@@ -35,27 +36,28 @@ toBowerPackage PursJson{..} = do
   bowerDependencies <- parseDependencies $ Map.toAscList pursJsonDependencies
   pure $ Bower.PackageMeta {..}
 
--- | A partial representation of the purs.json manifest format, including only
--- | the fields required for publishing.
--- |
--- | https://github.com/purescript/registry/blob/master/v1/Manifest.dhall
---
--- This type is intended for compatibility with the Bower publishing pipeline,
--- and does not accurately reflect all possible purs.json manifests. However,
--- supporting purs.json manifests properly introduces breaking changes to the
--- compiler and to Pursuit.
+{- | A partial representation of the purs.json manifest format, including only
+| the fields required for publishing.
+|
+| https://github.com/purescript/registry/blob/master/v1/Manifest.dhall
+
+This type is intended for compatibility with the Bower publishing pipeline,
+and does not accurately reflect all possible purs.json manifests. However,
+supporting purs.json manifests properly introduces breaking changes to the
+compiler and to Pursuit.
+-}
 data PursJson = PursJson
-  { -- | The name of the package
-    pursJsonName :: Text
-    -- | The SPDX identifier representing the package license
+  { pursJsonName :: Text
+  -- ^ The name of the package
   , pursJsonLicense :: Text
-    -- | The GitHub repository hosting the package
+  -- ^ The SPDX identifier representing the package license
   , pursJsonLocation :: Text
-    -- | An optional description of the package
+  -- ^ The GitHub repository hosting the package
   , pursJsonDescription :: Maybe Text
-    -- | A map of dependencies, where keys are package names and values are
-    -- | dependency ranges of the form '>=X.Y.Z <X.Y.Z'
+  -- ^ An optional description of the package
   , pursJsonDependencies :: Map Text Text
+  -- ^ A map of dependencies, where keys are package names and values are
+  -- | dependency ranges of the form '>=X.Y.Z <X.Y.Z'
   }
 
 data PursJsonError
@@ -84,15 +86,15 @@ asPursJson = do
   -- and repo pair, or which specify a Git URL, which we use to try and get
   -- the package from GitHub.
   pursJsonLocation <- key "location" asOwnerRepoOrGitUrl
-  pure $ PursJson{..}
+  pure $ PursJson {..}
   where
-  asOwnerRepoOrGitUrl =
-    catchError asOwnerRepo (\_ -> catchError asGitUrl (\_ -> throwCustomError MalformedLocationField))
+    asOwnerRepoOrGitUrl =
+      catchError asOwnerRepo (\_ -> catchError asGitUrl (\_ -> throwCustomError MalformedLocationField))
 
-  asGitUrl =
-    key "gitUrl" asText
+    asGitUrl =
+      key "gitUrl" asText
 
-  asOwnerRepo = do
-    githubOwner <- key "githubOwner" asText
-    githubRepo <- key "githubRepo" asText
-    pure $ "https://github.com/" <> githubOwner <> "/" <> githubRepo <> ".git"
+    asOwnerRepo = do
+      githubOwner <- key "githubOwner" asText
+      githubRepo <- key "githubRepo" asText
+      pure $ "https://github.com/" <> githubOwner <> "/" <> githubRepo <> ".git"

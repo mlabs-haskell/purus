@@ -1,0 +1,99 @@
+Demo (tests/purus/passing/Demo/Demo.purs)
+
+Imported Modules: 
+------------------------------
+  Builtin,
+  Demo,
+  Prim
+
+Exports: 
+------------------------------
+  minus,
+  plus,
+  multiply,
+  divide,
+  testMinus,
+  testPlus,
+  testMultiply,
+  testDivide,
+  Identitee,
+  unIdentitee,
+  testIdentitee,
+  testValidator,
+  testValidatorApplied
+
+Re-Exports: 
+------------------------------
+  
+
+Foreign: 
+------------------------------
+  
+
+Datatypes: 
+------------------------------
+data Identitee (a :: Prim.Type) = 
+  Identitee ((a :: Prim.Type))
+
+
+Declarations: 
+------------------------------
+unIdentitee :: ((Demo.Identitee (Prim.Int)) -> (Prim.Int))
+unIdentitee = 
+  \(v: (Demo.Identitee (Prim.Int))) -> 
+    case (v: (Demo.Identitee (Prim.Int))) of 
+       Identitee x -> (x: Prim.Int)
+
+testValidator :: forall (a :: Prim.Type) (b :: Prim.Type) (c :: Prim.Type). ((a :: Prim.Type) -> (((b :: Prim.Type) -> (((c :: Prim.Type) -> (Prim.Boolean))))))
+testValidator = 
+  \(datum: (a :: Prim.Type)) -> 
+    \(redeemer: (b :: Prim.Type)) -> 
+      \(context: (c :: Prim.Type)) -> 
+        (True: Prim.Boolean)
+
+testValidatorApplied :: Prim.Boolean
+testValidatorApplied = 
+  (testValidator: forall (a :: Prim.Type)
+  (b :: Prim.Type)
+  (c :: Prim.Type). ((a :: Prim.Type) ->
+  (((b :: Prim.Type) -> (((c :: Prim.Type) -> (Prim.Boolean)))))))
+  ("datum": Prim.String)
+  ("redeemer": Prim.String)
+  ("context": Prim.String)
+
+testIdentitee :: Prim.Int
+testIdentitee = 
+  (unIdentitee: ((Demo.Identitee (Prim.Int)) -> (Prim.Int)))
+  ((Identitee: forall (@a :: Prim.Type). ((a :: Prim.Type) ->
+   ((Demo.Identitee ((a :: Prim.Type))))))
+   (101: Prim.Int))
+
+plus :: (Prim.Int -> ((Prim.Int -> (Prim.Int))))
+plus = (addInteger: (Prim.Int -> ((Prim.Int -> (Prim.Int)))))
+
+testPlus :: Prim.Int
+testPlus = 
+  (plus: (Prim.Int -> ((Prim.Int -> (Prim.Int))))) (2: Prim.Int) (2: Prim.Int)
+
+multiply :: (Prim.Int -> ((Prim.Int -> (Prim.Int))))
+multiply = (multiplyInteger: (Prim.Int -> ((Prim.Int -> (Prim.Int)))))
+
+testMultiply :: Prim.Int
+testMultiply = 
+  (multiply: (Prim.Int -> ((Prim.Int -> (Prim.Int)))))
+  (2: Prim.Int)
+  (2: Prim.Int)
+
+minus :: (Prim.Int -> ((Prim.Int -> (Prim.Int))))
+minus = (subtractInteger: (Prim.Int -> ((Prim.Int -> (Prim.Int)))))
+
+testMinus :: Prim.Int
+testMinus = 
+  (minus: (Prim.Int -> ((Prim.Int -> (Prim.Int))))) (10: Prim.Int) (6: Prim.Int)
+
+divide :: (Prim.Int -> ((Prim.Int -> (Prim.Int))))
+divide = (divideInteger: (Prim.Int -> ((Prim.Int -> (Prim.Int)))))
+
+testDivide :: Prim.Int
+testDivide = 
+  (divide: (Prim.Int -> ((Prim.Int -> (Prim.Int))))) (4: Prim.Int) (2: Prim.Int)

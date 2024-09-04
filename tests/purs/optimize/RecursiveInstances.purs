@@ -8,7 +8,7 @@ import Type.Prelude (class IsSymbol, Proxy(..), reflectSymbol)
 
 class FindKeysAux :: forall k. RL.RowList k -> Constraint
 class FindKeysAux a where
-  findKeysAux :: Proxy a -> Array String
+  findKeysAux :: Proxy a -> List String
 
 instance FindKeysAux RL.Nil where
   findKeysAux _ = []
@@ -16,7 +16,7 @@ instance FindKeysAux RL.Nil where
 else instance (IsSymbol l, FindKeysAux r) => FindKeysAux (RL.Cons l t r) where
   findKeysAux _ = [ reflectSymbol (Proxy :: Proxy l) ] <> findKeysAux (Proxy :: Proxy r)
 
-findKeys :: forall r rl. RL.RowToList r rl => FindKeysAux rl => Proxy r -> Array String
+findKeys :: forall r rl. RL.RowToList r rl => FindKeysAux rl => Proxy r -> List String
 findKeys _ = findKeysAux (Proxy :: Proxy rl)
 
 findKeys1 = findKeys (Proxy :: Proxy (a :: Unit))

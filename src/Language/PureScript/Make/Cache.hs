@@ -1,31 +1,31 @@
-module Language.PureScript.Make.Cache
-  ( ContentHash
-  , hash
-  , CacheDb
-  , CacheInfo(..)
-  , checkChanged
-  , removeModules
-  , normaliseForCache
-  ) where
+module Language.PureScript.Make.Cache (
+  ContentHash,
+  hash,
+  CacheDb,
+  CacheInfo (..),
+  checkChanged,
+  removeModules,
+  normaliseForCache,
+) where
 
 import Prelude
 
 import Control.Category ((>>>))
 import Control.Monad ((>=>))
-import Crypto.Hash (HashAlgorithm, Digest, SHA512)
+import Crypto.Hash (Digest, HashAlgorithm, SHA512)
 import Crypto.Hash qualified as Hash
 import Data.Aeson qualified as Aeson
 import Data.Align (align)
-import Data.ByteArray.Encoding (Base(Base16), convertToBase, convertFromBase)
+import Data.ByteArray.Encoding (Base (Base16), convertFromBase, convertToBase)
 import Data.ByteString qualified as BS
 import Data.Map (Map)
 import Data.Map qualified as Map
 import Data.Maybe (fromMaybe)
-import Data.Monoid (All(..))
+import Data.Monoid (All (..))
 import Data.Set (Set)
 import Data.Text (Text)
-import Data.Text.Encoding (encodeUtf8, decodeUtf8)
-import Data.These (These(..))
+import Data.Text.Encoding (decodeUtf8, encodeUtf8)
+import Data.These (These (..))
 import Data.Time.Clock (UTCTime)
 import Data.Traversable (for)
 import System.FilePath qualified as FilePath
@@ -35,15 +35,15 @@ import Language.PureScript.Names (ModuleName)
 digestToHex :: Digest a -> Text
 digestToHex = decodeUtf8 . convertToBase Base16
 
-digestFromHex :: forall a. HashAlgorithm a => Text -> Maybe (Digest a)
+digestFromHex :: forall a. (HashAlgorithm a) => Text -> Maybe (Digest a)
 digestFromHex =
   encodeUtf8
-  >>> either (const Nothing) Just . convertFromBase Base16
-  >=> (Hash.digestFromByteString :: BS.ByteString -> Maybe (Digest a))
+    >>> either (const Nothing) Just . convertFromBase Base16
+    >=> (Hash.digestFromByteString :: BS.ByteString -> Maybe (Digest a))
 
 -- | Defines the hash algorithm we use for cache invalidation of input files.
 newtype ContentHash = ContentHash
-  { unContentHash :: Digest SHA512 }
+  {unContentHash :: Digest SHA512}
   deriving (Show, Eq, Ord)
 
 instance Aeson.ToJSON ContentHash where
@@ -63,41 +63,42 @@ hash = ContentHash . Hash.hash
 
 type CacheDb = Map ModuleName CacheInfo
 
--- | A CacheInfo contains all of the information we need to store about a
--- particular module in the cache database.
+{- | A CacheInfo contains all of the information we need to store about a
+particular module in the cache database.
+-}
 newtype CacheInfo = CacheInfo
-  { unCacheInfo :: Map FilePath (UTCTime, ContentHash) }
+  {unCacheInfo :: Map FilePath (UTCTime, ContentHash)}
   deriving stock (Show)
   deriving newtype (Eq, Ord, Semigroup, Monoid, Aeson.FromJSON, Aeson.ToJSON)
 
--- | Given a module name, and a map containing the associated input files
--- together with current metadata i.e. timestamps and hashes, check whether the
--- input files have changed, based on comparing with the database stored in the
--- monadic state.
---
--- The CacheInfo in the return value should be stored in the cache for future
--- builds.
---
--- The Bool in the return value indicates whether it is safe to use existing
--- build artifacts for this module, at least based on the timestamps and hashes
--- of the module's input files.
---
--- If the timestamps are the same as those in the database, assume the file is
--- unchanged, and return True without checking hashes.
---
--- If any of the timestamps differ from what is in the database, check the
--- hashes of those files. In this case, update the database with any changed
--- timestamps and hashes, and return True if and only if all of the hashes are
--- unchanged.
-checkChanged
-  :: Monad m
-  => CacheDb
-  -> ModuleName
-  -> FilePath
-  -> Map FilePath (UTCTime, m ContentHash)
-  -> m (CacheInfo, Bool)
-checkChanged cacheDb mn basePath currentInfo = do
+{- | Given a module name, and a map containing the associated input files
+together with current metadata i.e. timestamps and hashes, check whether the
+input files have changed, based on comparing with the database stored in the
+monadic state.
 
+The CacheInfo in the return value should be stored in the cache for future
+builds.
+
+The Bool in the return value indicates whether it is safe to use existing
+build artifacts for this module, at least based on the timestamps and hashes
+of the module's input files.
+
+If the timestamps are the same as those in the database, assume the file is
+unchanged, and return True without checking hashes.
+
+If any of the timestamps differ from what is in the database, check the
+hashes of those files. In this case, update the database with any changed
+timestamps and hashes, and return True if and only if all of the hashes are
+unchanged.
+-}
+checkChanged ::
+  (Monad m) =>
+  CacheDb ->
+  ModuleName ->
+  FilePath ->
+  Map FilePath (UTCTime, m ContentHash) ->
+  m (CacheInfo, Bool)
+checkChanged cacheDb mn basePath currentInfo = do
   let dbInfo = unCacheInfo $ fromMaybe mempty (Map.lookup mn cacheDb)
   (newInfo, isUpToDate) <-
     fmap mconcat $
@@ -126,24 +127,25 @@ checkChanged cacheDb mn basePath currentInfo = do
 
   pure (CacheInfo newInfo, getAll isUpToDate)
 
--- | Remove any modules from the given set from the cache database; used when
--- they failed to build.
+{- | Remove any modules from the given set from the cache database; used when
+they failed to build.
+-}
 removeModules :: Set ModuleName -> CacheDb -> CacheDb
 removeModules = flip Map.withoutKeys
 
--- | 1. Any path that is beneath our current working directory will be
--- stored as a normalised relative path
--- 2. Any path that isn't will be stored as an absolute path
+{- | 1. Any path that is beneath our current working directory will be
+stored as a normalised relative path
+2. Any path that isn't will be stored as an absolute path
+-}
 normaliseForCache :: FilePath -> FilePath -> FilePath
 normaliseForCache basePath fp =
-    if FilePath.isRelative fp then
-      FilePath.normalise fp
+  if FilePath.isRelative fp
+    then FilePath.normalise fp
     else
-      let relativePath = FilePath.makeRelative basePath fp in
-      if FilePath.isRelative relativePath then
-        FilePath.normalise relativePath
-      else
-        -- If the path is still absolute after trying to make it
-        -- relative to the base that means it is not underneath
-        -- the base path
-        FilePath.normalise fp
+      let relativePath = FilePath.makeRelative basePath fp
+       in if FilePath.isRelative relativePath
+            then FilePath.normalise relativePath
+            else -- If the path is still absolute after trying to make it
+            -- relative to the base that means it is not underneath
+            -- the base path
+              FilePath.normalise fp

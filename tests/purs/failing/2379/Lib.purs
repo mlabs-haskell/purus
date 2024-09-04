@@ -5,5 +5,5 @@ class X a where
 
 class Y a
 
-instance xArray :: Y a => X (Array a) where
+instance xList :: Y a => X (List a) where
   x _ = "[]"

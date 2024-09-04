@@ -6,7 +6,7 @@ data Proxy a = Proxy
 class C a b where
   c :: Proxy a -> Proxy b -> Boolean
 
-instance C String (Array a) where
+instance C String (List a) where
   c _ _ = true
 else instance c2 :: C String a where
   c _ _ = false

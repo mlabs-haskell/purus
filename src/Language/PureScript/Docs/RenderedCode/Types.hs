@@ -1,81 +1,81 @@
--- | Data types and functions for representing a simplified form of PureScript
--- code, intended for use in e.g. HTML documentation.
+{- | Data types and functions for representing a simplified form of PureScript
+code, intended for use in e.g. HTML documentation.
+-}
+module Language.PureScript.Docs.RenderedCode.Types (
+  RenderedCodeElement (..),
+  ContainingModule (..),
+  asContainingModule,
+  maybeToContainingModule,
+  fromQualified,
+  Namespace (..),
+  Link (..),
+  FixityAlias,
+  RenderedCode,
+  outputWith,
+  sp,
+  syntax,
+  keyword,
+  keywordForall,
+  keywordData,
+  keywordType,
+  keywordClass,
+  keywordWhere,
+  keywordFixity,
+  keywordAs,
+  ident,
+  dataCtor,
+  typeCtor,
+  typeOp,
+  typeVar,
+  roleAnn,
+  alias,
+  aliasName,
+) where
 
-module Language.PureScript.Docs.RenderedCode.Types
- ( RenderedCodeElement(..)
- , ContainingModule(..)
- , asContainingModule
- , maybeToContainingModule
- , fromQualified
- , Namespace(..)
- , Link(..)
- , FixityAlias
- , RenderedCode
- , outputWith
- , sp
- , syntax
- , keyword
- , keywordForall
- , keywordData
- , keywordType
- , keywordClass
- , keywordWhere
- , keywordFixity
- , keywordAs
- , ident
- , dataCtor
- , typeCtor
- , typeOp
- , typeVar
- , roleAnn
- , alias
- , aliasName
- ) where
-
-import Prelude
 import GHC.Generics (Generic)
+import Prelude
 
 import Control.DeepSeq (NFData)
-import Control.Monad.Error.Class (MonadError(..))
+import Control.Monad.Error.Class (MonadError (..))
 
-import Data.Aeson.BetterErrors (Parse, nth, withText, withValue, toAesonParser, perhaps, asText)
 import Data.Aeson qualified as A
+import Data.Aeson.BetterErrors (Parse, asText, nth, perhaps, toAesonParser, withText, withValue)
+import Data.ByteString.Lazy qualified as BS
 import Data.Text (Text)
 import Data.Text qualified as T
-import Data.ByteString.Lazy qualified as BS
 import Data.Text.Encoding qualified as TE
 
-import Language.PureScript.Names (pattern ByNullSourcePos, Ident(..), ModuleName, OpName(..), OpNameType(..), ProperName(..), ProperNameType(..), Qualified(..), QualifiedBy(..), moduleNameFromString, runIdent, runModuleName)
-import Language.PureScript.AST (Associativity(..))
+import Language.PureScript.AST (Associativity (..))
+import Language.PureScript.Names (Ident (..), ModuleName, OpName (..), OpNameType (..), ProperName (..), ProperNameType (..), Qualified (..), QualifiedBy (..), moduleNameFromString, runIdent, runModuleName, pattern ByNullSourcePos)
 
--- | Given a list of actions, attempt them all, returning the first success.
--- If all the actions fail, 'tryAll' returns the first argument.
-tryAll :: MonadError e m => m a -> [m a] -> m a
+{- | Given a list of actions, attempt them all, returning the first success.
+If all the actions fail, 'tryAll' returns the first argument.
+-}
+tryAll :: (MonadError e m) => m a -> [m a] -> m a
 tryAll = foldr $ \x y -> catchError x (const y)
 
 firstEq :: Text -> Parse Text a -> Parse Text a
 firstEq str p = nth 0 (withText (eq str)) *> p
   where
-  eq s s' = if s == s' then Right () else Left ""
+    eq s s' = if s == s' then Right () else Left ""
 
--- |
--- Try the given parsers in sequence. If all fail, fail with the given message,
--- and include the JSON in the error.
---
+{- |
+Try the given parsers in sequence. If all fail, fail with the given message,
+and include the JSON in the error.
+-}
 tryParse :: Text -> [Parse Text a] -> Parse Text a
 tryParse msg =
   tryAll (withValue (Left . (fullMsg <>) . showJSON))
-
   where
-  fullMsg = "Invalid " <> msg <> ": "
+    fullMsg = "Invalid " <> msg <> ": "
 
-  showJSON :: A.Value -> Text
-  showJSON = TE.decodeUtf8 . BS.toStrict . A.encode
+    showJSON :: A.Value -> Text
+    showJSON = TE.decodeUtf8 . BS.toStrict . A.encode
 
--- |
--- This type is isomorphic to 'Maybe' 'ModuleName'. It makes code a bit
--- easier to read, as the meaning is more explicit.
---
+{- |
+This type is isomorphic to 'Maybe' 'ModuleName'. It makes code a bit
+easier to read, as the meaning is more explicit.
+-}
 data ContainingModule
   = ThisModule
   | OtherModule ModuleName
@@ -84,9 +84,9 @@ data ContainingModule
 instance A.ToJSON ContainingModule where
   toJSON = A.toJSON . go
     where
-    go = \case
-      ThisModule -> ["ThisModule"]
-      OtherModule mn -> ["OtherModule", runModuleName mn]
+      go = \case
+        ThisModule -> ["ThisModule"]
+        OtherModule mn -> ["OtherModule", runModuleName mn]
 
 instance A.FromJSON ContainingModule where
   parseJSON = toAesonParser id asContainingModule
@@ -96,22 +96,22 @@ asContainingModule =
   tryParse "containing module" $
     current ++ backwardsCompat
   where
-  current =
-    [ firstEq "ThisModule" (pure ThisModule)
-    , firstEq "OtherModule" (OtherModule <$> nth 1 asModuleName)
-    ]
+    current =
+      [ firstEq "ThisModule" (pure ThisModule)
+      , firstEq "OtherModule" (OtherModule <$> nth 1 asModuleName)
+      ]
 
-  -- For JSON produced by compilers up to 0.10.5.
-  backwardsCompat =
-    [ maybeToContainingModule <$> perhaps asModuleName
-    ]
+    -- For JSON produced by compilers up to 0.10.5.
+    backwardsCompat =
+      [ maybeToContainingModule <$> perhaps asModuleName
+      ]
 
-  asModuleName = moduleNameFromString <$> asText
+    asModuleName = moduleNameFromString <$> asText
 
--- |
--- Convert a 'Maybe' 'ModuleName' to a 'ContainingModule', using the obvious
--- isomorphism.
---
+{- |
+Convert a 'Maybe' 'ModuleName' to a 'ContainingModule', using the obvious
+isomorphism.
+-}
 maybeToContainingModule :: Maybe ModuleName -> ContainingModule
 maybeToContainingModule Nothing = ThisModule
 maybeToContainingModule (Just mn) = OtherModule mn
@@ -132,7 +132,8 @@ instance A.ToJSON Link where
 
 asLink :: Parse Text Link
 asLink =
-  tryParse "link"
+  tryParse
+    "link"
     [ firstEq "NoLink" (pure NoLink)
     , firstEq "Link" (Link <$> nth 1 asContainingModule)
     ]
@@ -152,7 +153,8 @@ instance A.ToJSON Namespace where
 
 asNamespace :: Parse Text Namespace
 asNamespace =
-  tryParse "namespace"
+  tryParse
+    "namespace"
     [ withText $ \case
         "ValueLevel" -> Right ValueLevel
         "TypeLevel" -> Right TypeLevel
@@ -162,18 +164,18 @@ asNamespace =
 instance A.FromJSON Namespace where
   parseJSON = toAesonParser id asNamespace
 
--- |
--- A single element in a rendered code fragment. The intention is to support
--- multiple output formats. For example, plain text, or highlighted HTML.
---
+{- |
+A single element in a rendered code fragment. The intention is to support
+multiple output formats. For example, plain text, or highlighted HTML.
+-}
 data RenderedCodeElement
   = Syntax Text
   | Keyword Text
   | Space
-  -- | Any symbol which you might or might not want to link to, in any
-  -- namespace (value, type, or kind). Note that this is not related to the
-  -- kind called Symbol for type-level strings.
-  | Symbol Namespace Text Link
+  | -- | Any symbol which you might or might not want to link to, in any
+    -- namespace (value, type, or kind). Note that this is not related to the
+    -- kind called Symbol for type-level strings.
+    Symbol Namespace Text Link
   | Role Text
   deriving (Show, Eq, Ord)
 
@@ -189,29 +191,28 @@ instance A.ToJSON RenderedCodeElement where
   toJSON (Role role) =
     A.toJSON ["role", role]
 
--- |
--- A type representing a highly simplified version of PureScript code, intended
--- for use in output formats like plain text or HTML.
---
-newtype RenderedCode
-  = RC { unRC :: [RenderedCodeElement] }
+{- |
+A type representing a highly simplified version of PureScript code, intended
+for use in output formats like plain text or HTML.
+-}
+newtype RenderedCode = RC {unRC :: [RenderedCodeElement]}
   deriving (Show, Eq, Ord, Semigroup, Monoid)
 
 instance A.ToJSON RenderedCode where
   toJSON (RC elems) = A.toJSON elems
 
--- |
--- This function allows conversion of a 'RenderedCode' value into a value of
--- some other type (for example, plain text, or HTML). The first argument
--- is a function specifying how each individual 'RenderedCodeElement' should be
--- rendered.
---
-outputWith :: Monoid a => (RenderedCodeElement -> a) -> RenderedCode -> a
+{- |
+This function allows conversion of a 'RenderedCode' value into a value of
+some other type (for example, plain text, or HTML). The first argument
+is a function specifying how each individual 'RenderedCodeElement' should be
+rendered.
+-}
+outputWith :: (Monoid a) => (RenderedCodeElement -> a) -> RenderedCode -> a
 outputWith f = foldMap f . unRC
 
--- |
--- A 'RenderedCode' fragment representing a space.
---
+{- |
+A 'RenderedCode' fragment representing a space.
+-}
 sp :: RenderedCode
 sp = RC [Space]
 
@@ -269,10 +270,10 @@ typeVar x = RC [Symbol TypeLevel x NoLink]
 roleAnn :: Maybe Text -> RenderedCode
 roleAnn = RC . maybe [] renderRole
   where
-  renderRole = \case
-    "nominal" -> [Role "nominal"]
-    "phantom" -> [Role "phantom"]
-    _ -> []
+    renderRole = \case
+      "nominal" -> [Role "nominal"]
+      "phantom" -> [Role "phantom"]
+      _ -> []
 
 type FixityAlias = Qualified (Either (ProperName 'TypeName) (Either Ident (ProperName 'ConstructorName)))
 
@@ -280,12 +281,12 @@ alias :: FixityAlias -> RenderedCode
 alias for =
   prefix <> RC [Symbol ns name (Link mn)]
   where
-  (ns, name, mn) = unpackFixityAlias for
-  prefix = case ns of
-    TypeLevel ->
-      keywordType <> sp
-    _ ->
-      mempty
+    (ns, name, mn) = unpackFixityAlias for
+    prefix = case ns of
+      TypeLevel ->
+        keywordType <> sp
+      _ ->
+        mempty
 
 aliasName :: FixityAlias -> Text -> RenderedCode
 aliasName for name' =
@@ -293,15 +294,16 @@ aliasName for name' =
     (ns, _, _) = unpackFixityAlias for
     unParen = T.tail . T.init
     name = unParen name'
-  in
+   in
     case ns of
       ValueLevel ->
         ident (Qualified ByNullSourcePos (Ident name))
       TypeLevel ->
         typeCtor (Qualified ByNullSourcePos (ProperName name))
 
--- | Converts a FixityAlias into a different representation which is more
--- useful to other functions in this module.
+{- | Converts a FixityAlias into a different representation which is more
+useful to other functions in this module.
+-}
 unpackFixityAlias :: FixityAlias -> (Namespace, Text, ContainingModule)
 unpackFixityAlias (fromQualified -> (mn, x)) =
   case x of

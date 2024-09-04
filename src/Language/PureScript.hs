@@ -1,11 +1,10 @@
--- |
--- The main compiler module
---
-module Language.PureScript
-  ( module P
-  , version
-  ) where
-
+{- |
+The main compiler module
+-}
+module Language.PureScript (
+  module P,
+  version,
+) where
 
 import Control.Monad.Supply as P
 

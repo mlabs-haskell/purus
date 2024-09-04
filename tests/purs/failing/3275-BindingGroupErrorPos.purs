@@ -6,7 +6,7 @@ module BindingGroupErrorPos where
 
 import Prelude
 
-type Result = Array Int
+type Result = List Int
 
 wrong :: Int -> Result String
 wrong n = wrong (n - 1)

@@ -1,0 +1,28 @@
+B (tests/purus/passing/ReExportQualified/B.purs)
+
+Imported Modules: 
+------------------------------
+  Builtin,
+  Prim
+
+Exports: 
+------------------------------
+  y
+
+Re-Exports: 
+------------------------------
+  
+
+Foreign: 
+------------------------------
+  
+
+Datatypes: 
+------------------------------
+
+
+
+Declarations: 
+------------------------------
+y :: Prim.String
+y = ("ne": Prim.String)

@@ -15,12 +15,14 @@ data ErrorPosition = ErrorPosition
   , startColumn :: Int
   , endLine :: Int
   , endColumn :: Int
-  } deriving (Show, Eq, Ord)
+  }
+  deriving (Show, Eq, Ord)
 
 data ErrorSuggestion = ErrorSuggestion
   { replacement :: Text
   , replaceRange :: Maybe ErrorPosition
-  } deriving (Show, Eq)
+  }
+  deriving (Show, Eq)
 
 data JSONError = JSONError
   { position :: Maybe ErrorPosition
@@ -31,12 +33,14 @@ data JSONError = JSONError
   , moduleName :: Maybe Text
   , suggestion :: Maybe ErrorSuggestion
   , allSpans :: [P.SourceSpan]
-  } deriving (Show, Eq)
+  }
+  deriving (Show, Eq)
 
 data JSONResult = JSONResult
   { warnings :: [JSONError]
   , errors :: [JSONError]
-  } deriving (Show, Eq)
+  }
+  deriving (Show, Eq)
 
 $(A.deriveJSON A.defaultOptions ''ErrorPosition)
 $(A.deriveJSON A.defaultOptions ''ErrorSuggestion)
@@ -48,28 +52,30 @@ toJSONErrors verbose level files = map (toJSONError verbose level files) . P.run
 
 toJSONError :: Bool -> P.Level -> [(FilePath, Text)] -> P.ErrorMessage -> JSONError
 toJSONError verbose level files e =
-  JSONError (toErrorPosition <$> fmap NEL.head spans)
-            (P.renderBox (P.prettyPrintSingleError (P.PPEOptions Nothing verbose level False mempty files) (P.stripModuleAndSpan e)))
-            (P.errorCode e)
-            (P.errorDocUri e)
-            (P.spanName <$> fmap NEL.head spans)
-            (P.runModuleName <$> P.errorModule e)
-            (toSuggestion e)
-            (maybe [] NEL.toList spans)
+  JSONError
+    (toErrorPosition <$> fmap NEL.head spans)
+    (P.renderBox (P.prettyPrintSingleError (P.PPEOptions Nothing verbose level False mempty files) (P.stripModuleAndSpan e)))
+    (P.errorCode e)
+    (P.errorDocUri e)
+    (P.spanName <$> fmap NEL.head spans)
+    (P.runModuleName <$> P.errorModule e)
+    (toSuggestion e)
+    (maybe [] NEL.toList spans)
   where
-  spans :: Maybe (NEL.NonEmpty P.SourceSpan)
-  spans = P.errorSpan e
+    spans :: Maybe (NEL.NonEmpty P.SourceSpan)
+    spans = P.errorSpan e
 
-  toErrorPosition :: P.SourceSpan -> ErrorPosition
-  toErrorPosition ss =
-    ErrorPosition (P.sourcePosLine   (P.spanStart ss))
-                  (P.sourcePosColumn (P.spanStart ss))
-                  (P.sourcePosLine   (P.spanEnd   ss))
-                  (P.sourcePosColumn (P.spanEnd   ss))
-  toSuggestion :: P.ErrorMessage -> Maybe ErrorSuggestion
-  toSuggestion em =
-    case P.errorSuggestion $ P.unwrapErrorMessage em of
-      Nothing -> Nothing
-      Just s -> Just $ ErrorSuggestion (suggestionText s) (toErrorPosition <$> P.suggestionSpan em)
+    toErrorPosition :: P.SourceSpan -> ErrorPosition
+    toErrorPosition ss =
+      ErrorPosition
+        (P.sourcePosLine (P.spanStart ss))
+        (P.sourcePosColumn (P.spanStart ss))
+        (P.sourcePosLine (P.spanEnd ss))
+        (P.sourcePosColumn (P.spanEnd ss))
+    toSuggestion :: P.ErrorMessage -> Maybe ErrorSuggestion
+    toSuggestion em =
+      case P.errorSuggestion $ P.unwrapErrorMessage em of
+        Nothing -> Nothing
+        Just s -> Just $ ErrorSuggestion (suggestionText s) (toErrorPosition <$> P.suggestionSpan em)
 
-  suggestionText (P.ErrorSuggestion s) = s
+    suggestionText (P.ErrorSuggestion s) = s

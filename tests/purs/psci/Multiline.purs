@@ -1,6 +1,6 @@
 -- @paste
 import Prelude
-import Data.Array
+import Data.List
 -- @paste
 
 -- @paste

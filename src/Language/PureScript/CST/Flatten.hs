@@ -3,18 +3,18 @@ module Language.PureScript.CST.Flatten where
 import Prelude
 
 import Data.DList (DList)
-import Language.PureScript.CST.Types
 import Language.PureScript.CST.Positions (advanceLeading, moduleRange, srcRange)
+import Language.PureScript.CST.Types
 
 flattenModule :: Module a -> DList SourceToken
 flattenModule m@(Module _ a b c d e f g) =
-  pure a <>
-  flattenName b <>
-  foldMap (flattenWrapped (flattenSeparated flattenExport)) c <>
-  pure d <>
-  foldMap flattenImportDecl e <>
-  foldMap flattenDeclaration f <>
-  pure (SourceToken (TokenAnn eofRange g []) TokEof)
+  pure a
+    <> flattenName b
+    <> foldMap (flattenWrapped (flattenSeparated flattenExport)) c
+    <> pure d
+    <> foldMap flattenImportDecl e
+    <> foldMap flattenDeclaration f
+    <> pure (SourceToken (TokenAnn eofRange g []) TokEof)
   where
     (_, endTkn) = moduleRange m
     eofPos = advanceLeading (srcEnd (srcRange endTkn)) g
@@ -28,11 +28,11 @@ flattenDataCtor (DataCtor _ a b) = flattenName a <> foldMap flattenType b
 
 flattenClassHead :: ClassHead a -> DList SourceToken
 flattenClassHead (ClassHead a b c d e) =
-  pure a <>
-  foldMap (\(f, g) -> flattenOneOrDelimited flattenConstraint f <> pure g) b <>
-  flattenName c <>
-  foldMap flattenTypeVarBinding d <>
-  foldMap (\(f, g) -> pure f <> flattenSeparated flattenClassFundep g) e
+  pure a
+    <> foldMap (\(f, g) -> flattenOneOrDelimited flattenConstraint f <> pure g) b
+    <> flattenName c
+    <> foldMap flattenTypeVarBinding d
+    <> foldMap (\(f, g) -> pure f <> flattenSeparated flattenClassFundep g) e
 
 flattenClassFundep :: ClassFundep -> DList SourceToken
 flattenClassFundep = \case
@@ -46,12 +46,13 @@ flattenInstance (Instance a b) =
   flattenInstanceHead a <> foldMap (\(c, d) -> pure c <> foldMap flattenInstanceBinding d) b
 
 flattenInstanceHead :: InstanceHead a -> DList SourceToken
-flattenInstanceHead (InstanceHead a b c d e) =
-  pure a <>
-  foldMap (\(n, s) -> flattenName n <> pure s) b <>
-  foldMap (\(g, h) -> flattenOneOrDelimited flattenConstraint g <> pure h) c <>
-  flattenQualifiedName d <>
-  foldMap flattenType e
+flattenInstanceHead (InstanceHead a b c d e f) =
+  pure a
+    <> foldMap (\(s, bs) -> pure s <> foldMap flattenTypeVarBinding bs) b
+    <> foldMap (\(n, s) -> flattenName n <> pure s) c
+    <> foldMap (\(g, h) -> flattenOneOrDelimited flattenConstraint g <> pure h) d
+    <> flattenQualifiedName e
+    <> foldMap flattenType f
 
 flattenInstanceBinding :: InstanceBinding a -> DList SourceToken
 flattenInstanceBinding = \case
@@ -60,9 +61,9 @@ flattenInstanceBinding = \case
 
 flattenValueBindingFields :: ValueBindingFields a -> DList SourceToken
 flattenValueBindingFields (ValueBindingFields a b c) =
-  flattenName a <>
-  foldMap flattenBinder b <>
-  flattenGuarded c
+  flattenName a
+    <> foldMap flattenBinder b
+    <> flattenGuarded c
 
 flattenBinder :: Binder a -> DList SourceToken
 flattenBinder = \case
@@ -74,7 +75,7 @@ flattenBinder = \case
   BinderChar _ a _ -> pure a
   BinderString _ a _ -> pure a
   BinderNumber _ a b _ -> foldMap pure a <> pure b
-  BinderArray _ a -> flattenWrapped (foldMap (flattenSeparated flattenBinder)) a
+  BinderList _ a -> flattenWrapped (foldMap (flattenSeparated flattenBinder)) a
   BinderRecord _ a ->
     flattenWrapped (foldMap (flattenSeparated (flattenRecordLabeled flattenBinder))) a
   BinderParens _ a -> flattenWrapped flattenBinder a
@@ -106,10 +107,10 @@ flattenIfThenElse (IfThenElse a b c d e f) =
 
 flattenCaseOf :: CaseOf a -> DList SourceToken
 flattenCaseOf (CaseOf a b c d) =
-  pure a <>
-  flattenSeparated flattenExpr b <>
-  pure c <>
-  foldMap (\(e, f) -> flattenSeparated flattenBinder e <> flattenGuarded f) d
+  pure a
+    <> flattenSeparated flattenExpr b
+    <> pure c
+    <> foldMap (\(e, f) -> flattenSeparated flattenBinder e <> flattenGuarded f) d
 
 flattenLetIn :: LetIn a -> DList SourceToken
 flattenLetIn (LetIn a b c d) =
@@ -139,7 +140,7 @@ flattenExpr = \case
   ExprChar _ a _ -> pure a
   ExprString _ a _ -> pure a
   ExprNumber _ a _ -> pure a
-  ExprArray _ a -> flattenWrapped (foldMap (flattenSeparated flattenExpr)) a
+  ExprList _ a -> flattenWrapped (foldMap (flattenSeparated flattenExpr)) a
   ExprRecord _ a ->
     flattenWrapped (foldMap (flattenSeparated (flattenRecordLabeled flattenExpr))) a
   ExprParens _ a -> flattenWrapped flattenExpr a
@@ -151,7 +152,7 @@ flattenExpr = \case
   ExprRecordAccessor _ a -> flattenRecordAccessor a
   ExprRecordUpdate _ a b -> flattenExpr a <> flattenWrapped (flattenSeparated flattenRecordUpdate) b
   ExprApp _ a b -> flattenExpr a <> flattenExpr b
-  ExprVisibleTypeApp  _ a b c -> flattenExpr a <> pure b <> flattenType c
+  ExprVisibleTypeApp _ a b c -> flattenExpr a <> pure b <> flattenType c
   ExprLambda _ a -> flattenLambda a
   ExprIf _ a -> flattenIfThenElse a
   ExprCase _ a -> flattenCaseOf a
@@ -175,10 +176,10 @@ flattenPatternGuard (PatternGuard a b) =
 
 flattenGuardedExpr :: GuardedExpr a -> DList SourceToken
 flattenGuardedExpr (GuardedExpr a b c d) =
-  pure a <>
-  flattenSeparated flattenPatternGuard b <>
-  pure c <>
-  flattenWhere d
+  pure a
+    <> flattenSeparated flattenPatternGuard b
+    <> pure c
+    <> flattenWhere d
 
 flattenGuarded :: Guarded a -> DList SourceToken
 flattenGuarded = \case
@@ -206,13 +207,13 @@ flattenRole = pure . roleTok
 flattenDeclaration :: Declaration a -> DList SourceToken
 flattenDeclaration = \case
   DeclData _ a b ->
-    flattenDataHead a <>
-    foldMap (\(t, cs) -> pure t <> flattenSeparated flattenDataCtor cs) b
-  DeclType _ a b c ->flattenDataHead a <> pure b <> flattenType c
+    flattenDataHead a
+      <> foldMap (\(t, cs) -> pure t <> flattenSeparated flattenDataCtor cs) b
+  DeclType _ a b c -> flattenDataHead a <> pure b <> flattenType c
   DeclNewtype _ a b c d -> flattenDataHead a <> pure b <> flattenName c <> flattenType d
   DeclClass _ a b ->
-    flattenClassHead a <>
-    foldMap (\(c, d) -> pure c <> foldMap (flattenLabeled flattenName flattenType) d) b
+    flattenClassHead a
+      <> foldMap (\(c, d) -> pure c <> foldMap (flattenLabeled flattenName flattenType) d) b
   DeclInstanceChain _ a -> flattenSeparated flattenInstance a
   DeclDerive _ a b c -> pure a <> foldMap pure b <> flattenInstanceHead c
   DeclKindSignature _ a b -> pure a <> flattenLabeled flattenName flattenType b
@@ -247,11 +248,14 @@ flattenDataMembers = \case
 
 flattenImportDecl :: ImportDecl a -> DList SourceToken
 flattenImportDecl (ImportDecl _ a b c d) =
-  pure a <>
-  flattenName b <>
-  foldMap (\(mt, is) ->
-             foldMap pure mt <> flattenWrapped (flattenSeparated flattenImport) is) c <>
-  foldMap (\(t, n) -> pure t <> flattenName n) d
+  pure a
+    <> flattenName b
+    <> foldMap
+      ( \(mt, is) ->
+          foldMap pure mt <> flattenWrapped (flattenSeparated flattenImport) is
+      )
+      c
+    <> foldMap (\(t, n) -> pure t <> flattenName n) d
 
 flattenImport :: Import a -> DList SourceToken
 flattenImport = \case
@@ -267,8 +271,8 @@ flattenWrapped k (Wrapped a b c) = pure a <> k b <> pure c
 flattenSeparated :: (a -> DList SourceToken) -> Separated a -> DList SourceToken
 flattenSeparated k (Separated a b) = k a <> foldMap (\(c, d) -> pure c <> k d) b
 
-flattenOneOrDelimited
-  :: (a -> DList SourceToken) -> OneOrDelimited a -> DList SourceToken
+flattenOneOrDelimited ::
+  (a -> DList SourceToken) -> OneOrDelimited a -> DList SourceToken
 flattenOneOrDelimited f = \case
   One a -> f a
   Many a -> flattenWrapped (flattenSeparated f) a
@@ -278,7 +282,7 @@ flattenLabeled ka kc (Labeled a b c) = ka a <> pure b <> kc c
 
 flattenType :: Type a -> DList SourceToken
 flattenType = \case
-  TypeVar _ a -> pure $ nameTok a
+  TypeVar _ a -> pure (nameTok a)
   TypeConstructor _ a -> pure $ qualTok a
   TypeWildcard _ a -> pure a
   TypeHole _ a -> pure $ nameTok a
@@ -307,7 +311,7 @@ flattenTypeVarBinding = \case
   TypeVarKinded a -> flattenWrapped (flattenLabeled go flattenType) a
   TypeVarName a -> go a
   where
-  go (a, b) = maybe mempty pure a <> pure (nameTok b)
+    go (a, b) = maybe mempty pure a <> pure (nameTok b)
 
 flattenConstraint :: Constraint a -> DList SourceToken
 flattenConstraint = \case

@@ -15,7 +15,7 @@ import System.Directory (doesFileExist, removePathForcibly)
 import Test.Hspec (Spec, describe, it, shouldBe, shouldSatisfy)
 
 defaultTarget :: Set P.CodegenTarget
-defaultTarget = Set.singleton P.JS
+defaultTarget = Set.singleton P.CoreFn
 
 load :: [Text] -> Command
 load = LoadSync . map Test.mn

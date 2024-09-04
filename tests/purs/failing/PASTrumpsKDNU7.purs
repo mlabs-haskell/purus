@@ -3,4 +3,4 @@ module Main where
 
 import Prelude
 
-class C (a :: (~>) Array)
+class C (a :: (~>) List)

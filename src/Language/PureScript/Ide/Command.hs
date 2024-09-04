@@ -8,16 +8,18 @@
 -- Maintainer  : Christoph Hegemann <christoph.hegemann1337@gmail.com>
 -- Stability   : experimental
 --
--- |
--- Datatypes for the commands psc-ide accepts
+
 -----------------------------------------------------------------------------
 
+{- |
+Datatypes for the commands psc-ide accepts
+-}
 module Language.PureScript.Ide.Command where
 
 import Protolude
 
 import Control.Monad.Fail (fail)
-import Data.Aeson (FromJSON(..), withObject, (.!=), (.:), (.:?))
+import Data.Aeson (FromJSON (..), withObject, (.!=), (.:), (.:?))
 import Data.Map qualified as Map
 import Data.Set qualified as Set
 import Language.PureScript qualified as P
@@ -28,60 +30,60 @@ import Language.PureScript.Ide.Matcher (Matcher)
 import Language.PureScript.Ide.Types (IdeDeclarationAnn, IdeNamespace)
 
 data Command
-    = Load [P.ModuleName]
-    | LoadSync [P.ModuleName] -- used in tests
-    | Type
-      { typeSearch        :: Text
-      , typeFilters       :: [Filter]
+  = Load [P.ModuleName]
+  | LoadSync [P.ModuleName] -- used in tests
+  | Type
+      { typeSearch :: Text
+      , typeFilters :: [Filter]
       , typeCurrentModule :: Maybe P.ModuleName
       }
-    | Complete
-      { completeFilters       :: [Filter]
-      , completeMatcher       :: Matcher IdeDeclarationAnn
+  | Complete
+      { completeFilters :: [Filter]
+      , completeMatcher :: Matcher IdeDeclarationAnn
       , completeCurrentModule :: Maybe P.ModuleName
-      , completeOptions       :: CompletionOptions
+      , completeOptions :: CompletionOptions
       }
-    | CaseSplit
-      { caseSplitLine        :: Text
-      , caseSplitBegin       :: Int
-      , caseSplitEnd         :: Int
+  | CaseSplit
+      { caseSplitLine :: Text
+      , caseSplitBegin :: Int
+      , caseSplitEnd :: Int
       , caseSplitAnnotations :: WildcardAnnotations
-      , caseSplitType        :: Text
+      , caseSplitType :: Text
       }
-    | AddClause
-      { addClauseLine        :: Text
+  | AddClause
+      { addClauseLine :: Text
       , addClauseAnnotations :: WildcardAnnotations
       }
-    | FindUsages
+  | FindUsages
       { usagesModule :: P.ModuleName
       , usagesIdentifier :: Text
       , usagesNamespace :: IdeNamespace
       }
-      -- Import InputFile OutputFile
-    | Import FilePath (Maybe FilePath) [Filter] ImportCommand
-    | List { listType :: ListType }
-    | Rebuild FilePath (Maybe FilePath) (Set P.CodegenTarget)
-    | RebuildSync FilePath (Maybe FilePath) (Set P.CodegenTarget)
-    | Cwd
-    | Reset
-    | Quit
+  | -- Import InputFile OutputFile
+    Import FilePath (Maybe FilePath) [Filter] ImportCommand
+  | List {listType :: ListType}
+  | Rebuild FilePath (Maybe FilePath) (Set P.CodegenTarget)
+  | RebuildSync FilePath (Maybe FilePath) (Set P.CodegenTarget)
+  | Cwd
+  | Reset
+  | Quit
 
 commandName :: Command -> Text
 commandName c = case c of
-  Load{} -> "Load"
-  LoadSync{} -> "LoadSync"
-  Type{} -> "Type"
-  Complete{} -> "Complete"
-  CaseSplit{} -> "CaseSplit"
-  AddClause{} -> "AddClause"
-  FindUsages{} -> "FindUsages"
-  Import{} -> "Import"
-  List{} -> "List"
-  Rebuild{} -> "Rebuild"
-  RebuildSync{} -> "RebuildSync"
-  Cwd{} -> "Cwd"
-  Reset{} -> "Reset"
-  Quit{} -> "Quit"
+  Load {} -> "Load"
+  LoadSync {} -> "LoadSync"
+  Type {} -> "Type"
+  Complete {} -> "Complete"
+  CaseSplit {} -> "CaseSplit"
+  AddClause {} -> "AddClause"
+  FindUsages {} -> "FindUsages"
+  Import {} -> "Import"
+  List {} -> "List"
+  Rebuild {} -> "Rebuild"
+  RebuildSync {} -> "RebuildSync"
+  Cwd {} -> "Cwd"
+  Reset {} -> "Reset"
+  Quit {} -> "Quit"
 
 data ImportCommand
   = AddImplicitImport P.ModuleName
@@ -103,7 +105,6 @@ instance FromJSON ImportCommand where
         AddImportForIdentifier
           <$> (o .: "identifier")
           <*> (fmap P.moduleNameFromString <$> o .:? "qualifier")
-
       s -> fail ("Unknown import command: " <> show s)
 
 data ListType = LoadedModules | Imports FilePath | AvailableModules
@@ -122,7 +123,7 @@ instance FromJSON Command where
     (command :: Text) <- o .: "command"
     case command of
       "list" -> List <$> o .:? "params" .!= LoadedModules
-      "cwd"  -> pure Cwd
+      "cwd" -> pure Cwd
       "quit" -> pure Quit
       "reset" -> pure Reset
       "load" -> do
@@ -175,7 +176,7 @@ instance FromJSON Command where
         Rebuild
           <$> params .: "file"
           <*> params .:? "actualFile"
-          <*> (parseCodegenTargets =<< params .:? "codegen" .!= [ "js" ])
+          <*> (parseCodegenTargets =<< params .:? "codegen" .!= ["js"])
       c -> fail ("Unknown command: " <> show c)
     where
       parseCodegenTargets ts =

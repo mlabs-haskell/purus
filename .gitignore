@@ -19,7 +19,7 @@ bower_components/
 node_modules
 tmp/
 .stack-work/
-output
+# output
 tests/purs/docs/docs/
 core-tests/full-core-docs.md
 tests/support/package-lock.json
@@ -27,6 +27,7 @@ tests/support/package-lock.json
 .psc-package/
 tags
 TAGS
+.nvimrc
 
 # Gather source map files from golden tests
 .source-maps
@@ -38,3 +39,8 @@ TAGS
 *.ps
 *.svg
 tests/purs/make/
+.direnv/
+/.pre-commit-config.yaml
+/result*
+
+tests/purus/passing/**/cache-db.json

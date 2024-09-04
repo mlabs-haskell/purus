@@ -49,7 +49,7 @@ test9 = Other.foo @@ "Hello World"
 
 test10 = "Hello" `Other.baz` "World"
 
-op5 :: forall a. Array a -> Array a -> Array a
+op5 :: forall a. List a -> List a -> List a
 op5 = \as -> \bs -> as
 
 infix 4 op5 as ...

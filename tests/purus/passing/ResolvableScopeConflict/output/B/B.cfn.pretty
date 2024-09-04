@@ -1,0 +1,32 @@
+B (tests/purus/passing/ResolvableScopeConflict/B.purs)
+
+Imported Modules: 
+------------------------------
+  Builtin,
+  Prim
+
+Exports: 
+------------------------------
+  thing,
+  zing
+
+Re-Exports: 
+------------------------------
+  
+
+Foreign: 
+------------------------------
+  
+
+Datatypes: 
+------------------------------
+
+
+
+Declarations: 
+------------------------------
+zing :: Prim.Int
+zing = (3: Prim.Int)
+
+thing :: Prim.Int
+thing = (2: Prim.Int)

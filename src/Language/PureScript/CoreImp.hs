@@ -1,6 +1,6 @@
 -- | The imperative core language
 module Language.PureScript.CoreImp (
-  module C
+  module C,
 ) where
 
 import Language.PureScript.CoreImp.AST as C

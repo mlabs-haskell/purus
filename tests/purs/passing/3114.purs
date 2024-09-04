@@ -33,10 +33,10 @@ main = do
 
     -- without the type signature, this would complain about
     -- Could not match type 
-    --   Array
+    --   List
     -- with type
     --   Tuple String
-    -- while trying to match the type FProxy Array
+    -- while trying to match the type FProxy List
     --   with type FProxy (Tuple String)
     -- while solving type class constraint
     --   Prim.RowCons "baz"

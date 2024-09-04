@@ -1,51 +1,44 @@
--- |
--- Metadata annotations for core functional representation
---
+{- |
+Metadata annotations for core functional representation
+-}
 module Language.PureScript.CoreFn.Meta where
 
 import Prelude
 
 import Language.PureScript.Names (Ident)
 
--- |
--- Metadata annotations
---
+{- |
+Metadata annotations
+-}
 data Meta
-  -- |
-  -- The contained value is a data constructor
-  --
-  = IsConstructor ConstructorType [Ident]
-  -- |
-  -- The contained value is a newtype
-  --
-  | IsNewtype
-  -- |
-  -- The contained value is a typeclass dictionary constructor
-  --
-  | IsTypeClassConstructor
-  -- |
-  -- The contained reference is for a foreign member
-  --
-  | IsForeign
-  -- |
-  -- The contained value is a where clause
-  --
-  | IsWhere
-  -- |
-  -- The contained function application was synthesized by the compiler
-  --
-  | IsSyntheticApp
+  = -- |
+    -- The contained value is a data constructor
+    IsConstructor ConstructorType [Ident]
+  | -- |
+    -- The contained value is a newtype
+    IsNewtype
+  | -- |
+    -- The contained value is a typeclass dictionary constructor
+    IsTypeClassConstructor
+  | -- |
+    -- The contained reference is for a foreign member
+    IsForeign
+  | -- |
+    -- The contained value is a where clause
+    IsWhere
+  | -- |
+    -- The contained function application was synthesized by the compiler
+    IsSyntheticApp
   deriving (Show, Eq, Ord)
 
--- |
--- Data constructor metadata
---
+{- |
+Data constructor metadata
+-}
 data ConstructorType
-  -- |
-  -- The constructor is for a type with a single constructor
-  --
-  = ProductType
-  -- |
-  -- The constructor is for a type with multiple constructors
-  --
-  | SumType deriving (Show, Eq, Ord)
+  = -- |
+    -- The constructor is for a type with a single constructor
+    ProductType
+  | -- |
+    -- The constructor is for a type with multiple constructors
+    SumType
+  deriving (Show, Eq, Ord)

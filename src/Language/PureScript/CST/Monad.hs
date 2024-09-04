@@ -6,10 +6,10 @@ import Data.List (sortOn)
 import Data.List.NonEmpty qualified as NE
 import Data.Ord (comparing)
 import Data.Text (Text)
-import Language.PureScript.CST.Errors (ParserError, ParserErrorInfo(..), ParserErrorType(..), ParserWarning, ParserWarningType)
+import Language.PureScript.CST.Errors (ParserError, ParserErrorInfo (..), ParserErrorType (..), ParserWarning, ParserWarningType)
 import Language.PureScript.CST.Layout (LayoutStack)
 import Language.PureScript.CST.Positions (widen)
-import Language.PureScript.CST.Types (Comment, LineFeed, SourcePos(..), SourceRange(..), SourceToken(..), Token, TokenAnn(..))
+import Language.PureScript.CST.Types (Comment, LineFeed, SourcePos (..), SourceRange (..), SourceToken (..), Token, TokenAnn (..))
 
 type LexResult = Either (LexState, ParserError) SourceToken
 
@@ -18,17 +18,19 @@ data LexState = LexState
   , lexLeading :: [Comment LineFeed]
   , lexSource :: Text
   , lexStack :: LayoutStack
-  } deriving (Show)
+  }
+  deriving (Show)
 
 data ParserState = ParserState
   { parserBuff :: [LexResult]
   , parserErrors :: [ParserError]
   , parserWarnings :: [ParserWarning]
-  } deriving (Show)
+  }
+  deriving (Show)
 
 -- | A bare bones, CPS'ed `StateT s (Except e) a`.
-newtype ParserM e s a =
-  Parser (forall r. s -> (s -> e -> r) -> (s -> a -> r) -> r)
+newtype ParserM e s a
+  = Parser (forall r. s -> (s -> e -> r) -> (s -> a -> r) -> r)
 
 type Parser = ParserM ParserError ParserState
 
@@ -61,24 +63,25 @@ instance Monad (ParserM e s) where
 runParser :: ParserState -> Parser a -> (ParserState, Either (NE.NonEmpty ParserError) a)
 runParser st (Parser k) = k st left right
   where
-  left st'@ParserState {..} err =
-    (st', Left $ NE.sortBy (comparing errRange) $ err NE.:| parserErrors)
+    left st'@ParserState {..} err =
+      (st', Left $ NE.sortBy (comparing errRange) $ err NE.:| parserErrors)
 
-  right st'@ParserState {..} res
-    | null parserErrors = (st', Right res)
-    | otherwise = (st', Left $ NE.fromList $ sortOn errRange parserErrors)
+    right st'@ParserState {..} res
+      | null parserErrors = (st', Right res)
+      | otherwise = (st', Left $ NE.fromList $ sortOn errRange parserErrors)
 
 runTokenParser :: Parser a -> [LexResult] -> Either (NE.NonEmpty ParserError) ([ParserWarning], a)
 runTokenParser p buff = fmap (warnings,) res
   where
-  (ParserState _ _ warnings, res) =
-    runParser initialState p
+    (ParserState _ _ warnings, res) =
+      runParser initialState p
 
-  initialState = ParserState
-    { parserBuff = buff
-    , parserErrors = []
-    , parserWarnings = []
-    }
+    initialState =
+      ParserState
+        { parserBuff = buff
+        , parserErrors = []
+        , parserWarnings = []
+        }
 
 {-# INLINE throw #-}
 throw :: e -> ParserM e s a
@@ -86,29 +89,30 @@ throw e = Parser $ \st kerr _ -> kerr st e
 
 parseError :: SourceToken -> Parser a
 parseError tok = Parser $ \st kerr _ ->
-  kerr st $ ParserErrorInfo
-    { errRange = tokRange . tokAnn $ tok
-    , errToks = [tok]
-    , errStack = [] -- TODO parserStack st
-    , errType = ErrToken
-    }
+  kerr st $
+    ParserErrorInfo
+      { errRange = tokRange . tokAnn $ tok
+      , errToks = [tok]
+      , errStack = [] -- TODO parserStack st
+      , errType = ErrToken
+      }
 
 mkParserError :: LayoutStack -> [SourceToken] -> a -> ParserErrorInfo a
 mkParserError stack toks ty =
   ParserErrorInfo
-    { errRange =  range
+    { errRange = range
     , errToks = toks
     , errStack = stack
     , errType = ty
     }
   where
-  range = case toks of
-    [] -> SourceRange (SourcePos 0 0) (SourcePos 0 0)
-    _  -> widen (tokRange . tokAnn $ head toks) (tokRange . tokAnn $ last toks)
+    range = case toks of
+      [] -> SourceRange (SourcePos 0 0) (SourcePos 0 0)
+      _ -> widen (tokRange . tokAnn $ head toks) (tokRange . tokAnn $ last toks)
 
 addFailure :: [SourceToken] -> ParserErrorType -> Parser ()
 addFailure toks ty = Parser $ \st _ ksucc ->
-  ksucc (st { parserErrors = mkParserError [] toks ty : parserErrors st }) ()
+  ksucc (st {parserErrors = mkParserError [] toks ty : parserErrors st}) ()
 
 parseFail' :: [SourceToken] -> ParserErrorType -> Parser a
 parseFail' toks msg = Parser $ \st kerr _ -> kerr st (mkParserError [] toks msg)
@@ -118,22 +122,25 @@ parseFail = parseFail' . pure
 
 addWarning :: [SourceToken] -> ParserWarningType -> Parser ()
 addWarning toks ty = Parser $ \st _ ksucc ->
-  ksucc (st { parserWarnings = mkParserError [] toks ty : parserWarnings st }) ()
+  ksucc (st {parserWarnings = mkParserError [] toks ty : parserWarnings st}) ()
 
 pushBack :: SourceToken -> Parser ()
 pushBack tok = Parser $ \st _ ksucc ->
-  ksucc (st { parserBuff = Right tok : parserBuff st }) ()
+  ksucc (st {parserBuff = Right tok : parserBuff st}) ()
 
 {-# INLINE tryPrefix #-}
 tryPrefix :: Parser a -> Parser b -> Parser (Maybe a, b)
 tryPrefix (Parser lhs) rhs = Parser $ \st kerr ksucc ->
-  lhs st
-    (\_ _ -> do
-      let Parser k = (Nothing,) <$> rhs
-      k st kerr ksucc)
-    (\st' res -> do
-      let Parser k = (Just res,) <$> rhs
-      k st' kerr ksucc)
+  lhs
+    st
+    ( \_ _ -> do
+        let Parser k = (Nothing,) <$> rhs
+        k st kerr ksucc
+    )
+    ( \st' res -> do
+        let Parser k = (Just res,) <$> rhs
+        k st' kerr ksucc
+    )
 
 oneOf :: NE.NonEmpty (Parser a) -> Parser a
 oneOf parsers = Parser $ \st kerr ksucc -> do
@@ -144,28 +151,30 @@ oneOf parsers = Parser $ \st kerr ksucc -> do
     go (st1, Left errs1) (st2, Left errs2)
       | errRange (NE.last errs2) > errRange (NE.last errs1) = (st2, Left errs2)
       | otherwise = (st1, Left errs1)
-  case foldr1 go $ runParser (st { parserErrors = [] }) <$> parsers of
-    (st', Left errs) -> kerr (st' { parserErrors = prevErrs <> NE.tail errs}) $ NE.head errs
-    (st', Right res) -> ksucc (st' { parserErrors = prevErrs }) res
+  case foldr1 go $ runParser (st {parserErrors = []}) <$> parsers of
+    (st', Left errs) -> kerr (st' {parserErrors = prevErrs <> NE.tail errs}) $ NE.head errs
+    (st', Right res) -> ksucc (st' {parserErrors = prevErrs}) res
 
 manyDelimited :: Token -> Token -> Token -> Parser a -> Parser [a]
 manyDelimited open close sep p = do
-  _   <- token open
+  _ <- token open
   res <- go1
-  _   <- token close
+  _ <- token close
   pure res
   where
-  go1 =
-    oneOf $ NE.fromList
-      [ go2 . pure =<< p
-      , pure []
-      ]
+    go1 =
+      oneOf $
+        NE.fromList
+          [ go2 . pure =<< p
+          , pure []
+          ]
 
-  go2 acc =
-    oneOf $ NE.fromList
-      [ token sep *> (go2 . (: acc) =<< p)
-      , pure (reverse acc)
-      ]
+    go2 acc =
+      oneOf $
+        NE.fromList
+          [ token sep *> (go2 . (: acc) =<< p)
+          , pure (reverse acc)
+          ]
 
 token :: Token -> Parser SourceToken
 token t = do
@@ -178,8 +187,8 @@ munch :: Parser SourceToken
 munch = Parser $ \state@ParserState {..} kerr ksucc ->
   case parserBuff of
     Right tok : parserBuff' ->
-      ksucc (state { parserBuff = parserBuff' }) tok
-    Left (_,  err) : _ ->
+      ksucc (state {parserBuff = parserBuff'}) tok
+    Left (_, err) : _ ->
       kerr state err
     [] ->
       error "Empty input"

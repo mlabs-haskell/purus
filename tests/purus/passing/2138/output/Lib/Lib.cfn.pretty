@@ -1,0 +1,29 @@
+Lib (tests/purus/passing/2138/Lib.purs)
+
+Imported Modules: 
+------------------------------
+  Builtin,
+  Prim
+
+Exports: 
+------------------------------
+  B,
+  C
+
+Re-Exports: 
+------------------------------
+  
+
+Foreign: 
+------------------------------
+  
+
+Datatypes: 
+------------------------------
+data A  = 
+  B 
+  | C 
+
+
+Declarations: 
+------------------------------

@@ -1,29 +1,32 @@
-{-# LANGUAGE PackageImports        #-}
+{-# LANGUAGE PackageImports #-}
 
-module Language.PureScript.Ide.Logging
-       ( runLogger
-       , logPerf
-       , displayTimeSpec
-       , labelTimespec
-       ) where
+module Language.PureScript.Ide.Logging (
+  runLogger,
+  logPerf,
+  displayTimeSpec,
+  labelTimespec,
+) where
 
 import Protolude
 
-import "monad-logger" Control.Monad.Logger (LogLevel(..), LoggingT, MonadLogger, filterLogger, logOtherN, runStdoutLoggingT)
 import Data.Text qualified as T
-import Language.PureScript.Ide.Types (IdeLogLevel(..))
-import System.Clock (Clock(..), TimeSpec, diffTimeSpec, getTime, toNanoSecs)
+import Language.PureScript.Ide.Types (IdeLogLevel (..))
+import System.Clock (Clock (..), TimeSpec, diffTimeSpec, getTime, toNanoSecs)
 import Text.Printf (printf)
+import "monad-logger" Control.Monad.Logger (LogLevel (..), LoggingT, MonadLogger, filterLogger, logOtherN, runStdoutLoggingT)
 
-runLogger :: MonadIO m => IdeLogLevel -> LoggingT m a -> m a
+runLogger :: (MonadIO m) => IdeLogLevel -> LoggingT m a -> m a
 runLogger logLevel' =
-  runStdoutLoggingT . filterLogger (\_ logLevel ->
-                                       case logLevel' of
-                                         LogAll -> True
-                                         LogDefault -> not (logLevel == LevelOther "perf" || logLevel == LevelDebug)
-                                         LogNone -> False
-                                         LogDebug -> logLevel /= LevelOther "perf"
-                                         LogPerf -> logLevel == LevelOther "perf")
+  runStdoutLoggingT
+    . filterLogger
+      ( \_ logLevel ->
+          case logLevel' of
+            LogAll -> True
+            LogDefault -> not (logLevel == LevelOther "perf" || logLevel == LevelDebug)
+            LogNone -> False
+            LogDebug -> logLevel /= LevelOther "perf"
+            LogPerf -> logLevel == LevelOther "perf"
+      )
 
 labelTimespec :: Text -> TimeSpec -> Text
 labelTimespec label duration = label <> ": " <> displayTimeSpec duration

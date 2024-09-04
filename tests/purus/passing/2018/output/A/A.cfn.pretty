@@ -1,0 +1,29 @@
+A (tests/purus/passing/2018/A.purs)
+
+Imported Modules: 
+------------------------------
+  B,
+  Builtin,
+  Prim
+
+Exports: 
+------------------------------
+  foo
+
+Re-Exports: 
+------------------------------
+  
+
+Foreign: 
+------------------------------
+  
+
+Datatypes: 
+------------------------------
+
+
+
+Declarations: 
+------------------------------
+foo :: (B.Foo -> (B.Foo))
+foo = \(x: B.Foo) -> (x: B.Foo)

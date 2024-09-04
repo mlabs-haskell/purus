@@ -1,0 +1,28 @@
+Eg (tests/purus/passing/2609/Eg.purs)
+
+Imported Modules: 
+------------------------------
+  Builtin,
+  Eg,
+  Prim
+
+Exports: 
+------------------------------
+  Bar'
+
+Re-Exports: 
+------------------------------
+  
+
+Foreign: 
+------------------------------
+  
+
+Datatypes: 
+------------------------------
+data Foo'  = 
+  Bar' (Prim.Int) (Prim.Int)
+
+
+Declarations: 
+------------------------------

@@ -17,7 +17,7 @@ exportedFunction x = x
 
 type MyType = String
 
-type MyParamType a = Array a
+type MyParamType a = List a
 
 newtype MyNewtype = MyNewtype String
 

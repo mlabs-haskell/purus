@@ -1,20 +1,20 @@
--- |
--- A replacement for WriterT IO which uses mutable references.
---
+{- |
+A replacement for WriterT IO which uses mutable references.
+-}
 module Control.Monad.Logger where
 
 import Prelude
 
 import Control.Monad (ap)
-import Control.Monad.Base (MonadBase(..))
-import Control.Monad.IO.Class (MonadIO(..))
-import Control.Monad.Trans.Control (MonadBaseControl(..))
-import Control.Monad.Writer.Class (MonadWriter(..))
+import Control.Monad.Base (MonadBase (..))
+import Control.Monad.IO.Class (MonadIO (..))
+import Control.Monad.Trans.Control (MonadBaseControl (..))
+import Control.Monad.Writer.Class (MonadWriter (..))
 
 import Data.IORef (IORef, atomicModifyIORef', newIORef, readIORef)
 
 -- | A replacement for WriterT IO which uses mutable references.
-newtype Logger w a = Logger { runLogger :: IORef w -> IO a }
+newtype Logger w a = Logger {runLogger :: IORef w -> IO a}
 
 -- | Run a Logger computation, starting with an empty log.
 runLogger' :: (Monoid w) => Logger w a -> IO (a, w)

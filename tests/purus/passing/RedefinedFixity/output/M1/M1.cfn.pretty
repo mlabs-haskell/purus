@@ -1,0 +1,35 @@
+M1 (tests/purus/passing/RedefinedFixity/M1.purs)
+
+Imported Modules: 
+------------------------------
+  Builtin,
+  M1,
+  Prim
+
+Exports: 
+------------------------------
+  applyFn
+
+Re-Exports: 
+------------------------------
+  
+
+Foreign: 
+------------------------------
+  
+
+Datatypes: 
+------------------------------
+
+
+
+Declarations: 
+------------------------------
+applyFn :: forall (a :: Prim.Type) (b :: Prim.Type). (forall (c :: Prim.Type) (d :: Prim.Type). ((c :: Prim.Type) -> ((d :: Prim.Type))) -> (((a :: Prim.Type) -> ((b :: Prim.Type)))))
+applyFn = 
+  \(f: forall (c :: Prim.Type)
+    (d :: Prim.Type). ((c :: Prim.Type) -> ((d :: Prim.Type)))) -> 
+    \(a: (a :: Prim.Type)) -> 
+      (f: forall (c :: Prim.Type)
+      (d :: Prim.Type). ((c :: Prim.Type) -> ((d :: Prim.Type))))
+      (a: (a :: Prim.Type))

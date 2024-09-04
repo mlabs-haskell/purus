@@ -6,7 +6,7 @@ import Test.Assert (assert')
 import Effect (Effect)
 import Effect.Console (log)
 
-snd :: forall a. Partial => Array a -> a
+snd :: forall a. Partial => List a -> a
 snd = \[_, y] -> y
 
 main :: Effect _
