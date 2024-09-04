@@ -410,6 +410,7 @@ library
     Language.Purus.Debug
     Language.Purus.Eval 
     Language.Purus.IR
+    Language.Purus.TH
     Language.Purus.IR.Utils
     Language.Purus.Make
     Language.Purus.Pipeline.Monad
