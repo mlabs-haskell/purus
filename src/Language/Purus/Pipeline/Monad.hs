@@ -52,13 +52,10 @@ import Prettyprinter (
 
 newtype CounterT m a = CounterT {runCounterT :: StateT Int m a}
   deriving newtype (Functor, Applicative, Monad, MonadTrans)
+  deriving (MonadState Int) via (StateT Int m)
 
 deriving instance (MonadError e m) => MonadError e (CounterT m)
 deriving instance (MonadReader r m) => MonadReader r (CounterT m)
-
-instance (MonadState s m) => MonadState s (CounterT m) where
-  get = CounterT $ runCounterT (lift get)
-  put x = CounterT $ runCounterT (put x)
 
 class MonadCounter (m :: * -> *) where
   next :: m Int
@@ -125,8 +122,14 @@ instance Pretty DesugarContext where
           <> hardline
 
 instance Semigroup DesugarContext where
-  (DesugarContext gb1 lb1) <> (DesugarContext gb2 lb2) = DesugarContext (gb1 <> gb2) (lb1 <> lb2)
-
+  (DesugarContext gb1 lb1) <> (DesugarContext gb2 lb2) = DesugarContext (merge gb1 gb2) (lb1 <> lb2)
+    where
+      merge :: forall a b c. (Ord a, Ord b) => Map a (Map b c) -> Map a (Map b c) -> Map a (Map b c)
+      merge ma mb = M.foldlWithKey' (\acc a mbc ->
+                                      M.alter (\case Nothing -> Just mbc; Just mbcX -> Just (M.union mbc mbcX))
+                                      a
+                                      acc
+                                   ) mb ma
 instance Monoid DesugarContext where
   mempty = DesugarContext M.empty M.empty
 
