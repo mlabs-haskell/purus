@@ -86,7 +86,7 @@ import Language.PureScript.AST.Literals (
            StringLiteral,
            CharLiteral,
            BooleanLiteral,
-           ArrayLiteral,
+           ListLiteral,
            ObjectLiteral
            )
   )

@@ -43,6 +43,6 @@ instance (ToJSON a) => ToJSON (Literal a)
 instance Foldable Literal where
   {-# INLINEABLE foldMap #-}
   foldMap f = \case
-    ArrayLiteral lits -> foldMap f lits
+    ListLiteral lits -> foldMap f lits
     ObjectLiteral lits -> foldMap (f . snd) lits
     _ -> mempty
