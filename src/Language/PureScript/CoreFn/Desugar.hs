@@ -131,7 +131,6 @@ import Language.PureScript.Types (
  )
 import Language.Purus.Pretty (ppType, prettyDatatypes, prettyStr, renderExprStr)
 import Prettyprinter (Pretty (pretty))
-import Text.Pretty.Simple (pShow)
 
 {-
     CONVERSION MACHINERY
@@ -673,9 +672,9 @@ transformLetBindings mn _ss seen (A.BindingGroupDeclaration ds : rest) ret = wra
         transformLetBindings mn _ss seen' rest ret
     -- Because this has already been through the typechecker once, every value in the binding group should have an explicit type. I hope.
     Left _ ->
-      error $
+      error $ 
         "untyped binding group element in mutually recursive LET binding group after initial typechecker pass: \n"
-          <> LT.unpack (pShow $ lefts types)
+          <> show (lefts types)
   where
     go :: ((SourceAnn, Ident), A.Expr) -> Either ((SourceAnn, Ident), A.Expr) ((SourceAnn, Ident), (A.Expr, SourceType))
     go (annName, A.TypedValue _ expr ty) = Right (annName, (expr, ty))

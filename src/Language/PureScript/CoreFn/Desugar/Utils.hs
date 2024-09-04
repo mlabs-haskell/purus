@@ -20,7 +20,6 @@ import Data.Bifunctor (Bifunctor (..))
 import Data.List (foldl')
 import Data.List.NonEmpty qualified as NEL
 import Data.Text qualified as T
-import Data.Text.Lazy qualified as LT
 import Debug.Trace (trace, traceM)
 import Language.PureScript.AST qualified as A
 import Language.PureScript.AST.Declarations (declSourceSpan)
@@ -71,7 +70,7 @@ import Language.PureScript.TypeChecker.Types (
  )
 import Language.PureScript.TypeClassDictionaries (NamedDict, TypeClassDictionaryInScope (..))
 import Language.PureScript.Types (Constraint (..), RowListItem (..), SourceType, Type (..), everywhereOnTypes, quantify, replaceTypeVars, rowToSortedList, srcTypeApp, srcTypeConstructor, srcTypeVar)
-import Text.Pretty.Simple (pShow)
+
 
 {- UTILITIES -}
 -- TODO: Explain purpose of every function
@@ -224,7 +223,7 @@ withInstantiatedFunType :: (M m) => ModuleName -> SourceType -> (SourceType -> S
 withInstantiatedFunType mn ty act = case instantiatePolyType mn ty of
   (a :-> b, replaceForalls, bindAct) -> bindAct $ replaceForalls <$> act a b
   (other, _, _) ->
-    let !showty = LT.unpack (pShow other)
+    let !showty = show other
      in error $ "Internal error. Expected a function type, but got: " <> showty
 
 {- This function more-or-less contains our strategy for handling polytypes (quantified or constrained types). It returns a tuple T such that:
@@ -402,9 +401,9 @@ desugarConstraintsInDecl = \case
   A.DataBindingGroupDeclaration ds -> A.DataBindingGroupDeclaration $ desugarConstraintsInDecl <$> ds
   other -> other
 
--- Gives much more readable output (with colors for brackets/parens!) than plain old `show`
+-- TODO: Remove this 
 pTrace :: (Monad m, Show a) => a -> m ()
-pTrace = traceM . LT.unpack . pShow
+pTrace = traceM . show
 
 -- | Given a string and a monadic action, produce a trace with the given message before & after the action (with pretty lines to make it more readable)
 wrapTrace :: (Monad m) => String -> m a -> m a
