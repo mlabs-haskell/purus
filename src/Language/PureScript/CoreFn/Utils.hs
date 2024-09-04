@@ -223,28 +223,4 @@ exprType = \case
   Case _ ty _ _ -> ty
   Let _ _ e -> exprType e
 
-instance Plated (Expr a) where
-  plate f = \case
-    Literal a t lit -> Literal a t <$> traverseLit f lit
-    Accessor a t s e -> Accessor a t s <$> f e
-    ObjectUpdate a t e cf fs ->
-      (\e' fs' -> ObjectUpdate a t e' cf fs')
-        <$> f e
-        <*> traverse (traverse f) fs
-    Abs a t bv e -> Abs a t bv <$> f e
-    App a e1 e2 -> App a <$> f e1 <*> f e2
-    Var a t qi -> pure $ Var a t qi
-    Case a t scruts alts ->
-      Case a t
-        <$> traverse f scruts
-        <*> traverse goAlt alts
-    Let a decls body ->
-      Let a <$> traverse goDecl decls <*> f body
-    where
-      goAlt (CaseAlternative caBinders caResult) =
-        CaseAlternative caBinders
-          <$> bitraverse (traverse (traverse f)) f caResult
 
-      goDecl = \case
-        NonRec a nm body -> NonRec a nm <$> f body
-        Rec xs -> Rec <$> traverse (traverse f) xs

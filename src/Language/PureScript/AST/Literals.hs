@@ -35,7 +35,14 @@ data Literal a -- a ~ Expr Ann
     -- |
     -- An object literal
     ObjectLiteral [(PSString, a)]
-  deriving (Eq, Ord, Show, Functor, Generic)
+  deriving stock (Eq, Ord, Show, Functor, Generic, Traversable)
 
 instance (FromJSON a) => FromJSON (Literal a)
 instance (ToJSON a) => ToJSON (Literal a)
+
+instance Foldable Literal where
+  {-# INLINEABLE foldMap #-}
+  foldMap f = \case
+    ArrayLiteral lits -> foldMap f lits
+    ObjectLiteral lits -> foldMap (f . snd) lits
+    _ -> mempty
