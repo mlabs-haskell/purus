@@ -97,6 +97,9 @@ runStatePurusM s pm = runStateT (runPurusM pm) s
 data DesugarContext = DesugarContext {_globalScope :: Map ModuleName (Map Ident Int), _localScope :: Map Ident Int}
   deriving (Show, Eq)
 
+initDesugarContext :: DesugarContext
+initDesugarContext = DesugarContext M.empty M.empty
+
 instance Pretty DesugarContext where
   pretty (DesugarContext globals locals) =
     let globals' =
@@ -121,17 +124,6 @@ instance Pretty DesugarContext where
           <> indent 2 locals'
           <> hardline
 
-instance Semigroup DesugarContext where
-  (DesugarContext gb1 lb1) <> (DesugarContext gb2 lb2) = DesugarContext (merge gb1 gb2) (lb1 <> lb2)
-    where
-      merge :: forall a b c. (Ord a, Ord b) => Map a (Map b c) -> Map a (Map b c) -> Map a (Map b c)
-      merge ma mb = M.foldlWithKey' (\acc a mbc ->
-                                      M.alter (\case Nothing -> Just mbc; Just mbcX -> Just (M.union mbc mbcX))
-                                      a
-                                      acc
-                                   ) mb ma
-instance Monoid DesugarContext where
-  mempty = DesugarContext M.empty M.empty
 
 makeLenses ''DesugarContext
 
@@ -147,7 +139,7 @@ newtype DesugarCore a = DesugarCore (PurusM DesugarContext a)
     )
 
 runDesugarCore :: DesugarCore a -> CounterT (Either String) (a, DesugarContext)
-runDesugarCore (DesugarCore psm) = runStatePurusM mempty psm
+runDesugarCore (DesugarCore psm) = runStatePurusM initDesugarContext psm
 
 newtype Inline a = Inline (PurusM (Module IR_Decl PurusType PurusType Ann) a)
   deriving newtype (Functor, Applicative, Monad, MonadError String, MonadCounter, MonadReader (Module IR_Decl PurusType PurusType Ann))
