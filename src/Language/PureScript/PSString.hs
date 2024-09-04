@@ -1,3 +1,5 @@
+{-# LANGUAGE DeriveLift #-}
+
 module Language.PureScript.PSString (
   PSString,
   toUTF16CodeUnits,
@@ -33,6 +35,7 @@ import GHC.Generics (Generic)
 import Numeric (showHex)
 import System.IO.Unsafe (unsafePerformIO)
 import Prelude
+import Language.Haskell.TH.Syntax (Lift)
 
 {- |
 Strings in PureScript are sequences of UTF-16 code units, which do not
@@ -49,7 +52,7 @@ strings where that would be safe (i.e. when there are no lone surrogates),
 and arrays of UTF-16 code units (integers) otherwise.
 -}
 newtype PSString = PSString {toUTF16CodeUnits :: [Word16]}
-  deriving (Eq, Ord, Semigroup, Monoid, Generic)
+  deriving (Eq, Ord, Semigroup, Monoid, Generic, Lift)
 
 instance NFData PSString
 instance Serialise PSString
