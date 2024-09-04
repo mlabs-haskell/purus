@@ -69,5 +69,5 @@ main = do
 
   assertEqual { actual: bravo, expected: 1 }
   runtimeImport "InitializationError" \err3 -> do
-    assertEqual { actual: err3, expected: Just "ReferenceError: alphaArray was needed before it finished initializing (module InitializationError, line 0)" } -- TODO: fix the 0
+    assertEqual { actual: err3, expected: Just "ReferenceError: alphaList was needed before it finished initializing (module InitializationError, line 0)" } -- TODO: fix the 0
     log "Done"

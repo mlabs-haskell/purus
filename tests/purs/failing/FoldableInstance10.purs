@@ -7,5 +7,5 @@ import Data.Foldable (class Foldable)
 
 foreign import data Variant :: Row Type -> Type
 
-data Test a = Test (Variant (left :: a, right :: Array a))
+data Test a = Test (Variant (left :: a, right :: List a))
 derive instance Foldable Test

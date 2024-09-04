@@ -38,8 +38,8 @@ stringToNt1 = coerce
 toNT1 :: forall a. Coercible a String => a -> NTString1
 toNT1 = coerce
 
-toNT1Array :: forall a. Coercible a (Array String) => a -> Array NTString1
-toNT1Array = coerce
+toNT1List :: forall a. Coercible a (List String) => a -> List NTString1
+toNT1List = coerce
 
 newtype NTString2 = NTString2 String
 
@@ -200,7 +200,7 @@ rec8ToRec8 = coerce
 rec8ToRec8' :: forall r s. Coercible r s => Rec8 r Int -> Rec8 s (Id1 Int)
 rec8ToRec8' = coerce
 
-data Arr1 a b = Arr1 (Array a) (Array b)
+data Arr1 a b = Arr1 (List a) (List b)
 
 arr1ToArr1 :: Arr1 Int String -> Arr1 (Id1 Int) (Id2 String)
 arr1ToArr1 = coerce

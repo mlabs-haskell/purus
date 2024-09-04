@@ -6,5 +6,5 @@ import Prelude
 data Proxy :: forall k. k -> Type
 data Proxy a = Proxy
 
-f :: forall (a :: (~>) Array). Proxy a -> Proxy a
+f :: forall (a :: (~>) List). Proxy a -> Proxy a
 f x = x

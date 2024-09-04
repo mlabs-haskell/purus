@@ -3,7 +3,7 @@ module Main where
 import Prelude
 import Effect.Console (log)
 
-type A a = Array a
+type A a = List a
 
 data Foo a = Foo (A a) | Bar
 

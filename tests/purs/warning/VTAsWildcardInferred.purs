@@ -15,13 +15,13 @@ class Foo :: Type -> Type -> Type -> Constraint
 class Foo a b c | a -> b c where
   fooMember :: a -> b
 
-wrap :: forall @a. Array a -> Array (Array a)
+wrap :: forall @a. List a -> List (List a)
 wrap as = [as]
 
-arrFooMember :: forall c. Array (Foo Int Boolean c => Int -> Boolean)
+arrFooMember :: forall c. List (Foo Int Boolean c => Int -> Boolean)
 arrFooMember = [fooMember]
 
-test2 :: forall c. Array (Array (Foo Int Boolean c => Int -> Boolean))
+test2 :: forall c. List (List (Foo Int Boolean c => Int -> Boolean))
 test2 = wrap @(Foo Int Boolean _ => _) arrFooMember -- neither wildcard should warn IMO
 
 main :: Effect Unit

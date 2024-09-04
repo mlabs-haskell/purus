@@ -2,7 +2,7 @@ module Main where
 
 import Prelude
 import Effect.Console
-import Data.Array.Partial
+import Data.List.Partial
 import Partial.Unsafe
 
 sumTCObug = go identity where 
@@ -17,7 +17,7 @@ sumTCObug' = go identity where
   go f 0 = f
   go f n = go (\a -> n + a) 0
 
-count :: forall a. (a -> Boolean) -> Array a -> Int
+count :: forall a. (a -> Boolean) -> List a -> Int
 count p = count' 0 where
   count' acc [] = acc
   count' acc xs =

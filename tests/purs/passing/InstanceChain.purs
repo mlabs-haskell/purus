@@ -17,10 +17,10 @@ argEg0 :: Proxy Int
 argEg0 = arg (Proxy :: Proxy Int)
 
 argEg1 :: Proxy Int
-argEg1 = arg (Proxy :: Proxy (Array Int))
+argEg1 = arg (Proxy :: Proxy (List Int))
 
 argEg2 :: Proxy Int
-argEg2 = arg (Proxy :: Proxy (Boolean -> Array Int))
+argEg2 = arg (Proxy :: Proxy (Boolean -> List Int))
 
 
 class IsEq l r o | l r -> o
@@ -38,10 +38,10 @@ isEqEg0 :: Proxy True
 isEqEg0 = isEq (Proxy :: Proxy Int) (Proxy :: Proxy Int)
 
 isEqEg1 :: Proxy True
-isEqEg1 = isEq (Proxy :: Proxy (Array Int)) (Proxy :: Proxy (Array Int))
+isEqEg1 = isEq (Proxy :: Proxy (List Int)) (Proxy :: Proxy (List Int))
 
 isEqEg2 :: Proxy False
-isEqEg2 = isEq (Proxy :: Proxy (Array Int)) (Proxy :: Proxy (Array Boolean))
+isEqEg2 = isEq (Proxy :: Proxy (List Int)) (Proxy :: Proxy (List Boolean))
 
 
 -- example chain in which we should only commit to `isStringElse` once we've

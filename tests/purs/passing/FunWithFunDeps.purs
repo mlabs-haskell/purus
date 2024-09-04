@@ -32,7 +32,7 @@ foreign import fappendImpl :: forall l r o e. FVect l e -> FVect r e -> FVect o 
 fflatten :: forall f s t o. NatMult f s o => FVect f (FVect s t) -> FVect o t
 fflatten = fflattenImpl
 foreign import fflattenImpl :: forall f s t o. FVect f (FVect s t) -> FVect o t
-foreign import ftoArray :: forall n e. FVect n e -> Array e
+foreign import ftoList :: forall n e. FVect n e -> List e
 
 -- should be able to figure these out
 fsingleton x = fcons x fnil

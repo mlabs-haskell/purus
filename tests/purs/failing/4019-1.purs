@@ -19,8 +19,8 @@ foreign import data K2 :: Type
 foreign import data D1 :: K1
 foreign import data D2 :: K2
 
-foo :: Indexed Array D1 D2 Int
+foo :: Indexed List D1 D2 Int
 foo = Indexed [1]
 
-bar :: Indexed Array D1 D2 Int
+bar :: Indexed List D1 D2 Int
 bar = imap identity foo

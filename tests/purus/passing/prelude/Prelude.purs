@@ -398,7 +398,7 @@ serializeAssocMap ::
 serializeAssocMap fK fV (AssocMap ell) = Builtin.mapData (go ell)
   where
     go :: 
-      Array (Tuple2 k v) -> 
+      List (Tuple2 k v) -> 
       Builtin.BuiltinList (Builtin.BuiltinPair Builtin.BuiltinData Builtin.BuiltinData)
     go = case _ of 
              Cons p xs -> 
@@ -416,7 +416,7 @@ deserializeAssocMap fK fV dat = AssocMap (go (Builtin.unMapData dat))
   where
     go :: 
       Builtin.BuiltinList (Builtin.BuiltinPair Builtin.BuiltinData Builtin.BuiltinData) ->
-      Array (Tuple2 k v)
+      List (Tuple2 k v)
     go ell = if Builtin.nullList ell
              then Nil
              else let p = Builtin.headList ell
@@ -468,21 +468,21 @@ deserializeByteString :: Builtin.BuiltinData -> Builtin.BuiltinByteString
 deserializeByteString = Builtin.unBData
 
 serializeList :: 
-  forall (a :: Type) . (a -> Builtin.BuiltinData) -> Array a -> Builtin.BuiltinData
+  forall (a :: Type) . (a -> Builtin.BuiltinData) -> List a -> Builtin.BuiltinData
 serializeList f arr = Builtin.listData (go arr)
   where
-    go :: Array a -> Builtin.BuiltinList Builtin.BuiltinData
+    go :: List a -> Builtin.BuiltinList Builtin.BuiltinData
     go = case _ of 
              Nil -> Builtin.mkNilData unit
              Cons x xs -> Builtin.mkCons (f x) (go xs)
   
 deserializeList :: 
-  forall (a :: Type) . (Builtin.BuiltinData -> a) -> Builtin.BuiltinData -> Array a
+  forall (a :: Type) . (Builtin.BuiltinData -> a) -> Builtin.BuiltinData -> List a
 deserializeList f dat = 
   let unlisted = Builtin.unListData dat
    in go unlisted
    where
-     go :: Builtin.BuiltinList Builtin.BuiltinData -> Array a
+     go :: Builtin.BuiltinList Builtin.BuiltinData -> List a
      go ell = if Builtin.nullList ell
               then Nil
               else let h = Builtin.headList ell
@@ -574,8 +574,8 @@ xor x y = Builtin.ifThenElse x (not y) y
 mapList :: 
   forall (a :: Type) (b :: Type) . 
   (a -> b) -> 
-  Array a ->
-  Array b
+  List a ->
+  List b
 mapList f ell = case ell of 
   Nil -> Nil
   Cons x xs -> Cons (f x) (mapList f xs)
@@ -583,8 +583,8 @@ mapList f ell = case ell of
 filterList :: 
   forall (a :: Type) . 
   (a -> Boolean) -> 
-  Array a -> 
-  Array a
+  List a -> 
+  List a
 filterList f ell = case ell of 
   Nil -> Nil
   Cons x xs -> if f x
@@ -594,8 +594,8 @@ filterList f ell = case ell of
 takeList :: 
   forall (a :: Type) . 
   Int -> 
-  Array a -> 
-  Array a
+  List a -> 
+  List a
 takeList count ell = 
   if Builtin.lessThanEqualsInteger count 0
   then Nil
@@ -606,8 +606,8 @@ takeList count ell =
 dropList :: 
   forall (a :: Type) . 
   Int -> 
-  Array a -> 
-  Array a
+  List a -> 
+  List a
 dropList count ell = 
   if Builtin.lessThanEqualsInteger count 0
   then ell
@@ -618,9 +618,9 @@ dropList count ell =
 zipWithList :: 
   forall (a :: Type) (b :: Type) (c :: Type) . 
   (a -> b -> c) -> 
-  Array a -> 
-  Array b -> 
-  Array c
+  List a -> 
+  List b -> 
+  List c
 zipWithList f ell1 ell2 = case ell1 of 
   Nil -> Nil
   Cons x xs -> case ell2 of 
@@ -629,16 +629,16 @@ zipWithList f ell1 ell2 = case ell1 of
 
 appendList :: 
   forall (a :: Type) . 
-  Array a -> 
-  Array a -> 
-  Array a
+  List a -> 
+  List a -> 
+  List a
 appendList ell1 ell2 = case ell1 of 
   Nil -> ell2
   Cons x xs -> Cons x (appendList xs ell2)
 
 lengthList :: 
   forall (a :: Type) . 
-  Array a -> 
+  List a -> 
   Int
 lengthList ell = case ell of 
   Nil -> 0
@@ -647,7 +647,7 @@ lengthList ell = case ell of
 anyList :: 
   forall (a :: Type) . 
   (a -> Boolean) -> 
-  Array a -> 
+  List a -> 
   Boolean
 anyList p ell = case ell of 
   Nil -> False
@@ -658,7 +658,7 @@ anyList p ell = case ell of
 allList ::
   forall (a :: Type) . 
   (a -> Boolean) -> 
-  Array a -> 
+  List a -> 
   Boolean
 allList p ell = case ell of 
   Nil -> True
@@ -666,12 +666,12 @@ allList p ell = case ell of
                then allList p xs
                else False
 
-sumList :: Array Int -> Int
+sumList :: List Int -> Int
 sumList ell = case ell of 
   Nil -> 0
   Cons x xs -> Builtin.addInteger x (sumList xs)
 
-productList :: Array Int -> Int
+productList :: List Int -> Int
 productList ell = case ell of 
   Nil -> 1
   Cons x xs -> Builtin.multiplyInteger x (productList xs)

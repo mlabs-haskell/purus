@@ -9,28 +9,28 @@ import Test.Assert
 
 type RecordFields f a =
   { a :: a
-  , zArrayA :: Array a
+  , zListA :: List a
   , fa :: f a
   , ignore :: Int
-  , recursiveA :: Array (Tuple Int (Array a))
-  , arrayIgnore :: Array Int
+  , recursiveA :: List (Tuple Int (List a))
+  , arrayIgnore :: List Int
   , fIgnore :: f Int
   , empty :: {}
   }
 
 data M f a
-  = M0 a (Array a)
+  = M0 a (List a)
   | M1 Int
   | M2 (f a)
   | M3 (RecordFields f a)
   | M4 { nested :: RecordFields f a }
-  | M5 Int a (Array Int) (Array a) (f a) (f Int) (RecordFields f a) { nested :: RecordFields f a }
-  | M6 (Array (Array (Array a)))
+  | M5 Int a (List Int) (List a) (f a) (f Int) (RecordFields f a) { nested :: RecordFields f a }
+  | M6 (List (List (List a)))
 
 derive instance eqM :: (Eq1 f, Eq a) => Eq (M f a)
 derive instance functorM :: Functor f => Functor (M f)
 
-type MA = M Array
+type MA = M List
 
 m0L = M0 0 [1, 2] :: MA Int
 m0R = M0 "0" ["1", "2"] :: MA String
@@ -50,11 +50,11 @@ m4R = M4 { nested: recordValueR } :: MA String
 m5L = M5 0 1 [2, 3] [3, 4] [5, 6] [7, 8] recordValueL { nested: recordValueL } :: MA Int
 m5R = M5 0 "1" [2, 3] ["3", "4"] ["5", "6"] [7, 8] recordValueR { nested: recordValueR } :: MA String
 
-recordValueL :: RecordFields Array Int
-recordValueL = { a: 71, zArrayA: [72], fa: [73], ignore: 91, recursiveA: [ Tuple 1 [1], Tuple 2 [2] ], arrayIgnore: [92, 93], fIgnore: [94], empty: {} }
+recordValueL :: RecordFields List Int
+recordValueL = { a: 71, zListA: [72], fa: [73], ignore: 91, recursiveA: [ Tuple 1 [1], Tuple 2 [2] ], arrayIgnore: [92, 93], fIgnore: [94], empty: {} }
 
-recordValueR :: RecordFields Array String
-recordValueR = { a: "71", zArrayA: ["72"], fa: ["73"], ignore: 91, recursiveA: [ Tuple 1 ["1"], Tuple 2 ["2"] ], arrayIgnore: [92, 93], fIgnore: [94], empty: {} }
+recordValueR :: RecordFields List String
+recordValueR = { a: "71", zListA: ["72"], fa: ["73"], ignore: 91, recursiveA: [ Tuple 1 ["1"], Tuple 2 ["2"] ], arrayIgnore: [92, 93], fIgnore: [94], empty: {} }
 
 m6L = M6 [[[1, 2]]] :: MA Int
 m6R = M6 [[["1", "2"]]] :: MA String
@@ -80,7 +80,7 @@ f1Test = do
       Fun1 left' = map fn $ Fun1 left
     left' 1 2 == right 1 2
 
-data Fun2 a = Fun2 (Int -> Int -> Array (Array a))
+data Fun2 a = Fun2 (Int -> Int -> List (List a))
 derive instance Functor Fun2
 
 f2Test = do
@@ -92,7 +92,7 @@ f2Test = do
       Fun2 left' = map fn $ Fun2 left
     left' 1 2 == right 1 2
 
-data Fun3 f a = Fun3 (Unit -> Array (f (Array { nested :: RecordFields f a })))
+data Fun3 f a = Fun3 (Unit -> List (f (List { nested :: RecordFields f a })))
 derive instance Functor f => Functor (Fun3 f)
 
 f3Test = do

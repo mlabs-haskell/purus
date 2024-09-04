@@ -4,10 +4,10 @@ import Prelude
 import Effect (Effect)
 import Effect.Console (log)
 
-foo :: Array Int
+foo :: List Int
 foo = do
-  xss :: Array (Array Int) <- [[[1,2,3], [4, 5]], [[6]]]
-  xs :: Array Int <- xss
+  xss :: List (List Int) <- [[[1,2,3], [4, 5]], [[6]]]
+  xs :: List Int <- xss
   xs
 
 main :: Effect Unit

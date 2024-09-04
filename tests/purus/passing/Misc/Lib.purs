@@ -2,7 +2,7 @@ module Lib where
 
 import Prim
 
-testCons :: Array Int
+testCons :: List Int
 testCons = Prim.Cons 1 Nil
 
 
@@ -73,7 +73,7 @@ testEq2 = eq2 101 false
 -- Unit test type for inferBinder'
 data TestBinderSum =
     ConInt Int
- --  | ConInts (Array Int)
+ --  | ConInts (List Int)
  --  | ConBoolean Boolean
   | ConString String
   | ConChar Char
@@ -86,8 +86,8 @@ data TestBinderSum =
 testBinders :: TestBinderSum  -> Int
 testBinders x = case x of
   ConInt a -> a -- ConstructorBinder enclosing VarBinder
-  -- ConInts ([3] :: Array Int) -> 2  -- Array LitBinder, TypedBinder
-  -- ConInts [a,b] -> b  -- VarBinders enclosed in Array LitBinder
+  -- ConInts ([3] :: List Int) -> 2  -- List LitBinder, TypedBinder
+  -- ConInts [a,b] -> b  -- VarBinders enclosed in List LitBinder
   -- ConBoolean true ->  4 -- Bool LitBinder
   ConChar _ -> 5 -- Char LitBinder
   ConNested conNest -> case conNest of  -- Nested ConstructorBinders
@@ -162,10 +162,10 @@ testasum x = case x of
 aBool :: Boolean
 aBool = true
 
-aList :: Array Int
+aList :: List Int
 aList = [1,2,3,4,5]
 
-aList2 :: Array Int
+aList2 :: List Int
 aList2 = Cons 1 (Cons 2 Nil)
 
 {- Functions -}
@@ -173,7 +173,7 @@ aList2 = Cons 1 (Cons 2 Nil)
 aFunction :: forall (x :: Type). x -> (forall (y :: Type). y -> Int) -> Int
 aFunction any f = f any
 
-aFunction2 :: Int -> Array Int
+aFunction2 :: Int -> List Int
 aFunction2 x = [x,1]
 
 aFunction3 :: Int -> Int
@@ -261,7 +261,7 @@ polyInObjMatch = case polyInObj of
 aPred :: Int -> Boolean
 aPred _ = true
 
-cons :: forall (a :: Type). a -> Array a -> Array a
+cons :: forall (a :: Type). a -> List a -> List a
 cons x xs = [x]
 
 emptyList = []
@@ -278,7 +278,7 @@ testId = id 2
 objForall :: forall (a :: Type) (b :: Type). {getIdA :: a -> a, getIdB :: b -> b}
 objForall = {getIdA: id, getIdB: id}
 
-arrForall ::  Array (forall (a :: Type). a -> a)
+arrForall ::  List (forall (a :: Type). a -> a)
 arrForall = [id]
 
 {- We should probably just remove guarded case branches, see slack msg

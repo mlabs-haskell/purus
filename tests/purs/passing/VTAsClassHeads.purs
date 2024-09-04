@@ -1,8 +1,8 @@
 module Main where
 
 import Prelude
-import Data.Array as Array
-import Data.Array.NonEmpty as NEA
+import Data.List as List
+import Data.List.NonEmpty as NEA
 import Data.Maybe (Maybe(..))
 import Data.Either (Either(..), either)
 import Data.Foldable (traverse_)
@@ -189,8 +189,8 @@ main = do
     , multiWithBidiFDsRightWorks
     , mainClassWorks
     ]
-  case NEA.fromArray $ Array.catMaybes arr' of
+  case NEA.fromList $ List.catMaybes arr' of
     Just errs ->
-      log $ "Errors..." <> (Array.intercalate "\n" $ NEA.toArray errs)
+      log $ "Errors..." <> (List.intercalate "\n" $ NEA.toList errs)
     Nothing ->
       log "Done"

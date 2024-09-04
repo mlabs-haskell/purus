@@ -9,26 +9,26 @@ import Test.Assert
 -- not their order in definition
 type RecordFields f a =
   { a :: a
-  , zArrayA :: Array a
+  , zListA :: List a
   , fa :: f a
   , ignore :: Int
-  , arrayIgnore :: Array Int
+  , arrayIgnore :: List Int
   , fIgnore :: f Int
   }
 
 data M f a
   = M0
-  | M1 a (Array a)
-  | M2 Int (forall a. Array a -> Array a)
+  | M1 a (List a)
+  | M2 Int (forall a. List a -> List a)
   | M3 (f a)
   | M4 (RecordFields f a)
   | M5 { nested :: RecordFields f a }
-  | M6 Int a (Array Int) (Array a) (f a) (f Int) (RecordFields f a) { nested :: RecordFields f a }
+  | M6 Int a (List Int) (List a) (f a) (f Int) (RecordFields f a) { nested :: RecordFields f a }
   | M7 (f (f { nested :: RecordFields f a }))
 
 derive instance foldableM :: Foldable f => Foldable (M f)
 
-type MArrStr = M Array String
+type MArrStr = M List String
 
 foldlStr :: forall f. Foldable f => f String -> String
 foldlStr = foldl (\acc next -> acc <> "<" <> next) "Start"
@@ -48,10 +48,10 @@ m5 = M5 { nested: recordValue } :: MArrStr
 m6 = M6 1 "a" [] ["b"] ["c"] [] recordValue { nested: recordValue } :: MArrStr
 m7 = M7 [[{ nested: recordValue }]] :: MArrStr
 
-recordValue :: RecordFields Array String
+recordValue :: RecordFields List String
 recordValue =
   { a: "a"
-  , zArrayA: ["c"]
+  , zListA: ["c"]
   , fa: ["b"]
   , ignore: 1
   , arrayIgnore: [2, 3]

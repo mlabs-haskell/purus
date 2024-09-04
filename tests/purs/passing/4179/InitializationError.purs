@@ -8,7 +8,7 @@ class Bravo a <= Charlie a
 charlieAlpha :: forall a. Charlie a => a Int -> a Int
 charlieAlpha = alpha
 
-instance alphaArray :: Alpha Array where
+instance alphaList :: Alpha List where
   alpha = charlieAlpha
-instance Bravo Array
-instance Charlie Array
+instance Bravo List
+instance Charlie List

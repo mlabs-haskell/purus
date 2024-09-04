@@ -115,7 +115,7 @@ maybeOf :: Type SourceAnn -> Type SourceAnn
 maybeOf = tyApp (tyCon "Maybe")
 
 listOf :: Type SourceAnn -> Type SourceAnn
-listOf = tyApp (tyCon "Array")
+listOf = tyApp (tyCon "List")
 
 tuple2Of :: Type SourceAnn -> Type SourceAnn -> Type SourceAnn
 tuple2Of x = tyApp (tyApp (tyCon "Tuple2") x)
@@ -212,7 +212,7 @@ maybeTy :: SourceType -> SourceType
 maybeTy = TypeApp nullSourceAnn (TypeConstructor nullSourceAnn . primName $ "Maybe")
 
 listTy :: SourceType -> SourceType
-listTy = TypeApp nullSourceAnn (TypeConstructor nullSourceAnn . primName $ "Array")
+listTy = TypeApp nullSourceAnn (TypeConstructor nullSourceAnn . primName $ "List")
 
 tuple2Ty :: SourceType -> SourceType -> SourceType
 tuple2Ty x = TypeApp nullSourceAnn (TypeApp nullSourceAnn (primTyCon "Tuple2") x)

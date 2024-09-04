@@ -2,15 +2,15 @@ module Main where
 
 import Prelude
 import Data.Maybe
-import Data.Array(index)
+import Data.List(index)
 import Effect.Console(log)
 
 main = let x = f [] in log "Done"
 
-lookup :: forall a. Int -> Array a -> Maybe a
+lookup :: forall a. Int -> List a -> Maybe a
 lookup = flip index
 
-f :: Array (Array Int) -> Int
+f :: List (List Int) -> Int
 f [] = 0
 f [m] | Just x <- lookup 1 m = x
 f [m, mm] | Just x <- lookup 1 m, Just xx <- lookup 11 mm = x + xx

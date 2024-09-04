@@ -3,4 +3,4 @@ module Main where
 
 import Prelude
 
-type T (a :: (~>) Array) = Int
+type T (a :: (~>) List) = Int

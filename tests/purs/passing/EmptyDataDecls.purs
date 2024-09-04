@@ -7,14 +7,14 @@ import Effect.Console (log)
 data Z
 data S n
 
-data ArrayBox n a = ArrayBox (Array a)
+data ListBox n a = ListBox (List a)
 
-nil :: forall a. ArrayBox Z a
-nil = ArrayBox []
+nil :: forall a. ListBox Z a
+nil = ListBox []
 
-cons' :: forall a n. a -> ArrayBox n a -> ArrayBox (S n) a
-cons' x (ArrayBox xs) = ArrayBox $ append [x] xs
+cons' :: forall a n. a -> ListBox n a -> ListBox (S n) a
+cons' x (ListBox xs) = ListBox $ append [x] xs
 
 main = case cons' 1 $ cons' 2 $ cons' 3 nil of
-         ArrayBox [1, 2, 3] -> log "Done"
+         ListBox [1, 2, 3] -> log "Done"
          _ -> assert' "Failed" false

@@ -54,14 +54,14 @@ patternDoDataIgnored = do
   let Y _ x _ = Y 789 "world, hello" true
   pure $ x == "world, hello"
 
-patternArray :: Boolean
-patternArray = unsafePartial $
+patternList :: Boolean
+patternList = unsafePartial $
   let [a, b] = [1, 2]
   in
    a == 1 && b == 2
 
-patternDoArray :: Effect Boolean
-patternDoArray = unsafePartial do
+patternDoList :: Effect Boolean
+patternDoList = unsafePartial do
   let [a, b] = [1, 2]
   pure $ a == 1 && b == 2
 
@@ -181,8 +181,8 @@ main = do
   assert' "constructor pattern with ignorances" patternDataIgnored
   assert' "constructor pattern (data) with do" =<< patternDoData
   assert' "constructor pattern with ignorances and do" =<< patternDoDataIgnored
-  assert' "array pattern" patternArray
-  assert' "array pattern with do" =<< patternDoArray
+  assert' "array pattern" patternList
+  assert' "array pattern with do" =<< patternDoList
   assert' "multiple patterns" patternMultiple
   assert' "multiple patterns with do" =<< patternDoMultiple
   assert' "multiple patterns with normal let's" patternMultipleWithNormal

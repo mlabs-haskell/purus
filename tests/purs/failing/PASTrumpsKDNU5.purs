@@ -3,4 +3,4 @@ module Main where
 
 import Prelude
 
-newtype N = N ((~>) Array)
+newtype N = N ((~>) List)
