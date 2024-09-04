@@ -1,4 +1,5 @@
 {-# LANGUAGE TemplateHaskell #-}
+{-# LANGUAGE InstanceSigs #-}
 
 module Language.PureScript.CoreFn.Expr where
 
@@ -16,6 +17,7 @@ import Language.PureScript.PSString (PSString)
 import Language.PureScript.Types (SourceType)
 
 import Control.Lens.TH (makePrisms)
+import Control.Lens.Combinators (Plated (plate))
 
 type PurusType = SourceType -- Type ()
 
@@ -51,6 +53,31 @@ data Expr a
 
 instance (FromJSON a) => FromJSON (Expr a)
 instance (ToJSON a) => ToJSON (Expr a)
+
+instance Plated (Expr a) where
+  {-# INLINEABLE plate #-}
+  plate :: forall f . Applicative f => 
+    (Expr a -> f (Expr a)) -> Expr a -> f (Expr a)
+  plate f = \case
+    Literal a t lit -> Literal a t <$> traverse f lit
+    Accessor a t s e -> Accessor a t s <$> f e
+    ObjectUpdate a t e cf fs ->
+      ObjectUpdate a t <$> f e <*> pure cf <*> traverse (traverse f) fs
+    Abs a t bv e -> Abs a t bv <$> f e
+    App a e1 e2 -> App a <$> f e1 <*> f e2
+    x@(Var _ _ _) -> pure x
+    Case a t scruts alts ->
+      Case a t <$> traverse f scruts <*> traverse goAlt alts
+    Let a decls body ->
+      Let a <$> traverse goDecl decls <*> f body
+    where
+      goAlt :: CaseAlternative a -> f (CaseAlternative a)
+      goAlt (CaseAlternative binds res) = 
+        CaseAlternative binds <$> traverse f res
+      goDecl :: Bind a -> f (Bind a)
+      goDecl = \case
+        NonRec a nm body -> NonRec a nm <$> f body
+        Rec xs -> Rec <$> traverse (traverse f) xs
 
 {- |
 A let or module binding.

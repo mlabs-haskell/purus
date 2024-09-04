@@ -11,6 +11,7 @@ import Language.PureScript.Types
 
 import Data.Aeson (FromJSON, ToJSON)
 import GHC.Generics
+import Control.Lens.Combinators (Plated (plate))
 
 {- |
 Data type for binders
@@ -35,6 +36,15 @@ data Binder a
 
 instance (FromJSON a) => FromJSON (Binder a)
 instance (ToJSON a) => ToJSON (Binder a)
+
+instance Plated (Binder a) where
+  {-# INLINEABLE plate #-}
+  plate f = \case
+    x@(NullBinder _) -> pure x 
+    LiteralBinder x lit -> LiteralBinder x <$> traverse f lit
+    x@(VarBinder _ _ _) -> pure x
+    ConstructorBinder x tyName conName binds -> ConstructorBinder x tyName conName <$> traverse f binds
+    NamedBinder x ident bind -> NamedBinder x ident <$> f bind
 
 extractBinderAnn :: Binder a -> a
 extractBinderAnn (NullBinder a) = a
