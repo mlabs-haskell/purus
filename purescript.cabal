@@ -411,6 +411,7 @@ library
     Language.Purus.TH
     Language.Purus.IR.Utils
     Language.Purus.Make
+    Language.Purus.Make.Prim
     Language.Purus.Pipeline.Monad
     Language.Purus.Pipeline.CompileToPIR
     Language.Purus.Pipeline.CompileToPIR.Utils
