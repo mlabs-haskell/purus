@@ -409,7 +409,7 @@ stripSkolemsFromExpr = transformTypesInExp stripSkolems
 instance Plated SourceType where
   plate f = \case
     tu@(TUnknown _ _) -> pure tu
-    tv@(TypeVar _ _ _) -> pure tv
+    TypeVar ann nm ki -> TypeVar ann nm <$> f ki
     tstr@(TypeLevelString _ _) -> pure tstr
     tint@(TypeLevelInt _ _) -> pure tint
     twild@(TypeWildcard _ _) -> pure twild
