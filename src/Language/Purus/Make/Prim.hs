@@ -75,7 +75,7 @@ replaceModuleNameInModule oldMn newMn (Module srcSpan comments _oldName path imp
        goType :: PurusType -> PurusType
        goType = transform $ \case
          TypeConstructor ann qtn -> TypeConstructor ann (goQualified qtn)
-         other -> other
+         other -> other 
 
    renameDecl :: Bind Ann -> Bind Ann
    renameDecl = \case
@@ -89,6 +89,7 @@ replaceModuleNameInModule oldMn newMn (Module srcSpan comments _oldName path imp
 
 prelude :: Module (Bind Ann) PurusType PurusType Ann
 prelude = $(ctDecodeModule "tests/purus/passing/prelude/output/Prelude/Prelude.cfn")
+
 
 primModule :: Module (Bind Ann) PurusType PurusType Ann
 primModule  = renamed {moduleDataTypes = newDatatypes}
