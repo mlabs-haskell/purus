@@ -18,7 +18,6 @@ import Control.Monad.State (
   evalState,
   execState,
   unless,
-  void,
   when,
  )
 
@@ -32,7 +31,6 @@ import Language.PureScript.Environment (pattern RecordT)
 -- for the instance
 import Language.PureScript.Names (
   Ident (GenIdent, Ident),
-  runIdent,
  )
 import Language.PureScript.Types (
   Type (
@@ -47,7 +45,6 @@ import Language.PureScript.Types (
   isMonoType,
  )
 
-import Language.Purus.Debug (doTrace, doTraceM, prettify)
 import Language.Purus.IR (
   BVar (..),
   BindE (..),
@@ -94,7 +91,6 @@ import Language.Purus.Pipeline.Lift.Types (
   pattern LiftedHole,
  )
 import Language.Purus.Pipeline.Monad (Inline, MonadCounter (next))
-import Language.Purus.Pretty.Common (prettyStr)
 
 import Algebra.Graph.AdjacencyMap (
   AdjacencyMap (..),
@@ -113,14 +109,6 @@ import Control.Lens.Operators ((.=), (^..))
 
 import Bound (Var (..))
 import Bound.Scope (abstract)
-
-import Prettyprinter (
-  Pretty (pretty),
-  align,
-  hardline,
-  vcat,
-  (<+>),
- )
 
 inline :: LiftResult -> Inline MonoExp
 inline (LiftResult decls bodyE) = do
@@ -192,17 +180,7 @@ inline (LiftResult decls bodyE) = do
               t = expTy id e'
               free = freeTypeVariables t
           bvars <- traverse (\(nm, ki) -> next >>= \u -> pure $ BVar u ki (Ident nm)) free
-          let result = foldr TyAbs e' bvars
-              msg =
-                prettify
-                  [ "INPUT EXPR:\n" <> prettyStr e
-                  , "INPUT EXPR TY:\n" <> prettyStr t <> "\n\n" <> show (void t)
-                  , "FREE TY VARS IN INPUT:\n" <> prettyStr free
-                  , "RESULT:\n" <> prettyStr result
-                  , "RESULT TY:\n" <> prettyStr (expTy id result)
-                  ]
-          doTraceM "addTypeAbstractions" msg
-          pure result
+          pure $ foldr TyAbs e' bvars
 
 -- sorry koz. in my heart i know you're right about type synonyms, but...
 type InlineState a = State (Map (Ident, Int) InlineBodyData) a
@@ -234,26 +212,14 @@ handleSelfRecursive (nm, indx) body
       pure $ M.fromList [updatedOriginalDecl, newBreakerDecl]
 
 inlineWithData :: MonoExp -> InlineState MonoExp
-inlineWithData = transformM go''
+inlineWithData = transformM go
   where
-    go'' ex = do
-      res <- go ex
-      let msg = prettify ["INPUT:\n" <> prettyStr ex, "RESULT:\n" <> prettyStr res]
-      doTraceM "inlineWithData" msg
-      pure res
     go :: MonoExp -> InlineState MonoExp
     go ex =
       get >>= \dict -> case ex of
         fv@(V (F {})) -> case toHole fv of
           Just (Hole hId hIx _) -> case M.lookup (hId, hIx) dict of
-            Just (NotALoopBreaker (toExp -> e)) -> do
-              let msg =
-                    prettify
-                      [ "INPUT:\n" <> prettyStr fv
-                      , "RESULT:\n" <> prettyStr e
-                      ]
-              doTraceM "inlineWithData" msg
-              pure e
+            Just (NotALoopBreaker (toExp -> e)) -> pure e
             _ -> pure fv
           _ -> pure fv
         V b@B {} -> pure $ V b
@@ -280,26 +246,8 @@ doneInlining :: MonoExp -> InlineState Bool
 doneInlining me = do
   dct <- get
   let allInlineable = M.keysSet $ M.filter notALoopBreaker dct
-      allHoles = S.fromList $ mapMaybe (fmap unHole . toHole) (me ^.. cosmos)
-      result = S.null $ S.intersection allHoles allInlineable
-      msg =
-        prettify
-          [ "Input Expr:\n" <> prettyStr me
-          , "All Inlineable Vars:\n" <> prettyStr (S.toList allInlineable)
-          , "All Holes in expr:\n" <> prettyStr (S.toList allHoles)
-          , "Not yet inlined:\n" <> prettyStr (S.toList $ S.intersection allHoles allInlineable)
-          , "Are we done?: " <> show result
-          ]
-  doTraceM "doneInlining" msg
-  pure result
-
-prettyDict :: Map (Ident, Int) InlineBodyData -> String
-prettyDict =
-  show
-    . align
-    . vcat
-    . map (\((i, n), b) -> pretty (runIdent i) <+> "#" <+> pretty n <+> "=" <+> pretty (toExp $ getInlineBody b) <+> hardline)
-    . M.toList
+  let allHoles = S.fromList $ mapMaybe (fmap unHole . toHole) (me ^.. cosmos)
+  pure . S.null $ S.intersection allHoles allInlineable
 
 inlineInLifted :: [MonoBind] -> Inline (Map (Ident, Int) InlineBodyData)
 inlineInLifted decls = do
@@ -313,19 +261,12 @@ inlineInLifted decls = do
           )
           M.empty
           decls
-  let res = flip execState dict $ update [] (M.keys dict)
-      msg = prettify ["Input:\n" <> prettyStr decls, "Result:\n" <> prettyDict res, "Breakers:\n" <> prettyStr (S.toList breakers)]
-  doTraceM "inlineLifted" msg
-  pure res
+  pure . flip execState dict $ update [] (M.keys dict)
   where
     update :: [(Ident, Int)] -> [(Ident, Int)] -> InlineState ()
     update [] [] = pure ()
-    update retry [] = do
-      let msg = "RETRY:\n" <> prettyStr retry
-      doTraceM "update" msg
-      update [] retry
+    update retry [] = update [] retry
     update retry (i : is) = do
-      doTraceM "update" (prettify ["GO", "RETRY STACK:\n" <> prettyStr retry, "ACTIVE STACK:\n" <> prettyStr (i : is)])
       s <- get
       let e = s M.! i
       done1 <- doneInlining . toExp . getInlineBody $ e
@@ -378,18 +319,14 @@ inlineInLifted decls = do
     breakLoops ::
       AdjacencyMap (Ident, Int) ->
       Set LoopBreaker
-    breakLoops adjMap = doTrace "breakLoops" msg result
+    breakLoops = evalState breakEm
       where
-        result = evalState breakEm adjMap
-        msg = "RESULT:\n" <> prettyStr (S.toList result)
-
         breakEm :: State (AdjacencyMap (Ident, Int)) (Set LoopBreaker)
         breakEm = do
           adjaMap <- get
           let stronglyConnected = gmap fromNonEmpty $ scc adjaMap
               revTopoSorted :: [AdjacencyMap (Ident, Int)]
               revTopoSorted = reverse $ either cycleErr id $ topSort stronglyConnected
-          doTraceM "breakEm" ("RevTopoSorted:\n" <> prettyStr (vertexList <$> revTopoSorted))
           case find nonTrivialGroup revTopoSorted of
             Nothing -> pure S.empty
             Just target -> do

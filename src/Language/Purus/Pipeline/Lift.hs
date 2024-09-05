@@ -16,10 +16,6 @@ import Language.PureScript.CoreFn.TypeLike (
  )
 import Language.PureScript.Names (Ident (..), runIdent)
 import Language.PureScript.PSString (PSString)
-import Language.Purus.Debug (
-  doTraceM,
-  prettify,
- )
 import Language.Purus.IR (
   Alt (..),
   BVar (..),
@@ -60,7 +56,7 @@ import Language.Purus.Pipeline.Lift.Types (
   pattern LiftedHoleTerm,
  )
 import Language.Purus.Pipeline.Monad (Inline, MonadCounter (next))
-import Language.Purus.Pretty.Common (docString, prettyStr)
+import Language.Purus.Pretty.Common (prettyStr)
 
 import Control.Applicative (Alternative ((<|>)))
 
@@ -75,22 +71,12 @@ import Data.Set qualified as S
 
 import Control.Monad.Reader (asks, foldM)
 
-import Debug.Trace (trace)
-
 import Data.Text qualified as T
 
-import Control.Lens (cosmos, over, toListOf, transform, (^..), _1)
+import Control.Lens (cosmos, over, transform, (^..), _1)
 
 import Bound.Scope (abstract)
 import Bound.Var (Var (..))
-
-import Prettyprinter (
-  Pretty (pretty),
-  align,
-  hardline,
-  indent,
-  vcat,
- )
 
 {- Given a collection of declarations that will be lifted, determine for each declaration
    the "deep" (recursive) set of NEW variable dependencies which need to be added
@@ -225,15 +211,6 @@ updateAllBinds deepDict prunedBody _binds = do
 
       binds = mapBind go <$> _binds
 
-      msg =
-        prettify
-          [ "Pruned body:\n " <> prettyStr prunedBody
-          , "AllDeclIdents:\n " <> prettyStr allLiftedIdents
-          , "AdjustedBody:\n " <> prettyStr adjustedBody
-          , "Binds:\n" <> concatMap (\x -> prettyStr x <> "\n\n") binds
-          , "Deep Dict:\n" <> prettyStr (M.toList (S.toList <$> deepDict))
-          ]
-  doTraceM "updateAllBinds" msg
   pure (binds, adjustedBody)
   where
     coerceOldToNew ::
@@ -347,22 +324,11 @@ lift mainNm _e = do
   e <- handleSelfRecursiveMain
   modDict <- mkModDict
   let collectDict = mkDict S.empty modDict e
-      prettyCollectDict = docString . indent 2 . align . vcat $ map (\((nm, indx), b) -> pretty nm <> "#" <> pretty indx <> pretty (toExp b) <> hardline) (M.toList collectDict)
       (toLift, prunedExp, _) = collect S.empty collectDict S.empty S.empty e
       deepDict = deepAnalysis toLift
       liftThese = S.toList . S.unions $ declarations <$> S.toList toLift
   (binds, body) <- updateAllBinds deepDict prunedExp liftThese
-  result <- cleanupLiftedTypes $ LiftResult binds body
-  let msg =
-        prettify
-          [ "Input Expr:\n" <> prettyStr e
-          , "Pruned Expr:\n" <> prettyStr prunedExp
-          , "ToLifts:\n" <> prettyStr (S.toList toLift)
-          , "Collect Dict:\n" <> prettyCollectDict
-          , "Result\n" <> prettyStr result
-          ]
-  doTraceM "lift" msg
-  pure result
+  cleanupLiftedTypes $ LiftResult binds body
   where
     handleSelfRecursiveMain :: Inline MonoExp
     handleSelfRecursiveMain
@@ -395,7 +361,7 @@ lift mainNm _e = do
       Map (Ident, Int) MonoScoped ->
       MonoExp ->
       Map (Ident, Int) MonoScoped
-    mkDict visited acc me = trace "mkDict" $ case me of
+    mkDict visited acc me = case me of
       V F {} -> acc
       (V (B (BVar bvIx _ bvId))) -> case S.member (bvId, bvIx) visited of
         True -> acc
@@ -426,7 +392,7 @@ lift mainNm _e = do
       Set (BVar (KindOf PurusType)) ->
       MonoExp ->
       (Set ToLift, MonoExp, Set (Ident, Int))
-    collect visited dict boundVars boundTyVars me = trace "collect" $ case me of
+    collect visited dict boundVars boundTyVars me = case me of
       -- we ignore free variables. For us, a free variable more or less represents "shouldn't/can't be inlined"
       V fv@F {} -> (S.empty, V fv, visited)
       V b@(B (BVar bvIx (stripSkolems -> bvTy) bvIdent)) -> case M.lookup (bvIdent, bvIx) dict of
@@ -498,7 +464,7 @@ lift mainNm _e = do
           Set (BVar (KindOf PurusType)) ->
           [MonoBind] ->
           (Set ToLift, Set (Ident, Int))
-        collectFromNestedDeclarations vis termBound typeBound liftThese = trace "collectFromNested" $ foldBinds go (S.empty, vis) liftThese
+        collectFromNestedDeclarations vis termBound typeBound liftThese = foldBinds go (S.empty, vis) liftThese
           where
             go :: (Set ToLift, Set (Ident, Int)) -> (Ident, Int) -> MonoScoped -> (Set ToLift, Set (Ident, Int))
             go (liftAcc, visAcc) (nm, indx) scoped =

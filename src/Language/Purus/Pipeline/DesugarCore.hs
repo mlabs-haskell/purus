@@ -1,4 +1,3 @@
-{-# LANGUAGE TypeApplications #-}
 {-# OPTIONS_GHC -Wno-orphans #-}
 {-# OPTIONS_GHC -Wno-unrecognised-pragmas #-}
 
@@ -12,7 +11,6 @@ import Data.Map qualified as M
 import Data.Text (Text)
 import Data.Text qualified as T
 
-import Data.Char (isUpper)
 import Data.Foldable (Foldable (foldl'), foldrM, traverse_)
 import Data.List (sort, sortOn)
 import Data.Maybe (fromJust, isJust)
@@ -35,7 +33,6 @@ import Language.PureScript.CoreFn.Expr (
  )
 import Language.PureScript.CoreFn.Module (Datatypes, Module (..))
 import Language.PureScript.CoreFn.TypeLike (TypeLike (..))
-import Language.PureScript.CoreFn.Utils (exprType)
 import Language.PureScript.Environment (mkCtorTy, mkTupleTyName)
 import Language.PureScript.Names (
   Ident (..),
@@ -49,11 +46,6 @@ import Language.PureScript.Names (
  )
 import Language.PureScript.Types (Type (..))
 
-import Language.Purus.Debug (
-  doTrace,
-  doTraceM,
-  prettify,
- )
 import Language.Purus.IR (
   Alt (..),
   BVar (..),
@@ -63,7 +55,6 @@ import Language.Purus.IR (
   FuncType (..),
   Lit (CharL, IntL, ObjectL, StringL),
   Pat (..),
-  expTy,
  )
 import Language.Purus.IR.Utils (
   IR_Decl,
@@ -80,7 +71,6 @@ import Language.Purus.Pipeline.Monad (
   globalScope,
   localScope,
  )
-import Language.Purus.Pretty (prettyStr, prettyTypeStr, renderExprStr)
 import Language.Purus.Pretty.Common qualified as PC
 
 import Bound (Var (..), abstract)
@@ -98,9 +88,6 @@ import Control.Lens (
   (^?),
  )
 
-import Debug.Trace (traceM)
-import Prettyprinter (Pretty (..))
-
 {- This runs the computation in an empty *local* context. The globals (i.e. top level declarations and
    imports are still in scope.)
 
@@ -117,8 +104,6 @@ bindLocal :: Ident -> DesugarCore Int
 bindLocal ident = do
   i <- next
   modify $ over localScope (M.insert ident i) -- localScope . at ident .= i
-  s <- view localScope
-  doTraceM "bind" ("IDENT: " <> T.unpack (runIdent ident) <> "\n\nINDEX: " <> prettyStr i <> "\n\nSCOPE:\n" <> prettyStr (M.toList s))
   pure i
 
 {- Binds a "global" variable to the specific index.
@@ -134,13 +119,6 @@ forceBindGlobal mn i indx = do
     modify $
       over globalScope (M.insert mn M.empty)
   modify $ over (globalScope . ix mn) (M.insert i indx)
-
-{- -}
-isCtorOrPrim :: Exp x t (Vars t) -> Bool
-isCtorOrPrim = \case
-  V (F (FVar _ (Qualified (ByModuleName (ModuleName "Prim")) _))) -> True
-  V (F (FVar _ (Qualified _ (Ident i)))) -> isUpper (T.head i)
-  _ -> False
 
 {- We don't bind anything b/c the type level isn't `Bound` -}
 tyAbs :: forall x t. Text -> KindOf t -> Exp x t (Vars t) -> DesugarCore (Exp x t (Vars t))
@@ -186,10 +164,7 @@ desugarCoreModule inScope imports Module {..} = do
   decls' <- traverse (freshly . desugarCoreDecl . doEtaReduce) moduleDecls
   decls <- bindLocalTopLevelDeclarations decls'
   let allDatatypes = moduleDataTypes <> inScope
-  s <- get
-  traceM $ "DesugarContext for " <> prettyStr moduleName <> "\n" <> prettyStr s
   let result = Module {moduleDecls = decls <> imports, moduleDataTypes = allDatatypes, ..}
-  -- traceM $ "Desugar Coure output for " <> prettyStr moduleName <> "\n" <> docString (prettyModule result)
   pure result
   where
     doEtaReduce = \case
@@ -203,13 +178,7 @@ desugarCoreModule inScope imports Module {..} = do
       let topLevelIdents = foldBinds (\acc nm _ -> nm : acc) [] ds
       traverse_ (uncurry (forceBindGlobal moduleName)) topLevelIdents
       s <- get
-      doTraceM "bindLocalTopLevelDeclarations" $
-        prettify
-          [ -- "Input (Module Decls):\n" <> prettify (prettyStr <$> ds)
-            "Top level idents:\n" <> prettify (prettyStr <$> topLevelIdents)
-          , "State:\n" <> prettyStr s
-          ]
-      -- this is only safe because every locally-scoped (i.e. inside a decl) variable should be
+        -- this is only safe because every locally-scoped (i.e. inside a decl) variable should be
       -- bound by this point
       let upd = \case
             V (B bv) -> V $ B bv
@@ -232,20 +201,6 @@ desugarCoreDecl = \case
     let scoped = abstr desugared
     pure $ NonRecursive ident bvix scoped
   Rec xs -> do
-    let inMsg =
-          concatMap
-            ( \((_, i), x) ->
-                prettyStr i
-                  <> " :: "
-                  <> prettyTypeStr (exprType x)
-                  <> "\n"
-                  <> prettyStr i
-                  <> " = "
-                  <> renderExprStr x
-                  <> "\n\n"
-            )
-            xs
-    doTraceM "desugarCoreDecl" inMsg
     first_pass <- traverse (\((_, ident), e) -> bindLocal ident >>= \u -> pure ((ident, u), e)) xs
     s <- view localScope
     let abstr = abstract (matchLet s)
@@ -258,7 +213,6 @@ desugarCoreDecl = \case
               pure ((ident, bvix), scoped)
         )
         first_pass
-    doTraceM "desugarCoreDecl" ("RESULT (RECURSIVE):\n" <> prettyStr (fmap fromScope <$> second_pass))
     pure $ Recursive second_pass
 
 {- | Turns a list of expressions into an n-ary
@@ -280,22 +234,11 @@ tuplify es = foldl' (App nullAnn) tupCtor es
     tupCtor = Var nullAnn tupCtorType (properToIdent <$> tupName)
 
 desugarCore :: Expr Ann -> DesugarCore (Exp WithObjects PurusType (Vars PurusType))
-desugarCore e = do
-  let ty = exprType e
-  result <- desugarCore' e
-  let msg =
-        prettify
-          [ "INPUT:\n" <> renderExprStr e
-          , "INPUT TY:\n" <> prettyTypeStr ty
-          , "OUTPUT:\n" <> prettyStr result
-          , "OUTPUT TY:\n" <> prettyStr (expTy id result)
-          ]
-  doTraceM "desugarCore" msg
-  pure result
+desugarCore = desugarCore'
 
 desugarCore' :: Expr Ann -> DesugarCore (Exp WithObjects PurusType (Vars PurusType))
 desugarCore' (Literal _ann ty lit) = LitE ty <$> desugarLit lit
-desugarCore' lam@(Abs _ann ty ident expr) = do
+desugarCore' (Abs _ann ty ident expr) = do
   bvIx <- bindLocal ident
   s <- view localScope
   expr' <- desugarCore' expr
@@ -303,21 +246,7 @@ desugarCore' lam@(Abs _ann ty ident expr) = do
       (vars', _) = stripQuantifiers ty
       vars = (\(_, b, c) -> (b, c)) <$> vars'
       scopedExpr = abstract (matchLet s) expr'
-  result <- tyAbsMany vars $ LamE (BVar bvIx ty' ident) scopedExpr
-  let msg =
-        prettify
-          [ "ANNOTATED LAM TY:\n" <> prettyStr ty
-          , "BOUND VAR TY:\n" <> prettyStr ty'
-          , "BOUND VAR INDEX: " <> prettyStr bvIx
-          , "BOUND VAR IDENT: " <> prettyStr ident
-          , "BODY TY:\n" <> prettyStr (exprType expr)
-          , "INPUT EXPR:\n" <> renderExprStr lam
-          , "RESULT EXPR:\n" <> prettyStr result
-          , "RESULT EXPR TY:\n" <> prettyStr (expTy id result)
-          , "LOCAL SCOPE:\n" <> prettyStr (M.toList s)
-          ]
-  doTraceM "desugarCoreLam" msg
-  pure result
+  tyAbsMany vars $ LamE (BVar bvIx ty' ident) scopedExpr
 desugarCore' appE@(App {}) = case fromJust $ PC.analyzeApp appE of
   (f, args) -> do
     f' <- desugarCore f
@@ -451,17 +380,12 @@ matchVarLamAbs nm bvix (FVar ty n')
   | nm == disqualify n' = Just (BVar bvix ty nm)
   | otherwise = Nothing
 
-matchLet :: (Pretty ty) => M.Map Ident Int -> Vars ty -> Maybe (BVar ty)
+matchLet :: M.Map Ident Int -> Vars ty -> Maybe (BVar ty)
 matchLet _ (B bv) = Just bv
-matchLet binds fv@(F (FVar ty n')) = case result of
+matchLet binds (F (FVar ty n')) = case result of
   Nothing -> Nothing
-  Just _ -> doTrace "matchLet" msg result
+  Just _ -> result
   where
-    msg =
-      "INPUT:\n"
-        <> prettyStr fv
-        <> "\n\nOUTPUT:\n"
-        <> prettyStr result
     result = do
       let nm = disqualify n'
       bvix <- M.lookup nm binds
@@ -490,7 +414,7 @@ etaReduce input = case partitionLam input of
       let (bvars, inner) = stripLambdas e
       (f, args) <- analyzeAppCfn inner
       argBVars <- traverse argToBVar args
-      pure $ (bvars, f, argBVars)
+      pure (bvars, f, argBVars)
 
     argToBVar :: Expr ann -> Maybe Ident
     argToBVar = \case

@@ -37,7 +37,6 @@ import Language.PureScript.Types (
   srcTypeApp,
   srcTypeConstructor,
  )
-import Language.Purus.Debug (doTraceM)
 import Language.Purus.IR (
   Alt (..),
   BVar (..),
@@ -49,7 +48,6 @@ import Language.Purus.IR (
   Pat (..),
   Ty (..),
   expTy,
-  ppExp,
   pattern (:~>),
  )
 import Language.Purus.IR.Utils (
@@ -139,19 +137,7 @@ rowLast t = case rowToList t of
 desugarObjects ::
   Exp WithObjects SourceType (Vars SourceType) ->
   Counter (Exp WithoutObjects Ty (Vars Ty))
-desugarObjects __expr = do
-  result <- go __expr
-  let msg =
-        "INPUT:\n"
-          <> ppExp __expr
-          <> "\n\nINPUT TY:\n"
-          <> prettyStr (expTy id __expr)
-          <> "\n\nRESULT:\n"
-          <> ppExp result
-          <> "\n\nRESULT TY:\n"
-          <> prettyStr (expTy id result)
-  doTraceM "desugarObjects" msg
-  pure result
+desugarObjects __expr = go __expr
   where
     go ::
       Exp WithObjects SourceType (Vars SourceType) ->
@@ -369,7 +355,7 @@ desugarObjects __expr = do
           PSString ->
           Exp WithObjects SourceType (Vars SourceType) ->
           Counter (Exp WithoutObjects Ty (Vars Ty))
-        desugarObjectAccessor resTy lbl e = do
+        desugarObjectAccessor _ lbl e = do
           _fs <- case expTy id e of
             RecordT fs -> pure fs
             other ->
@@ -394,21 +380,6 @@ desugarObjects __expr = do
               rhs = V . B $ BVar n fieldTy dummyNm
               altBranch = F <$> UnguardedAlt ctorBndr (toScope rhs)
           e' <- desugarObjects e
-          let result = CaseE fieldTy e' [altBranch]
-              msg =
-                "INPUT EXP:\n"
-                  <> prettyStr e
-                  <> "\n\nLABEL:\n"
-                  <> prettyStr lbl
-                  <> "\n\nSUPPLIED RESTYPE:\n"
-                  <> prettyStr resTy
-                  <> "\n\nFIELD TYPES:\n"
-                  <> prettyStr types'
-                  <> "\n\nRESULT RHS:\n"
-                  <> prettyStr rhs
-                  <> "\n\nOUTPUT RESULT:\n"
-                  <> prettyStr result
-          doTraceM "desugarObjectAccessor" msg
           pure $ CaseE fieldTy e' [altBranch]
 
 assembleDesugaredObjectLit :: forall x a. Exp x Ty a -> Ty -> [Exp x Ty a] -> Counter (Exp x Ty a)
@@ -418,7 +389,7 @@ assembleDesugaredObjectLit _ _ _ = error "something went wrong in assembleDesuga
 
 purusTypeToKind :: SourceType -> Either String Kind
 purusTypeToKind _t =
-  doTraceM "sourceTypeToKind" (prettyStr _t) >> case _t of
+  case _t of
     TypeConstructor _ C.Type -> pure KindType
     t1 :-> t2 -> do
       t1' <- purusTypeToKind t1

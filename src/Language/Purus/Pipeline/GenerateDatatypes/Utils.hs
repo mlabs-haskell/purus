@@ -24,7 +24,6 @@ import Data.Text (Text)
 import Data.Text qualified as T
 
 import Control.Monad.State (gets, modify)
-import Debug.Trace (traceM)
 
 import Language.PureScript.CoreFn.TypeLike
 import Language.PureScript.Names (
@@ -38,7 +37,6 @@ import Language.PureScript.Names (
   showQualified,
  )
 
-import Language.Purus.Debug (doTraceM)
 import Language.Purus.IR (
   Ty (..),
  )
@@ -86,7 +84,7 @@ pseudoRandomChar i = fst $ randomR ('a', 'z') (mkStdGen i)
 
 mkTyName :: Qualified (ProperName 'TypeName) -> PlutusContext PIR.TyName
 mkTyName qn =
-  doTraceM "mkTyName" (prettyQPN qn) >> gets (view tyNames) >>= \tnames -> case M.lookup qn tnames of
+  gets (view tyNames) >>= \tnames -> case M.lookup qn tnames of
     Just tyname -> pure tyname
     Nothing -> do
       uniq <- next
@@ -96,7 +94,7 @@ mkTyName qn =
 
 mkConstrName :: Qualified Ident -> Int -> PlutusContext PIR.Name
 mkConstrName qi cix =
-  doTraceM "mkConstrName" (prettyQI qi) >> gets (view constrNames) >>= \cnames -> case M.lookup qi cnames of
+  gets (view constrNames) >>= \cnames -> case M.lookup qi cnames of
     Just cname -> pure $ fst cname
     Nothing -> do
       uniq <- next
@@ -107,7 +105,7 @@ mkConstrName qi cix =
 -- | Only gives you a TyName, doesn't insert anything into the context
 mkNewTyVar :: Text -> PlutusContext TyName
 mkNewTyVar nm =
-  doTraceM "mkNewTyVar" (T.unpack nm) >> do
+  do
     uniq <- next
     pure . PIR.TyName $ PIR.Name nm $ PLC.Unique uniq
 
@@ -120,7 +118,7 @@ freshName = do
 
 getBoundTyVarName :: Text -> PlutusContext PIR.TyName
 getBoundTyVarName nm =
-  doTraceM "mkBoundTyVarName" (T.unpack nm) >> do
+  do
     boundTyVars <- gets _tyVars
     case M.lookup nm boundTyVars of
       Just tyName -> pure tyName
@@ -145,9 +143,8 @@ getDestructorTy qn = do
 
 getConstructorName :: Qualified Ident -> PlutusContext (Maybe PLC.Name)
 getConstructorName qi =
-  doTraceM "getConstructorName" (show qi) >> do
+  do
     ctors <- gets (view constrNames)
-    traceM $ show ctors
     pure $ ctors ^? at qi . folded . _1
 
 prettyQPN :: Qualified (ProperName 'TypeName) -> String

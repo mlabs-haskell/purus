@@ -37,7 +37,6 @@ import Language.PureScript.CoreFn.Module (
   tyDict,
  )
 import Language.PureScript.CoreFn.TypeLike
-import Language.PureScript.Environment (pattern (:->))
 import Language.PureScript.Names (
   ProperName (..),
   ProperNameType (..),
@@ -45,12 +44,7 @@ import Language.PureScript.Names (
   showQualified,
   pattern ByThisModuleName,
  )
-import Language.PureScript.Types (
-  SourceType,
-  Type (TypeConstructor),
- )
 
-import Language.Purus.Debug (doTraceM)
 import Language.Purus.IR (
   Ty (..),
   ppTy,
@@ -63,14 +57,11 @@ import Language.Purus.Pipeline.GenerateDatatypes.Utils (
   mkConstrName,
   mkNewTyVar,
   mkTyName,
-  prettyQPN,
  )
 import Language.Purus.Pipeline.Monad (
   MonadCounter (next),
   PlutusContext,
  )
-import Language.Purus.Pretty.Common (prettyStr)
-import Language.Purus.Pretty.Types (prettyTypeStr)
 import Language.Purus.Types (PIRType, destructors, pirDatatypes)
 
 import PlutusCore qualified as PLC
@@ -118,9 +109,7 @@ mkPIRDatatypes ::
   Datatypes IR.Kind Ty ->
   S.Set (Qualified (ProperName 'TypeName)) ->
   PlutusContext ()
-mkPIRDatatypes datatypes tyConsInExp =
-  doTraceM "mkPIRDatatypes" (show $ S.map prettyQPN tyConsInExp)
-    >> traverse_ go tyConsInExp
+mkPIRDatatypes datatypes tyConsInExp = traverse_ go tyConsInExp
   where
     -- these things don't have datatype definitions anywhere
     truePrimitives = S.fromList [C.Function, C.Int, C.Char, C.String]
@@ -130,7 +119,7 @@ mkPIRDatatypes datatypes tyConsInExp =
       PlutusContext ()
     go qn | qn `S.member` truePrimitives = pure ()
     go qn@(Qualified _ (ProperName tnm)) =
-      doTraceM "mkPIRDatatypes" ("go: " <> prettyQPN qn) >> case lookupDataDecl qn datatypes of
+      case lookupDataDecl qn datatypes of
         Nothing ->
           throwError $
             "Error when translating data types to PIR: "
@@ -138,10 +127,7 @@ mkPIRDatatypes datatypes tyConsInExp =
               <> T.unpack (showQualified runProperName qn)
         Just dDecl -> do
           -- TODO: newtypes should probably be newtype-ey
-          let declArgs = fst <$> dDecl ^. dDataArgs
-              declKind = mkDeclKind $ mkKind . snd <$> dDecl ^. dDataArgs
-          doTraceM "mkPIRDatatypes" $ "Decl " <> prettyStr dDecl
-          doTraceM "mkPIRDatatypes" $ "decl args: " <> show declArgs
+          let declKind = mkDeclKind $ mkKind . snd <$> dDecl ^. dDataArgs
           tyName <- mkTyName qn
           let typeNameDecl = TyVarDecl () tyName declKind
               dataArgs = dDecl ^. dDataArgs
@@ -159,7 +145,7 @@ mkPIRDatatypes datatypes tyConsInExp =
       (Int, CtorDecl Ty) ->
       PlutusContext (PIR.VarDecl PIR.TyName PIR.Name PLC.DefaultUni ())
     mkCtorDecl qTyName dataArgs (cix, ctorDecl) =
-      doTraceM "mkCtorDecl" (prettyQPN qTyName) >> do
+      do
         let ctorFields = snd <$> ctorDecl ^. cdCtorFields
             resultTy' = foldl' TyApp (TyCon qTyName) (uncurry TyVar <$> dataArgs)
             ctorFunTy :: Ty
@@ -189,20 +175,13 @@ toPIRType _ty = case _ty of
     ByThisModuleName "Prim" | isJust (handlePrimTy qtn) -> pure . fromJust $ handlePrimTy qtn
     _ -> do
       tyName <- mkTyName qtn
-      let result = PIR.TyVar () tyName
-      doTraceM "toPIRType" ("\nINPUT:\n" <> prettyStr _ty <> "\n\nRESULT:\n" <> prettyStr result)
-      pure result
-  IR.TyApp t1 t2 -> do
-    result <- goTypeApp t1 t2
-    doTraceM "toPIRType" ("\nINPUT:\n" <> prettyStr _ty <> "\n\nRESULT:\n" <> prettyStr result)
-    pure result
+      pure $ PIR.TyVar () tyName
+  IR.TyApp t1 t2 -> goTypeApp t1 t2
   Forall _ v k ty _ -> do
     vTyName <- mkNewTyVar v
     bindTV v vTyName
     ty' <- toPIRType ty
-    let result = TyForall () vTyName (mkKind k) ty'
-    doTraceM "toPIRType" ("\nINPUT:\n" <> prettyStr _ty <> "\n\nRESULT:\n" <> prettyStr result)
-    pure result
+    pure $ TyForall () vTyName (mkKind k) ty'
   other -> error $ "Upon reflection, other types like " <> ppTy other <> " shouldn't be allowed in the Ty ast"
   where
     goTypeApp (IR.TyApp (TyCon C.Function) a) b = do
