@@ -1,107 +1,164 @@
+{-# LANGUAGE TemplateHaskell #-}
 module Language.Purus.Make.Prim where
 
 import Prelude
 
-import Control.Exception (throwIO)
-
-import Data.Text (Text)
-import Data.Text qualified as T
-
+import Data.Map (Map)
 import Data.Map qualified as M
-import Data.Set qualified as S
 
-import Data.Function (on)
+import Data.Bifunctor ( Bifunctor(second, bimap) )
 
-import Data.Foldable (foldrM)
-import Data.List (delete, foldl', groupBy, sortBy, stripPrefix)
-
-import System.FilePath (
-  makeRelative,
-  takeDirectory,
-  takeExtensions,
-  (</>),
- )
-
+import Language.PureScript.AST.SourcePos (pattern NullSourceSpan)
 import Language.PureScript.CoreFn.Ann (Ann)
-import Language.PureScript.CoreFn.Expr (Bind, PurusType)
+import Language.PureScript.CoreFn.Expr (Bind (..), PurusType, Expr (..))
+import Language.PureScript.CoreFn.Utils (exprType)
 import Language.PureScript.CoreFn.Module
+    ( CtorDecl(CtorDecl),
+      DataDecl(DataDecl),
+      Datatypes(Datatypes),
+      Module(Module, moduleName, moduleDataTypes, moduleDecls) )
 import Language.PureScript.Names (
-  Ident (Ident),
-  ModuleName (..),
-  runIdent,
-  runModuleName,
+  ModuleName (..), Qualified (..), QualifiedBy (..), Ident
  )
-import Language.PureScript.Types (SourceType)
-
-import Language.Purus.Eval
-import Language.Purus.IR.Utils (IR_Decl, foldBinds)
-import Language.Purus.Pipeline.CompileToPIR (compileToPIR)
-import Language.Purus.Pipeline.DesugarCore (desugarCoreModule)
-import Language.Purus.Pipeline.DesugarObjects (
-  desugarObjects,
-  desugarObjectsInDatatypes,
- )
-import Language.Purus.Pipeline.EliminateCases (eliminateCases)
-import Language.Purus.Pipeline.GenerateDatatypes (
-  generateDatatypes,
- )
-import Language.Purus.Pipeline.Inline (inline)
-import Language.Purus.Pipeline.Instantiate (applyPolyRowArgs, instantiateTypes)
-import Language.Purus.Pipeline.Lift (lift)
-import Language.Purus.Pipeline.Monad (
-  CounterT (runCounterT),
-  DesugarCore,
-  globalScope,
-  runCounter,
-  runDesugarCore,
-  runInline,
-  runPlutusContext,
- )
-import Language.Purus.Pretty.Common (prettyStr)
+import Language.PureScript.Types (Type(TypeConstructor))
 import Language.Purus.Prim.Data (primDataPS)
-import Language.Purus.Types (PIRTerm, PLCTerm, initDatatypeDict)
-import Language.Purus.Utils (
-  decodeModuleIO,
-  findDeclBodyWithIndex,
- )
+import Language.Purus.Utils (decodeModuleBS)
 
-import Control.Monad.Except (MonadError (throwError))
-import Control.Monad.State (evalStateT)
+import Control.Lens.Combinators (transform)
+import Data.FileEmbed ( embedFile )
+import Data.ByteString (ByteString)
 
-import Control.Lens (At (at))
-import Control.Lens.Combinators (folded)
-import Control.Lens.Operators ((^?))
-
-{- You know, maybe it'd be better to do this *after* CoreFn desugaring?
-
-synthesizeModule :: FilePath -- path to the .cfn CoreFn JSON module
-                    {-  Optional datatype declarations to shim here. We expect these
-                        to already have the Module Name provided as an argument here
-                    -}
-                 -> Datatypes SourceType SourceType
-                 -> ModuleName -- the *new* name for the module, e.g. Prim. See [NOTE 1]
-                 -> IO (Module (Bind Ann) PurusType PurusType Ann)
-synthesizeModule path datatypes newName = do
-  old <- decodeModuleIO path
-  let renamed = renameEverything old
-      newDataTypes = datatypes <> moduleDataTypes renamed
-  pure $ renamed {moduleDataTypes = newDataTypes}
- where
-   renameEverything :: Module (Bind Ann) PurusType PurusType Ann
-                    -> Module (Bind Ann) PurusType PurusType Ann
-   renameEverything (Module srcSpan comments _oldName _path imports exports reExports mForeign decls mDatatypes)
+primifyModule :: ModuleName -> -- old module name
+                             ModuleName -> -- new module name
+                             Module (Bind Ann) PurusType PurusType Ann ->
+                             Module (Bind Ann) PurusType PurusType Ann
+primifyModule oldMn newMn (Module srcSpan comments _oldName path imports exports reExports mForeign decls datatypes)
     = Module
-        (renameSrcSpan srcSpan)
-        (renameComments comments)
-        newName
+        srcSpan
+        comments
+        (f _oldName)
         path
-        (renameImports imports)
+        (filter (isPrimModule . snd) imports)
         exports
-        (renameReExports reExports)
+        reExports
         mForeign
-        (renameDecls decls)
+        (renameDecl <$> decls)
+        (renameDatatypes datatypes)
+ where
+   isPrimModule :: ModuleName -> Bool
+   isPrimModule (ModuleName x) = x == "Prim" || x == "Builtin"
 
--}
+   f :: ModuleName -> ModuleName
+   f mn | mn == oldMn = newMn
+        | otherwise   = mn
+
+   goQualified :: forall (a :: *). Qualified a -> Qualified a
+   goQualified = \case
+     Qualified (ByModuleName mn) x -> Qualified (ByModuleName (f mn)) x
+     other -> other
+
+   renameDatatypes :: Datatypes PurusType PurusType -> Datatypes PurusType PurusType
+   renameDatatypes (Datatypes typeDict ctDict) = Datatypes typeDict' ctorDict'
+     where
+       typeDict' = M.fromList
+                   . fmap (bimap goQualified goDataDecl)
+                   . M.toList
+                   $ typeDict
+
+       ctorDict' = M.fromList
+                   . fmap (bimap goQualified goQualified)
+                   . M.toList
+                   $ ctDict
+
+       goDataDecl :: DataDecl PurusType PurusType -> DataDecl PurusType PurusType
+       goDataDecl (DataDecl ddTy ddDataTyName ddDataArgs ddDataCtors)
+         = DataDecl ddTy (goQualified ddDataTyName) (second goType <$> ddDataArgs) (goCtorDecl <$> ddDataCtors)
+
+       goCtorDecl :: CtorDecl PurusType -> CtorDecl PurusType
+       goCtorDecl (CtorDecl cdName cdFields) = CtorDecl (goQualified cdName) (second goType <$> cdFields)
+
+       goType :: PurusType -> PurusType
+       goType = transform $ \case
+         TypeConstructor ann qtn -> TypeConstructor ann (goQualified qtn)
+         other -> other 
+
+   renameDecl :: Bind Ann -> Bind Ann
+   renameDecl = \case
+     NonRec ann ident e -> NonRec ann ident $ transform go e
+     Rec bs -> Rec $ second (transform go) <$> bs
+    where
+      go :: Expr Ann -> Expr Ann
+      go e = case e of
+        Var ann ty qi -> Var ann ty (goQualified qi)
+        other -> other
+
+prelude1Raw :: ByteString
+prelude1Raw = $(embedFile "src/ps-libs/prelude/Prelude/Prelude.cfn")
+
+prelude2Raw :: ByteString
+prelude2Raw = $(embedFile "src/ps-libs/prelude/Prelude2/Prelude2.cfn")
+
+prelude3Raw :: ByteString
+prelude3Raw = $(embedFile "src/ps-libs/prelude/Prelude3/Prelude3.cfn")
+
+
+prelude1 :: Module (Bind Ann) PurusType PurusType Ann
+prelude1 = decodeModuleBS prelude1Raw
+
+prelude2 :: Module (Bind Ann) PurusType PurusType Ann
+prelude2 = decodeModuleBS prelude2Raw
+
+prelude3 :: Module (Bind Ann) PurusType PurusType Ann
+prelude3 = decodeModuleBS prelude3Raw
+
+
+mkPrimModule :: Module (Bind Ann) PurusType PurusType Ann -> Module (Bind Ann) PurusType PurusType Ann
+mkPrimModule mdl = renamed {moduleDataTypes = newDatatypes}
+ where
+   renamed = primifyModule (moduleName mdl) (ModuleName "Prim") mdl
+   oldDatatypes = moduleDataTypes renamed
+   newDatatypes = oldDatatypes <> primDataPS
+
+primValueTypes :: Module (Bind Ann) PurusType PurusType Ann -> Map (Qualified Ident) PurusType
+primValueTypes = M.fromList . concatMap go . moduleDecls
+  where
+    q = Qualified (ByModuleName (ModuleName "Prim"))
+    go :: Bind Ann -> [(Qualified Ident, PurusType)]
+    go = \case
+      NonRec _ ident expr -> [(q ident, exprType expr)]
+      Rec xs -> map (\((_,ident),expr) -> (q ident, exprType expr)) xs  
+
+-- we assume that we've updated the names, and that e.g. both modules have the same ModuleName (likely "Prim")
+-- there shouldn't be any re-exports or foreigns
+-- we can ignore comments (I think?)
+mergeModules :: Module (Bind Ann) PurusType PurusType Ann ->
+                Module (Bind Ann) PurusType PurusType Ann ->
+                Module (Bind Ann) PurusType PurusType Ann
+mergeModules
+  (Module _ss1 _ _  _    imports1 exports1 _ _ decls1 datatypes1)
+  (Module _ss2 _ nm path _        exports2 _ _ decls2 datatypes2) =
+    Module
+      NullSourceSpan
+      []
+      nm
+      path
+      imports1 -- should only import Prim, I think?
+      (exports1 <> exports2)
+      M.empty -- no re exports
+      [] -- no foreign
+      (decls1 <> decls2) -- combine the decls
+      (datatypes1 <> datatypes2) -- combine the datatypes
+
+
+syntheticPrim :: Module (Bind Ann) PurusType PurusType Ann
+syntheticPrim = prim1 `mergeModules` prim2 `mergeModules` prim3
+  where
+    prim1 = mkPrimModule prelude1
+    prim2 = mkPrimModule prelude2
+    prim3 = mkPrimModule prelude3
+
+syntheticPrimValueTypes :: Map (Qualified Ident) PurusType
+syntheticPrimValueTypes =  primValueTypes syntheticPrim
 
 {-
 [NOTE 1]

@@ -32,9 +32,10 @@ import Language.PureScript.AST (ErrorMessageHint (..), Module (..), SourceSpan (
 import Language.PureScript.CST qualified as CST
 import Language.PureScript.CoreFn qualified as CF
 import Language.PureScript.CoreFn qualified as CFT
+import Language.PureScript.CoreFn.Desugar qualified as CFT
 import Language.PureScript.Crash (internalError)
 import Language.PureScript.Docs.Convert qualified as Docs
-import Language.PureScript.Environment (Environment (..), initEnvironment)
+import Language.PureScript.Environment (Environment (..), initEnvironment, NameKind(..), NameVisibility(..))
 import Language.PureScript.Errors (MultipleErrors, SimpleErrorMessage (..), addHint, defaultPPEOptions, errorMessage', errorMessage'', prettyPrintMultipleErrors)
 import Language.PureScript.Externs (ExternsFile, applyExternsFileToEnvironment, moduleToExternsFile)
 import Language.PureScript.Linter (Name (..), lint, lintImports)
@@ -50,6 +51,8 @@ import Language.PureScript.Sugar (Env, collapseBindingGroups, createBindingGroup
 import Language.PureScript.TypeChecker (CheckState (..), emptyCheckState, typeCheckModule)
 import Language.Purus.Pretty qualified as CFT
 import Language.Purus.Prim.Ledger
+import Language.Purus.Make.Prim (syntheticPrimValueTypes)
+
 
 import System.Directory (doesFileExist)
 import System.FilePath (replaceExtension)
@@ -61,8 +64,9 @@ import Language.Purus.Pretty (ppType)
 initEnvironmentPurus :: Environment
 initEnvironmentPurus = case initEnvironment of
   Environment nms tys dCons tSyns tcDicts tcs ->
-    Environment nms (M.fromList ledgerTypes <> tys) (dCons <> ledgerConstructorsEnv) tSyns tcDicts tcs
-
+    Environment (synthetic <> nms) (M.fromList ledgerTypes <> tys) (dCons <> ledgerConstructorsEnv) tSyns tcDicts tcs
+ where
+   synthetic = (\x -> (x,Public,Defined)) <$> syntheticPrimValueTypes 
 {- | Rebuild a single module.
 
 This function is used for fast-rebuild workflows (PSCi and psc-ide are examples).

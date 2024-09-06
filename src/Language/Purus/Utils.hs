@@ -25,6 +25,8 @@ import Control.Exception (throwIO)
 
 import Data.List (find)
 
+import Data.ByteString (ByteString)
+
 import Data.Map (Map)
 import Data.Map qualified as M
 
@@ -43,6 +45,11 @@ decodeModuleIO path =
   Aeson.eitherDecodeFileStrict' path >>= \case
     Left err -> throwIO $ userError err
     Right modx -> pure modx
+
+decodeModuleBS :: ByteString -> (Module (Bind Ann) PurusType PurusType Ann)
+decodeModuleBS bs = case Aeson.eitherDecodeStrict' bs of
+  Left err -> error err
+  Right mdl -> mdl 
 
 {- Turns a Row Type into a Map of field names to Row item data.
 

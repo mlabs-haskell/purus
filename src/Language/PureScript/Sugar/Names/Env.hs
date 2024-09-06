@@ -42,7 +42,7 @@ import Language.PureScript.Names (Ident, ModuleName, Name (..), OpName, OpNameTy
 import Language.PureScript.Types (SourceType)
 
 import Language.Purus.Prim.Ledger
-
+import Language.Purus.Make.Prim (syntheticPrimValueTypes)
 {- |
 The details for an import: the name of the thing that is being imported
 (`A.x` if importing from `A`), the module that the thing was originally
@@ -162,7 +162,9 @@ envModuleExports (_, _, exps) = exps
 The exported types from the @Prim@ module
 -}
 primExports :: Exports
-primExports = mkPrimExports (primTypes <> M.fromList ledgerTypes) primClasses
+primExports = (mkPrimExports (primTypes <> M.fromList ledgerTypes) primClasses) {
+    exportedValues = M.fromList $ mkValueEntry <$> (M.keys syntheticPrimValueTypes <> M.keys primFunctions)
+  }
 
 {- |
 The exported types from the @Prim.Boolean@ module
@@ -236,7 +238,7 @@ mkPrimExports ts cs =
   nullExports
     { exportedTypes = M.fromList $ uncurry mkTypeEntry `map` M.toList ts
     , exportedTypeClasses = M.fromList $ mkClassEntry `map` M.keys cs
-    , exportedValues = M.fromList $ mkValueEntry <$> M.keys primFunctions
+    , exportedValues = M.fromList $ mkValueEntry <$> (M.keys primFunctions <> M.keys syntheticPrimValueTypes)
     }
 
 mkTypeEntry (Qualified (ByModuleName mn) name) (_, DataType _ _ (map fst -> ctors)) = (name, (ctors, primExportSource mn))

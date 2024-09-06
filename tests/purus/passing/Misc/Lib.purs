@@ -402,6 +402,9 @@ irrPattern n = case n of
 someData :: Builtin.BuiltinData
 someData = Builtin.iData 1
 
+testPrelude1 :: Int
+testPrelude1 = deserializeInt someData
+
 someDataList :: Builtin.BuiltinList Builtin.BuiltinData
 someDataList = Builtin.mkCons someData (Builtin.mkNilData Prim.unit)
 

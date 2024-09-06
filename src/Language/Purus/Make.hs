@@ -63,6 +63,7 @@ import Language.Purus.Utils (
   decodeModuleIO,
   findDeclBodyWithIndex,
  )
+import Language.Purus.Make.Prim (syntheticPrim)
 
 import Control.Monad.Except (MonadError (throwError))
 import Control.Monad.State (evalStateT)
@@ -76,7 +77,8 @@ import Algebra.Graph.AdjacencyMap.Algorithm (topSort)
 
 import System.FilePath.Glob qualified as Glob
 
-import PlutusCore.Evaluation.Result (EvaluationResult)
+import PlutusCore.Evaluation.Result (EvaluationResult(EvaluationSuccess))
+import PlutusIR.Core.Instance.Pretty.Readable (prettyPirReadable)
 
 -- import Debug.Trace (traceM)
 -- import PlutusIR.Core.Instance.Pretty.Readable (prettyPirReadable)
@@ -213,10 +215,12 @@ make path mainModule mainFunction primModule = do
 -- for exploration/repl testing, this hardcodes `tests/purus/passing/Lib` as the target directory and
 -- we only select the name of the main function
 makeForTest :: Text -> IO PIRTerm
-makeForTest main = make "tests/purus/passing/Misc" "Lib" main Nothing
+makeForTest main = make "tests/purus/passing/Misc" "Lib" main  (Just syntheticPrim) -- NOTE[A]
 
 evalForTest_ :: Text -> IO ()
-evalForTest_ main = evalForTest main >>= print
+evalForTest_ main = (fst <$> evalForTest main) >>= \case
+  EvaluationSuccess res -> print $ prettyPirReadable res
+  _ -> error $ "failed to evaluate " <> T.unpack main
 
 evalForTest :: Text -> IO (EvaluationResult PLCTerm, [Text])
 evalForTest main = makeForTest main >>= evaluateTerm

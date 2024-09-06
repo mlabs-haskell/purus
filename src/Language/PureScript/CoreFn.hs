@@ -8,7 +8,6 @@ module Language.PureScript.CoreFn (
 import Language.PureScript.AST.Literals as C
 import Language.PureScript.CoreFn.Ann as C
 import Language.PureScript.CoreFn.Binders as C
-import Language.PureScript.CoreFn.Desugar as C
 import Language.PureScript.CoreFn.Expr as C
 import Language.PureScript.CoreFn.Meta as C
 import Language.PureScript.CoreFn.Module as C
