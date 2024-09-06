@@ -5,7 +5,7 @@
 
 module Language.PureScript.CoreFn.Desugar.Utils where
 
-import Protolude (MonadError (..), traverse_)
+import Protolude (MonadError (..))
 import Prelude
 
 import Data.Function (on)
@@ -20,7 +20,6 @@ import Data.Bifunctor (Bifunctor (..))
 import Data.List (foldl')
 import Data.List.NonEmpty qualified as NEL
 import Data.Text qualified as T
-import Debug.Trace (trace, traceM)
 import Language.PureScript.AST qualified as A
 import Language.PureScript.AST.Declarations (declSourceSpan)
 import Language.PureScript.AST.Literals (Literal (..))
@@ -61,7 +60,6 @@ import Language.PureScript.Sugar (desugarGuardedExprs)
 import Language.PureScript.TypeChecker.Monad (
   CheckState (checkCurrentModule, checkEnv),
   bindLocalVariables,
-  debugNames,
   getEnv,
   withScopedTypeVars,
  )
@@ -271,9 +269,7 @@ unwrapRecord = \case
     go RowListItem {..} = (runLabel rowListLabel, rowListType)
 
 traceNameTypes :: (M m) => m ()
-traceNameTypes = do
-  nametypes <- getEnv >>= pure . debugNames
-  traverse_ traceM nametypes
+traceNameTypes = pure ()
 
 desugarCasesEverywhere :: (M m) => A.Declaration -> m A.Declaration
 desugarCasesEverywhere d = traverseDeclBodies (transformM $ desugarGuardedExprs (declSourceSpan d)) d
@@ -402,21 +398,12 @@ desugarConstraintsInDecl = \case
   other -> other
 
 -- TODO: Remove this 
-pTrace :: (Monad m, Show a) => a -> m ()
-pTrace = traceM . show
+pTrace :: (Monad m) => a -> m ()
+pTrace _ = pure ()
 
 -- | Given a string and a monadic action, produce a trace with the given message before & after the action (with pretty lines to make it more readable)
-wrapTrace :: (Monad m) => String -> m a -> m a
-wrapTrace msg act = do
-  traceM startMsg
-  res <- act
-  traceM endMsg
-  pure res
-  where
-    padding = replicate 10 '='
-    pad str = padding <> str <> padding
-    startMsg = pad $ "BEGIN " <> msg
-    endMsg = pad $ "END " <> msg
+wrapTrace :: String -> m a -> m a
+wrapTrace _ act = act
 
 {-
   This is used to solve a problem that arises with re-exported instances.
@@ -639,9 +626,8 @@ binderToCoreFn dict env mn _ss (A.LiteralBinder ss lit) =
    in LiteralBinder (ss, [], Nothing) lit'
 binderToCoreFn _ _ _ ss A.NullBinder =
   NullBinder (ss, [], Nothing)
-binderToCoreFn dict _ _ _ss vb@(A.VarBinder ss name) =
-  trace ("binderToCoreFn: " <> show vb) $
-    VarBinder (ss, [], Nothing) name (dict M.! name)
+binderToCoreFn dict _ _ _ss (A.VarBinder ss name) =
+  VarBinder (ss, [], Nothing) name (dict M.! name)
 binderToCoreFn dict env mn _ss (A.ConstructorBinder ss dctor@(Qualified mn' _) bs) =
   let (_, tctor, _, _) = lookupConstructor env dctor
       args = binderToCoreFn dict env mn _ss <$> bs

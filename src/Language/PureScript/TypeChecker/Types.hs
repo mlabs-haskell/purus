@@ -77,7 +77,6 @@ import Language.PureScript.TypeChecker.TypeSearch (typeSearch)
 import Language.PureScript.TypeChecker.Unify (freshTypeWithKind, replaceTypeWildcards, substituteType, unifyTypes, unknownsInType, varIfUnknown)
 import Language.PureScript.Types
 
-import Debug.Trace
 import Language.PureScript.Pretty.Values (renderValue)
 import Language.Purus.Pretty.Types (prettyTypeStr)
 
@@ -85,14 +84,10 @@ moduleTraces :: Bool
 moduleTraces = True
 
 goTrace :: forall x. String -> x -> x
-goTrace str x
-  | moduleTraces = trace str x
-  | otherwise = x
+goTrace _ x = x
 
 goTraceM :: forall f. (Applicative f) => String -> f ()
-goTraceM msg
-  | moduleTraces = traceM msg
-  | otherwise = pure ()
+goTraceM _ = pure ()
 
 spacer = '\n' : replicate 20 '-'
 

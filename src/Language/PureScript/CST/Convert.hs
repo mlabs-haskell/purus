@@ -22,7 +22,7 @@ import Control.Monad.State
 import Data.Bifunctor (bimap, first, second)
 import Data.Bitraversable (Bitraversable (..))
 import Data.Char (toLower)
-import Data.Foldable (foldl', foldrM, toList, traverse_)
+import Data.Foldable (foldrM, toList, traverse_)
 import Data.Functor (($>))
 import Data.List.NonEmpty qualified as NE
 import Data.Map (Map)
@@ -46,7 +46,6 @@ import Language.PureScript.PSString (mkString, prettyPrintStringJS)
 import Language.PureScript.Types qualified as T
 
 import Data.List (partition)
-import Debug.Trace (trace)
 
 type ConvertM a = State (Map Text T.SourceType) a
 
@@ -82,11 +81,10 @@ srcTokenRange = tokRange . tokAnn
    type signature in scope when we convert the declaration.
 
 -}
-groupSignaturesAndDeclarations :: (Show a) => [Declaration a] -> [[Declaration a]]
+groupSignaturesAndDeclarations :: [Declaration a] -> [[Declaration a]]
 groupSignaturesAndDeclarations [] = []
 groupSignaturesAndDeclarations decls =
-  trace ("DECLARATIONS (grouping): \n" <> concatMap ((<> "\n\n") . show) decls) $
-    go kindSigs typeSigs decls'
+  go kindSigs typeSigs decls'
   where
     ((kindSigs, typeSigs), decls') =
       foldr
@@ -239,7 +237,7 @@ convertType' withinVta fileName = go
       TypeForall _ kw bindings _ ty -> do
         -- TODO: Refactor this (if it works)
         let
-          doBind (TypeVarKinded (Wrapped _ (Labeled (v, a) _ b) _)) = do
+          doBind (TypeVarKinded (Wrapped _ (Labeled (_, a) _ b) _)) = do
             let nm = getIdent (nameValue a)
             b' <- go b
             bindTv nm b'
@@ -255,7 +253,7 @@ convertType' withinVta fileName = go
             bindTv nm b'
             pure $ mkForAll a b' v t
           -- TODO: Fix this better
-          k (TypeVarName (v, a)) t = internalError $ "Error: Universally quantified type variable without kind annotation: " <> (Text.unpack . getIdent . nameValue $ a) <> "\nat: " <> show v
+          k (TypeVarName (v, a)) _ = internalError $ "Error: Universally quantified type variable without kind annotation: " <> (Text.unpack . getIdent . nameValue $ a) <> "\nat: " <> show v
         traverse_ doBind bindings
         inner <- go ty
         ty' <- foldrM k inner bindings

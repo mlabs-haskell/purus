@@ -55,7 +55,6 @@ import System.Directory (doesFileExist)
 import System.FilePath (replaceExtension)
 
 -- Temporary
-import Debug.Trace (traceM)
 import Language.Purus.Pretty (ppType)
 
 initEnvironmentPurus :: Environment
@@ -129,11 +128,9 @@ rebuildModuleWithIndex MakeActions {..} exEnv externs m@(Module _ _ moduleName _
   regrouped <- createBindingGroups moduleName . collapseBindingGroups $ deguarded
 
   let mod' = Module ss coms moduleName regrouped exps
-  traceM $ "PURUS START HERE: " <> T.unpack (runModuleName moduleName)
   -- pTrace regrouped
   -- pTrace exps
   ((coreFn, chkSt'), nextVar'') <- runSupplyT nextVar' $ runStateT (CFT.moduleToCoreFn mod') chkSt -- (emptyCheckState env')
-  traceM . T.unpack $ CFT.prettyModuleTxt coreFn
   let corefn = coreFn
       (optimized, nextVar''') = runSupply nextVar'' $ CF.optimizeCoreFn corefn
       (renamedIdents, renamed) = renameInModule optimized
