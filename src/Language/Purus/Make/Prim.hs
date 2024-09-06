@@ -25,7 +25,6 @@ import Language.Purus.Prim.Data (primDataPS)
 import Language.Purus.Utils (decodeModuleBS)
 
 import Control.Lens.Combinators (transform)
-import System.IO.Unsafe (unsafePerformIO)
 import Data.FileEmbed ( embedFile )
 import Data.ByteString (ByteString)
 
@@ -103,17 +102,14 @@ prelude3Raw :: ByteString
 prelude3Raw = $(embedFile "src/ps-libs/prelude/Prelude3/Prelude3.cfn")
 
 
-{-# NOINLINE prelude1 #-}
 prelude1 :: Module (Bind Ann) PurusType PurusType Ann
-prelude1 = unsafePerformIO $ decodeModuleBS prelude1Raw
+prelude1 = decodeModuleBS prelude1Raw
 
-{-# NOINLINE prelude2 #-}
 prelude2 :: Module (Bind Ann) PurusType PurusType Ann
-prelude2 = unsafePerformIO $ decodeModuleBS prelude2Raw
+prelude2 = decodeModuleBS prelude2Raw
 
-{-# NOINLINE prelude3 #-}
 prelude3 :: Module (Bind Ann) PurusType PurusType Ann
-prelude3 = unsafePerformIO $ decodeModuleBS prelude3Raw
+prelude3 = decodeModuleBS prelude3Raw
 
 
 mkPrimModule :: Module (Bind Ann) PurusType PurusType Ann -> Module (Bind Ann) PurusType PurusType Ann
