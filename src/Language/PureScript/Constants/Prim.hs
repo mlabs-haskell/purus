@@ -9,13 +9,14 @@ import Prelude
 
 import Language.PureScript.Constants.TH qualified as TH
 import Language.PureScript.Names (ModuleName)
+import Language.Purus.Config (maxTupleSize)
 
 $( TH.declare do
     TH.mod "Prim" do
       TH.cls "Partial"
       TH.dty "List" ["Nil", "Cons"]
       TH.dty "Boolean" ["False", "True"]
-      traverse_ (\x -> TH.dty ("Tuple" <> show x) ["Tuple" <> show x]) [1 .. 100] -- tuples
+      traverse_ (\x -> TH.dty ("Tuple" <> show x) ["Tuple" <> show x]) [1 .. maxTupleSize] -- tuples
       TH.ty "Char"
       TH.ty "Constraint"
       TH.ty "Function"

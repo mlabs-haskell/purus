@@ -96,6 +96,7 @@ Exports:
   litPatternApplied,
   irrPattern,
   someData,
+  testPrelude1,
   someDataList,
   isNullSomeDataList,
   plutusIFTE,
@@ -375,6 +376,11 @@ someDataList =
   (someData: Builtin.BuiltinData)
   ((mkNilData: (Prim.Unit -> ((Builtin.BuiltinList (Builtin.BuiltinData)))))
    (unit: Prim.Unit))
+
+testPrelude1 :: Prim.Int
+testPrelude1 = 
+  (deserializeInt: (Builtin.BuiltinData -> (Prim.Int)))
+  (someData: Builtin.BuiltinData)
 
 recG1 :: forall (x :: Prim.Type). ((x :: Prim.Type) -> (Prim.Int))
 recG1 = 

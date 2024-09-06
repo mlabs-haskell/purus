@@ -2,6 +2,7 @@
 {-# LANGUAGE StandaloneDeriving #-}
 {-# LANGUAGE TemplateHaskellQuotes #-}
 {-# LANGUAGE DeriveLift #-}
+{-# LANGUAGE RecordWildCards #-}
 {-# OPTIONS_GHC -Wno-orphans #-}
 {-# OPTIONS_GHC -Wno-implicit-lift #-}
 
@@ -11,13 +12,14 @@ module Language.Purus.TH (
 
 import Prelude
 import Language.Haskell.TH (Exp, Q)
+import Data.Functor.Identity (runIdentity)
 import Control.Monad.IO.Class (liftIO)
 import Data.Aeson (eitherDecodeFileStrict')
 import Language.PureScript.CoreFn.Module (
-  Module (Module), 
+  Module (..),
   Datatypes (Datatypes),
   DataDecl (DataDecl),
-  CtorDecl (CtorDecl)
+  CtorDecl (CtorDecl), bitraverseDatatypes
   )
 import Language.PureScript.Types (
   Type (TUnknown,
@@ -43,11 +45,11 @@ import Language.PureScript.Types (
   SkolemScope (SkolemScope),
   TypeVarVisibility (TypeVarVisible, TypeVarInvisible)
   )
-import Language.PureScript.CoreFn.Ann (Ann)
+import Language.PureScript.CoreFn.Ann (Ann, nullAnn)
 import Language.PureScript.AST.SourcePos (
   SourceAnn,
   SourcePos (SourcePos),
-  SourceSpan (SourceSpan)
+  SourceSpan (SourceSpan), pattern NullSourceAnn
   )
 import Language.PureScript.CoreFn.Expr (
   Bind (NonRec, Rec),
@@ -108,6 +110,8 @@ import Language.PureScript.CoreFn.Meta (
         ),
   ConstructorType (ProductType, SumType)
   )
+import Language.Purus.IR.Utils ()
+import Control.Lens.Plated (transform)
 
 deriving stock instance Lift InternalIdentData
 
@@ -171,9 +175,10 @@ deriving stock instance Lift (Bind Ann)
 
 deriving stock instance Lift (Module (Bind Ann) (Type SourceAnn) (Type SourceAnn) Ann)
 
+
 ctDecodeModule :: FilePath -> Q Exp
 ctDecodeModule fp = do
   decoded <- liftIO $ eitherDecodeFileStrict' @(Module (Bind Ann) (Type SourceAnn) (Type SourceAnn) Ann) fp
   case decoded of 
     Left err -> fail $ "Cannot construct a Module from " <> fp <> "\nReason: " <> err
-    Right res -> [| res |]
+    Right res  -> [| res |]

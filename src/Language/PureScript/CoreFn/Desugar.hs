@@ -35,7 +35,6 @@ import Language.PureScript.CoreFn.Desugar.Utils (
   binderToCoreFn,
   ctorArgs,
   dedupeImports,
-  desugarCasesEverywhere,
   desugarConstraintTypes,
   desugarConstraintsInDecl,
   exportToCoreFn,
@@ -57,6 +56,7 @@ import Language.PureScript.CoreFn.Desugar.Utils (
   showIdent',
   ssA,
   toReExportRef,
+  traverseDeclBodies,
   true,
   truePat,
   unwrapRecord,
@@ -131,6 +131,11 @@ import Language.PureScript.Types (
  )
 import Language.Purus.Pretty (ppType, prettyDatatypes, prettyStr, renderExprStr)
 import Prettyprinter (Pretty (pretty))
+import Language.PureScript.Sugar (desugarGuardedExprs)
+import Control.Lens.Plated
+
+desugarCasesEverywhere :: (M m) => A.Declaration -> m A.Declaration
+desugarCasesEverywhere d = traverseDeclBodies (transformM $ desugarGuardedExprs (A.declSourceSpan d)) d
 
 {-
     CONVERSION MACHINERY

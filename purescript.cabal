@@ -88,7 +88,7 @@ common defaults
     -Wno-partial-fields
 
     -- TODO: Remove
-    -O2
+    -O0
   default-language: Haskell2010
   default-extensions:
     BangPatterns

@@ -57,7 +57,6 @@ import Language.PureScript.Errors (
 import Language.PureScript.Label (Label (..))
 import Language.PureScript.Names (Ident (..), ModuleName, ProperName (..), ProperNameType (..), Qualified (..), QualifiedBy (..), coerceProperName, getQual, runIdent)
 import Language.PureScript.PSString (PSString)
-import Language.PureScript.Sugar (desugarGuardedExprs)
 import Language.PureScript.TypeChecker.Monad (
   CheckState (checkCurrentModule, checkEnv),
   bindLocalVariables,
@@ -274,9 +273,6 @@ traceNameTypes :: (M m) => m ()
 traceNameTypes = do
   nametypes <- getEnv >>= pure . debugNames
   traverse_ traceM nametypes
-
-desugarCasesEverywhere :: (M m) => A.Declaration -> m A.Declaration
-desugarCasesEverywhere d = traverseDeclBodies (transformM $ desugarGuardedExprs (declSourceSpan d)) d
 
 traverseDeclBodies :: forall m. (Applicative m) => (A.Expr -> m A.Expr) -> A.Declaration -> m A.Declaration
 traverseDeclBodies f = \case

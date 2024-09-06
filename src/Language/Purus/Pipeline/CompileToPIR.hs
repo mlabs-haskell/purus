@@ -31,7 +31,7 @@ import Language.PureScript.Names (
   QualifiedBy (ByModuleName),
   runIdent,
  )
-import Language.PureScript.PSString (prettyPrintString)
+import Language.PureScript.PSString (decodeString)
 
 import Language.Purus.Debug (doTraceM, prettify)
 import Language.Purus.IR (
@@ -186,8 +186,13 @@ compileToPIR' datatypes _exp =
       PlutusContext PIRTerm
     compileToPIRLit = \case
       IntL i -> pure $ mkConstant () i
-      StringL str ->
-        pure $ mkConstant () $ prettyPrintString str
+      StringL str -> case decodeString str of
+        Just txt ->  pure $ mkConstant () txt
+        Nothing  -> throwError $ "Error: Cannot convert "
+                                 <> show str
+                                 <> " to a Plutus String literal. This should be "
+                                 <> "impossible for string literals parsed from source "
+                                 <> "files. Please report this bug to the compiler authors."
       CharL c ->
         pure
           . mkConstant ()

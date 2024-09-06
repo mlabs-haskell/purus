@@ -39,7 +39,7 @@ import Language.PureScript.Bundle qualified as Bundle
 import Language.PureScript.CST qualified as CST
 import Language.PureScript.CoreFn qualified as CF
 import Language.PureScript.CoreFn.FromJSON ()
-import Language.PureScript.CoreFn.ToJSON (moduleToJSON)
+import Language.PureScript.CoreFn.ToJSON (moduleToJSON, nullifyAnnModule)
 import Language.PureScript.Crash (internalError)
 import Language.PureScript.Docs.Prim qualified as Docs.Prim
 import Language.PureScript.Docs.Types qualified as Docs
@@ -262,7 +262,7 @@ buildMakeActions outputDir filePathMap foreigns usePrefix =
         lift $ writeJSONFile (outputFilename mn "docs.json") docs
       when (S.member CoreFn codegenTargets) $ do
         let targetFile = targetFilename mn CoreFn
-        lift $ writeJSONFile targetFile (moduleToJSON (makeVersion [0, 0, 1]) m)
+        lift $ writeJSONFile targetFile (moduleToJSON (makeVersion [0, 0, 1]) . nullifyAnnModule $ m)
         lift $ makeIO "write pretty core" $ withFile (targetFile <> ".pretty") WriteMode $ \handle ->
           writeModule handle m
       when (S.member CheckCoreFn codegenTargets) $ do

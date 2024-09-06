@@ -1,5 +1,4 @@
 {-# LANGUAGE TemplateHaskell #-}
-
 module Language.Purus.Make.Prim where
 
 import Prelude
@@ -9,7 +8,8 @@ import Data.Map qualified as M
 
 import Data.Bifunctor ( Bifunctor(second, bimap) )
 
-import Language.PureScript.CoreFn.Ann (Ann)
+import Language.PureScript.AST.SourcePos (pattern NullSourceSpan)
+import Language.PureScript.CoreFn.Ann (Ann,nullAnn)
 import Language.PureScript.CoreFn.Expr (Bind (..), PurusType, Expr (..))
 import Language.PureScript.CoreFn.Utils (exprType)
 import Language.PureScript.CoreFn.Module
@@ -17,32 +17,37 @@ import Language.PureScript.Names (
   ModuleName (..), Qualified (..), QualifiedBy (..), Ident
  )
 import Language.PureScript.Types (Type(TypeConstructor))
-
 import Language.Purus.Prim.Data (primDataPS)
 import Language.Purus.TH (ctDecodeModule)
 import Language.Purus.IR.Utils 
+import Language.Purus.Utils (decodeModuleBS)
 
 import Control.Lens.Combinators (transform, over)
 import Control.Lens (_2)
+import System.IO.Unsafe (unsafePerformIO)
+import Data.FileEmbed 
+import Data.ByteString (ByteString)
 
-
-replaceModuleNameInModule :: ModuleName -> -- old module name
+primifyModule :: ModuleName -> -- old module name
                              ModuleName -> -- new module name
                              Module (Bind Ann) PurusType PurusType Ann ->
                              Module (Bind Ann) PurusType PurusType Ann
-replaceModuleNameInModule oldMn newMn (Module srcSpan comments _oldName path imports exports reExports mForeign decls datatypes)
+primifyModule oldMn newMn (Module srcSpan comments _oldName path imports exports reExports mForeign decls datatypes)
     = Module
         srcSpan
         comments
         (f _oldName)
         path
-        imports
+        (filter (isPrimModule . snd) imports)
         exports
         reExports
         mForeign
         (renameDecl <$> decls)
         (renameDatatypes datatypes)
  where
+   isPrimModule :: ModuleName -> Bool
+   isPrimModule (ModuleName x) = x == "Prim" || x == "Builtin"
+
    f :: ModuleName -> ModuleName
    f mn | mn == oldMn = newMn
         | otherwise   = mn
@@ -87,19 +92,38 @@ replaceModuleNameInModule oldMn newMn (Module srcSpan comments _oldName path imp
         Var ann ty qi -> Var ann ty (goQualified qi)
         other -> other
 
-prelude :: Module (Bind Ann) PurusType PurusType Ann
-prelude = $(ctDecodeModule "tests/purus/passing/prelude/output/Prelude/Prelude.cfn")
+prelude1Raw :: ByteString
+prelude1Raw = $(embedFile "src/ps-libs/prelude/Prelude/Prelude.cfn")
+
+prelude2Raw :: ByteString
+prelude2Raw = $(embedFile "src/ps-libs/prelude/Prelude2/Prelude2.cfn")
+
+prelude3Raw :: ByteString
+prelude3Raw = $(embedFile "src/ps-libs/prelude/Prelude3/Prelude3.cfn")
 
 
-primModule :: Module (Bind Ann) PurusType PurusType Ann
-primModule  = renamed {moduleDataTypes = newDatatypes}
+{-# NOINLINE prelude1 #-}
+prelude1 :: Module (Bind Ann) PurusType PurusType Ann
+prelude1 = unsafePerformIO $ decodeModuleBS prelude1Raw
+
+{-# NOINLINE prelude2 #-}
+prelude2 :: Module (Bind Ann) PurusType PurusType Ann
+prelude2 = unsafePerformIO $ decodeModuleBS prelude2Raw
+
+{-# NOINLINE prelude3 #-}
+prelude3 :: Module (Bind Ann) PurusType PurusType Ann
+prelude3 = unsafePerformIO $ decodeModuleBS prelude3Raw
+
+
+mkPrimModule :: Module (Bind Ann) PurusType PurusType Ann -> Module (Bind Ann) PurusType PurusType Ann
+mkPrimModule mdl = renamed {moduleDataTypes = newDatatypes}
  where
-   renamed = replaceModuleNameInModule (ModuleName "Prelude") (ModuleName "Prim") prelude
+   renamed = primifyModule (moduleName mdl) (ModuleName "Prim") mdl
    oldDatatypes = moduleDataTypes renamed
    newDatatypes = oldDatatypes <> primDataPS
 
-primValueTypes :: Map (Qualified Ident) PurusType
-primValueTypes = M.fromList . concatMap go $ moduleDecls primModule
+primValueTypes :: Module (Bind Ann) PurusType PurusType Ann -> Map (Qualified Ident) PurusType
+primValueTypes = M.fromList . concatMap go . moduleDecls
   where
     q = Qualified (ByModuleName (ModuleName "Prim"))
     go :: Bind Ann -> [(Qualified Ident, PurusType)]
@@ -107,7 +131,37 @@ primValueTypes = M.fromList . concatMap go $ moduleDecls primModule
       NonRec _ ident expr -> [(q ident, exprType expr)]
       Rec xs -> map (\((_,ident),expr) -> (q ident, exprType expr)) xs  
 
-   
+-- we assume that we've updated the names, and that e.g. both modules have the same ModuleName (likely "Prim")
+-- there shouldn't be any re-exports or foreigns
+-- we can ignore comments (I think?)
+mergeModules :: Module (Bind Ann) PurusType PurusType Ann ->
+                Module (Bind Ann) PurusType PurusType Ann ->
+                Module (Bind Ann) PurusType PurusType Ann
+mergeModules
+  (Module _ss1 _ _  _    imports1 exports1 _ _ decls1 datatypes1)
+  (Module _ss2 _ nm path _        exports2 _ _ decls2 datatypes2) =
+    Module
+      NullSourceSpan
+      []
+      nm
+      path
+      imports1 -- should only import Prim, I think?
+      (exports1 <> exports2)
+      M.empty -- no re exports
+      [] -- no foreign
+      (decls1 <> decls2) -- combine the decls
+      (datatypes1 <> datatypes2) -- combine the datatypes
+
+
+syntheticPrim :: Module (Bind Ann) PurusType PurusType Ann
+syntheticPrim = prim1 `mergeModules` prim2 `mergeModules` prim3
+  where
+    prim1 = mkPrimModule prelude1
+    prim2 = mkPrimModule prelude2
+    prim3 = mkPrimModule prelude3
+
+syntheticPrimValueTypes :: Map (Qualified Ident) PurusType
+syntheticPrimValueTypes =  primValueTypes syntheticPrim
 
 {-
 [NOTE 1]

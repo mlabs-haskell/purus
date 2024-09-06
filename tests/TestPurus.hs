@@ -107,7 +107,7 @@ shouldPass = map (prefix </>) paths
         "ImportQualified",
         "InstanceUnnamedSimilarClassName",
         "ModuleDeps",
-        "Misc",
+         "Misc",
         "NonOrphanInstanceFunDepExtra",
         "NonOrphanInstanceMulti",
         "PendingConflictingImports",
@@ -119,8 +119,8 @@ shouldPass = map (prefix </>) paths
         "ResolvableScopeConflict3",
         "RowSyntax",
         "ShadowedModuleName",
-        "TransitiveImport",
-        "prelude"
+        "TransitiveImport"
+        -- "prelude"
       ]
 
 

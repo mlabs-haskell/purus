@@ -10,7 +10,7 @@ import Codec.Serialise (Serialise)
 import Control.Applicative ((<|>))
 import Control.Arrow (first, second)
 import Control.DeepSeq (NFData)
-import Control.Lens (Lens', set, (^.))
+import Control.Lens (Lens', set, (^.), Plated(..))
 import Control.Monad ((<=<), (>=>))
 import Data.Aeson ((.!=), (.:), (.:?), (.=))
 import Data.Aeson qualified as A
@@ -115,6 +115,40 @@ data Type a
 
 instance (NFData a) => NFData (Type a)
 instance (Serialise a) => Serialise (Type a)
+
+instance Plated SourceType where
+  plate f = \case
+    tu@(TUnknown _ _) -> pure tu
+    TypeVar ann nm ki -> TypeVar ann nm <$> f ki
+    tstr@(TypeLevelString _ _) -> pure tstr
+    tint@(TypeLevelInt _ _) -> pure tint
+    twild@(TypeWildcard _ _) -> pure twild
+    tcon@(TypeConstructor _ _) -> pure tcon
+    top@(TypeOp _ _) -> pure top
+    TypeApp a t1 t2 -> TypeApp a <$> f t1 <*> f t2
+    KindApp a t1 t2 -> KindApp a <$> f t1 <*> f t2
+    ForAll a vis var mk innerTy scop ->
+      (\mk' innerTy' -> ForAll a vis var mk' innerTy' scop)
+        <$> f mk
+        <*> f innerTy
+    ConstrainedType a constraint t -> ConstrainedType a <$> goConstraint f constraint <*> f t
+    Skolem a txt mk i scop -> (\mk' -> Skolem a txt mk' i scop) <$> f mk
+    REmpty a -> pure $ REmpty a
+    RCons a l x xs -> RCons a l <$> f x <*> f xs
+    KindedType a t1 t2 -> KindedType a <$> f t1 <*> f t2
+    BinaryNoParensType a t1 t2 t3 -> BinaryNoParensType a <$> f t1 <*> f t2 <*> f t3
+    ParensInType a t -> ParensInType a <$> f t
+    where
+      goConstraint ::
+        forall f.
+        (Applicative f) =>
+        (SourceType -> f SourceType) ->
+        Constraint SourceAnn ->
+        f (Constraint SourceAnn)
+      goConstraint g (Constraint a cn kargs args cdata) =
+        (\kargs' args' -> Constraint a cn kargs' args' cdata)
+          <$> traverse g kargs
+          <*> traverse g args
 
 srcTUnknown :: Int -> SourceType
 srcTUnknown = TUnknown NullSourceAnn

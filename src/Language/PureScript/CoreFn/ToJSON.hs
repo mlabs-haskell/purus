@@ -7,11 +7,14 @@ by third-party code generators
 module Language.PureScript.CoreFn.ToJSON (
   moduleToJSON,
   moduleToJSON',
+  nullifyAnnModule
 ) where
 
 import Prelude
 
 import Control.Arrow ((***))
+import Control.Lens (Plated(..), transform)
+import Data.Functor.Identity (runIdentity)
 import Data.Aeson (ToJSON (..), Value (..), object)
 import Data.Aeson qualified
 import Data.Aeson.Key qualified
@@ -23,11 +26,13 @@ import Data.Text qualified as T
 import Data.Version (Version, showVersion)
 
 import Language.PureScript.AST.Literals (Literal (..))
-import Language.PureScript.AST.SourcePos (SourceSpan (..))
+import Language.PureScript.AST.SourcePos (SourceSpan (..), SourceAnn, pattern NullSourceAnn)
 import Language.PureScript.CoreFn (Ann, Bind (..), Binder (..), CaseAlternative (..), ConstructorType (..), Expr (..), Meta (..), Module (..))
+import Language.PureScript.CoreFn.Module
+import Language.PureScript.CoreFn.Ann (nullAnn)
 import Language.PureScript.Names (Ident, ModuleName (..), ProperName (..), Qualified (..), QualifiedBy (..), runIdent)
 import Language.PureScript.PSString (PSString)
-import Language.PureScript.Types (SourceType)
+import Language.PureScript.Types (SourceType, Type(..))
 
 constructorTypeToJSON :: ConstructorType -> Value
 constructorTypeToJSON ProductType = toJSON "ProductType"
@@ -173,6 +178,7 @@ moduleToJSON' m =
     reExportsToJSON :: M.Map ModuleName [Ident] -> Value
     reExportsToJSON = toJSON . M.map (map runIdent)
 
+
 bindToJSON :: Bind Ann -> Value
 bindToJSON (NonRec ann n e) =
   object
@@ -311,3 +317,35 @@ binderToJSON (NamedBinder ann n b) =
     , "identifier" .= identToJSON n
     , "binder" .= binderToJSON b
     ]
+
+-- Misc helpers to erase annotations when serializing CoreFn (since we ignore the annotations anyway)
+nullifyAnnDataTypes :: Datatypes (Type SourceAnn) (Type SourceAnn)
+                    -> Datatypes (Type SourceAnn) (Type SourceAnn)
+nullifyAnnDataTypes = runIdentity . bitraverseDatatypes (pure . nullifyAnnTypes) (pure . nullifyAnnTypes)
+
+nullifyAnnTypes :: Type SourceAnn -> Type SourceAnn
+nullifyAnnTypes = fmap (const NullSourceAnn)
+
+nullifyAnnExpr :: Expr Ann -> Expr Ann
+nullifyAnnExpr = fmap (const nullAnn)
+               . transform (\case
+                   Literal ann t lit -> Literal ann (nullifyAnnTypes t) lit
+                   Accessor ann t f e -> Accessor ann (nullifyAnnTypes t) f e
+                   ObjectUpdate ann t e cf fs ->
+                     ObjectUpdate ann (nullifyAnnTypes t) e cf fs
+                   Abs ann t ident e -> Abs ann (nullifyAnnTypes t) ident e
+                   App ann t1 t2 -> App ann t1 t2
+                   Var ann t qi -> Var ann (nullifyAnnTypes t) qi
+                   Case ann t scruts alts -> Case ann (nullifyAnnTypes t) scruts alts
+                   Let ann bs e -> Let ann bs e
+                   )
+
+nullifyAnnModule :: Module (Bind Ann) (Type SourceAnn) (Type SourceAnn) Ann
+                 -> Module (Bind Ann) (Type SourceAnn) (Type SourceAnn) Ann
+nullifyAnnModule Module{..} = Module {moduleDataTypes = cleanedDatatypes, moduleDecls = cleanedDecls,..}
+  where
+    cleanedDatatypes = nullifyAnnDataTypes moduleDataTypes
+    cleanedDecls = go <$> moduleDecls
+    go = \case
+      NonRec _ i e -> NonRec nullAnn i (nullifyAnnExpr e)
+      Rec xs -> Rec $ (\((ann,ident),expr) -> ((nullAnn,ident),nullifyAnnExpr expr)) <$> xs
