@@ -17,7 +17,6 @@ import Language.PureScript.Names (
   pattern ByNullSourcePos,
  )
 
-import Language.Purus.Debug (doTrace)
 import Language.Purus.IR (BVar, BindE (..), Exp)
 import Language.Purus.IR.Utils (IR_Decl, Vars, WithObjects, foldBinds, toExp)
 
@@ -67,7 +66,7 @@ findMain ::
   Text ->
   Module IR_Decl k PurusType Ann ->
   Maybe ((Ident, Int), Scope (BVar PurusType) (Exp WithObjects PurusType) (Vars PurusType))
-findMain nm Module {..} = doTrace "findDeclBody" ("NAME: " <> T.unpack nm) $ findMain' (Ident nm) moduleDecls
+findMain nm Module {..} = findMain' (Ident nm) moduleDecls
 
 findMain' ::
   forall x ty.

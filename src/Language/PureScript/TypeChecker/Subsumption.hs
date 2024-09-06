@@ -19,29 +19,13 @@ import Data.Ord (comparing)
 import Language.PureScript.AST (ErrorMessageHint (..), Expr (..), pattern NullSourceAnn)
 import Language.PureScript.Crash (internalError)
 import Language.PureScript.Environment (tyFunction, tyRecord)
-import Language.PureScript.Errors (MultipleErrors, SimpleErrorMessage (..), errorMessage, internalCompilerError)
+import Language.PureScript.Errors (MultipleErrors, SimpleErrorMessage (..), errorMessage)
 import Language.PureScript.TypeChecker.Monad (CheckState, getHints, getTypeClassDictionaries, withErrorMessageHint)
 import Language.PureScript.TypeChecker.Skolems (newSkolemConstant, skolemize)
 import Language.PureScript.TypeChecker.Unify (alignRowsWith, freshTypeWithKind, unifyTypes)
 import Language.PureScript.Types (RowListItem (..), SourceType, Type (..), eqType, isREmpty, replaceTypeVars, rowFromList)
 
-import Debug.Trace (trace, traceM)
 import Language.Purus.Pretty.Types (prettyTypeStr)
-
-moduleTraces :: Bool
-moduleTraces = True
-
-goTrace :: forall x. String -> x -> x
-goTrace str x
-  | moduleTraces = trace str x
-  | otherwise = x
-
-goTraceM :: forall f. (Applicative f) => String -> f ()
-goTraceM msg
-  | moduleTraces = traceM msg
-  | otherwise = pure ()
-
-spacer = "\n" <> replicate 20 '-'
 
 {- | Subsumption can operate in two modes:
 
@@ -84,16 +68,8 @@ subsumes ::
   SourceType ->
   m (Expr -> Expr)
 subsumes ty1 ty2 =
-  goTrace msg $
     withErrorMessageHint (ErrorInSubsumption ty1 ty2) $
       subsumes' SElaborate ty1 ty2
-  where
-    msg =
-      "SUBSUMES"
-        <> "\n TYPE 1: "
-        <> prettyTypeStr ty1
-        <> "\n TYPE 2: "
-        <> prettyTypeStr ty2
 
 -- | Check that one type subsumes another
 subsumes' ::

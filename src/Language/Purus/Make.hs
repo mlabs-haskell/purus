@@ -80,7 +80,6 @@ import System.FilePath.Glob qualified as Glob
 import PlutusCore.Evaluation.Result (EvaluationResult(EvaluationSuccess))
 import PlutusIR.Core.Instance.Pretty.Readable (prettyPirReadable)
 
--- import Debug.Trace (traceM)
 -- import PlutusIR.Core.Instance.Pretty.Readable (prettyPirReadable)
 
 {-  Compiles a main function to PIR, given its module name, dependencies, and a
@@ -115,7 +114,6 @@ compile primModule orderedModules mainModuleName mainFunctionName =
     go = do
       (summedModule, dsCxt) <- runDesugarCore $ desugarCoreModules primModule orderedModules
       let
-        -- traceBracket lbl msg = traceM ("\n" <> lbl <> "\n\n" <> msg <> "\n\n")
         decls = moduleDecls summedModule
         declIdentsSet = foldBinds (\acc nm _ -> S.insert nm acc) S.empty decls
         couldn'tFindMain n =
@@ -128,25 +126,15 @@ compile primModule orderedModules mainModuleName mainFunctionName =
             <> "\nin declarations:\n"
             <> prettyStr (S.toList declIdentsSet)
       mainFunctionIx <- note (couldn'tFindMain 1) $ dsCxt ^? globalScope . at mainModuleName . folded . at mainFunctionName . folded
-      -- traceM $ "Found main function Index: " <> show mainFunctionIx
       mainFunctionBody <- note (couldn'tFindMain 2) $ findDeclBodyWithIndex mainFunctionName mainFunctionIx decls
-      -- traceM "Found main function body"
       inlined <- runInline summedModule $ lift (mainFunctionName, mainFunctionIx) mainFunctionBody >>= inline
-      -- traceBracket "Done inlining. Result:" $ prettyStr inlined
       let !instantiated = applyPolyRowArgs $ instantiateTypes inlined
-      -- traceBracket "Done instantiating types. Result:" $ prettyStr instantiated
       withoutObjects <- instantiateTypes <$> runCounter (desugarObjects instantiated)
-      -- traceBracket  "Desugared objects. Result:\n" $ prettyStr withoutObjects
       datatypes <- runCounter $ desugarObjectsInDatatypes (moduleDataTypes summedModule)
-      -- traceM "Desugared datatypes"
       runPlutusContext initDatatypeDict $ do
         generateDatatypes datatypes
-        -- traceM "Generated PIR datatypes"
         withoutCases <- eliminateCases datatypes withoutObjects
-        -- traceM "Eliminated case expressions. Compiling to PIR..."
         compileToPIR datatypes withoutCases
-
--- traceM . docString $ prettyPirReadable pirTerm
 
 modulesInDependencyOrder :: [[FilePath]] -> IO [Module (Bind Ann) PurusType PurusType Ann]
 modulesInDependencyOrder (concat -> paths) = do

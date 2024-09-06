@@ -34,7 +34,6 @@ import Control.Monad.Error.Class (MonadError (..))
 import Control.Monad.State (MonadState, gets, modify)
 import Control.Monad.Supply.Class (MonadSupply (..))
 
-import Data.Bifunctor (first, second)
 import Data.Bitraversable (bitraverse)
 import Data.Foldable (for_, traverse_)
 import Data.Function (on)
@@ -42,12 +41,11 @@ import Data.Functor (($>))
 import Data.IntSet qualified as IS
 import Data.List (nubBy, sortOn, (\\))
 import Data.Map qualified as M
-import Data.Maybe (fromJust, fromMaybe)
+import Data.Maybe (fromJust)
 import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Traversable (for)
 
-import Language.PureScript.CST.Types (Comment)
 import Language.PureScript.Crash (HasCallStack, internalError)
 import Language.PureScript.Environment qualified as E
 import Language.PureScript.Errors
@@ -58,68 +56,18 @@ import Language.PureScript.TypeChecker.Skolems (newSkolemConstant, newSkolemScop
 import Language.PureScript.TypeChecker.Synonyms (replaceAllTypeSynonyms)
 import Language.PureScript.Types
 
-import Data.Bifunctor (bimap)
-import Debug.Trace
-import Language.Purus.Pretty.Types (prettyTypeStr)
-
-moduleTraces :: Bool
-moduleTraces = True
-
-goTrace :: forall x. String -> x -> x
-goTrace str x
-  | moduleTraces = trace str x
-  | otherwise = x
-
-goTraceM :: forall f. (Applicative f) => String -> f ()
-goTraceM msg
-  | moduleTraces = traceM msg
-  | otherwise = pure ()
-
-spacer = '\n' : replicate 20 '-'
-prettySubstitution :: Substitution -> String
-prettySubstitution Substitution {..} =
-  "SUBSTITUTION: "
-    <> "\n SUBST_TYPE: "
-    <> show (bimap show prettyTypeStr <$> M.toList substType)
-    <> "\n SUBST_UNSOLVED: "
-    <> show (bimap show (bimap show prettyTypeStr) <$> M.toList substUnsolved)
-    <> "\n SUBST_NAMES: "
-    <> show (M.toList substNames)
+import Data.Bifunctor (first, second)
 
 -- TODO/REVIEW/HACK: -----------------------------------
 -- NO CLUE IF THE CHANGES I MADE HERE ARE CORRECT
 generalizeUnknowns :: [(Unknown, SourceType)] -> SourceType -> SourceType
 generalizeUnknowns unks ty =
-  goTrace msg $
-    generalizeUnknownsWithVars (unknownVarNames (fst <$> usedTypeVariables ty) unks) ty
-  where
-    result = generalizeUnknownsWithVars (unknownVarNames (fst <$> usedTypeVariables ty) unks) ty
-    msg =
-      "GENERALIZE UNKNOWNS:\nUNKNOWNS"
-        <> prettyUnknowns
-        <> "\n INPUT TYPE: "
-        <> prettyTypeStr ty
-        <> "\n OUTPUT TYPE: "
-        <> prettyTypeStr result
-        <> spacer
-    prettyUnknowns = concatMap (\x -> show (fst x) <> " :: " <> show (snd x) <> "\n") unks
+  generalizeUnknownsWithVars (unknownVarNames (fst <$> usedTypeVariables ty) unks) ty
 
 generalizeUnknownsWithVars :: [(Unknown, (Text, SourceType))] -> SourceType -> SourceType
 generalizeUnknownsWithVars binders ty =
-  goTrace msg $
-    mkForAll ((getAnnForType ty,) . fmap (replaceUnknownsWithVars binders) . snd <$> binders) . replaceUnknownsWithVars binders $
+  mkForAll ((getAnnForType ty,) . fmap (replaceUnknownsWithVars binders) . snd <$> binders) . replaceUnknownsWithVars binders $
       ty
-  where
-    prettyBinders :: [(Unknown, (Text, SourceType))] -> String
-    prettyBinders xs = concatMap (\x -> show (fst x) <> ", " <> T.unpack (fst (snd x)) <> " := " <> prettyTypeStr (snd (snd x)) <> "\n") xs
-
-    msg =
-      "GENERALIZE UNKNOWNS WITH VARS:"
-        <> "\n  UNKNOWNS: "
-        <> prettyBinders binders
-        <> "\n  TYPE: "
-        <> prettyTypeStr ty
-        <> spacer
 
 replaceUnknownsWithVars :: [(Unknown, (Text, SourceType))] -> SourceType -> SourceType
 replaceUnknownsWithVars binders ty
@@ -144,13 +92,7 @@ unknownVarNames used unks =
     vars = fmap (("k" <>) . T.pack . show) ([1 ..] :: [Int])
 
 apply :: (MonadState CheckState m) => SourceType -> m SourceType
-apply ty = goTrace msg $ flip substituteType ty <$> gets checkSubstitution
-  where
-    msg =
-      "APPLY"
-        <> "\n  TYPE: "
-        <> prettyTypeStr ty
-        <> spacer
+apply ty = flip substituteType ty <$> gets checkSubstitution
 
 substituteType :: Substitution -> SourceType -> SourceType
 substituteType sub = everywhereOnTypes $ \case
@@ -223,17 +165,7 @@ inferKind ::
 inferKind = \tyToInfer ->
   withErrorMessageHint (ErrorInferringKind tyToInfer)
     . rethrowWithPosition (fst $ getAnnForType tyToInfer)
-    $ do
-      result <- go tyToInfer
-      let msg =
-            "\nINFERKIND INPUT: "
-              <> prettyTypeStr tyToInfer
-              <> "\nINFERKIND RESULT: "
-              <> prettyTypeStr (snd result)
-              <> "\n"
-              <> replicate 20 '-'
-      goTraceM msg
-      pure result
+    $ go tyToInfer
   where
     go = \case
       ty@(TypeConstructor ann v) -> do
@@ -260,12 +192,12 @@ inferKind = \tyToInfer ->
         pure (ty, E.kindSymbol $> ann)
       ty@(TypeLevelInt ann _) ->
         pure (ty, E.tyInt $> ann)
-      ty@(TypeVar ann v kx) -> do
+      ty@(TypeVar ann _ kx) -> do
         -- moduleName <- unsafeCheckCurrentModule
         -- kind <- apply =<< lookupTypeVariable moduleName (Qualified ByNullSourcePos $ ProperName v)
         pure (ty, kx $> ann)
       ty@(Skolem ann _ mbK _ _) -> do
-        kind <- apply $ mbK
+        kind <- apply mbK
         pure (ty, kind $> ann)
       ty@(TUnknown ann u) -> do
         kind <- apply . snd =<< lookupUnsolved u
@@ -439,7 +371,7 @@ subsumesKind = go
         scope <- maybe newSkolemScope pure mbScope
         skolc <- newSkolemConstant
         go a $ skolemize ann var mbKind skolc scope b
-      (ForAll ann _ var (kind) a _, b) -> do
+      (ForAll ann _ var kind a _, b) -> do
         a' <- freshKindWithKind (fst ann) kind
         go (replaceTypeVars var a' a) b
       (TUnknown ann u, b@(TypeApp _ (TypeApp _ arr _) _))
@@ -495,7 +427,7 @@ unifyKindsWithFailure ::
 unifyKindsWithFailure onFailure = go
   where
     goWithLabel l t1 t2 = withErrorMessageHint (ErrorInRowLabel l) $ go t1 t2
-    go tx1 tx2 = goTrace msg $ case (tx1, tx2) of
+    go tx1 tx2 = case (tx1, tx2) of
       (TypeApp _ p1 p2, TypeApp _ p3 p4) -> do
         go p1 p3
         join $ go <$> apply p2 <*> apply p4
@@ -519,16 +451,7 @@ unifyKindsWithFailure onFailure = go
         solveUnknown a' p1
       (w1, w2) ->
         onFailure w1 w2
-      where
-        msg =
-          "UNIFY KINDS WITH FAILURE"
-            <> "\n  Ty1: "
-            <> prettyTypeStr tx1
-            <> "\n  Ty2: "
-            <> prettyTypeStr tx2
-            <> "\n"
-            <> replicate 20 '-'
-
+ 
     unifyRows r1 r2 = do
       let (matches, rest) = alignRowsWith goWithLabel r1 r2
       sequence_ matches
@@ -613,13 +536,13 @@ elaborateKind = \case
         throwError . errorMessage' (fst ann) . UnknownName . fmap TyName $ v
       Just (kind, _) ->
         ($> ann) <$> apply kind
-  TypeVar ann a kind -> do
+  TypeVar ann _ kind -> do
     -- moduleName <- unsafeCheckCurrentModule
     -- kind <- apply =<< lookupTypeVariable moduleName (Qualified ByNullSourcePos $ ProperName a)
     -- unifyKinds ki kind -- TODO/REVIEW/HACK: I DO NOT KNOW WHETHER THIS IS WHAT WE WANT
     pure (kind $> ann)
   (Skolem ann _ mbK _ _) -> do
-    kind <- apply $ mbK
+    kind <- apply mbK
     pure $ kind $> ann
   TUnknown ann a' -> do
     kind <- snd <$> lookupUnsolved a'
@@ -729,7 +652,7 @@ inferDataDeclaration ::
   ModuleName ->
   DataDeclarationArgs ->
   m [(DataConstructorDeclaration, SourceType)]
-inferDataDeclaration moduleName (ann, tyName, tyArgs, ctors) = do
+inferDataDeclaration moduleName (_, tyName, tyArgs, ctors) = do
   tyKind <- apply =<< lookupTypeVariable moduleName (Qualified ByNullSourcePos tyName)
   let (sigBinders, tyKind') = fromJust . completeBinderList $ tyKind
   bindLocalTypeVariables moduleName (first ProperName . snd <$> sigBinders) $ do
@@ -916,7 +839,7 @@ inferClassDeclaration ::
   ModuleName ->
   ClassDeclarationArgs ->
   m ([(Text, SourceType)], [SourceConstraint], [Declaration])
-inferClassDeclaration moduleName (ann, clsName, clsArgs, superClasses, decls) = do
+inferClassDeclaration moduleName (_, clsName, clsArgs, superClasses, decls) = do
   clsKind <- apply =<< lookupTypeVariable moduleName (Qualified ByNullSourcePos $ coerceProperName clsName)
   let (sigBinders, clsKind') = fromJust . completeBinderList $ clsKind
   bindLocalTypeVariables moduleName (first ProperName . snd <$> sigBinders) $ do

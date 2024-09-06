@@ -20,7 +20,6 @@ import Language.PureScript.CoreFn.TypeLike (TypeLike (..), instantiates)
 import Language.PureScript.Names (Ident (Ident))
 import Language.PureScript.Types (Type (..))
 
-import Language.Purus.Debug (doTrace, prettify)
 import Language.Purus.IR (BVar (..), Exp (..), analyzeApp, expTy)
 import Language.Purus.IR.Utils (
   Vars,
@@ -30,7 +29,6 @@ import Language.Purus.IR.Utils (
   transformTypesInExp,
   viaExp,
  )
-import Language.Purus.Pretty.Common (prettyStr)
 
 import Control.Lens (transform, view, _2)
 import Prettyprinter (Pretty)
@@ -44,7 +42,7 @@ applyPolyRowArgs ::
   Exp WithObjects PurusType (Vars PurusType) ->
   Exp WithObjects PurusType (Vars PurusType)
 applyPolyRowArgs = transform $ \case
-  instE@(TyInstE t (TyAbs (BVar kvI kvTy (Ident kvNm)) innerE)) -> case kvTy of
+  instE@(TyInstE t (TyAbs (BVar _ kvTy (Ident kvNm)) innerE)) -> case kvTy of
     TypeApp _ (TypeConstructor _ C.Row) _ -> transformTypesInExp (replaceAllTypeVars [(kvNm, t)]) innerE
     _ -> instE
   other -> other
@@ -67,7 +65,7 @@ instantiateTypes = \case
   TyAbs t inner -> TyAbs t (instantiateTypes inner)
   TyInstE t inner -> TyInstE t (instantiateTypes inner)
 
-instantiateApp :: forall x (t :: *). (Pretty t, TypeLike t, Pretty (KindOf t)) => Exp x t (Vars t) -> Exp x t (Vars t)
+instantiateApp :: forall x (t :: *). (Pretty t, TypeLike t) => Exp x t (Vars t) -> Exp x t (Vars t)
 instantiateApp e = case analyzeApp e of
   Nothing -> e
   Just (f, args) ->
@@ -77,18 +75,7 @@ instantiateApp e = case analyzeApp e of
         quantifiedTyVars = view _2 <$> fTyVars
         instantiations = getInstantiations quantifiedTyVars fTypes argTypes
         f' = go instantiations quantifiedTyVars f
-        msg =
-          prettify
-            [ "Function:\n" <> prettyStr f
-            , "Arguments:\n" <> prettyStr args
-            , "Split Fun Types:\n" <> prettyStr fTypes
-            , "Split Arg Types:\n" <> prettyStr argTypes
-            , "Quantified TyVars:\n" <> prettyStr quantifiedTyVars
-            , "Instantiations:\n" <> prettyStr (M.toList instantiations)
-            , "New Function:\n" <> prettyStr f'
-            , "New Function Type:\n" <> prettyStr (expTy id f')
-            ]
-     in doTrace "instantiateTypes" msg $ foldl' AppE f' args
+     in foldl' AppE f' args
   where
     go :: Map Text t -> [Text] -> Exp x t (Vars t) -> Exp x t (Vars t)
     go _ [] ex = ex

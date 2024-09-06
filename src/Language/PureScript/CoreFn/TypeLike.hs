@@ -12,10 +12,8 @@ import Control.Applicative
 import Control.Lens.Operators ((<&>))
 import Data.Kind qualified as GHC
 import Data.Maybe (catMaybes)
-import Debug.Trace (trace)
 import Language.PureScript.AST.SourcePos (pattern NullSourceAnn)
 import Language.PureScript.Environment (pattern RecordT, pattern (:->))
-import Language.Purus.Debug (doTrace)
 import Language.Purus.Pretty.Common
 import Prettyprinter (Pretty)
 
@@ -98,17 +96,8 @@ getInstantiations mono poly = catMaybes mInstantiations
     mInstantiations = freeInPoly <&> \nm -> (nm,) <$> instantiates nm mono poly
 
 instantiateWithArgs :: forall t. (TypeLike t, Pretty t) => t -> [t] -> t
-instantiateWithArgs f args = doTrace "instantiateWithArgs" msg result
+instantiateWithArgs f args = result 
   where
-    msg =
-      "instantiateWithArgs:\n  fun: "
-        <> prettyStr f
-        <> "\n  args: "
-        <> prettyStr args
-        <> "\n  instantiations: "
-        <> prettyStr instantiations
-        <> "\n  result: "
-        <> prettyStr result
     result = quantify $ replaceAllTypeVars instantiations (unQuantify f)
     instantiations = getAllInstantiations f args
 
@@ -118,7 +107,7 @@ getAllInstantiations ::
   t ->
   [t] ->
   [(Text, t)]
-getAllInstantiations fun args@(_ : _) = doTrace "getAllInstantiations" (prettyStr result) result
+getAllInstantiations fun args@(_ : _) = result
   where
     result = catMaybes $ zipWith go funArgs args
 

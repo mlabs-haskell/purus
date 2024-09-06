@@ -26,7 +26,6 @@ import Language.PureScript.Errors (ErrorMessage (..), MultipleErrors (..), Simpl
 import Language.PureScript.Names (Ident (..), Qualified (..), freshIdent', pattern ByNullSourcePos)
 import Language.PureScript.TypeChecker.Monad (guardWith)
 
-import Debug.Trace
 import Language.PureScript.Types (SourceType, Type (TypeVar), quantify)
 
 {- |

@@ -24,7 +24,6 @@ import Language.PureScript.CoreFn.FromJSON ()
 import Language.PureScript.CoreFn.Module (
   Datatypes,
  )
-import Language.PureScript.CoreFn.TypeLike (TypeLike (..))
 import Language.PureScript.Names (
   Ident (..),
   Qualified (..),
@@ -33,7 +32,6 @@ import Language.PureScript.Names (
  )
 import Language.PureScript.PSString (decodeString)
 
-import Language.Purus.Debug (doTraceM, prettify)
 import Language.Purus.IR (
   BVar (..),
   BindE (..),
@@ -41,8 +39,7 @@ import Language.Purus.IR (
   FVar (..),
   Lit (CharL, IntL, StringL),
   Ty,
-  expTy,
-  expTy',
+  expTy
  )
 import Language.Purus.IR qualified as IR
 import Language.Purus.IR.Utils (Vars, WithoutObjects, toExp)
@@ -85,12 +82,6 @@ compileToPIR _datatypes _exp = do
   resBody <- compileToPIR' _datatypes _exp
   datatypes <- view pirDatatypes
   let binds = NE.fromList $ map (PIR.DatatypeBind ()) . M.elems $ datatypes
-      msg =
-        prettify
-          [ "INPUT:\n" <> prettyStr _exp
-          , "OUTPUT (BODY):\n" <> prettyStr resBody
-          ]
-  doTraceM "compileToPIR" msg
   pure $ PIR.Let () PIR.Rec binds resBody
 
 compileToPIR' ::
@@ -98,7 +89,7 @@ compileToPIR' ::
   Exp WithoutObjects Ty (Vars Ty) ->
   PlutusContext PIRTerm
 compileToPIR' datatypes _exp =
-  doTraceM "compileToPIR'" (prettyStr _exp) >> case _exp of
+  case _exp of
     V x -> case x of
       F Unit -> pure $ mkConstant () ()
       F (FVar _ ident@(Qualified _ (runIdent -> nm))) ->
@@ -117,24 +108,12 @@ compileToPIR' datatypes _exp =
                     <> "report this bug to the Purus authors. "
       B (BVar bvix _ (runIdent -> nm)) -> pure $ PIR.Var () (Name nm $ Unique bvix)
     LitE _ lit -> compileToPIRLit lit
-    lam@(LamE (BVar bvIx bvT bvNm) body) -> do
-      let lty = funTy bvT (expTy' id body)
+    (LamE (BVar bvIx bvT bvNm) body) -> do
       ty' <- toPIRType bvT
       let nm = Name (runIdent bvNm) $ Unique bvIx
           body' = toExp body
       body'' <- compileToPIR' datatypes body'
-      let result = PIR.LamAbs () nm ty' body''
-          msg =
-            "BVar:\n"
-              <> prettyStr bvNm
-              <> "\n\nInput Lam:\n"
-              <> prettyStr lam
-              <> "\n\nInferred Lam Ty:\n"
-              <> prettyStr lty
-              <> "\n\nRESULT: "
-              <> prettyStr result
-      doTraceM "compileToPIRLamTy" msg
-      pure result
+      pure $ PIR.LamAbs () nm ty' body''
     AppE e1 e2 -> do
       e1' <- compileToPIR' datatypes e1
       e2' <- compileToPIR' datatypes e2

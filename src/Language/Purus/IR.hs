@@ -41,7 +41,6 @@ import Language.PureScript.Types (
   genPureName,
  )
 
-import Language.Purus.Debug (doTrace)
 import Language.Purus.Pretty ((<::>))
 import Language.Purus.Pretty.Common (prettyStr)
 
@@ -805,30 +804,25 @@ expTy' f scoped = case instantiateEither (either (V . B) (V . F)) scoped of
   (Name might be a bit confusing, does not apply types)
 -}
 appType :: forall x t a. (TypeLike t, Pretty t) => (a -> Var (BVar t) (FVar t)) -> Exp x t a -> Exp x t a -> t
-appType h fe ae = doTrace "appType" msg result
+appType h fe ae = case unsafeAnalyzeApp (AppE fe ae) of 
+  (fe', ae') -> 
+    quantify
+      . foldr1Trace funTy
+      . drop (length ae')
+      . splitFunTyParts
+      . snd
+      . stripQuantifiers
+      $ instantiateWithArgs (expTy h fe') (expTy h <$> ae')
   where
-    errmsg =
-      ( "\nINPUT FUN:\n"
-          <> prettyStr (expTy h fe)
-          <> "\n\nINPUT ARGS:\n"
-          <> prettyStr (expTy h ae)
-      )
-
-    msg = errmsg <> "\n\nRESULT\n: " <> prettyStr result
-
-    foldr1Trace f xs
-      | null xs = error $ "appType\n\n" <> errmsg
-      | otherwise = foldr1 f xs
-
-    result = case unsafeAnalyzeApp (AppE fe ae) of
-      (fe', ae') ->
-        quantify
-          . foldr1Trace funTy
-          . drop (length ae')
-          . splitFunTyParts
-          . snd
-          . stripQuantifiers
-          $ instantiateWithArgs (expTy h fe') (expTy h <$> ae')
+    foldr1Trace :: forall b . (b -> b -> b) -> [b] -> b
+    foldr1Trace f = \case
+      [] -> error $ "appType\n\n" <> errmsg
+      xs -> foldr1 f xs
+    errmsg :: String
+    errmsg = "\nINPUTFun:\n" <>
+             prettyStr (expTy h fe) <>
+             "\n\nINPUT ARGS:\n" <>
+             prettyStr (expTy h ae)
 
 $(deriveShow1 ''BindE)
 
