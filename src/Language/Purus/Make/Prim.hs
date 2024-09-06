@@ -9,22 +9,24 @@ import Data.Map qualified as M
 import Data.Bifunctor ( Bifunctor(second, bimap) )
 
 import Language.PureScript.AST.SourcePos (pattern NullSourceSpan)
-import Language.PureScript.CoreFn.Ann (Ann,nullAnn)
+import Language.PureScript.CoreFn.Ann (Ann)
 import Language.PureScript.CoreFn.Expr (Bind (..), PurusType, Expr (..))
 import Language.PureScript.CoreFn.Utils (exprType)
 import Language.PureScript.CoreFn.Module
+    ( CtorDecl(CtorDecl),
+      DataDecl(DataDecl),
+      Datatypes(Datatypes),
+      Module(Module, moduleName, moduleDataTypes, moduleDecls) )
 import Language.PureScript.Names (
   ModuleName (..), Qualified (..), QualifiedBy (..), Ident
  )
 import Language.PureScript.Types (Type(TypeConstructor))
 import Language.Purus.Prim.Data (primDataPS)
-import Language.Purus.IR.Utils 
 import Language.Purus.Utils (decodeModuleBS)
 
-import Control.Lens.Combinators (transform, over)
-import Control.Lens (_2)
+import Control.Lens.Combinators (transform)
 import System.IO.Unsafe (unsafePerformIO)
-import Data.FileEmbed 
+import Data.FileEmbed ( embedFile )
 import Data.ByteString (ByteString)
 
 primifyModule :: ModuleName -> -- old module name
