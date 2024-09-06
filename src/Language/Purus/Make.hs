@@ -215,7 +215,7 @@ make path mainModule mainFunction primModule = do
 -- for exploration/repl testing, this hardcodes `tests/purus/passing/Lib` as the target directory and
 -- we only select the name of the main function
 makeForTest :: Text -> IO PIRTerm
-makeForTest main = make "tests/purus/passing/Misc" "Lib" main  (Just syntheticPrim)
+makeForTest main = make "tests/purus/passing/Misc" "Lib" main  (Just syntheticPrim) -- NOTE[A]
 
 evalForTest_ :: Text -> IO ()
 evalForTest_ main = (fst <$> evalForTest main) >>= \case

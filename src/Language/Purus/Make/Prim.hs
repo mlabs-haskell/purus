@@ -18,7 +18,6 @@ import Language.PureScript.Names (
  )
 import Language.PureScript.Types (Type(TypeConstructor))
 import Language.Purus.Prim.Data (primDataPS)
-import Language.Purus.TH (ctDecodeModule)
 import Language.Purus.IR.Utils 
 import Language.Purus.Utils (decodeModuleBS)
 
