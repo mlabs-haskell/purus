@@ -3,6 +3,9 @@ cradle:
     - path: "src"
       component: "lib:purescript"
 
+    - path: "purs-lib"
+      component: "lib:purs-lib"
+
     - path: "app/Main.hs"
       component: "purescript:exe:purs"
 
