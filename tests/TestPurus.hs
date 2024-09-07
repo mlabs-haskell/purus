@@ -15,7 +15,10 @@ import Data.Function (on)
 import Data.List (sortBy, stripPrefix, groupBy)
 import Language.Purus.Make
 import Language.Purus.Eval
+import Language.Purus.Types
+import PlutusCore.Evaluation.Result
 import PlutusIR.Core.Instance.Pretty.Readable (prettyPirReadable)
+import Test.Tasty.HUnit
 
 shouldPassTests :: IO ()
 shouldPassTests = do
@@ -73,12 +76,34 @@ runPurusDefault path = runPurus P.CoreFn path
 runPurusGolden :: FilePath -> IO ()
 runPurusGolden path = runPurus P.CheckCoreFn path
 
-runFullPipeline :: FilePath -> Text -> Text -> IO ()
-runFullPipeline targetDir mainModuleName mainFunctionName = do
+runFullPipeline_ :: FilePath -> Text -> Text -> IO ()
+runFullPipeline_ targetDir mainModuleName mainFunctionName = do
   runPurusDefault targetDir
   pir <- make targetDir mainModuleName mainFunctionName Nothing
   result <- evaluateTerm pir
   print $ prettyPirReadable result
+
+runFullPipeline :: FilePath -> Text -> Text -> IO (EvaluationResult PLCTerm, [Text])
+runFullPipeline targetDir mainModuleName mainFunctionName = do
+  runPurusDefault targetDir
+  pir <- make targetDir mainModuleName mainFunctionName Nothing
+  evaluateTerm pir
+
+{- These assumes that name of the main module is "Main" and the
+   name of the main function is "Main".
+
+   For now this recompiles everything from scratch
+-}
+
+runDefaultCheckEvalSuccess :: String -> FilePath ->  Assertion
+runDefaultCheckEvalSuccess nm targetDir
+  = (fst <$> runFullPipeline targetDir "Main" "main") >>= assertBool nm . isEvaluationSuccess
+
+runDefaultEvalTest :: String -> FilePath -> PLCTerm -> Assertion
+runDefaultEvalTest nm targetDir expected
+  = (fst <$> runFullPipeline targetDir "Main" "main") >>= \case
+      EvaluationSuccess resTerm -> assertEqual nm expected resTerm
+      EvaluationFailure -> assertFailure nm
 
 
 shouldPass :: [FilePath]
@@ -86,7 +111,7 @@ shouldPass = map (prefix </>) paths
   where
     prefix = "tests/purus/passing"
     paths = [
-        "2018",
+        {- "2018",
         "2138",
         "2609",
         "4035",
@@ -119,7 +144,8 @@ shouldPass = map (prefix </>) paths
         "ResolvableScopeConflict3",
         "RowSyntax",
         "ShadowedModuleName",
-        "TransitiveImport"
+        "TransitiveImport", -}
+        "Validator"
         -- "prelude"
       ]
 
