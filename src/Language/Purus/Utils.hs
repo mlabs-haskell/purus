@@ -46,7 +46,7 @@ decodeModuleIO path =
     Left err -> throwIO $ userError err
     Right modx -> pure modx
 
-decodeModuleBS :: ByteString -> (Module (Bind Ann) PurusType PurusType Ann)
+decodeModuleBS :: ByteString -> Module (Bind Ann) PurusType PurusType Ann
 decodeModuleBS bs = case Aeson.eitherDecodeStrict' bs of
   Left err -> error err
   Right mdl -> mdl 
