@@ -107,7 +107,7 @@ import Language.PureScript.Names (
   runIdent,
   pattern ByNullSourcePos,
  )
-import Language.PureScript.PSString (PSString)
+import Language.PureScript.PSString (PSString, decodeStringWithReplacement)
 import Language.PureScript.Pretty.Values (renderValue)
 import Language.PureScript.TypeChecker.Kinds (kindOf)
 import Language.PureScript.TypeChecker.Monad (
@@ -292,6 +292,7 @@ declToCoreFn mn (A.DataBindingGroupDeclaration ds) = wrapTrace "declToCoreFn DAT
 -- NOTE: Should be impossible to have a guarded expr here, make it an error
 declToCoreFn mn (A.ValueDecl (ss, _) name _ _ [A.MkUnguarded e]) = wrapTrace ("decltoCoreFn VALDEC " <> show name) $ do
   traceM $ renderValue 100 e
+  traceM $ "\n" <> (show e)
   (valDeclTy, nv) <- lookupType (spanStart ss) name
   traceM (ppType 100 valDeclTy)
   bindLocalVariables [(ss, name, valDeclTy, nv)] $ do
@@ -352,34 +353,28 @@ exprToCoreFn mn ss (Just accT) accessor@(A.Accessor name v) = wrapTrace ("exprTo
 exprToCoreFn mn ss Nothing accessor@(A.Accessor name v) = do
   v' <- exprToCoreFn mn ss Nothing v
   let vTy = exprType v'
-  env <- getEnv
-  case analyzeCtor vTy of
-    Nothing ->
+  -- FIXME: I think this is wrong. We should just check if vTy has a record type and then look up the field
+  --        Why the hell are we converting the type name to a ctor name here?
+  --        If that's just to check for a Dict, do it better by checking that the name is a
+  --        valid dictionary name. 
+  case snd $ stripQuantifiers vTy of
+    RecordT row -> do
+      let tyMap = M.fromList $ (\x -> (runLabel (rowListLabel x), x)) <$> fst (rowToList row)
+      case M.lookup name tyMap of
+        Just (rowListType -> resTy) -> pure $ Accessor (ssA ss) resTy name v'
+        Nothing -> internalError $
+          "(1) Error while desugaring record accessor."
+          <> "No field named '" <> decodeStringWithReplacement name
+          <> "found in row type: \n" <> ppType 1000 row
+          <> "\nwhile desugaring record accessor expression:\n"
+          <> renderValue 100 accessor
+    other ->
       internalError $
         "(1) Error while desugaring record accessor."
-          <> " No type provided for expression: \n"
+          <> " Expected the value in accessor expression: \n"
           <> renderValue 100 accessor
-          <> "\nRecord type: "
-          <> ppType 1000 vTy
-          <> "\nsynonyms: "
-          <> show (runProperName . disqualify <$> M.keys env.types)
-    Just (TypeConstructor _ tyNm, _) -> case M.lookup (tyNameToCtorName tyNm) env.dataConstructors of
-      Nothing ->
-        internalError $
-          "(2) Error while desugaring record accessor."
-            <> " No type provided for expression: \n"
-            <> renderValue 100 accessor
-      Just (_, _, ty, _) -> case stripQuantifiers ty of
-        (_, RecordT inner :-> _) -> do
-          let tyMap = M.fromList $ (\x -> (runLabel (rowListLabel x), x)) <$> (fst $ rowToList inner)
-          case M.lookup name tyMap of
-            Just (rowListType -> resTy) -> pure $ Accessor (ssA ss) resTy name v'
-            Nothing ->
-              internalError $
-                "(3) Error while desugaring record accessor."
-                  <> " No type provided for expression: \n"
-                  <> renderValue 100 accessor
-        (_, other) -> internalError $ "****DEBUG:\n" <> ppType 100 other
+          <> "\n To have a record type, but instead got the type: "
+          <> ppType 1000 other
   where
     tyNameToCtorName :: Qualified (ProperName 'TypeName) -> Qualified (ProperName 'ConstructorName)
     tyNameToCtorName (Qualified qb tNm) = Qualified qb (coerceProperName tNm)
@@ -677,7 +672,7 @@ transformLetBindings mn _ss seen (A.BindingGroupDeclaration ds : rest) ret = wra
         transformLetBindings mn _ss seen' rest ret
     -- Because this has already been through the typechecker once, every value in the binding group should have an explicit type. I hope.
     Left _ ->
-      error $ 
+      error $
         "untyped binding group element in mutually recursive LET binding group after initial typechecker pass: \n"
           <> show (lefts types)
   where
