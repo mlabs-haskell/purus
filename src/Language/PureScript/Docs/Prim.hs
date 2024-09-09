@@ -38,15 +38,12 @@ primDocsModule =
     , modComments =
         Just $
           T.unlines
-            [ "The `Prim` module is embedded in the PureScript compiler in order to provide compiler support for certain types &mdash; for example, value literals, or syntax sugar. It is implicitly imported unqualified in every module except those that list it as a qualified import."
-            , ""
-            , "`Prim` does not include additional built-in types and kinds that are defined deeper in the compiler such as Type wildcards (e.g. `f :: _ -> Int`) and Quantified Types. Rather, these are documented in [the PureScript language reference](https://github.com/purescript/documentation/blob/master/language/Types.md)."
+            [ "The `Prim` module is embedded in the Purus compiler in order to provide compiler support for certain types &mdash; for example, value literals, or syntax sugar. It is implicitly imported unqualified in every module except those that list it as a qualified import."
             ]
     , modDeclarations =
         [ function
         , list
         , record
-        , number
         , int
         , string
         , char
@@ -64,7 +61,7 @@ primBooleanDocsModule :: Module
 primBooleanDocsModule =
   Module
     { modName = P.moduleNameFromString "Prim.Boolean"
-    , modComments = Just "The Prim.Boolean module is embedded in the PureScript compiler. Unlike `Prim`, it is not imported implicitly. It contains a type level `Boolean` data structure."
+    , modComments = Just "The Prim.Boolean module is embedded in the Purus compiler. Unlike `Prim`, it is not imported implicitly. It contains a type level `Boolean` data structure."
     , modDeclarations =
         [ booleanTrue
         , booleanFalse
@@ -76,7 +73,7 @@ primCoerceDocsModule :: Module
 primCoerceDocsModule =
   Module
     { modName = P.moduleNameFromString "Prim.Coerce"
-    , modComments = Just "The Prim.Coerce module is embedded in the PureScript compiler. Unlike `Prim`, it is not imported implicitly. It contains an automatically solved type class for coercing types that have provably-identical runtime representations with [purescript-safe-coerce](https://pursuit.purescript.org/packages/purescript-safe-coerce)."
+    , modComments = Just "The Prim.Coerce module is embedded in the Purus compiler. Unlike `Prim`, it is not imported implicitly. It contains an automatically solved type class for coercing types that have provably-identical runtime representations with [purescript-safe-coerce](https://pursuit.purescript.org/packages/purescript-safe-coerce)."
     , modDeclarations =
         [ coercible
         ]
@@ -87,7 +84,7 @@ primOrderingDocsModule :: Module
 primOrderingDocsModule =
   Module
     { modName = P.moduleNameFromString "Prim.Ordering"
-    , modComments = Just "The Prim.Ordering module is embedded in the PureScript compiler. Unlike `Prim`, it is not imported implicitly. It contains a type level `Ordering` data structure."
+    , modComments = Just "The Prim.Ordering module is embedded in the Purus compiler. Unlike `Prim`, it is not imported implicitly. It contains a type level `Ordering` data structure."
     , modDeclarations =
         [ kindOrdering
         , orderingLT
@@ -101,7 +98,7 @@ primRowDocsModule :: Module
 primRowDocsModule =
   Module
     { modName = P.moduleNameFromString "Prim.Row"
-    , modComments = Just "The Prim.Row module is embedded in the PureScript compiler. Unlike `Prim`, it is not imported implicitly. It contains automatically solved type classes for working with row types."
+    , modComments = Just "The Prim.Row module is embedded in the Purus compiler. Unlike `Prim`, it is not imported implicitly. It contains automatically solved type classes for working with row types."
     , modDeclarations =
         [ union
         , nub
@@ -115,7 +112,7 @@ primRowListDocsModule :: Module
 primRowListDocsModule =
   Module
     { modName = P.moduleNameFromString "Prim.RowList"
-    , modComments = Just "The Prim.RowList module is embedded in the PureScript compiler. Unlike `Prim`, it is not imported implicitly. It contains a type level list (`RowList`) that represents an ordered view of a row of types."
+    , modComments = Just "The Prim.RowList module is embedded in the Purus compiler. Unlike `Prim`, it is not imported implicitly. It contains a type level list (`RowList`) that represents an ordered view of a row of types."
     , modDeclarations =
         [ kindRowList
         , rowListCons
@@ -129,7 +126,7 @@ primSymbolDocsModule :: Module
 primSymbolDocsModule =
   Module
     { modName = P.moduleNameFromString "Prim.Symbol"
-    , modComments = Just "The Prim.Symbol module is embedded in the PureScript compiler. Unlike `Prim`, it is not imported implicitly. It contains automatically solved type classes for working with `Symbols`."
+    , modComments = Just "The Prim.Symbol module is embedded in the Purus compiler. Unlike `Prim`, it is not imported implicitly. It contains automatically solved type classes for working with `Symbols`."
     , modDeclarations =
         [ symbolAppend
         , symbolCompare
@@ -142,7 +139,7 @@ primIntDocsModule :: Module
 primIntDocsModule =
   Module
     { modName = P.moduleNameFromString "Prim.Int"
-    , modComments = Just "The Prim.Int module is embedded in the PureScript compiler. Unlike `Prim`, it is not imported implicitly. It contains automatically solved type classes for working with type-level intural numbers."
+    , modComments = Just "The Prim.Int module is embedded in the Purus compiler. Unlike `Prim`, it is not imported implicitly. It contains automatically solved type classes for working with type-level intural numbers."
     , modDeclarations =
         [ intAdd
         , intCompare
@@ -156,7 +153,7 @@ primTypeErrorDocsModule :: Module
 primTypeErrorDocsModule =
   Module
     { modName = P.moduleNameFromString "Prim.TypeError"
-    , modComments = Just "The Prim.TypeError module is embedded in the PureScript compiler. Unlike `Prim`, it is not imported implicitly. It contains type classes that provide custom type error and warning functionality."
+    , modComments = Just "The Prim.TypeError module is embedded in the Purus compiler. Unlike `Prim`, it is not imported implicitly. It contains type classes that provide custom type error and warning functionality."
     , modDeclarations =
         [ warn
         , fail
@@ -236,7 +233,7 @@ primClass cn comments =
     , declInfo =
         let
           tcd = lookupPrimClass cn
-          args = (fmap ($> ())) <$> P.typeClassArguments tcd
+          args = fmap ($> ()) <$> P.typeClassArguments tcd
           superclasses = ($> ()) <$> P.typeClassSuperclasses tcd
           fundeps = convertFundepsToStrings args (P.typeClassDependencies tcd)
          in
@@ -301,7 +298,6 @@ function =
     T.unlines
       [ "A function, which takes values of the type specified by the first type"
       , "parameter, and returns values of the type specified by the second."
-      , "In the JavaScript backend, this is a standard JavaScript Function."
       , ""
       , "The type constructor `(->)` is syntactic sugar for this type constructor."
       , "It is recommended to use `(->)` rather than `Function`, where possible."
@@ -320,9 +316,7 @@ list :: Declaration
 list =
   primType P.List $
     T.unlines
-      [ "An List: a data structure supporting efficient random access. In"
-      , "the JavaScript backend, values of this type are represented as JavaScript"
-      , "Lists at runtime."
+      [ "A singly-linked list structure. Compiles down to `BuiltinList`."
       , ""
       , "Construct values using literals:"
       , ""
@@ -333,9 +327,7 @@ record :: Declaration
 record =
   primType P.Record $
     T.unlines
-      [ "The type of records whose fields are known at compile time. In the"
-      , "JavaScript backend, values of this type are represented as JavaScript"
-      , "Objects at runtime."
+      [ "The type of records whose fields are known at compile time."
       , ""
       , "The type signature here means that the `Record` type constructor takes"
       , "a row of concrete types. For example:"
@@ -348,32 +340,16 @@ record =
       , ""
       , "The row associates a type to each label which appears in the record."
       , ""
-      , "_Technical note_: PureScript allows duplicate labels in rows, and the"
+      , "_Technical note_: Purus allows duplicate labels in rows, and the"
       , "meaning of `Record r` is based on the _first_ occurrence of each label in"
       , "the row `r`."
-      ]
-
-number :: Declaration
-number =
-  primType P.Number $
-    T.unlines
-      [ "A double precision floating point number (IEEE 754)."
-      , ""
-      , "Construct values of this type with literals."
-      , "Negative literals must be wrapped in parentheses if the negation sign could be mistaken"
-      , "for an infix operator:"
-      , ""
-      , "    x = 35.23 :: Number"
-      , "    y = -1.224e6 :: Number"
-      , "    z = exp (-1.0) :: Number"
       ]
 
 int :: Declaration
 int =
   primType P.Int $
     T.unlines
-      [ "A 32-bit signed integer. See the `purescript-integers` package for details"
-      , "of how this is accomplished when compiling to JavaScript."
+      [ "A signed integer of arbitrary size. Compiles down to `BuiltinInteger`."
       , ""
       , "Construct values of this type with literals. Hexadecimal syntax is supported."
       , "Negative literals must be wrapped in parentheses if the negation sign could be mistaken"
@@ -384,8 +360,7 @@ int =
       , "    z = complement (-24) :: Int"
       , ""
       , "Integers used as types are considered to have kind `Int`."
-      , "Unlike value-level `Int`s, which must be representable as a 32-bit signed integer,"
-      , "type-level `Int`s are unbounded. Hexadecimal support is also supported at the type level."
+      , "Hexadecimal support is also supported at the type level."
       , ""
       , "    type One :: Int"
       , "    type One = 1"
@@ -407,9 +382,7 @@ string :: Declaration
 string =
   primType P.String $
     T.unlines
-      [ "A String. As in JavaScript, String values represent sequences of UTF-16"
-      , "code units, which are not required to form a valid encoding of Unicode"
-      , "text (for example, lone surrogates are permitted)."
+      [ "A Unicode sequence, encoded using UTF-8. Compiles down to `BuiltinString`."
       , ""
       , "Construct values of this type with literals, using double quotes `\"`:"
       , ""
@@ -445,7 +418,7 @@ boolean :: Declaration
 boolean =
   primType P.Boolean $
     T.unlines
-      [ "A JavaScript Boolean value."
+      [ "The canonical truth value."
       , ""
       , "Construct values of this type with the literals `true` and `false`."
       , ""
