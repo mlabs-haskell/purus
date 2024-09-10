@@ -111,7 +111,7 @@ shouldPass = map (prefix </>) paths
   where
     prefix = "tests/purus/passing"
     paths = [
-        {- "2018",
+         "2018",
         "2138",
         "2609",
         "4035",
@@ -144,7 +144,7 @@ shouldPass = map (prefix </>) paths
         "ResolvableScopeConflict3",
         "RowSyntax",
         "ShadowedModuleName",
-        "TransitiveImport", -}
+        "TransitiveImport",
         "Validator"
         -- "prelude"
       ]

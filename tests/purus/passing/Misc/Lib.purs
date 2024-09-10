@@ -307,6 +307,9 @@ instance Ord Int where
 testEqViaOrd :: forall (a :: Type). Ord a => a -> a -> Boolean
 testEqViaOrd a b = eq a b
 
+testSuperClass :: Boolean
+testSuperClass = testEqViaOrd 1 2
+
 testValidator :: forall (a :: Type) (b :: Type) (c :: Type)
               . a -> b -> c -> Boolean
 testValidator datum redeemer context =  True
