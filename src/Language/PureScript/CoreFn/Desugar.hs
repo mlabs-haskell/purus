@@ -353,10 +353,13 @@ exprToCoreFn mn ss (Just accT) accessor@(A.Accessor name v) = wrapTrace ("exprTo
 exprToCoreFn mn ss Nothing accessor@(A.Accessor name v) = do
   v' <- exprToCoreFn mn ss Nothing v
   let vTy = exprType v'
+  env <- getEnv
   -- FIXME: I think this is wrong. We should just check if vTy has a record type and then look up the field
   --        Why the hell are we converting the type name to a ctor name here?
   --        If that's just to check for a Dict, do it better by checking that the name is a
-  --        valid dictionary name. 
+  --        valid dictionary name.
+  -- FIXME (pt 2): We do need to add special handling for dictionaries (or fix the
+  --               types in Lang.PS.Sugar.TypeClasses).
   case snd $ stripQuantifiers vTy of
     RecordT row -> do
       let tyMap = M.fromList $ (\x -> (runLabel (rowListLabel x), x)) <$> fst (rowToList row)
@@ -368,13 +371,37 @@ exprToCoreFn mn ss Nothing accessor@(A.Accessor name v) = do
           <> "found in row type: \n" <> ppType 1000 row
           <> "\nwhile desugaring record accessor expression:\n"
           <> renderValue 100 accessor
-    other ->
-      internalError $
-        "(1) Error while desugaring record accessor."
-          <> " Expected the value in accessor expression: \n"
-          <> renderValue 100 accessor
-          <> "\n To have a record type, but instead got the type: "
-          <> ppType 1000 other
+    _ -> case analyzeCtor vTy of
+      Nothing ->
+        internalError $
+          "(1) Error while desugaring record accessor. Could not deduce type of field " <> decodeStringWithReplacement name
+            <> " No type provided for expression: \n"
+            <> renderValue 100 accessor
+            <> "\nRecord type: "
+            <> ppType 1000 vTy
+            <> "\nsynonyms: "
+      Just (TypeConstructor _ tyNm, _) -> case M.lookup (tyNameToCtorName tyNm) env.dataConstructors of
+        Nothing ->
+          internalError $
+            "(2) Error while desugaring record accessor."
+              <> " No type provided for expression: \n"
+              <> renderValue 100 accessor
+        Just (_, _, ty, _) -> case stripQuantifiers ty of
+          (_, RecordT inner :-> _) -> do
+            let tyMap = M.fromList $ (\x -> (runLabel (rowListLabel x), x)) <$> (fst $ rowToList inner)
+            case M.lookup name tyMap of
+              Just (rowListType -> resTy) -> pure $ Accessor (ssA ss) resTy name v'
+              Nothing ->
+                internalError $
+                  "(3) Error while desugaring record accessor."
+                    <> " No type provided for expression: \n"
+                    <> renderValue 100 accessor
+          (_, other) -> internalError $
+            "(1) Error while desugaring record accessor."
+              <> " Expected the value in accessor expression: \n"
+              <> renderValue 100 accessor
+              <> "\n To have a record type, but instead got the type: "
+              <> ppType 1000 other
   where
     tyNameToCtorName :: Qualified (ProperName 'TypeName) -> Qualified (ProperName 'ConstructorName)
     tyNameToCtorName (Qualified qb tNm) = Qualified qb (coerceProperName tNm)
