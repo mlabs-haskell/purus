@@ -56,7 +56,7 @@ import Language.Purus.Pipeline.Monad (
   runInline,
   runPlutusContext,
  )
-import Language.Purus.Pretty.Common (prettyStr)
+import Language.Purus.Pretty.Common (prettyStr, docString)
 import Language.Purus.Prim.Data (primDataPS)
 import Language.Purus.Types (PIRTerm, PLCTerm, initDatatypeDict)
 import Language.Purus.Utils (
@@ -79,6 +79,7 @@ import System.FilePath.Glob qualified as Glob
 
 import PlutusCore.Evaluation.Result (EvaluationResult(EvaluationSuccess))
 import PlutusIR.Core.Instance.Pretty.Readable (prettyPirReadable)
+import Debug.Trace (traceM)
 
 -- import Debug.Trace (traceM)
 -- import PlutusIR.Core.Instance.Pretty.Readable (prettyPirReadable)
@@ -223,7 +224,10 @@ evalForTest_ main = (fst <$> evalForTest main) >>= \case
   _ -> error $ "failed to evaluate " <> T.unpack main
 
 evalForTest :: Text -> IO (EvaluationResult PLCTerm, [Text])
-evalForTest main = makeForTest main >>= evaluateTerm
+evalForTest main = do
+  pir <- makeForTest main
+  traceM . docString $ prettyPirReadable pir
+  evaluateTerm pir
 
 -- TODO put this somewhere else
 note :: (MonadError String m) => String -> Maybe a -> m a

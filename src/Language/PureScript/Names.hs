@@ -25,6 +25,8 @@ import GHC.Generics (Generic)
 
 import Language.PureScript.AST.SourcePos (SourcePos, pattern SourcePos)
 
+import Data.Hashable
+
 -- | A sum of the possible name types, useful for error and lint messages.
 data Name
   = IdentName Ident
@@ -193,6 +195,9 @@ newtype ModuleName = ModuleName Text
   deriving newtype (Serialise)
 
 instance NFData ModuleName
+
+hashModuleName :: ModuleName -> Int
+hashModuleName (ModuleName nm) = hash nm
 
 runModuleName :: ModuleName -> Text
 runModuleName (ModuleName name) = name

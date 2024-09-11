@@ -318,11 +318,17 @@ desugarCore' lam@(Abs _ann ty ident expr) = do
           ]
   doTraceM "desugarCoreLam" msg
   pure result
-desugarCore' appE@(App {}) = case fromJust $ PC.analyzeApp appE of
+desugarCore' appE@(App _ f a) = do
+  f' <- local id $ desugarCore f
+  a' <- local id $ desugarCore a
+  pure $ AppE f' a' 
+
+
+  {- -case fromJust $ PC.analyzeApp appE of
   (f, args) -> do
     f' <- desugarCore f
     args' <- traverse desugarCore args
-    pure $ foldl' AppE f' args'
+    pure $ foldl' AppE f' args' -}
 desugarCore' (Var _ann ty qi) = pure $ V . F $ FVar ty qi
 desugarCore' (Let _ann binds cont) = do
   bindEs <- traverse rebindInScope =<< traverse desugarCoreDecl binds
