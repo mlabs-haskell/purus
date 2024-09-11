@@ -196,8 +196,8 @@ newtype ModuleName = ModuleName Text
 
 instance NFData ModuleName
 
-hashModuleName :: ModuleName -> Int
-hashModuleName (ModuleName nm) = hash nm
+instance Hashable ModuleName where
+  hash (ModuleName mn) = hash mn
 
 runModuleName :: ModuleName -> Text
 runModuleName (ModuleName name) = name

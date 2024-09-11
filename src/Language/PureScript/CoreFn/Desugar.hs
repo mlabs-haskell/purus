@@ -29,14 +29,13 @@ import Language.PureScript.AST.SourcePos qualified as A
 import Language.PureScript.Constants.Prim qualified as C
 import Language.PureScript.CoreFn.Ann (Ann, ssAnn)
 import Language.PureScript.CoreFn.Binders (Binder (..))
+import Language.PureScript.CoreFn.Desugar.TypeClasses 
 import Language.PureScript.CoreFn.Desugar.Utils (
   M,
   analyzeCtor,
   binderToCoreFn,
   ctorArgs,
   dedupeImports,
-  desugarConstraintTypes,
-  desugarConstraintsInDecl,
   exportToCoreFn,
   externToCoreFn,
   false,
@@ -158,7 +157,9 @@ moduleToCoreFn (A.Module _ _ _ _ Nothing) =
 moduleToCoreFn (A.Module modSS coms mn _decls (Just exps)) = do
   setModuleName
   desugarConstraintTypes
-  allDecls <- traverse (fmap desugarConstraintsInDecl . desugarCasesEverywhere) _decls
+  typeClasses <- typeClasses <$> getEnv 
+  allDecls <- traverse (fmap (desugarConstraintsInDecl typeClasses) . desugarCasesEverywhere)
+              $ removeDictionaryDataDecls _decls
   let (dataDecls, nonDataDecls) = partition isDataDecl allDecls
   let importHelper ds = fmap (ssAnn modSS,) (findQualModules ds)
       imports = dedupeImports $ mapMaybe importToCoreFn allDecls ++ importHelper allDecls
@@ -264,15 +265,17 @@ objectToCoreFn mn ss recTy row objFields = do
 
 -- newtype T = T Foo turns into T :: Foo -> Foo
 declToCoreFn :: forall m. (M m) => ModuleName -> A.Declaration -> m [Bind Ann]
-declToCoreFn _ (A.DataDeclaration (ss, com) Newtype name _ [ctor]) = wrapTrace ("decltoCoreFn NEWTYPE " <> show name) $ case A.dataCtorFields ctor of
-  [(_, wrappedTy)] -> do
-    -- traceM (show ctor)
-    let innerFunTy = quantify $ function wrappedTy wrappedTy
-    pure
-      [ NonRec (ss, [], declMeta) (properToIdent $ A.dataCtorName ctor) $
-          Abs (ss, com, Just IsNewtype) innerFunTy (Ident "x") (Var (ssAnn ss) (purusTy wrappedTy) $ Qualified ByNullSourcePos (Ident "x"))
-      ]
-  _ -> error "Found newtype with multiple fields"
+declToCoreFn _ (A.DataDeclaration (ss, com) Newtype name _ [ctor])
+  | isDictTypeName name = pure []
+  | otherwise = wrapTrace ("decltoCoreFn NEWTYPE " <> show name) $ case A.dataCtorFields ctor of
+      [(_, wrappedTy)] -> do
+        -- traceM (show ctor)
+        let innerFunTy = quantify $ function wrappedTy wrappedTy
+        pure
+          [ NonRec (ss, [], declMeta) (properToIdent $ A.dataCtorName ctor) $
+              Abs (ss, com, Just IsNewtype) innerFunTy (Ident "x") (Var (ssAnn ss) (purusTy wrappedTy) $ Qualified ByNullSourcePos (Ident "x"))
+          ]
+      _ -> error "Found newtype with multiple fields"
   where
     declMeta = isDictTypeName (A.dataCtorName ctor) `orEmpty` IsTypeClassConstructor
 -- Reject newtypes w/ multiple constructors
@@ -459,7 +462,8 @@ exprToCoreFn mn _ (Just t) (A.Abs (A.VarBinder ssb name) v) = wrapTrace ("exprTo
   withInstantiatedFunType mn t $ \a b -> do
     body <- bindLocalVariables [(ssb, name, a, Defined)] $ exprToCoreFn mn ssb (Just b) v
     pure $ Abs (ssA ssb) (function a b) name body
--- By the time we receive the AST, only Lambdas w/ a VarBinder should remain
+exprToCoreFn mn ss (Just t) (A.Abs (A.TypedBinder _ vb) v) = exprToCoreFn mn ss (Just t) (A.Abs vb v)
+-- By the time we receive the AST, only Lambdas w/ a VarBinder or a TypedBinder that *we* inserted should remain
 -- TODO: Better failure message if we pass in 'Nothing' as the (Maybe Type) arg for an Abstraction
 exprToCoreFn _ _ t lam@(A.Abs _ _) =
   internalError $
@@ -481,43 +485,7 @@ exprToCoreFn _ _ t lam@(A.Abs _ _) =
    quantified variables to conform with the supplied type.
 -}
 exprToCoreFn mn ss mTy app@(A.App fun arg)
-  | isDictCtor fun = wrapTrace "exprToCoreFn APP DICT " $ do
-      traceM $ "APP Dict type" <> show (ppType 100 <$> mTy)
-      traceM $ "APP Dict expr:\n" <> renderValue 100 app
-      let analyzed = mTy >>= analyzeCtor
-          prettyAnalyzed = bimap (ppType 100) (fmap (ppType 100)) <$> analyzed
-      traceM $ "APP DICT analyzed:\n" <> show prettyAnalyzed
-      case mTy of
-        Just iTy ->
-          case analyzed of
-            -- Branch for a "normal" (i.e. non-empty) typeclass dictionary application
-            Just (TypeConstructor _ (Qualified qb nm), args) -> do
-              traceM $ "APP Dict name: " <> T.unpack (runProperName nm)
-              env <- getEnv
-              case M.lookup (Qualified qb $ coerceProperName nm) (dataConstructors env) of
-                Just (_, _, ty, _) -> do
-                  traceM $ "APP Dict original type:\n" <> ppType 100 ty
-                  case instantiate ty args of
-                    iFun@(iArg :-> iRes) -> do
-                      traceM $ "APP Dict iArg:\n" <> ppType 100 iArg
-                      traceM $ "APP Dict iRes:\n" <> ppType 100 iRes
-                      fun' <- exprToCoreFn mn ss (Just iFun) fun
-                      arg' <- exprToCoreFn mn ss (Just iArg) arg
-                      pure $ App (ss, [], Nothing) fun' arg'
-                    _ -> error "dict ctor has to have a function type"
-                _ -> throwError . errorMessage' ss . UnknownName . fmap DctorName $ Qualified qb (coerceProperName nm)
-            -- This should actually be impossible here, so long as we desugared all the constrained types properly
-            Just (other, _) -> error $ "APP Dict not a constructor type (impossible here?): \n" <> ppType 100 other
-            -- Case for handling empty dictionaries (with no methods)
-            Nothing -> wrapTrace "APP DICT 3" $ do
-              -- REVIEW: This might be the one place where `kindType` in instantiatePolyType is wrong, check the kinds in the output
-              -- REVIEW: We might want to match more specifically on both/either the expression and type level to
-              --         ensure that we are working only with empty dictionaries here. (Though anything else should be caught be the previous case)
-              let (inner, g, act) = instantiatePolyType mn iTy
-              act (exprToCoreFn mn ss (Just inner) app) >>= \case
-                App ann' e1 e2 -> pure . g $ App ann' e1 e2
-                _ -> error "An application desguared to something else. This should not be possible."
-        Nothing -> error $ "APP Dict w/o type passed in (impossible to infer):\n" <> renderValue 100 app
+  | isDictCtor fun = exprToCoreFn mn ss Nothing arg
   | otherwise = wrapTrace "exprToCoreFn APP" $ do
       traceM $ renderValue 100 app
       fun' <- exprToCoreFn mn ss Nothing fun

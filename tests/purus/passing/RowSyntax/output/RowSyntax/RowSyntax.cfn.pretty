@@ -23,20 +23,14 @@ Foreign:
 
 Datatypes: 
 ------------------------------
-newtype IsARow'$Dict (r :: (Prim.Row (Prim.Type))) = 
-  IsARow'$Dict ((Prim.Record ({})))
-
 data RowProxy (r :: (Prim.Row (Prim.Type))) = 
   RowProxy 
 
 
 Declarations: 
 ------------------------------
-isARow' :: (RowSyntax.IsARow'$Dict ((r :: (Prim.Row (Prim.Type)))))
-isARow' = 
-  (IsARow'$Dict: ((Prim.Record ({}@Prim.Type)) ->
-  ((RowSyntax.IsARow'$Dict ((r :: (Prim.Row (Prim.Type))))))))
-  ({  }: (Prim.Record ({}@Prim.Type)))
+isARow' :: (Prim.Record ({}@Prim.Type))
+isARow' = ({  }: (Prim.Record ({}@Prim.Type)))
 
 moreFields :: (RowSyntax.RowProxy (( field1 :: Prim.Int
 , field2 :: Prim.String

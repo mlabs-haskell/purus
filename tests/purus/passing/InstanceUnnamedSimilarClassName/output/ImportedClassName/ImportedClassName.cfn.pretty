@@ -3,7 +3,6 @@ ImportedClassName (tests/purus/passing/InstanceUnnamedSimilarClassName/ImportedC
 Imported Modules: 
 ------------------------------
   Builtin,
-  ImportedClassName,
   Prim
 
 Exports: 
@@ -20,14 +19,13 @@ Foreign:
 
 Datatypes: 
 ------------------------------
-newtype ClassName$Dict (a :: Prim.Type) = 
-  ClassName$Dict ({ foo :: ((a :: Prim.Type) -> (Prim.Int)) })
+
 
 
 Declarations: 
 ------------------------------
-foo :: forall (@a :: Prim.Type). ((ImportedClassName.ClassName$Dict ((a :: Prim.Type))) -> (((a :: Prim.Type) -> (Prim.Int))))
+foo :: forall (@a :: Prim.Type). ({ foo :: ((a :: Prim.Type) -> (Prim.Int)) } -> (((a :: Prim.Type) -> (Prim.Int))))
 foo = 
-  \(dict: (ImportedClassName.ClassName$Dict ((a :: Prim.Type)))) -> 
-    case (dict: (ImportedClassName.ClassName$Dict ((a :: Prim.Type)))) of 
-       ClassName$Dict v -> (v: { foo :: ((a :: Prim.Type) -> (Prim.Int)) }).foo
+  \(dict: {   foo :: ((a :: Prim.Type) -> (Prim.Int)) }) -> 
+    (dict: {   foo :: ((a :: Prim.Type) -> (Prim.Int)) })
+    .foo

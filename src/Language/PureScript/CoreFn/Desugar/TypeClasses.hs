@@ -19,7 +19,7 @@ import Data.Text (Text)
 import Data.Traversable (for)
 import Language.PureScript.Constants.Prim qualified as C
 import Language.PureScript.Crash (internalError)
-import Language.PureScript.Environment (DataDeclType (..), NameKind (..), TypeClassData (..), dictTypeName, function, makeTypeClassData, primClasses, primCoerceClasses, primIntClasses, primRowClasses, primRowListClasses, primSymbolClasses, primTypeErrorClasses, tyRecord, mkRecordT, Environment (..))
+import Language.PureScript.Environment (isDictTypeName, DataDeclType (..), NameKind (..), TypeClassData (..), dictTypeName, function, makeTypeClassData, primClasses, primCoerceClasses, primIntClasses, primRowClasses, primRowListClasses, primSymbolClasses, primTypeErrorClasses, tyRecord, mkRecordT, Environment (..))
 import Language.PureScript.Errors hiding (isExported, nonEmpty)
 import Language.PureScript.Externs (ExternsDeclaration (..), ExternsFile (..))
 import Language.PureScript.Label (Label (..))
@@ -35,8 +35,8 @@ import Language.PureScript.AST.Declarations qualified as A
 import Control.Monad.Writer.Class (MonadWriter)
 import Control.Monad.State.Strict (modify')
 import Data.Map (Map)
-
-type M m = (MonadSupply m, MonadState CheckState m, MonadError MultipleErrors m, MonadWriter MultipleErrors m)
+import Control.Lens.Plated
+import Language.PureScript.CoreFn.Desugar.Utils
 
 type TypeClasses = Map (Qualified (ProperName 'ClassName)) TypeClassData
 
@@ -95,20 +95,23 @@ mkTypeClassRowDict scope cn = case M.lookup cn scope of
 
 -- *THIS* is where we have to remove constraints everywhere in the module.
 desugarConstraintType :: TypeClasses -> SourceType -> SourceType
-desugarConstraintType dict = \case
-  ForAll a vis var mbk t mSkol ->
-    let t' = desugarConstraintType dict t
-     in ForAll a vis var mbk t' mSkol
-  ConstrainedType _ (Constraint {..}) t ->
-      let inner = desugarConstraintType dict t
-          dictRecordTy = typeClassDictRecordTy' dict constraintClass
-      in function dictRecordTy inner
-  other -> other
+desugarConstraintType dict = replaceDictionaryTypesWithRecords dict . transform go
+ where
+   go = \case
+    ForAll a vis var mbk t mSkol ->
+      let t' = desugarConstraintType dict t
+       in ForAll a vis var mbk t' mSkol
+    ConstrainedType _ (Constraint {..}) t ->
+        let inner = desugarConstraintType dict t
+            dictRecordTy = typeClassDictRecordTy' dict constraintClass
+        in function dictRecordTy inner
+    other -> other
 
-desugarConstraintTypes :: (M m) => TypeClasses -> m ()
-desugarConstraintTypes scope = do
+desugarConstraintTypes :: (M m) => m ()
+desugarConstraintTypes = do
   env <- getEnv
-  let f = everywhereOnTypes (desugarConstraintType scope)
+  let scope = typeClasses env
+      f = everywhereOnTypes (desugarConstraintType scope)
 
       oldNameTypes = names env
       desugaredNameTypes = (\(st, nk, nv) -> (f st, nk, nv)) <$> oldNameTypes
@@ -151,13 +154,40 @@ desugarConstraintsInDecl :: TypeClasses -> A.Declaration -> A.Declaration
 desugarConstraintsInDecl scope = \case
   A.BindingGroupDeclaration decls ->
     A.BindingGroupDeclaration $
-      (\(annIdent, nk, expr) -> (annIdent, nk, overTypes (desugarConstraintType scope) expr)) <$> decls
+      (\(annIdent, nk, expr) -> (annIdent, nk,  overTypes (desugarConstraintType scope) $ eliminateDictionaryNewtypes expr)) <$> decls
   A.ValueDecl ann name nk bs [A.MkUnguarded e] ->
     let bs' = desugarConstraintsInBinder scope <$> bs
-     in A.ValueDecl ann name nk bs' [A.MkUnguarded $ overTypes (desugarConstraintType scope) e]
+     in A.ValueDecl ann name nk bs' [A.MkUnguarded . overTypes (desugarConstraintType scope) $ eliminateDictionaryNewtypes e]
   A.DataDeclaration ann declTy tName args ctorDecs ->
     let fixCtor (A.DataConstructorDeclaration a nm fields) =
           A.DataConstructorDeclaration a nm (second (everywhereOnTypes (desugarConstraintType scope)) <$> fields)
      in A.DataDeclaration ann declTy tName args (fixCtor <$> ctorDecs)
   A.DataBindingGroupDeclaration ds -> A.DataBindingGroupDeclaration $ (desugarConstraintsInDecl scope) <$> ds
   other -> other
+
+-- I guess we could/should eliminate *all* newtypes?
+eliminateDictionaryNewtypes :: A.Expr -> A.Expr
+eliminateDictionaryNewtypes = transform $ \case
+  A.App  (A.Constructor ss cname) a | isDictTypeName (coerceProperName . disqualify $ cname) -> a
+  other -> other
+
+replaceDictionaryTypesWithRecords :: TypeClasses -> SourceType -> SourceType
+replaceDictionaryTypesWithRecords scope  = transform $ \ty -> case analyzeCtor ty  of
+  Just (TypeConstructor ss tname,args)
+    | isDictTypeName (disqualify tname) ->
+      let cname = dictTypeNameToClassName tname
+      in case M.lookup cname scope of
+          Nothing -> error $ "(should not happen) type class data not found for " <> show tname
+          Just tcData -> let dictRecTy = typeClassDictRecordTy' scope cname
+                             subs      = zip (fst <$> typeClassArguments tcData) args
+                         in replaceAllTypeVars subs dictRecTy
+  _ -> ty
+ where
+   dictTypeNameToClassName :: Qualified (ProperName 'TypeName) -> Qualified (ProperName 'ClassName)
+   dictTypeNameToClassName = fmap (ProperName . T.takeWhile (/= '$') . runProperName)
+
+
+removeDictionaryDataDecls :: [Declaration] -> [Declaration]
+removeDictionaryDataDecls = filter $ \case
+  A.DataDeclaration _ _ tName _ _ -> not (isDictTypeName tName)
+  _ -> True 
