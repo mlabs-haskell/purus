@@ -183,6 +183,7 @@ common defaults
     file-embed >=0.0.15.0 && <0.1,
     filepath >=1.4.2.2 && <1.5,
     Glob >=0.10.2 && <0.11,
+    hashable,
     haskeline >=0.8.2 && <0.9,
     language-javascript ==0.7.0.0,
     lens ==5.2.3,

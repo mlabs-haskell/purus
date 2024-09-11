@@ -105,7 +105,7 @@ import Language.PureScript.Names (
   disqualify,
   mkQualified,
   runIdent,
-  pattern ByNullSourcePos,
+  pattern ByNullSourcePos, freshIdent,
  )
 import Language.PureScript.PSString (PSString, decodeStringWithReplacement)
 import Language.PureScript.Pretty.Values (renderValue)
@@ -133,6 +133,7 @@ import Language.Purus.Pretty (ppType, prettyDatatypes, prettyStr, renderExprStr)
 import Prettyprinter (Pretty (pretty))
 import Language.PureScript.Sugar (desugarGuardedExprs)
 import Control.Lens.Plated
+import Language.PureScript.CoreFn.TypeLike (TypeLike(funTy))
 
 desugarCasesEverywhere :: (M m) => A.Declaration -> m A.Declaration
 desugarCasesEverywhere d = traverseDeclBodies (transformM $ desugarGuardedExprs (A.declSourceSpan d)) d
@@ -371,7 +372,7 @@ exprToCoreFn mn ss Nothing accessor@(A.Accessor name v) = do
           <> "found in row type: \n" <> ppType 1000 row
           <> "\nwhile desugaring record accessor expression:\n"
           <> renderValue 100 accessor
-    _ -> case analyzeCtor vTy of
+    strippedVTy -> case analyzeCtor vTy of
       Nothing ->
         internalError $
           "(1) Error while desugaring record accessor. Could not deduce type of field " <> decodeStringWithReplacement name
@@ -386,11 +387,35 @@ exprToCoreFn mn ss Nothing accessor@(A.Accessor name v) = do
             "(2) Error while desugaring record accessor."
               <> " No type provided for expression: \n"
               <> renderValue 100 accessor
+        {- In this branch, we know we're dealing with an "illegal accessor" inserted by the PS compiler
+           during the entailment typechecking phase.
+
+           That is: We have (e.g.) `(dictOrd :: Ord$Dict a).Eq0`, which compiles to *javascript* just fine,
+           but won't work for us.
+
+           In this branch, `v'` is the *dictionary expression* and we need to unwrap it (i.e. with a case
+           expression) to get at the inner record, which we can then use the accessor with.
+
+        -}
         Just (_, _, ty, _) -> case stripQuantifiers ty of
-          (_, RecordT inner :-> _) -> do
+          (_, recT@(RecordT inner) :-> classType) -> do
             let tyMap = M.fromList $ (\x -> (runLabel (rowListLabel x), x)) <$> (fst $ rowToList inner)
             case M.lookup name tyMap of
-              Just (rowListType -> resTy) -> pure $ Accessor (ssA ss) resTy name v'
+              Just (rowListType -> resTy) -> do
+                -- N.B to avoid free type variables in PIR we have to create a function that unwraps the
+                --     subclass dictionary and then apply that fn to the original dict expr (v' here)
+                dictIdent <- freshIdent "dict"
+                let dictVar = Var (ssA ss) strippedVTy (Qualified ByNullSourcePos dictIdent)
+                    dictInnerIdent = Ident "v"
+                    dictInnerVar   = Var (ssA ss) recT (Qualified ByNullSourcePos dictInnerIdent)
+                    accsr   = Accessor (ssA ss) resTy name dictInnerVar
+                    ctorNm  = coerceProperName <$> tyNm
+                    ctorBndr = ConstructorBinder (ssA ss) tyNm ctorNm [VarBinder (ssA ss) dictInnerIdent recT]
+                    alt     = CaseAlternative [ctorBndr] (Right accsr)
+                    caseE   = Case (ssA ss) resTy [dictVar] [alt]
+                    lamE    = Abs (ssA ss) (quantify $ strippedVTy `funTy` resTy) dictIdent caseE
+                    res     = App (ssA ss) lamE v'
+                pure res 
               Nothing ->
                 internalError $
                   "(3) Error while desugaring record accessor."
