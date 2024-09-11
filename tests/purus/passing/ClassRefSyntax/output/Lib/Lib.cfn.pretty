@@ -3,7 +3,6 @@ Lib (tests/purus/passing/ClassRefSyntax/Lib.purs)
 Imported Modules: 
 ------------------------------
   Builtin,
-  Lib,
   Prim
 
 Exports: 
@@ -20,14 +19,13 @@ Foreign:
 
 Datatypes: 
 ------------------------------
-newtype X$Dict (a :: Prim.Type) = 
-  X$Dict ({ go :: ((a :: Prim.Type) -> ((a :: Prim.Type))) })
+
 
 
 Declarations: 
 ------------------------------
-go :: forall (@a :: Prim.Type). ((Lib.X$Dict ((a :: Prim.Type))) -> (((a :: Prim.Type) -> ((a :: Prim.Type)))))
+go :: forall (@a :: Prim.Type). ({ go :: ((a :: Prim.Type) -> ((a :: Prim.Type))) } -> (((a :: Prim.Type) -> ((a :: Prim.Type)))))
 go = 
-  \(dict: (Lib.X$Dict ((a :: Prim.Type)))) -> 
-    case (dict: (Lib.X$Dict ((a :: Prim.Type)))) of 
-       X$Dict v -> (v: { go :: ((a :: Prim.Type) -> ((a :: Prim.Type))) }).go
+  \(dict: {   go :: ((a :: Prim.Type) -> ((a :: Prim.Type))) }) -> 
+    (dict: {   go :: ((a :: Prim.Type) -> ((a :: Prim.Type))) })
+    .go

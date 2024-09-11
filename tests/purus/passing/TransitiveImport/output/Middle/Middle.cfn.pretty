@@ -30,9 +30,12 @@ Declarations:
 uneet :: Test.Uneet
 uneet = (Uneet: Test.Uneet)
 
-middle :: forall (a :: Prim.Type). ((Test.TestCls$Dict ((a :: Prim.Type))) -> (((a :: Prim.Type) -> ((a :: Prim.Type)))))
+middle :: forall (a :: Prim.Type). ({ test :: ((a :: Prim.Type) -> ((a :: Prim.Type))) } -> (((a :: Prim.Type) -> ((a :: Prim.Type)))))
 middle = 
-  \(dictTestCls: (Test.TestCls$Dict ((a :: Prim.Type)))) -> 
-    (test: forall (@a :: Prim.Type). ((Test.TestCls$Dict ((a :: Prim.Type))) ->
+  \(dictTestCls: {   test :: ((a :: Prim.Type) -> ((a :: Prim.Type))) }) -> 
+    (test: forall (@a :: Prim.Type). ({
+                                        test :: ((a :: Prim.Type) ->
+                                        ((a :: Prim.Type)))
+                                      } ->
     (((a :: Prim.Type) -> ((a :: Prim.Type))))))
-    (dictTestCls: (Test.TestCls$Dict ((a :: Prim.Type))))
+    (dictTestCls: {   test :: ((a :: Prim.Type) -> ((a :: Prim.Type))) })

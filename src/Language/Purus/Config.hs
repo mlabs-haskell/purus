@@ -8,5 +8,6 @@ module Language.Purus.Config (maxTupleSize) where
 
 import Prelude (Int)
 
+-- TODO/FIXME: Raise this before release
 maxTupleSize :: Int
-maxTupleSize = 64
+maxTupleSize = 6

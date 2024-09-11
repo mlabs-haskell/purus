@@ -28,7 +28,10 @@ Declarations:
 ------------------------------
 main :: Test.Uneet
 main = 
-  (middle: forall (a :: Prim.Type). ((Test.TestCls$Dict ((a :: Prim.Type))) ->
+  (middle: forall (a :: Prim.Type). ({
+                                       test :: ((a :: Prim.Type) ->
+                                       ((a :: Prim.Type)))
+                                     } ->
   (((a :: Prim.Type) -> ((a :: Prim.Type))))))
   (testClsUneet: (Test.TestCls$Dict (Test.Uneet)))
   (uneet: Test.Uneet)
