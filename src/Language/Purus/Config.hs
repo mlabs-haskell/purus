@@ -10,4 +10,4 @@ import Prelude (Int)
 
 -- TODO/FIXME: Raise this before release
 maxTupleSize :: Int
-maxTupleSize = 6
+maxTupleSize = 14

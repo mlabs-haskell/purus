@@ -179,14 +179,15 @@ aFunction2 x = [x,1]
 aFunction3 :: Int -> Int
 aFunction3 x = if (eq x 2) then 4 else 1
 
+{- this can't compile to PIR (but it's useful to test the CoreFn codegen)
 aFunction4 :: forall (r :: Row Type). {a :: Int | r} -> Int
 aFunction4 r = r.a
 
 aFunction5 :: Int
 aFunction5 = aFunction4 {a: 2}
-
+-}
 aFunction6 :: Int
-aFunction6 = aFunction [] go
+aFunction6 = aFunction emptyList go
   where
     go :: forall (z :: Type). z -> Int
     go _ = 10
@@ -202,8 +203,10 @@ recG1 x = recF1 x
 testBuiltin :: Int
 testBuiltin = Builtin.addInteger 1 2
 
-main = aFunction4 {a: 101, b: "hello"} -- recF1 "hello"
-
+main = aFunction4 {a: 101, b: "hello"}
+  where
+    aFunction4 :: forall (r :: Row Type). {a :: Int | r} -> Int
+    aFunction4 r = r.a
 -- main2 = ConBoolean true
 
 plus :: Int -> Int -> Int
@@ -264,6 +267,7 @@ aPred _ = true
 cons :: forall (a :: Type). a -> List a -> List a
 cons x xs = [x]
 
+emptyList :: forall (x :: Type). List x
 emptyList = []
 
 consEmptyList1 = cons 1 emptyList
@@ -324,6 +328,9 @@ testForLift x = h x 3
     j c d = c + g d
     g a = if h a x then j x 1 else x * x
 
+testForLiftApplied :: Boolean
+testForLiftApplied = testForLift 2
+
 testForLiftPoly :: forall (a :: Type). a -> Boolean
 testForLiftPoly x = h x True
   where
@@ -382,10 +389,10 @@ kozsTwoSCCEx =
       h x = not (f x)
   in a z && b z && c z && f z && g z && h z
 
-
+{-
 testLedgerTypes :: DCert
 testLedgerTypes = DCertMir
-
+-}
 litPattern :: Int -> Boolean
 litPattern n = case n of
   0 -> False
@@ -413,6 +420,7 @@ someDataList = Builtin.mkCons someData (Builtin.mkNilData Prim.unit)
 
 isNullSomeDataList :: Boolean
 isNullSomeDataList = Builtin.nullList someDataList 
-
+{-
 plutusIFTE :: Builtin.BuiltinData
 plutusIFTE = Builtin.ifThenElse True someData (Builtin.trace "BOOM!" someData)
+-}

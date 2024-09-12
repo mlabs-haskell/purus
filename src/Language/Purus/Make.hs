@@ -1,3 +1,4 @@
+{-# LANGUAGE TypeApplications #-}
 module Language.Purus.Make where
 
 import Prelude
@@ -12,7 +13,9 @@ import Data.Set qualified as S
 
 import Data.Function (on)
 
-import Data.Foldable (foldrM)
+import Control.Exception
+import Control.Monad (forM)
+import Data.Foldable (foldrM, forM_)
 import Data.List (delete, foldl', groupBy, sortBy, stripPrefix)
 
 import System.FilePath (
@@ -23,7 +26,7 @@ import System.FilePath (
  )
 
 import Language.PureScript.CoreFn.Ann (Ann)
-import Language.PureScript.CoreFn.Expr (Bind, PurusType)
+import Language.PureScript.CoreFn.Expr (Bind, PurusType, cfnBindIdents)
 import Language.PureScript.CoreFn.Module (Module (..))
 import Language.PureScript.Names (
   Ident (Ident),
@@ -77,7 +80,7 @@ import Algebra.Graph.AdjacencyMap.Algorithm (topSort)
 
 import System.FilePath.Glob qualified as Glob
 
-import PlutusCore.Evaluation.Result (EvaluationResult(EvaluationSuccess))
+import PlutusCore.Evaluation.Result (EvaluationResult(..))
 import PlutusIR.Core.Instance.Pretty.Readable (prettyPirReadable)
 import Debug.Trace (traceM)
 
@@ -116,7 +119,7 @@ compile primModule orderedModules mainModuleName mainFunctionName =
     go = do
       (summedModule, dsCxt) <- runDesugarCore $ desugarCoreModules primModule orderedModules
       let
-        -- traceBracket lbl msg = traceM ("\n" <> lbl <> "\n\n" <> msg <> "\n\n")
+        traceBracket lbl msg = pure () -- traceM ("\n" <> lbl <> "\n\n" <> msg <> "\n\n")
         decls = moduleDecls summedModule
         declIdentsSet = foldBinds (\acc nm _ -> S.insert nm acc) S.empty decls
         couldn'tFindMain n =
@@ -131,13 +134,13 @@ compile primModule orderedModules mainModuleName mainFunctionName =
       mainFunctionIx <- note (couldn'tFindMain 1) $ dsCxt ^? globalScope . at mainModuleName . folded . at mainFunctionName . folded
       -- traceM $ "Found main function Index: " <> show mainFunctionIx
       mainFunctionBody <- note (couldn'tFindMain 2) $ findDeclBodyWithIndex mainFunctionName mainFunctionIx decls
-      -- traceM "Found main function body"
+      traceBracket "Found main function body:" (prettyStr mainFunctionBody)
       inlined <- runInline summedModule $ lift (mainFunctionName, mainFunctionIx) mainFunctionBody >>= inline
-      -- traceBracket "Done inlining. Result:" $ prettyStr inlined
+      traceBracket "Done inlining. Result:" $ prettyStr inlined
       let !instantiated = applyPolyRowArgs $ instantiateTypes inlined
-      -- traceBracket "Done instantiating types. Result:" $ prettyStr instantiated
+      traceBracket "Done instantiating types. Result:" $ prettyStr instantiated
       withoutObjects <- instantiateTypes <$> runCounter (desugarObjects instantiated)
-      -- traceBracket  "Desugared objects. Result:\n" $ prettyStr withoutObjects
+      traceBracket  "Desugared objects. Result:\n" $ prettyStr withoutObjects
       datatypes <- runCounter $ desugarObjectsInDatatypes (moduleDataTypes summedModule)
       -- traceM "Desugared datatypes"
       runPlutusContext initDatatypeDict $ do
@@ -216,7 +219,7 @@ make path mainModule mainFunction primModule = do
 -- for exploration/repl testing, this hardcodes `tests/purus/passing/Lib` as the target directory and
 -- we only select the name of the main function
 makeForTest :: Text -> IO PIRTerm
-makeForTest main = make "tests/purus/passing/Misc" "Lib" main  (Just syntheticPrim) -- NOTE[A]
+makeForTest main = make "tests/purus/passing/Misc" "Lib" main  (Just syntheticPrim)
 
 evalForTest_ :: Text -> IO ()
 evalForTest_ main = (fst <$> evalForTest main) >>= \case
@@ -234,3 +237,31 @@ note :: (MonadError String m) => String -> Maybe a -> m a
 note msg = \case
   Nothing -> throwError msg
   Just x -> pure x
+
+
+evalTestModule :: FilePath -> IO ()
+evalTestModule path = do
+  mdl@Module{..} <- decodeModuleIO path
+  let toTest :: [Ident]
+      toTest = concatMap cfnBindIdents moduleDecls
+      nm     = runModuleName moduleName
+      goCompile x = catch @SomeException (pure $ compile syntheticPrim [mdl] moduleName x) $ \err ->
+                      throwIO . userError
+                        $ "Exception thrown when compiling " <> T.unpack (runIdent x)
+                          <> "Error message:\n" <> show err 
+  made <- forM toTest $  \x ->  goCompile x >>= \case 
+    Left err -> error $ "Error while compiling " <> T.unpack (runIdent x) <> "\nReason: " <> err
+    Right res -> pure (runIdent x,res)
+  evaluated <- flip traverse made $ \(x,e) -> do
+      traceM $ "\n\n---- " <> T.unpack x <> " ----"
+      traceM $ docString (prettyPirReadable e)
+      res <- fst <$> evaluateTerm e
+      pure $ (x,res)
+  forM_ evaluated $ \(eNm,eRes) -> case eRes of
+    EvaluationFailure -> putStrLn $ "\n\n> FAIL: Failed to evaluate " <> T.unpack eNm
+    EvaluationSuccess res -> do
+      putStrLn $ "\n\n> SUCCESS: Evaluated " <> T.unpack eNm
+      print $ prettyPirReadable res
+
+sanityCheck :: IO () 
+sanityCheck = evalTestModule "tests/purus/passing/Misc/output/Lib/Lib.cfn"

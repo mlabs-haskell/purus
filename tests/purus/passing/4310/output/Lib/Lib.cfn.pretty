@@ -46,10 +46,10 @@ runTest =
 mappend :: (Prim.String -> ((Prim.String -> (Prim.String))))
 mappend = \(v: Prim.String) -> \(v1: Prim.String) -> ("mappend": Prim.String)
 
-test/\ :: forall (a :: Prim.Type) (b :: Prim.Type). ({ runTest :: ((a :: Prim.Type) -> (Prim.String)) } -> (({ runTest :: ((a :: Prim.Type) -> (Prim.String)) } -> ({ runTest :: (((Lib.Tuple ((a :: Prim.Type))) ((b :: Prim.Type))) -> (Prim.String)) }))))
+test/\ :: forall (a :: Prim.Type) (b :: Prim.Type). ({ runTest :: ((a :: Prim.Type) -> (Prim.String)) } -> (({ runTest :: ((b :: Prim.Type) -> (Prim.String)) } -> ({ runTest :: (((Lib.Tuple ((a :: Prim.Type))) ((b :: Prim.Type))) -> (Prim.String)) }))))
 test/\ = 
   \(dictTest: {   runTest :: ((a :: Prim.Type) -> (Prim.String)) }) -> 
-    \(dictTest1: {   runTest :: ((a :: Prim.Type) -> (Prim.String)) }) -> 
+    \(dictTest1: {   runTest :: ((b :: Prim.Type) -> (Prim.String)) }) -> 
       ({
          runTest: \(v: ((Lib.Tuple (a*0)) (b*1))) -> 
            case (v: ((Lib.Tuple (a*0)) (b*1))) of 
@@ -70,7 +70,7 @@ test/\ =
                                                       } ->
                  (((a :: Prim.Type) -> (Prim.String)))))
                  (dictTest1: {
-                               runTest :: ((a :: Prim.Type) -> (Prim.String))
+                               runTest :: ((b :: Prim.Type) -> (Prim.String))
                              })
                  (b: b*1))
        }: { runTest :: (((Lib.Tuple (a*0)) (b*1)) -> (Prim.String)) })
