@@ -2,8 +2,10 @@
 , fetchFromGitHub
   # e.g. "x86_64-linux"
 , system # : string
-  # , haskellNixNixpkgs # : nixpkgs
-  # , haskellNixOverlay # : overlay
+  # deadnix: skip
+, haskellNixNixpkgs # : nixpkgs
+  # deadnix: skip
+, haskellNixOverlay # : overlay
 , inputs
 }:
 
@@ -32,7 +34,8 @@ in
 , ghcVersion ? "ghc928" # : string
 , haskellModules ? [ ]
 , externalDependencies ? [ ]
-  # , externalRepositories ? { }
+  # deadnix: skip
+, externalRepositories ? { }
 }:
 let
   mkHackage = pkgs.callPackage ./mk-hackage.nix {
