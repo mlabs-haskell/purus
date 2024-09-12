@@ -21,8 +21,14 @@ import Language.Purus.Debug (doTrace)
 import Language.Purus.IR (BVar, BindE (..), Exp)
 import Language.Purus.IR.Utils (IR_Decl, Vars, WithObjects, foldBinds, toExp)
 
+import PlutusCore qualified as PLC
+import UntypedPlutusCore qualified as UPLC
+import PlutusCore.Compiler.Erase (eraseTerm)
+
 import Control.Exception (throwIO)
 
+import Data.Default.Class (def)
+import Data.Functor (void)
 import Data.List (find)
 
 import Data.ByteString (ByteString)
@@ -37,6 +43,14 @@ import Data.Aeson qualified as Aeson
 
 import Bound (Scope)
 
+plcToUplc :: PLC.Term PLC.TyName PLC.Name PLC.DefaultUni PLC.DefaultFun () -> 
+  Either (PLC.Error PLC.DefaultUni PLC.DefaultFun ()) (UPLC.Term UPLC.NamedDeBruijn PLC.DefaultUni PLC.DefaultFun ())
+plcToUplc t = do
+  PLC.runQuoteT $ do
+    tcConfig <- PLC.TypeCheckConfig PLC.defKindCheckConfig <$> PLC.builtinMeaningsToTypes def ()
+    void . PLC.inferType tcConfig $ t
+  UPLC.deBruijnTerm . eraseTerm $ t
+
 {- IO utility. Reads a CoreFn module from a source file.
 
 -}
@@ -46,7 +60,7 @@ decodeModuleIO path =
     Left err -> throwIO $ userError err
     Right modx -> pure modx
 
-decodeModuleBS :: ByteString -> (Module (Bind Ann) PurusType PurusType Ann)
+decodeModuleBS :: ByteString -> Module (Bind Ann) PurusType PurusType Ann
 decodeModuleBS bs = case Aeson.eitherDecodeStrict' bs of
   Left err -> error err
   Right mdl -> mdl 

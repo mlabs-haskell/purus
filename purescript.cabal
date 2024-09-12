@@ -176,6 +176,7 @@ common defaults
     containers >=0.6.5.1 && <0.7,
     cryptonite ==0.30.*,
     data-ordlist >=0.4.7.0 && <0.5,
+    data-default-class >=0.1.2.0 && < 0.2.0.0,
     deepseq >=1.4.6.1 && <1.5,
     directory >=1.3.6.2 && <1.4,
     dlist ==1.0.*,
