@@ -45,29 +45,32 @@ lookupInRow :: Ident -> SourceType -> Maybe SourceType
 lookupInRow (Label . mkString . runIdent -> lbl) row = case rowToList row of
   (items,_) -> rowListType <$> find (\x -> rowListLabel x == lbl) items
 
-typeClassDictRecordTy :: M m => Qualified (ProperName 'ClassName) ->  m SourceType
-typeClassDictRecordTy qcn = mkRecordT . rowFromListSimple <$> mkTypeClassRowDict' qcn
+typeClassDictRecordTy :: M m => [SourceType] -> Qualified (ProperName 'ClassName) ->  m SourceType
+typeClassDictRecordTy args qcn = mkRecordT . rowFromListSimple <$> mkTypeClassRowDict' args qcn
 
-typeClassDictRecordTy' :: TypeClasses -> Qualified (ProperName 'ClassName) ->  SourceType
-typeClassDictRecordTy' scope qcn = mkRecordT . rowFromListSimple $ mkTypeClassRowDict scope qcn
+typeClassDictRecordTy' :: [SourceType] -> TypeClasses -> Qualified (ProperName 'ClassName) ->  SourceType
+typeClassDictRecordTy' args scope qcn = mkRecordT . rowFromListSimple $ mkTypeClassRowDict args scope qcn
 
-mkTypeClassRowDict' :: M m => Qualified (ProperName 'ClassName) -> m [(PSString,SourceType)]
-mkTypeClassRowDict' qcn = do
+mkTypeClassRowDict' :: M m => [SourceType] -> Qualified (ProperName 'ClassName) -> m [(PSString,SourceType)]
+mkTypeClassRowDict' args qcn = do
   s <- typeClasses <$> getEnv
-  pure $ mkTypeClassRowDict s qcn
+  pure $ mkTypeClassRowDict args s qcn
 
 rowFromListSimple :: [(PSString,SourceType)] -> SourceType
 rowFromListSimple = foldr (\(str,ty) acc -> RCons NullSourceAnn (Label str) ty acc) (REmpty NullSourceAnn)
 
-mkTypeClassRowDict :: TypeClasses -> Qualified (ProperName 'ClassName) -> [(PSString,SourceType)]
-mkTypeClassRowDict scope cn = case M.lookup cn scope of
+-- First argument is a list of arguments to the constraint or dictionary,
+-- need this to ensure that we instantiate to the correct variables
+mkTypeClassRowDict :: [SourceType] -> TypeClasses -> Qualified (ProperName 'ClassName) -> [(PSString,SourceType)]
+mkTypeClassRowDict args scope cn = case M.lookup cn scope of
   Nothing -> error $ "Internal error: Could not generate a type class dictionary for " <> T.unpack (runProperName . disqualify $  cn)
                      <> "\nReason: No type class declaration for this class is in scope!"
   Just tcData ->
-    let superclasses = typeClassSuperclasses tcData
+    let subs         = zip (fst <$> typeClassArguments tcData) args 
+        superclasses = typeClassSuperclasses tcData
         theseMethods = (\(a,b,_) -> (mkString (runIdent a),b)) <$> typeClassMembers tcData
         superclassRows = mkSuperclassRowDict <$> superclasses
-    in theseMethods <> superclassRows
+    in second (replaceAllTypeVars subs) <$> (theseMethods <> superclassRows)
  where
   -- TODO: Change this in TypeChecker.Entailment too (if it won't break anything)
   scName :: Qualified (ProperName 'ClassName) -> Text
@@ -78,17 +81,9 @@ mkTypeClassRowDict scope cn = case M.lookup cn scope of
      from the SourceConstraint
   -}
   mkSuperclassRowDict :: SourceConstraint -> (PSString, SourceType)
-  mkSuperclassRowDict (Constraint _ scn  kArgs args _) = case M.lookup scn scope of
-      Nothing -> error $ "Internal error: Could not generate a superclass dictionary for "
-                         <> T.unpack (runProperName . disqualify $ scn )
-                         <> " while generating a dictionar for subclass "
-                         <> T.unpack (runProperName . disqualify $ cn)
-      Just stcData ->
-        let stcArgVars = fst <$> typeClassArguments stcData
-            subs        = zip stcArgVars args
-            scRowRaw    = mkTypeClassRowDict scope scn
-            scRow       = rowFromListSimple $ second (replaceAllTypeVars subs) <$> scRowRaw
-            scRecNm     = mkString $ scName scn
+  mkSuperclassRowDict (Constraint _ scn  kArgs args _) =
+        let scRow    = rowFromListSimple $ mkTypeClassRowDict args scope scn
+            scRecNm  = mkString $ scName scn
         in (scRecNm, mkRecordT scRow)
 
 
@@ -103,7 +98,7 @@ desugarConstraintType dict = replaceDictionaryTypesWithRecords dict . transform 
        in ForAll a vis var mbk t' mSkol
     ConstrainedType _ (Constraint {..}) t ->
         let inner = desugarConstraintType dict t
-            dictRecordTy = typeClassDictRecordTy' dict constraintClass
+            dictRecordTy = typeClassDictRecordTy' constraintArgs dict constraintClass
         in function dictRecordTy inner
     other -> other
 
@@ -176,11 +171,7 @@ replaceDictionaryTypesWithRecords scope  = transform $ \ty -> case analyzeCtor t
   Just (TypeConstructor ss tname,args)
     | isDictTypeName (disqualify tname) ->
       let cname = dictTypeNameToClassName tname
-      in case M.lookup cname scope of
-          Nothing -> error $ "(should not happen) type class data not found for " <> show tname
-          Just tcData -> let dictRecTy = typeClassDictRecordTy' scope cname
-                             subs      = zip (fst <$> typeClassArguments tcData) args
-                         in replaceAllTypeVars subs dictRecTy
+      in  typeClassDictRecordTy' args scope cname
   _ -> ty
  where
    dictTypeNameToClassName :: Qualified (ProperName 'TypeName) -> Qualified (ProperName 'ClassName)

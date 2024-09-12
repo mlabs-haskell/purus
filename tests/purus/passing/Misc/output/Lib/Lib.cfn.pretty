@@ -54,8 +54,6 @@ Exports:
   aFunction,
   aFunction2,
   aFunction3,
-  aFunction4,
-  aFunction5,
   aFunction6,
   recF1,
   recG1,
@@ -84,6 +82,7 @@ Exports:
   testValidator,
   testValidatorApplied,
   testForLift,
+  testForLiftApplied,
   testForLiftPoly,
   testForLiftPolyApplied,
   or,
@@ -92,7 +91,6 @@ Exports:
   iff,
   ghcInlinerPaperEx,
   kozsTwoSCCEx,
-  testLedgerTypes,
   litPattern,
   litPatternApplied,
   irrPattern,
@@ -100,7 +98,6 @@ Exports:
   testPrelude1,
   someDataList,
   isNullSomeDataList,
-  plutusIFTE,
   testClassInt,
   eqInt,
   eq2IntBoolean,
@@ -139,7 +136,7 @@ data TestBinderSum  =
   | ConChar (Prim.Char)
   | ConNested (Lib.TestBinderSum)
   | ConQuantified (forall (x :: Prim.Type). ((x :: Prim.Type) -> (Prim.Int)))
-  | ConConstrained (forall (x :: Prim.Type). ({ eq :: ((a :: Prim.Type) -> (((a :: Prim.Type) -> (Prim.Boolean)))) } -> (((x :: Prim.Type) -> (Prim.Int)))))
+  | ConConstrained (forall (x :: Prim.Type). ({ eq :: ((x :: Prim.Type) -> (((x :: Prim.Type) -> (Prim.Boolean)))) } -> (((x :: Prim.Type) -> (Prim.Int)))))
   | ConObject ({ objField :: Prim.Int })
   | ConObjectQuantified ({ objFieldQ :: forall (x :: Prim.Type). ((x :: Prim.Type) -> (Prim.Int)) })
 
@@ -240,9 +237,6 @@ testTestClass =
   (testClassInt: {   testMethod :: (Prim.Int -> (Prim.Boolean)) })
   (3: Prim.Int)
 
-testLedgerTypes :: Prim.DCert
-testLedgerTypes = (DCertMir: Prim.DCert)
-
 testIdentitee :: Prim.Int
 testIdentitee = 
   (unIdentitee: ((Lib.Identitee (Prim.Int)) -> (Prim.Int)))
@@ -319,8 +313,8 @@ testBinders =
          ("hello": Prim.String)
        ConConstrained g -> 
          (g: forall (x :: Prim.Type). ({
-                                         eq :: ((a :: Prim.Type) ->
-                                         (((a :: Prim.Type) -> (Prim.Boolean))))
+                                         eq :: ((x :: Prim.Type) ->
+                                         (((x :: Prim.Type) -> (Prim.Boolean))))
                                        } ->
          (((x :: Prim.Type) -> (Prim.Int)))))
          (eqInt: {   eq :: (Prim.Int -> ((Prim.Int -> (Prim.Boolean)))) })
@@ -391,17 +385,6 @@ polyInObjMatch =
      { bar: f, baz: _ } -> 
        (f: forall (x :: Prim.Type). ((x :: Prim.Type) -> (Prim.Int)))
        ("hello": Prim.String)
-
-plutusIFTE :: Builtin.BuiltinData
-plutusIFTE = 
-  (ifThenElse: forall (x :: Prim.Type). (Prim.Boolean ->
-  (((x :: Prim.Type) -> (((x :: Prim.Type) -> ((x :: Prim.Type))))))))
-  (True: Prim.Boolean)
-  (someData: Builtin.BuiltinData)
-  ((trace: forall (x :: Prim.Type). (Prim.String ->
-   (((x :: Prim.Type) -> ((x :: Prim.Type))))))
-   ("BOOM!": Prim.String)
-   (someData: Builtin.BuiltinData))
 
 plus :: (Prim.Int -> ((Prim.Int -> (Prim.Int))))
 plus = 
@@ -520,6 +503,22 @@ mutuallyRecursiveBindingGroup =
 minus :: (Prim.Int -> ((Prim.Int -> (Prim.Int))))
 minus = \(v: Prim.Int) -> \(v1: Prim.Int) -> (42: Prim.Int)
 
+main :: Prim.Int
+main = 
+  let
+    aFunction4 :: forall (r :: (Prim.Row (Prim.Type))). ({ a :: Prim.Int | (r :: (Prim.Row (Prim.Type))) } -> (Prim.Int))
+    aFunction4 = 
+      \(r: {   a :: Prim.Int | (r :: (Prim.Row (Prim.Type))) }) -> 
+        (r: {   a :: Prim.Int | (r :: (Prim.Row (Prim.Type))) })
+        .a
+  in (aFunction4: forall (r :: (Prim.Row
+     (Prim.Type))). ({   a :: Prim.Int | (r :: (Prim.Row (Prim.Type))) } ->
+     (Prim.Int)))
+     ({ b: ("hello": Prim.String), a: (101: Prim.Int) }: {
+                                                           a :: Prim.Int,
+                                                           b :: Prim.String
+                                                         })
+
 litPattern :: (Prim.Int -> (Prim.Boolean))
 litPattern = 
   \(n: Prim.Int) -> 
@@ -603,6 +602,9 @@ testForLift =
     in (h: (Prim.Int -> ((Prim.Int -> (Prim.Boolean)))))
        (x: Prim.Int)
        (3: Prim.Int)
+
+testForLiftApplied :: Prim.Boolean
+testForLiftApplied = (testForLift: (Prim.Int -> (Prim.Boolean))) (2: Prim.Int)
 
 eq2 :: forall (@a :: Prim.Type) (@b :: Prim.Type). ({ eq2 :: ((a :: Prim.Type) -> (((b :: Prim.Type) -> (Prim.Boolean)))) } -> (((a :: Prim.Type) -> (((b :: Prim.Type) -> (Prim.Boolean))))))
 eq2 = 
@@ -706,8 +708,8 @@ workingEven =
        True -> (1: Prim.Int)
        _ -> (42: Prim.Int)
 
-emptyList :: List ((t135 :: Prim.Type))
-emptyList = (Nil: List ((t135 :: Prim.Type)))
+emptyList :: List ((x :: Prim.Type))
+emptyList = (Nil: List ((x :: Prim.Type)))
 
 cons :: forall (a :: Prim.Type). ((a :: Prim.Type) -> ((List ((a :: Prim.Type)) -> (List ((a :: Prim.Type))))))
 cons = 
@@ -723,14 +725,14 @@ consEmptyList1 =
   (cons: forall (a :: Prim.Type). ((a :: Prim.Type) ->
   ((List ((a :: Prim.Type)) -> (List ((a :: Prim.Type)))))))
   (1: Prim.Int)
-  (emptyList: forall (t135 :: Prim.Type). List ((t135 :: Prim.Type)))
+  (emptyList: forall (x :: Prim.Type). List ((x :: Prim.Type)))
 
 consEmptyList2 :: List (Prim.String)
 consEmptyList2 = 
   (cons: forall (a :: Prim.Type). ((a :: Prim.Type) ->
   ((List ((a :: Prim.Type)) -> (List ((a :: Prim.Type)))))))
   ("hello": Prim.String)
-  (emptyList: forall (t135 :: Prim.Type). List ((t135 :: Prim.Type)))
+  (emptyList: forall (x :: Prim.Type). List ((x :: Prim.Type)))
 
 compare :: forall (@a :: Prim.Type). ({ compare :: ((a :: Prim.Type) -> (((a :: Prim.Type) -> (Prim.Int)))), Eq :: { eq :: ((a :: Prim.Type) -> (((a :: Prim.Type) -> (Prim.Boolean)))) } } -> (((a :: Prim.Type) -> (((a :: Prim.Type) -> (Prim.Int))))))
 compare = 
@@ -1014,29 +1016,6 @@ aList =
       (5: Prim.Int)
       (Nil: List (Prim.Int))))))
 
-aFunction4 :: forall (r :: (Prim.Row (Prim.Type))). ({ a :: Prim.Int | (r :: (Prim.Row (Prim.Type))) } -> (Prim.Int))
-aFunction4 = 
-  \(r: {   a :: Prim.Int | (r :: (Prim.Row (Prim.Type))) }) -> 
-    (r: {   a :: Prim.Int | (r :: (Prim.Row (Prim.Type))) })
-    .a
-
-aFunction5 :: Prim.Int
-aFunction5 = 
-  (aFunction4: forall (r :: (Prim.Row
-  (Prim.Type))). ({   a :: Prim.Int | (r :: (Prim.Row (Prim.Type))) } ->
-  (Prim.Int)))
-  ({ a: (2: Prim.Int) }: { a :: Prim.Int })
-
-main :: Prim.Int
-main = 
-  (aFunction4: forall (r :: (Prim.Row
-  (Prim.Type))). ({   a :: Prim.Int | (r :: (Prim.Row (Prim.Type))) } ->
-  (Prim.Int)))
-  ({ b: ("hello": Prim.String), a: (101: Prim.Int) }: {
-                                                        a :: Prim.Int,
-                                                        b :: Prim.String
-                                                      })
-
 aFunction3 :: (Prim.Int -> (Prim.Int))
 aFunction3 = 
   \(x: Prim.Int) -> 
@@ -1070,7 +1049,7 @@ aFunction6 =
   in (aFunction: forall (x :: Prim.Type). ((x :: Prim.Type) ->
      ((forall (y :: Prim.Type). ((y :: Prim.Type) -> (Prim.Int)) ->
      (Prim.Int)))))
-     (Nil: List (t192))
+     (emptyList: forall (x :: Prim.Type). List ((x :: Prim.Type)))
      (go: forall (z :: Prim.Type). ((z :: Prim.Type) -> (Prim.Int)))
 
 aBool :: Prim.Boolean

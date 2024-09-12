@@ -3,7 +3,7 @@
 
 module Language.PureScript.CoreFn.Desugar (moduleToCoreFn) where
 
-import Protolude (Bifunctor (bimap), MonadError (..), orEmpty, ordNub, sortOn, zipWithM)
+import Protolude (MonadError (..), orEmpty, ordNub, sortOn, zipWithM)
 import Prelude
 
 import Data.Foldable (foldl')
@@ -12,14 +12,13 @@ import Data.List.NonEmpty qualified as NEL
 import Data.Map qualified as M
 import Data.Maybe (mapMaybe)
 
-import Control.Monad (foldM, forM, (<=<), (>=>))
+import Control.Monad (foldM, forM, (>=>))
 import Control.Monad.State.Strict (MonadState, gets, modify)
 import Control.Monad.Writer.Class (MonadWriter)
 import Data.Either (lefts)
 import Data.List.NonEmpty qualified as NE
 import Data.Set qualified as S
 import Data.Text qualified as T
-import Data.Text.Lazy qualified as LT
 import Debug.Trace (traceM)
 import Language.PureScript.AST.Binders qualified as A
 import Language.PureScript.AST.Declarations qualified as A
@@ -29,10 +28,12 @@ import Language.PureScript.AST.SourcePos qualified as A
 import Language.PureScript.Constants.Prim qualified as C
 import Language.PureScript.CoreFn.Ann (Ann, ssAnn)
 import Language.PureScript.CoreFn.Binders (Binder (..))
-import Language.PureScript.CoreFn.Desugar.TypeClasses 
+import Language.PureScript.CoreFn.Desugar.TypeClasses
+    ( desugarConstraintTypes,
+      desugarConstraintsInDecl,
+      removeDictionaryDataDecls )
 import Language.PureScript.CoreFn.Desugar.Utils (
   M,
-  analyzeCtor,
   binderToCoreFn,
   ctorArgs,
   dedupeImports,
@@ -46,7 +47,6 @@ import Language.PureScript.CoreFn.Desugar.Utils (
   getValueMeta,
   importToCoreFn,
   instantiate,
-  instantiatePolyType,
   lookupDictType,
   mkList,
   properToIdent,
@@ -74,7 +74,6 @@ import Language.PureScript.Environment (
   NameVisibility (..),
   function,
   isDictTypeName,
-  lookupConstructor,
   lookupValue,
   tyBoolean,
   tyChar,
@@ -97,14 +96,11 @@ import Language.PureScript.Names (
   ModuleName,
   Name (DctorName),
   ProperName (..),
-  ProperNameType (..),
   Qualified (..),
   QualifiedBy (..),
-  coerceProperName,
-  disqualify,
   mkQualified,
   runIdent,
-  pattern ByNullSourcePos, freshIdent,
+  pattern ByNullSourcePos,
  )
 import Language.PureScript.PSString (PSString, decodeStringWithReplacement)
 import Language.PureScript.Pretty.Values (renderValue)
@@ -128,11 +124,10 @@ import Language.PureScript.Types (
   rowToList,
   pattern REmptyKinded,
  )
-import Language.Purus.Pretty (ppType, prettyDatatypes, prettyStr, renderExprStr)
+import Language.Purus.Pretty (ppType, prettyStr, renderExprStr)
 import Prettyprinter (Pretty (pretty))
 import Language.PureScript.Sugar (desugarGuardedExprs)
 import Control.Lens.Plated
-import Language.PureScript.CoreFn.TypeLike (TypeLike(funTy))
 
 desugarCasesEverywhere :: (M m) => A.Declaration -> m A.Declaration
 desugarCasesEverywhere d = traverseDeclBodies (transformM $ desugarGuardedExprs (A.declSourceSpan d)) d
@@ -357,13 +352,6 @@ exprToCoreFn mn ss (Just accT) accessor@(A.Accessor name v) = wrapTrace ("exprTo
 exprToCoreFn mn ss Nothing accessor@(A.Accessor name v) = do
   v' <- exprToCoreFn mn ss Nothing v
   let vTy = exprType v'
-  env <- getEnv
-  -- FIXME: I think this is wrong. We should just check if vTy has a record type and then look up the field
-  --        Why the hell are we converting the type name to a ctor name here?
-  --        If that's just to check for a Dict, do it better by checking that the name is a
-  --        valid dictionary name.
-  -- FIXME (pt 2): We do need to add special handling for dictionaries (or fix the
-  --               types in Lang.PS.Sugar.TypeClasses).
   case snd $ stripQuantifiers vTy of
     RecordT row -> do
       let tyMap = M.fromList $ (\x -> (runLabel (rowListLabel x), x)) <$> fst (rowToList row)
@@ -375,64 +363,12 @@ exprToCoreFn mn ss Nothing accessor@(A.Accessor name v) = do
           <> "found in row type: \n" <> ppType 1000 row
           <> "\nwhile desugaring record accessor expression:\n"
           <> renderValue 100 accessor
-    strippedVTy -> case analyzeCtor vTy of
-      Nothing ->
-        internalError $
-          "(1) Error while desugaring record accessor. Could not deduce type of field " <> decodeStringWithReplacement name
-            <> " No type provided for expression: \n"
-            <> renderValue 100 accessor
-            <> "\nRecord type: "
-            <> ppType 1000 vTy
-            <> "\nsynonyms: "
-      Just (TypeConstructor _ tyNm, _) -> case M.lookup (tyNameToCtorName tyNm) env.dataConstructors of
-        Nothing ->
-          internalError $
+    other -> internalError $
             "(2) Error while desugaring record accessor."
-              <> " No type provided for expression: \n"
-              <> renderValue 100 accessor
-        {- In this branch, we know we're dealing with an "illegal accessor" inserted by the PS compiler
-           during the entailment typechecking phase.
-
-           That is: We have (e.g.) `(dictOrd :: Ord$Dict a).Eq0`, which compiles to *javascript* just fine,
-           but won't work for us.
-
-           In this branch, `v'` is the *dictionary expression* and we need to unwrap it (i.e. with a case
-           expression) to get at the inner record, which we can then use the accessor with.
-
-        -}
-        Just (_, _, ty, _) -> case stripQuantifiers ty of
-          (_, recT@(RecordT inner) :-> classType) -> do
-            let tyMap = M.fromList $ (\x -> (runLabel (rowListLabel x), x)) <$> (fst $ rowToList inner)
-            case M.lookup name tyMap of
-              Just (rowListType -> resTy) -> do
-                -- N.B to avoid free type variables in PIR we have to create a function that unwraps the
-                --     subclass dictionary and then apply that fn to the original dict expr (v' here)
-                dictIdent <- freshIdent "dict"
-                let dictVar = Var (ssA ss) strippedVTy (Qualified ByNullSourcePos dictIdent)
-                    dictInnerIdent = Ident "v"
-                    dictInnerVar   = Var (ssA ss) recT (Qualified ByNullSourcePos dictInnerIdent)
-                    accsr   = Accessor (ssA ss) resTy name dictInnerVar
-                    ctorNm  = coerceProperName <$> tyNm
-                    ctorBndr = ConstructorBinder (ssA ss) tyNm ctorNm [VarBinder (ssA ss) dictInnerIdent recT]
-                    alt     = CaseAlternative [ctorBndr] (Right accsr)
-                    caseE   = Case (ssA ss) resTy [dictVar] [alt]
-                    lamE    = Abs (ssA ss) (quantify $ strippedVTy `funTy` resTy) dictIdent caseE
-                    res     = App (ssA ss) lamE v'
-                pure res 
-              Nothing ->
-                internalError $
-                  "(3) Error while desugaring record accessor."
-                    <> " No type provided for expression: \n"
-                    <> renderValue 100 accessor
-          (_, other) -> internalError $
-            "(1) Error while desugaring record accessor."
               <> " Expected the value in accessor expression: \n"
               <> renderValue 100 accessor
               <> "\n To have a record type, but instead got the type: "
               <> ppType 1000 other
-  where
-    tyNameToCtorName :: Qualified (ProperName 'TypeName) -> Qualified (ProperName 'ConstructorName)
-    tyNameToCtorName (Qualified qb tNm) = Qualified qb (coerceProperName tNm)
 exprToCoreFn mn ss (Just recT) objUpd@(A.ObjectUpdate obj vs) = wrapTrace ("exprToCoreFn OBJ UPDATE " <> renderValue 100 objUpd) $ do
   obj' <- exprToCoreFn mn ss Nothing obj
   vs' <- traverse (\(lbl, val) -> exprToCoreFn mn ss Nothing val >>= \val' -> pure (lbl, val')) vs
@@ -444,8 +380,6 @@ exprToCoreFn mn ss (Just recT) objUpd@(A.ObjectUpdate obj vs) = wrapTrace ("expr
       (unchangedRecordFields (fmap fst vs) recT)
       vs'
   where
-    -- TODO: Optimize/Refactor Using Data.Set
-    -- Return the unchanged labels of a closed record, or Nothing for other types or open records.
     unchangedRecordFields :: [PSString] -> Type a -> Maybe [PSString]
     unchangedRecordFields updated (TypeApp _ (TypeConstructor _ C.Record) row) =
       collect row
@@ -457,7 +391,7 @@ exprToCoreFn mn ss (Just recT) objUpd@(A.ObjectUpdate obj vs) = wrapTrace ("expr
     unchangedRecordFields _ _ = Nothing
 exprToCoreFn _ _ Nothing objUpd@(A.ObjectUpdate _ _) =
   internalError $ "Error while desugaring object update. No type provided for expression:\n" <> renderValue 100 objUpd
--- Lambda abstraction. See the comments on `instantiatePolyType` above for an explanation of the strategy here.
+-- Lambda abstractions
 exprToCoreFn mn _ (Just t) (A.Abs (A.VarBinder ssb name) v) = wrapTrace ("exprToCoreFn " <> showIdent' name) $
   withInstantiatedFunType mn t $ \a b -> do
     body <- bindLocalVariables [(ssb, name, a, Defined)] $ exprToCoreFn mn ssb (Just b) v
@@ -473,24 +407,13 @@ exprToCoreFn _ _ t lam@(A.Abs _ _) =
       <> show (ppType 100 <$> t)
       <> "\n"
       <> show lam
-{- The App case is substantially complicated by our need to correctly type
-   expressions that contain type class dictionary constructors, specifically expressions like:
-
-   ```
-   (C$Dict :: forall x. {method :: x -> (...)}) -> {method :: x -> (..)}) ({method: f})
-   ````
-
-   Because the dictionary ctor and record of methods it is being applied to
-   are untouched by the PS typechecker, we have to instantiate the
-   quantified variables to conform with the supplied type.
--}
-exprToCoreFn mn ss mTy app@(A.App fun arg)
-  | isDictCtor fun = exprToCoreFn mn ss Nothing arg
+exprToCoreFn mn ss _ app@(A.App fun arg)
+  | isDictCtor fun = exprToCoreFn mn ss Nothing arg 
   | otherwise = wrapTrace "exprToCoreFn APP" $ do
       traceM $ renderValue 100 app
       fun' <- exprToCoreFn mn ss Nothing fun
-      let funTy = exprType fun'
-      traceM $ "app fun:\n" <> ppType 100 funTy <> "\n" <> renderExprStr fun'
+      let funT = exprType fun'
+      traceM $ "app fun:\n" <> ppType 100 funT <> "\n" <> renderExprStr fun'
       arg' <- exprToCoreFn mn ss Nothing arg -- We want to keep the original "concrete" arg type
       traceM $ "app arg:\n" <> ppType 100 (exprType arg') <> "\n" <> renderExprStr arg'
       pure $ App (ss, [], Nothing) fun' arg'
@@ -501,7 +424,6 @@ exprToCoreFn mn ss mTy app@(A.App fun arg)
       _ -> False
 -- Dunno what to do here. Haven't encountered an Unused so far, will need to see one to figure out how to handle them
 exprToCoreFn _ _ _ (A.Unused _) =
-  -- ????? need to figure out what this _is_
   error "Don't know what to do w/ exprToCoreFn A.Unused"
 exprToCoreFn _ _ (Just ty) (A.Var ss ident@(Qualified _ (GenIdent _ _))) =
   wrapTrace ("exprToCoreFn VAR (gen) " <> show ident) $

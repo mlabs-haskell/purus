@@ -1,9 +1,12 @@
 module Language.Purus.Prim.LedgerData where
 
+import Data.Map qualified as M
+
 import Language.PureScript.AST.SourcePos (nullSourceAnn)
 import Language.PureScript.CoreFn.Module (
-  CtorDecl (CtorDecl),
-  DataDecl (DataDecl),
+  CtorDecl (..),
+  DataDecl (..),
+  Datatypes(..)
  )
 import Language.PureScript.Environment (
   DataDeclType (Data),
@@ -38,6 +41,13 @@ import Language.Purus.Prim.Utils (
   sumDecl,
   tuple2Ty, builtinTyCon,
  )
+
+ledgerDatatypes :: Datatypes SourceType SourceType
+ledgerDatatypes = Datatypes (M.fromList ledgerDecls) (M.fromList $ concatMap goCtors ledgerDecls)
+  where
+    goCtors :: (Qualified (ProperName 'TypeName), DataDecl SourceType SourceType)
+            -> [(Qualified Ident, Qualified (ProperName 'TypeName))]
+    goCtors (tn,DataDecl{..}) = map ((,tn) . _cdCtorName) _dDataCtors
 
 -- | Ledger API data declarations, as per https://github.com/IntersectMBO/plutus/blob/master/plutus-ledger-api/src/PlutusLedgerApi/V2.hs
 ledgerDecls :: [(Qualified (ProperName 'TypeName), DataDecl SourceType SourceType)]
