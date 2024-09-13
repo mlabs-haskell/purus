@@ -151,6 +151,8 @@ builtinSubstitutions =
     , (PLC.EqualsData, pirEqualsData)
     , (PLC.IfThenElse, pirIfThenElse)
     , (PLC.NullList, pirNullList)
+    , (PLC.IntegerToByteString, pirI2BS)
+    , (PLC.ByteStringToInteger, pirBS2I)
     ]
 
 tyInt, tyBool, tyByteString, tyData, tyString :: Ty
@@ -238,3 +240,19 @@ pirNullList =
     freshLam' listAppliedTy $ \_ arg -> do
       let nullListFun = PIR.Builtin () PLC.NullList
       pirBoolToBoolean (pirTyInst tv nullListFun # arg)
+
+-- Bool -> Int -> Int -> ByteString
+pirI2BS :: PlutusContext PIRTerm
+pirI2BS = 
+  freshLam tyBool $ \_ b -> do
+    b' <- pirBoolToBoolean b
+    let fun = PIR.Builtin () PLC.IntegerToByteString
+    pure $ fun # b'
+
+-- Bool -> ByteString -> Int
+pirBS2I :: PlutusContext PIRTerm
+pirBS2I = 
+  freshLam tyBool $ \_ b -> do
+    b' <- pirBoolToBoolean b
+    let fun = PIR.Builtin () PLC.ByteStringToInteger
+    pure $ fun # b'

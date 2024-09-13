@@ -1059,5 +1059,6 @@ builtinCxt =
     , PLC.I_mkNilData #@ tyUnit -:> tyBuiltinList tyBuiltinData
     , PLC.I_mkNilPairData #@ tyUnit -:> tyBuiltinList (tyBuiltinPair tyBuiltinData tyBuiltinData)
     -- TODO: the Bls12 crypto primfuns
-    -- NOTE: IntegerToByteString & ByteStringToInteger don't appear to be in the version of PlutusCore we have?
+    , PLC.I_integerToByteString #@ tyBoolean -:> tyInt -:> tyInt -:> tyByteString
+    , PLC.I_byteStringToInteger #@ tyBoolean -:> tyByteString -:> tyInt
     ]
