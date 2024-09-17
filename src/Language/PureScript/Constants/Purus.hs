@@ -21,6 +21,9 @@ $( ctorBaseNames ''DefaultFun >>= \builtins -> TH.declare $ do
       TH.ty "BuiltinList"
       TH.ty "BuiltinByteString"
       TH.ty "BuiltinUnit"
+      TH.ty "BuiltinElementG1"
+      TH.ty "BuiltinElementG2"
+      TH.ty "BuiltinMlResult"
 
       -- We'll need this sooner or later
       TH.ty "AsData"
