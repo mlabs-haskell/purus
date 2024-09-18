@@ -18,7 +18,7 @@ import Language.PureScript.Names (Ident (..), runIdent)
 import Language.PureScript.PSString (PSString)
 import Language.Purus.Debug (
   doTraceM,
-  prettify,
+  prettify, doTrace,
  )
 import Language.Purus.IR (
   Alt (..),
@@ -43,7 +43,7 @@ import Language.Purus.IR.Utils (
   stripSkolems,
   stripSkolemsFromExpr,
   toExp,
-  viaExp,
+  viaExp, unBVar,
  )
 import Language.Purus.Pipeline.Lift.Types (
   Hole (Hole),
@@ -120,8 +120,15 @@ import Prettyprinter (
 
 -}
 deepAnalysis :: Set ToLift -> Map (Ident, Int) (Set (BVar PurusType)) -- high tide, hold priority, crack lion's eye diamond, flashback...
-deepAnalysis toLifts = M.mapWithKey go analyses
+deepAnalysis toLifts = doTrace "analyses" prettyAnalyses
+                       $ doTrace "all lifted" (prettyStr $ S.toList allLiftedDeclIdents)
+                       $ doTrace "deepAnalysis" (prettyStr . M.toList $ S.toList <$> res) res
   where
+    res = M.mapWithKey go analyses
+
+    prettyAnalyses = let bop = M.toList analyses
+                     in concatMap (\(a,(b,c)) -> prettyStr a <> " := " <> prettyStr (S.toList b) <> ", " <> prettyStr (S.toList c) <> "\n") bop
+
     go :: (Ident, Int) -> (Set (Ident, Int), Set (BVar PurusType)) -> Set (BVar PurusType)
     go me (dps, theseUnBoundVars) =
       theseUnBoundVars <> getResult (resolvedDeepChildren S.empty (me, dps))
@@ -160,7 +167,13 @@ deepAnalysis toLifts = M.mapWithKey go analyses
     getLiftedPeerDeps scoped =
       let unscoped = toExp scoped
           allComponentHoleIdents = S.fromList $ mapMaybe (fmap unHole . toHole) (unscoped ^.. cosmos)
-       in S.intersection allLiftedDeclIdents allComponentHoleIdents
+          result = S.intersection allLiftedDeclIdents allComponentHoleIdents 
+          msg = prettify [ "Expression:\n" <> prettyStr unscoped
+                         , "All lifted idents: " <> prettyStr (S.toList allLiftedDeclIdents)
+                         , "All components: " <> prettyStr (S.toList allComponentHoleIdents)
+                         , "Result: " <> prettyStr (S.toList result)
+                         ]
+       in doTrace "getLiftedPeerDeps" msg result 
 
     allLiftedDeclIdents = M.keysSet allNewlyOutOfScopeVars
 
@@ -438,10 +451,10 @@ lift mainNm _e = do
                 visited' = S.insert (bvIdent, bvIx) visited -- NOTE: if something breaks look here
                 (collectedToLift, collectedBody, visited'') = collect visited' dict S.empty S.empty (toExp declbody)
                 collectedDecl = NonRecursive bvIdent bvIx (fromExp . stripSkolemsFromExpr $ collectedBody)
-                here = ToLift S.empty S.empty (S.singleton collectedDecl)
+                --here = ToLift S.empty S.empty (S.singleton collectedDecl)
                 hole = LiftedHoleTerm (runIdent bvIdent) (fromIntegral bvIx) bvTy
                in
-                (S.insert here collectedToLift, hole, visited'')
+                (collectedToLift, hole, visited'')
       LitE t lit -> case lit of
         IntL i -> (S.empty, LitE t (IntL i), visited)
         StringL s -> (S.empty, LitE t (StringL s), visited)
@@ -473,9 +486,10 @@ lift mainNm _e = do
       LetE _decls scoped ->
         let decls = mapBind (const $ viaExp stripSkolemsFromExpr) <$> _decls
             -- boundVarsPlusDecls = foldBinds (\acc (nm,indx) body -> S.insert (BVar indx (expTy' id body) nm) acc) boundVars decls
-            -- vis1 = foldBinds (\vis nm _ -> S.insert nm vis) visited decls
-            (liftedDecls, vis2) = collectFromNestedDeclarations visited boundVars boundTyVars decls
-         in over _1 (liftedDecls <>) $ collect vis2 dict boundVars boundTyVars (toExp scoped)
+            vis1 = foldBinds (\vis nm _ -> S.insert nm vis) visited decls
+            (liftedDecls, vis2) = collectFromNestedDeclarations vis1 boundVars boundTyVars decls
+            here = S.insert (ToLift boundVars boundTyVars $ S.fromList decls) liftedDecls
+         in over _1 (here <>) $ collect vis2 dict boundVars boundTyVars (toExp scoped)
       -- If we run this directly after core desugaring then there should not be any TyInstEs in the AST
       tInst@TyInstE {} ->
         error $
@@ -503,8 +517,7 @@ lift mainNm _e = do
             go :: (Set ToLift, Set (Ident, Int)) -> (Ident, Int) -> MonoScoped -> (Set ToLift, Set (Ident, Int))
             go (liftAcc, visAcc) (nm, indx) scoped =
               let (insideLifted, insideBody, visAcc') = collect visAcc dict termBound typeBound (stripSkolemsFromExpr $ toExp scoped)
-                  here = ToLift termBound typeBound (S.singleton $ NonRecursive nm indx (fromExp insideBody))
-               in (S.insert here (insideLifted <> liftAcc), visAcc')
+               in (insideLifted <> liftAcc, visAcc')
 
         goField ::
           (Set ToLift, [(PSString, MonoExp)], Set (Ident, Int)) ->

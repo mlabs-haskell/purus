@@ -424,3 +424,24 @@ isNullSomeDataList = Builtin.nullList someDataList
 plutusIFTE :: Builtin.BuiltinData
 plutusIFTE = Builtin.ifThenElse True someData (Builtin.trace "BOOM!" someData)
 -}
+
+identitea :: forall (x :: Type). x -> x
+identitea x = x
+
+apIdentitea :: Int
+apIdentitea = identitea 2 
+
+testIdConst :: Int
+testIdConst = identitea (const 5 2)
+  where
+    const :: forall (a :: Type) (b :: Type). a -> b -> a
+    const p q = p 
+
+testForLift' :: Int -> Boolean
+testForLift' x = h x 3
+  where
+    h a b = g a <= 4
+    g a = if h a x then x + x else x * x
+
+testForLiftApplied' :: Boolean
+testForLiftApplied' = testForLift' 101

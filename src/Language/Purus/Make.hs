@@ -84,6 +84,8 @@ import PlutusCore.Evaluation.Result (EvaluationResult(..))
 import PlutusIR.Core.Instance.Pretty.Readable (prettyPirReadable)
 import Debug.Trace (traceM)
 
+import Language.Purus.Pipeline.Lift.Types
+
 -- import Debug.Trace (traceM)
 -- import PlutusIR.Core.Instance.Pretty.Readable (prettyPirReadable)
 
@@ -119,7 +121,7 @@ compile primModule orderedModules mainModuleName mainFunctionName =
     go = do
       (summedModule, dsCxt) <- runDesugarCore $ desugarCoreModules primModule orderedModules
       let
-        traceBracket lbl msg = pure () -- traceM ("\n" <> lbl <> "\n\n" <> msg <> "\n\n")
+        traceBracket lbl msg = traceM ("\n" <> lbl <> "\n\n" <> msg <> "\n\n")
         decls = moduleDecls summedModule
         declIdentsSet = foldBinds (\acc nm _ -> S.insert nm acc) S.empty decls
         couldn'tFindMain n =
@@ -135,12 +137,17 @@ compile primModule orderedModules mainModuleName mainFunctionName =
       -- traceM $ "Found main function Index: " <> show mainFunctionIx
       mainFunctionBody <- note (couldn'tFindMain 2) $ findDeclBodyWithIndex mainFunctionName mainFunctionIx decls
       traceBracket "Found main function body:" (prettyStr mainFunctionBody)
-      inlined <- runInline summedModule $ lift (mainFunctionName, mainFunctionIx) mainFunctionBody >>= inline
+      inlined <- runInline summedModule $ do
+        liftResult <- lift (mainFunctionName, mainFunctionIx) mainFunctionBody
+        traceBracket "free variables in lift result" (prettyStr . M.toList . fmap S.toList $ oosInLiftResult liftResult)
+        inlineResult <- inline liftResult
+        traceBracket "free variables in inline result" (prettyStr .  S.toList $ findOutOfScopeVars inlineResult)
+        pure inlineResult
       traceBracket "Done inlining. Result:" $ prettyStr inlined
       let !instantiated = applyPolyRowArgs $ instantiateTypes inlined
-      traceBracket "Done instantiating types. Result:" $ prettyStr instantiated
+      --traceBracket "Done instantiating types. Result:" $ prettyStr instantiated
       withoutObjects <- instantiateTypes <$> runCounter (desugarObjects instantiated)
-      traceBracket  "Desugared objects. Result:\n" $ prettyStr withoutObjects
+      --traceBracket  "Desugared objects. Result:\n" $ prettyStr withoutObjects
       datatypes <- runCounter $ desugarObjectsInDatatypes (moduleDataTypes summedModule)
       -- traceM "Desugared datatypes"
       runPlutusContext initDatatypeDict $ do
@@ -253,15 +260,15 @@ evalTestModule path = do
     Left err -> error $ "Error while compiling " <> T.unpack (runIdent x) <> "\nReason: " <> err
     Right res -> pure (runIdent x,res)
   evaluated <- flip traverse made $ \(x,e) -> do
-      traceM $ "\n\n---- " <> T.unpack x <> " ----"
-      traceM $ docString (prettyPirReadable e)
+      --traceM $ "\n\n---- " <> T.unpack x <> " ----"
+      --traceM $ docString (prettyPirReadable e)
       res <- fst <$> evaluateTerm e
       pure $ (x,res)
   forM_ evaluated $ \(eNm,eRes) -> case eRes of
     EvaluationFailure -> putStrLn $ "\n\n> FAIL: Failed to evaluate " <> T.unpack eNm
     EvaluationSuccess res -> do
       putStrLn $ "\n\n> SUCCESS: Evaluated " <> T.unpack eNm
-      print $ prettyPirReadable res
+      pure () -- print $ prettyPirReadable res
 
 sanityCheck :: IO () 
 sanityCheck = evalTestModule "tests/purus/passing/Misc/output/Lib/Lib.cfn"
