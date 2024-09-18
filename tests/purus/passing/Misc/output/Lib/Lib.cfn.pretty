@@ -98,6 +98,11 @@ Exports:
   testPrelude1,
   someDataList,
   isNullSomeDataList,
+  identitea,
+  apIdentitea,
+  testIdConst,
+  testForLift',
+  testForLiftApplied',
   testClassInt,
   eqInt,
   eq2IntBoolean,
@@ -543,6 +548,23 @@ isNullSomeDataList =
 irrPattern :: (Prim.Int -> (Prim.Int))
 irrPattern = \(n: Prim.Int) -> (2: Prim.Int)
 
+identitea :: forall (x :: Prim.Type). ((x :: Prim.Type) -> ((x :: Prim.Type)))
+identitea = \(x: (x :: Prim.Type)) -> (x: (x :: Prim.Type))
+
+testIdConst :: Prim.Int
+testIdConst = 
+  let
+    const :: forall (a :: Prim.Type) (b :: Prim.Type). ((a :: Prim.Type) -> (((b :: Prim.Type) -> ((a :: Prim.Type)))))
+    const = 
+      \(p: (a :: Prim.Type)) -> \(q: (b :: Prim.Type)) -> (p: (a :: Prim.Type))
+  in (identitea: forall (x :: Prim.Type). ((x :: Prim.Type) ->
+     ((x :: Prim.Type))))
+     ((const: forall (a :: Prim.Type)
+      (b :: Prim.Type). ((a :: Prim.Type) ->
+      (((b :: Prim.Type) -> ((a :: Prim.Type))))))
+      (5: Prim.Int)
+      (2: Prim.Int))
+
 id :: forall (t :: Prim.Type). ((t :: Prim.Type) -> ((t :: Prim.Type)))
 id = \(x: (t :: Prim.Type)) -> (x: (t :: Prim.Type))
 
@@ -605,6 +627,37 @@ testForLift =
 
 testForLiftApplied :: Prim.Boolean
 testForLiftApplied = (testForLift: (Prim.Int -> (Prim.Boolean))) (2: Prim.Int)
+
+testForLift' :: (Prim.Int -> (Prim.Boolean))
+testForLift' = 
+  \(x: Prim.Int) -> 
+    let
+      h :: (Prim.Int -> ((Prim.Int -> (Prim.Boolean))))
+      h = 
+        \(a: Prim.Int) -> 
+          \(b: Prim.Int) -> 
+            (fakeLT: (Prim.Int -> ((Prim.Int -> (Prim.Boolean)))))
+            ((g: (Prim.Int -> (Prim.Int))) (a: Prim.Int))
+            (4: Prim.Int)
+      g :: (Prim.Int -> (Prim.Int))
+      g = 
+        \(a: Prim.Int) -> 
+          case ((h: (Prim.Int -> ((Prim.Int -> (Prim.Boolean))))) (a: Prim.Int) (x: Prim.Int)) of 
+             True -> 
+               (plus: (Prim.Int -> ((Prim.Int -> (Prim.Int)))))
+               (x: Prim.Int)
+               (x: Prim.Int)
+             _ -> 
+               (multiplyInteger: (Prim.Int -> ((Prim.Int -> (Prim.Int)))))
+               (x: Prim.Int)
+               (x: Prim.Int)
+    in (h: (Prim.Int -> ((Prim.Int -> (Prim.Boolean)))))
+       (x: Prim.Int)
+       (3: Prim.Int)
+
+testForLiftApplied' :: Prim.Boolean
+testForLiftApplied' = 
+  (testForLift': (Prim.Int -> (Prim.Boolean))) (101: Prim.Int)
 
 eq2 :: forall (@a :: Prim.Type) (@b :: Prim.Type). ({ eq2 :: ((a :: Prim.Type) -> (((b :: Prim.Type) -> (Prim.Boolean)))) } -> (((a :: Prim.Type) -> (((b :: Prim.Type) -> (Prim.Boolean))))))
 eq2 = 
@@ -771,6 +824,11 @@ arrForall =
   (id: forall (t :: Prim.Type). ((t :: Prim.Type) -> ((t :: Prim.Type))))
   (Nil: List (forall (a :: Prim.Type). ((a :: Prim.Type) ->
   ((a :: Prim.Type)))))
+
+apIdentitea :: Prim.Int
+apIdentitea = 
+  (identitea: forall (x :: Prim.Type). ((x :: Prim.Type) -> ((x :: Prim.Type))))
+  (2: Prim.Int)
 
 and :: (Prim.Boolean -> ((Prim.Boolean -> (Prim.Boolean))))
 and = 
