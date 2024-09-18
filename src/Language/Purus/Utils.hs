@@ -21,6 +21,10 @@ import Language.Purus.Debug (doTrace)
 import Language.Purus.IR (BVar, BindE (..), Exp)
 import Language.Purus.IR.Utils (IR_Decl, Vars, WithObjects, foldBinds, toExp)
 
+import PlutusCore qualified as PLC
+import UntypedPlutusCore qualified as UPLC
+import PlutusLedgerApi.Common.SerialisedScript (serialiseUPLC)
+
 import Control.Exception (throwIO)
 
 import Data.List (find)
@@ -33,9 +37,19 @@ import Data.Map qualified as M
 import Data.Text (Text)
 import Data.Text qualified as T
 
+import Data.ByteString.Short (ShortByteString (SBS))
+
 import Data.Aeson qualified as Aeson
 
 import Bound (Scope)
+
+-- | Writes UPLC to the given file path.
+serializeUplc ::
+  FilePath -> 
+  UPLC.Term UPLC.NamedDeBruijn PLC.DefaultUni PLC.DefaultFun () -> 
+  IO ()
+serializeUplc fp t = case serialiseUPLC t of 
+  SBS ba -> _
 
 {- IO utility. Reads a CoreFn module from a source file.
 
@@ -46,7 +60,7 @@ decodeModuleIO path =
     Left err -> throwIO $ userError err
     Right modx -> pure modx
 
-decodeModuleBS :: ByteString -> (Module (Bind Ann) PurusType PurusType Ann)
+decodeModuleBS :: ByteString -> Module (Bind Ann) PurusType PurusType Ann
 decodeModuleBS bs = case Aeson.eitherDecodeStrict' bs of
   Left err -> error err
   Right mdl -> mdl 
