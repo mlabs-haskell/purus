@@ -2,8 +2,11 @@
 , fetchFromGitHub
   # e.g. "x86_64-linux"
 , system # : string
+  # deadnix: skip
 , haskellNixNixpkgs # : nixpkgs
+  # deadnix: skip
 , haskellNixOverlay # : overlay
+, inputs
 }:
 
 let
@@ -14,13 +17,16 @@ let
     hash = "sha256-ediFkDOBP7yVquw1XtHiYfuXKoEnvKGjTIAk9mC6qxo=";
   };
 
-  pkgs = import haskellNixNixpkgs {
-    inherit system;
-    overlays = [
-      (import "${iohk-nix}/overlays/crypto")
-      haskellNixOverlay
-    ];
-  };
+  pkgs =
+    import inputs.haskell-nix.inputs.nixpkgs {
+      inherit system;
+      overlays = [
+        inputs.haskell-nix.overlay
+        inputs.iohk-nix.overlays.crypto
+        inputs.iohk-nix.overlays.haskell-nix-crypto
+      ];
+      inherit (inputs.haskell-nix) config;
+    };
 in
 
 { name # : string
@@ -28,6 +34,7 @@ in
 , ghcVersion ? "ghc928" # : string
 , haskellModules ? [ ]
 , externalDependencies ? [ ]
+  # deadnix: skip
 , externalRepositories ? { }
 }:
 let
@@ -59,10 +66,14 @@ let
     name = name;
 
     compiler-nix-name = ghcVersion;
-    inputMap = lib.mapAttrs (_: toString) externalRepositories;
+    inputMap = {
+      "https://input-output-hk.github.io/cardano-haskell-packages" = inputs.CHaP;
+    };
 
     modules = customHackages.modules ++ fixedHaskellModules;
     inherit (customHackages) extra-hackages extra-hackage-tarballs;
+
+    index-state = "2024-06-17T12:18:52Z";
 
     shell = {
       withHoogle = true;
