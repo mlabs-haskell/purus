@@ -582,30 +582,39 @@ binder :: { Binder () }
   | binder1 '::' type { BinderTyped () $1 $2 $3 }
 
 binder1 :: { Binder () }
-  : binder2 { $1 }
-  | binder1 qualOp binder2 { BinderOp () $1 (getQualifiedOpName $2) $3 }
-
-binder2 :: { Binder () }
-  : many(binderAtom) {% toBinderConstructor $1 }
-  | '-' number { uncurry (BinderNumber () (Just $1)) $2 }
+  : binderAtom { $1 }
+  | qualProperName manyOrEmpty(binderVar) {%
+        toBinderConstructor $ BinderConstructor () (getQualifiedProperName $1) [] NE.:| $2
+    }
+  | delim('{', recordBinder, ',', '}') { BinderRecord () $1 }
+  -- TODO(jaredponn): think about this more later.. this gives reduce/reduce conflict
+  -- The problem is with examples like
+  -- @( a   )@
+  -- and
+  -- @( a   ) + @
+  -- where ^ it doesn't know which reduction to do.. give it a bit more thought
+  -- with how to shuffle this around.. 
+  -- | binderVar qualOp binderVar { BinderOp () $1 (getQualifiedOpName $2) $3 }
 
 binderAtom :: { Binder () }
-  : '_' { BinderWildcard () $1 }
-  | ident %shift { BinderVar () $1 }
-  | ident '@' binderAtom { BinderNamed () $1 $2 $3 }
-  | qualProperName { BinderConstructor () (getQualifiedProperName $1) [] }
-  | boolean { uncurry (BinderBoolean ()) $1 }
+  : boolean { uncurry (BinderBoolean ()) $1 }
   | char { uncurry (BinderChar ()) $1 }
   | string { uncurry (BinderString ()) $1 }
   | number { uncurry (BinderNumber () Nothing) $1 }
-  | delim('[', binder, ',', ']') { BinderList () $1 }
-  | delim('{', recordBinder, ',', '}') { BinderRecord () $1 }
-  | '(' binder ')' { BinderParens () (Wrapped $1 $2 $3) }
+  | '-' number { uncurry (BinderNumber () (Just $1)) $2 }
+  | '_' { BinderWildcard () $1 }
+  | ident %shift { BinderVar () $1 }
+  | '(' binder1 ')' { BinderParens () (Wrapped $1 $2 $3) }
+
+binderVar :: { Binder () } 
+  : '_' { BinderWildcard () $1 }
+  | ident %shift { BinderVar () $1 }
+  | '(' binderVar ')' { BinderParens () (Wrapped $1 $2 $3) }
 
 recordBinder :: { RecordLabeled (Binder ()) }
   : label {% fmap RecordPun . toName Ident $ lblTok $1 }
-  | label '=' binder {% addFailure [$2] ErrRecordUpdateInCtr *> pure (RecordPun $ unexpectedName $ lblTok $1) }
-  | label ':' binder { RecordField $1 $2 $3 }
+  | label '=' binderVar {% addFailure [$2] ErrRecordUpdateInCtr *> pure (RecordPun $ unexpectedName $ lblTok $1) }
+  | label ':' binderVar { RecordField $1 $2 $3 }
 
 -- By splitting up the module header from the body, we can incrementally parse
 -- just the header, and then continue parsing the body while still sharing work.
