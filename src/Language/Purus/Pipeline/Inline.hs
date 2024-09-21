@@ -127,6 +127,7 @@ import Control.Monad.State.Strict (StateT, evalStateT, execStateT, MonadTrans (.
 import Debug.Trace (trace)
 
 inline :: LiftResult -> Inline MonoExp
+inline (LiftResult [] bodyE) = pure bodyE 
 inline (LiftResult decls bodyE) = do
   declsPrepared <- inlineInLifted decls
   bodyPrepared  <- inlineWithData' declsPrepared bodyE
@@ -254,7 +255,7 @@ inlineWithData = transformM go''
                       ]
               doTraceM "inlineWithData" msg
               pure e
-            _ -> pure . V . B $ BVar hIx hTy hId
+            _ -> pure . V . B $ BVar hIx hTy hId 
           _ -> pure fv
         V b@B {} -> pure $ V b
         AppE e1 e2 -> AppE <$> go e1 <*> go e2

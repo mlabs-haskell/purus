@@ -53,7 +53,7 @@ import Language.PureScript.Types (
 import Language.Purus.Debug (doTraceM)
 import Language.Purus.IR (
   Ty (..),
-  ppTy,
+  ppTy, Exp,
  )
 import Language.Purus.IR qualified as IR
 import Language.Purus.Pipeline.GenerateDatatypes.Utils (
@@ -64,6 +64,7 @@ import Language.Purus.Pipeline.GenerateDatatypes.Utils (
   mkNewTyVar,
   mkTyName,
   prettyQPN,
+  determineDatatypeDependencies
  )
 import Language.Purus.Pipeline.Monad (
   MonadCounter (next),
@@ -89,6 +90,7 @@ import Control.Lens (
 import Control.Monad.Except (
   MonadError (throwError),
  )
+import Language.Purus.IR.Utils (WithoutObjects, Vars)
 
 {-  Generates PIR datatypes declarations for all of the datatypes in scope
     in the Main module we are compiling and adds them to the monadic context for use
@@ -107,12 +109,16 @@ import Control.Monad.Except (
 
 -}
 generateDatatypes ::
-  Datatypes IR.Kind Ty ->
+  Exp WithoutObjects Ty (Vars Ty) ->
+  Datatypes IR.Kind Ty -> 
   PlutusContext ()
-generateDatatypes datatypes = mkPIRDatatypes datatypes allTypeConstructors
+generateDatatypes e datatypes  = mkPIRDatatypes datatypes' allTypeConstructors
   where
+    datatypes' :: Datatypes IR.Kind Ty
+    datatypes' = determineDatatypeDependencies e datatypes 
+
     allTypeConstructors :: S.Set (Qualified (ProperName 'TypeName))
-    allTypeConstructors = datatypes ^. tyDict . to M.keys . to S.fromList
+    allTypeConstructors = datatypes' ^. tyDict . to M.keys . to S.fromList
 
 mkPIRDatatypes ::
   Datatypes IR.Kind Ty ->

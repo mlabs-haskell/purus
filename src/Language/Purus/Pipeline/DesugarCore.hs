@@ -98,7 +98,6 @@ import Control.Lens (
   (^?),
  )
 
-import Debug.Trace (traceM)
 import Prettyprinter (Pretty (..))
 
 {- This runs the computation in an empty *local* context. The globals (i.e. top level declarations and
@@ -187,7 +186,6 @@ desugarCoreModule inScope imports Module {..} = do
   decls <- bindLocalTopLevelDeclarations decls'
   let allDatatypes = moduleDataTypes <> inScope
   s <- get
-  traceM $ "DesugarContext for " <> prettyStr moduleName <> "\n" <> prettyStr s
   let result = Module {moduleDecls = decls <> imports, moduleDataTypes = allDatatypes, ..}
   -- traceM $ "Desugar Coure output for " <> prettyStr moduleName <> "\n" <> docString (prettyModule result)
   pure result
@@ -224,7 +222,7 @@ desugarCoreDecl ::
   Bind Ann ->
   DesugarCore (BindE PurusType (Exp WithObjects PurusType) (Vars PurusType))
 desugarCoreDecl = \case
-  NonRec _ ident expr -> wrapTrace ("desugarCoreDecl: " <> showIdent' ident) $ do
+  NonRec _ ident expr -> do
     bvix <- bindLocal ident
     s <- view localScope
     let abstr = abstract (matchLet s)
@@ -252,7 +250,6 @@ desugarCoreDecl = \case
     second_pass <-
       traverse
         ( \((ident, bvix), expr) -> do
-            wrapTrace ("desugarCoreDecl: " <> showIdent' ident) $ do
               desugared <- desugarCore expr
               let scoped = abstr desugared
               pure ((ident, bvix), scoped)

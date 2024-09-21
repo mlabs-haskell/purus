@@ -303,8 +303,8 @@ updateAllBinds deepDict prunedBody _binds = do
    introduced in a lambda that occurs in the expression being lifted is an implicit arg.
 -}
 data ScopeSummary = ScopeSummary {
-    liftedVars :: Set (BVar PurusType)
-  , lambdaVars :: Set (BVar PurusType)
+    liftedVars :: Set (Ident,Int)
+  , lambdaVars :: Set (Ident,Int)
   } deriving (Show, Eq, Ord)
 
 stripSkolemsBV :: BVar PurusType -> BVar PurusType
@@ -312,23 +312,23 @@ stripSkolemsBV (BVar i t n) = BVar i (stripSkolems t) n
 
 -- assumes the skolems have been stripped already
 isLiftedVar :: BVar PurusType -> ScopeSummary -> Bool
-isLiftedVar bv (ScopeSummary lv _) = S.member bv lv
+isLiftedVar bv (ScopeSummary lv _) = S.member (unBVar bv) lv
 
 isLambdaVar :: ScopeSummary -> BVar PurusType -> Bool
-isLambdaVar (ScopeSummary _ lamv) bv = S.member bv lamv
+isLambdaVar (ScopeSummary _ lamv) bv = S.member (unBVar bv) lamv
 
 emptyScopeSummary :: ScopeSummary
 emptyScopeSummary = ScopeSummary S.empty S.empty
 
 bindLiftedDecls :: [MonoBind] -> ScopeSummary -> ScopeSummary
 bindLiftedDecls bnds (ScopeSummary liftedVs lamVs) =
-  let newLifted = foldBinds (\acc (nm,idx) body -> S.insert (BVar idx (stripSkolems $ expTy' id body) nm) acc) liftedVs bnds
+  let newLifted = foldBinds (\acc (nm,idx) _ -> S.insert (nm,idx) acc) liftedVs bnds
   in  ScopeSummary newLifted lamVs
 
 -- also used for "pseudo-lambdas" in pattern binders
 bindLambdaVars :: [BVar PurusType] -> ScopeSummary -> ScopeSummary
 bindLambdaVars bvs (ScopeSummary liftedVs lamVs) =
-  let newLamVs = foldl' (\acc bv -> S.insert (stripSkolemsBV bv) acc) lamVs bvs
+  let newLamVs = foldl' (\acc bv -> S.insert (unBVar bv) acc) lamVs bvs
   in ScopeSummary liftedVs newLamVs
 
 mkToLift :: ScopeSummary -> Set (BVar PurusType) -> Ident -> Int -> MonoScoped  -> ToLift
@@ -355,8 +355,8 @@ lift ::
   MonoExp ->
   Inline LiftResult -- we don't put the expression back together yet b/c it's helpful to keep the pieces separate for monomorphization
 lift mainNm _e = do
-  e' <- handleSelfRecursive mainNm _e
-  e  <- embedMain e'
+  e' <-  handleSelfRecursive mainNm _e
+  e  <- stripSkolemsFromExpr <$> embedMain e'
   let (toLift, prunedExp) = collect emptyScopeSummary e
       deepDict = deepAnalysis toLift
       liftThese = toLiftToDecl <$> S.toList toLift
@@ -372,21 +372,22 @@ lift mainNm _e = do
     embedMain :: MonoExp -> Inline MonoExp
     embedMain e = do
       deps <- determineTopLevelDependencies e
-      let res =  LetE deps (fromExp e)
+      let res | null deps = e
+              | otherwise = LetE deps (fromExp e)
       traceM $ "embedMain res:\n" <> prettyStr res
       pure res 
 
     handleSelfRecursive :: (Ident,Int) -> MonoExp -> Inline MonoExp
-    handleSelfRecursive nm e
+    handleSelfRecursive nm@(enm,eix) e
       | not (uncurry containsBVar nm (fromExp e)) = pure e
-      | otherwise = do
+      | otherwise = pure . V . B $ BVar eix (expTy id e) enm {- -do
           let (mnNm, mnIx) = nm
           u <- next
           let uTxt = T.pack (show u)
               newNm = case mnNm of
-                Ident t -> Ident $ t <> "$" <> uTxt
-                GenIdent (Just t) i -> GenIdent (Just $ t <> "$" <> uTxt) i -- we only care about a unique ord property for the maps
-                GenIdent Nothing i -> GenIdent (Just $ "$" <> uTxt) i
+                Ident t -> Ident $ t <> "$B" <> uTxt
+                GenIdent (Just t) i -> GenIdent (Just $ t <> "$B" <> uTxt) i -- we only care about a unique ord property for the maps
+                GenIdent Nothing i -> GenIdent (Just $ "$B" <> uTxt) i
                 other -> other
               eTy = expTy id e
               f = \case
@@ -401,12 +402,12 @@ lift mainNm _e = do
               syntheticPrimeBinding = ((newNm, u), syntheticPrimeBody)
               bindingGroup = Recursive [syntheticMainBinding, syntheticPrimeBinding]
           pure $ LetE [bindingGroup] syntheticPrimeBody
-
+-}
     collect ::
       ScopeSummary ->
       MonoExp ->
       (Set ToLift, MonoExp)
-    collect scope me = trace "collect" $ case me of
+    collect scope me = case me of
       -- we ignore free variables. For us, a free variable more or less represents "shouldn't/can't be inlined"
       V fv@F {} -> (S.empty, V fv)
       V b@(B (stripSkolemsBV -> bv)) ->
@@ -429,15 +430,14 @@ lift mainNm _e = do
         let (lift1,ex') = collect scope ex
             (lift2,flds') = collectFields scope flds
         in (lift1 <> lift2, ObjectUpdateE x ty ex' copy flds')
-      -- we *should* be OK to ignore type scope
       TyAbs tv ex -> TyAbs tv <$> collect scope ex
       LamE bv body ->
         let newScope = bindLambdaVars [bv] scope
             (lift1,body') =  asExp body $ collect newScope
         in (lift1,LamE bv $ fromExp body')
       LetE _decls body ->
-        let peers    = foldBinds (\acc (nm,indx) body ->
-                                    let bv = stripSkolemsBV $ BVar indx (expTy' id body) nm
+        let peers    = foldBinds (\acc (nm,indx) body'' ->
+                                    let bv = stripSkolemsBV $ BVar indx (expTy' id body'') nm
                                     in S.insert bv acc
                                    ) S.empty _decls 
             newScope = bindLiftedDecls _decls scope
@@ -497,7 +497,7 @@ determineTopLevelDependencies :: MonoExp -> Inline [MonoBind]
 determineTopLevelDependencies e = do
     modDecls <- asks moduleDecls
     let modDeclMap = foldBinds (\acc nm body -> M.insert nm body acc) M.empty modDecls
-        usedIdents = execState  (go modDeclMap e)  S.empty
+        usedIdents = execState  (go modDeclMap e) S.empty
     traceM $ "top level idents " <> prettyStr (S.toList usedIdents)
     pure $ foldl' (\acc (nm,indx) -> NonRecursive nm indx (modDeclMap M.! (nm,indx)):acc) [] usedIdents
   where

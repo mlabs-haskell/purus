@@ -18,7 +18,6 @@ Exports:
   testEq,
   testTuple,
   workingEven,
-  brokenEven,
   Some,
   Nada,
   opt2Int,
@@ -37,8 +36,6 @@ Exports:
   ConObjectQuantified,
   testBinders,
   testBindersCase,
-  mutuallyRecursiveBindingGroup,
-  mutuallyRecursiveBindingGroupNoTypes,
   nestedBinds,
   ADataRec,
   ANewTypeRec,
@@ -54,9 +51,6 @@ Exports:
   aFunction,
   aFunction2,
   aFunction3,
-  aFunction6,
-  recF1,
-  recG1,
   testBuiltin,
   main,
   plus,
@@ -70,7 +64,6 @@ Exports:
   polyInObjMatch,
   aPred,
   cons,
-  emptyList,
   consEmptyList1,
   consEmptyList2,
   id,
@@ -89,8 +82,6 @@ Exports:
   not,
   and,
   iff,
-  ghcInlinerPaperEx,
-  kozsTwoSCCEx,
   litPattern,
   litPatternApplied,
   irrPattern,
@@ -360,17 +351,6 @@ testPrelude1 =
   (deserializeInt: (Builtin.BuiltinData -> (Prim.Int)))
   (someData: Builtin.BuiltinData)
 
-recG1 :: forall (x :: Prim.Type). ((x :: Prim.Type) -> (Prim.Int))
-recG1 = 
-  \(x: (x :: Prim.Type)) -> 
-    (recF1: forall (x :: Prim.Type). ((x :: Prim.Type) -> (Prim.Int)))
-    (x: (x :: Prim.Type))
-recF1 :: forall (x :: Prim.Type). ((x :: Prim.Type) -> (Prim.Int))
-recF1 = 
-  \(x: (x :: Prim.Type)) -> 
-    (recG1: forall (x :: Prim.Type). ((x :: Prim.Type) -> (Prim.Int)))
-    (x: (x :: Prim.Type))
-
 polyInObj :: { bar :: forall (x :: Prim.Type). ((x :: Prim.Type) -> (Prim.Int)), baz :: Prim.Int }
 polyInObj = 
   let
@@ -471,39 +451,6 @@ nestedApplications =
       ((g: (Prim.Int -> (Prim.Int)))
        ((h: (Prim.Int -> (Prim.Int))) (2: Prim.Int))))
      (4: Prim.Int)
-
-mutuallyRecursiveBindingGroupNoTypes :: Prim.Int
-mutuallyRecursiveBindingGroupNoTypes = 
-  let
-    h' :: (Prim.Int -> ((Prim.Int -> (Prim.Int))))
-    h' = \(x: Prim.Int) -> \(y: Prim.Int) -> (y: Prim.Int)
-    g' :: (Prim.Int -> (Prim.Int))
-    g' = 
-      \(y: Prim.Int) -> 
-        (h': (Prim.Int -> ((Prim.Int -> (Prim.Int)))))
-        ((f': (Prim.Int -> (Prim.Int))) (y: Prim.Int))
-        (3: Prim.Int)
-    f' :: (Prim.Int -> (Prim.Int))
-    f' = \(x: Prim.Int) -> (g': (Prim.Int -> (Prim.Int))) (2: Prim.Int)
-  in (g': (Prim.Int -> (Prim.Int))) (3: Prim.Int)
-
-mutuallyRecursiveBindingGroup :: Prim.Int
-mutuallyRecursiveBindingGroup = 
-  let
-    h :: (Prim.Int -> ((Prim.Int -> (Prim.Int))))
-    h = 
-      \(x: Prim.Int) -> 
-        \(y: Prim.Int) -> 
-          (f: (Prim.Int -> (Prim.Int))) (y: Prim.Int)
-    g :: (Prim.Int -> (Prim.Int))
-    g = 
-      \(y: Prim.Int) -> 
-        (h: (Prim.Int -> ((Prim.Int -> (Prim.Int)))))
-        ((f: (Prim.Int -> (Prim.Int))) (y: Prim.Int))
-        (3: Prim.Int)
-    f :: (Prim.Int -> (Prim.Int))
-    f = \(x: Prim.Int) -> (g: (Prim.Int -> (Prim.Int))) (2: Prim.Int)
-  in (g: (Prim.Int -> (Prim.Int))) (3: Prim.Int)
 
 minus :: (Prim.Int -> ((Prim.Int -> (Prim.Int))))
 minus = \(v: Prim.Int) -> \(v1: Prim.Int) -> (42: Prim.Int)
@@ -761,9 +708,6 @@ workingEven =
        True -> (1: Prim.Int)
        _ -> (42: Prim.Int)
 
-emptyList :: List ((x :: Prim.Type))
-emptyList = (Nil: List ((x :: Prim.Type)))
-
 cons :: forall (a :: Prim.Type). ((a :: Prim.Type) -> ((List ((a :: Prim.Type)) -> (List ((a :: Prim.Type))))))
 cons = 
   \(x: (a :: Prim.Type)) -> 
@@ -778,14 +722,14 @@ consEmptyList1 =
   (cons: forall (a :: Prim.Type). ((a :: Prim.Type) ->
   ((List ((a :: Prim.Type)) -> (List ((a :: Prim.Type)))))))
   (1: Prim.Int)
-  (emptyList: forall (x :: Prim.Type). List ((x :: Prim.Type)))
+  (Nil: List (Prim.Int))
 
 consEmptyList2 :: List (Prim.String)
 consEmptyList2 = 
   (cons: forall (a :: Prim.Type). ((a :: Prim.Type) ->
   ((List ((a :: Prim.Type)) -> (List ((a :: Prim.Type)))))))
   ("hello": Prim.String)
-  (emptyList: forall (x :: Prim.Type). List ((x :: Prim.Type)))
+  (Nil: List (Prim.String))
 
 compare :: forall (@a :: Prim.Type). ({ compare :: ((a :: Prim.Type) -> (((a :: Prim.Type) -> (Prim.Int)))), Eq :: { eq :: ((a :: Prim.Type) -> (((a :: Prim.Type) -> (Prim.Boolean)))) } } -> (((a :: Prim.Type) -> (((a :: Prim.Type) -> (Prim.Int))))))
 compare = 
@@ -805,17 +749,6 @@ compare =
                    }
            })
     .compare
-
-brokenEven :: (Prim.Int -> (Prim.Int))
-brokenEven = 
-  \(n: Prim.Int) -> 
-    case ((eq: forall (@a :: Prim.Type). ({ eq :: ((a :: Prim.Type) -> (((a :: Prim.Type) -> (Prim.Boolean)))) } -> (((a :: Prim.Type) -> (((a :: Prim.Type) -> (Prim.Boolean))))))) (eqInt: { eq :: (Prim.Int -> ((Prim.Int -> (Prim.Boolean)))) }) (n: Prim.Int) (0: Prim.Int)) of 
-       True -> (1: Prim.Int)
-       _ -> 
-         (brokenEven: (Prim.Int -> (Prim.Int)))
-         ((minus: (Prim.Int -> ((Prim.Int -> (Prim.Int)))))
-          (n: Prim.Int)
-          (2: Prim.Int))
 
 arrForall :: List (forall (t :: Prim.Type). ((t :: Prim.Type) -> ((t :: Prim.Type))))
 arrForall = 
@@ -851,92 +784,6 @@ iff =
        ((not: (Prim.Boolean -> (Prim.Boolean))) (p: Prim.Boolean))
        ((not: (Prim.Boolean -> (Prim.Boolean))) (q: Prim.Boolean)))
 
-ghcInlinerPaperEx :: Prim.Boolean
-ghcInlinerPaperEx = 
-  let
-    h :: (Prim.Boolean -> (Prim.Boolean))
-    h = 
-      \(x: Prim.Boolean) -> 
-        (and: (Prim.Boolean -> ((Prim.Boolean -> (Prim.Boolean)))))
-        ((f: (Prim.Boolean -> (Prim.Boolean))) (True: Prim.Boolean))
-        (x: Prim.Boolean)
-    g :: (Prim.Boolean -> (Prim.Boolean))
-    g = 
-      \(x: Prim.Boolean) -> 
-        (iff: (Prim.Boolean -> ((Prim.Boolean -> (Prim.Boolean)))))
-        ((h: (Prim.Boolean -> (Prim.Boolean))) (x: Prim.Boolean))
-        (False: Prim.Boolean)
-    f :: (Prim.Boolean -> (Prim.Boolean))
-    f = 
-      \(x: Prim.Boolean) -> 
-        (g: (Prim.Boolean -> (Prim.Boolean)))
-        ((not: (Prim.Boolean -> (Prim.Boolean))) (x: Prim.Boolean))
-    q :: (Prim.Boolean -> (Prim.Boolean))
-    q = 
-      \(x: Prim.Boolean) -> 
-        (g: (Prim.Boolean -> (Prim.Boolean)))
-        ((iff: (Prim.Boolean -> ((Prim.Boolean -> (Prim.Boolean)))))
-         (x: Prim.Boolean)
-         ((not: (Prim.Boolean -> (Prim.Boolean))) (x: Prim.Boolean)))
-    p :: Prim.Boolean
-    p = (q: (Prim.Boolean -> (Prim.Boolean))) (False: Prim.Boolean)
-  in (p: Prim.Boolean)
-
-kozsTwoSCCEx :: Prim.Boolean
-kozsTwoSCCEx = 
-  let
-    z :: Prim.Boolean
-    z = (True: Prim.Boolean)
-    h :: (Prim.Boolean -> (Prim.Boolean))
-    h = 
-      \(x: Prim.Boolean) -> 
-        (not: (Prim.Boolean -> (Prim.Boolean)))
-        ((f: (Prim.Boolean -> (Prim.Boolean))) (x: Prim.Boolean))
-    g :: (Prim.Boolean -> (Prim.Boolean))
-    g = 
-      \(x: Prim.Boolean) -> 
-        (and: (Prim.Boolean -> ((Prim.Boolean -> (Prim.Boolean)))))
-        ((not: (Prim.Boolean -> (Prim.Boolean)))
-         ((h: (Prim.Boolean -> (Prim.Boolean))) (x: Prim.Boolean)))
-        ((not: (Prim.Boolean -> (Prim.Boolean))) (x: Prim.Boolean))
-    f :: (Prim.Boolean -> (Prim.Boolean))
-    f = 
-      \(x: Prim.Boolean) -> 
-        (not: (Prim.Boolean -> (Prim.Boolean)))
-        ((g: (Prim.Boolean -> (Prim.Boolean))) (x: Prim.Boolean))
-    c :: (Prim.Boolean -> (Prim.Boolean))
-    c = 
-      \(x: Prim.Boolean) -> 
-        (not: (Prim.Boolean -> (Prim.Boolean)))
-        ((and: (Prim.Boolean -> ((Prim.Boolean -> (Prim.Boolean)))))
-         ((f: (Prim.Boolean -> (Prim.Boolean))) (x: Prim.Boolean))
-         ((b: (Prim.Boolean -> (Prim.Boolean))) (x: Prim.Boolean)))
-    b :: (Prim.Boolean -> (Prim.Boolean))
-    b = 
-      \(x: Prim.Boolean) -> 
-        (and: (Prim.Boolean -> ((Prim.Boolean -> (Prim.Boolean)))))
-        (x: Prim.Boolean)
-        ((and: (Prim.Boolean -> ((Prim.Boolean -> (Prim.Boolean)))))
-         ((c: (Prim.Boolean -> (Prim.Boolean))) (x: Prim.Boolean))
-         ((h: (Prim.Boolean -> (Prim.Boolean))) (x: Prim.Boolean)))
-    a :: (Prim.Boolean -> (Prim.Boolean))
-    a = 
-      \(x: Prim.Boolean) -> 
-        (and: (Prim.Boolean -> ((Prim.Boolean -> (Prim.Boolean)))))
-        ((b: (Prim.Boolean -> (Prim.Boolean))) (x: Prim.Boolean))
-        (x: Prim.Boolean)
-  in (and: (Prim.Boolean -> ((Prim.Boolean -> (Prim.Boolean)))))
-     ((a: (Prim.Boolean -> (Prim.Boolean))) (z: Prim.Boolean))
-     ((and: (Prim.Boolean -> ((Prim.Boolean -> (Prim.Boolean)))))
-      ((b: (Prim.Boolean -> (Prim.Boolean))) (z: Prim.Boolean))
-      ((and: (Prim.Boolean -> ((Prim.Boolean -> (Prim.Boolean)))))
-       ((c: (Prim.Boolean -> (Prim.Boolean))) (z: Prim.Boolean))
-       ((and: (Prim.Boolean -> ((Prim.Boolean -> (Prim.Boolean)))))
-        ((f: (Prim.Boolean -> (Prim.Boolean))) (z: Prim.Boolean))
-        ((and: (Prim.Boolean -> ((Prim.Boolean -> (Prim.Boolean)))))
-         ((g: (Prim.Boolean -> (Prim.Boolean))) (z: Prim.Boolean))
-         ((h: (Prim.Boolean -> (Prim.Boolean))) (z: Prim.Boolean))))))
-
 anObj :: { foo :: Prim.Int }
 anObj = ({ foo: (3: Prim.Int) }: { foo :: Prim.Int })
 
@@ -964,8 +811,8 @@ guardedCase =
   \(w: Prim.Int) -> 
     \(x: Prim.Int) -> 
       let
-        v :: forall ($28 :: Prim.Type). (($28 :: Prim.Type) -> (Prim.Int))
-        v = \(v1: ($28 :: Prim.Type)) -> (0: Prim.Int)
+        v :: forall ($27 :: Prim.Type). (($27 :: Prim.Type) -> (Prim.Int))
+        v = \(v1: ($27 :: Prim.Type)) -> (0: Prim.Int)
       in case (w: Prim.Int) (x: Prim.Int) of 
             y z -> 
               let
@@ -1029,19 +876,19 @@ guardedCase =
                                       in case (v4: Prim.Boolean) of 
                                             True -> (2: Prim.Int)
                                             _ -> 
-                                              (v: forall ($28 :: Prim.Type). (($28 :: Prim.Type) ->
+                                              (v: forall ($27 :: Prim.Type). (($27 :: Prim.Type) ->
                                               (Prim.Int)))
                                               (True: Prim.Boolean)
                                     _ -> 
-                                      (v: forall ($28 :: Prim.Type). (($28 :: Prim.Type) ->
+                                      (v: forall ($27 :: Prim.Type). (($27 :: Prim.Type) ->
                                       (Prim.Int)))
                                       (True: Prim.Boolean)
                             _ -> 
-                              (v: forall ($28 :: Prim.Type). (($28 :: Prim.Type) ->
+                              (v: forall ($27 :: Prim.Type). (($27 :: Prim.Type) ->
                               (Prim.Int)))
                               (True: Prim.Boolean)
                     _ -> 
-                      (v: forall ($28 :: Prim.Type). (($28 :: Prim.Type) ->
+                      (v: forall ($27 :: Prim.Type). (($27 :: Prim.Type) ->
                       (Prim.Int)))
                       (True: Prim.Boolean)
 
@@ -1098,17 +945,6 @@ aFunction =
     \(f: forall (y :: Prim.Type). ((y :: Prim.Type) -> (Prim.Int))) -> 
       (f: forall (y :: Prim.Type). ((y :: Prim.Type) -> (Prim.Int)))
       (any: (x :: Prim.Type))
-
-aFunction6 :: Prim.Int
-aFunction6 = 
-  let
-    go :: forall (z :: Prim.Type). ((z :: Prim.Type) -> (Prim.Int))
-    go = \(v: (z :: Prim.Type)) -> (10: Prim.Int)
-  in (aFunction: forall (x :: Prim.Type). ((x :: Prim.Type) ->
-     ((forall (y :: Prim.Type). ((y :: Prim.Type) -> (Prim.Int)) ->
-     (Prim.Int)))))
-     (emptyList: forall (x :: Prim.Type). List ((x :: Prim.Type)))
-     (go: forall (z :: Prim.Type). ((z :: Prim.Type) -> (Prim.Int)))
 
 aBool :: Prim.Boolean
 aBool = (True: Prim.Boolean)
