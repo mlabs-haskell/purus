@@ -26,6 +26,8 @@ import Language.Purus.Pretty.Common
 import Bound (Scope, Var (..))
 import Prettyprinter
 import Data.Map (Map)
+import Control.Lens (cosmos, (^..))
+import Data.Maybe (mapMaybe)
 
 -- sorry Koz i really want to be able to fit type sigs on one line
 type MonoExp = Exp WithObjects PurusType (Vars PurusType)
@@ -102,6 +104,9 @@ toHole :: Exp x t (Vars t) -> Maybe (Hole t)
 toHole (LiftedHoleTerm nm indx ty) = Just $ Hole (Ident nm) (fromIntegral indx) ty
 toHole _ = Nothing
 
+toHoleTermBV :: BVar t -> Exp x t (Vars t)
+toHoleTermBV (BVar i t n) = V (F (LiftedHole (runIdent n) (fromIntegral i) t))
+
 fromHole :: Hole t -> Exp x t (Vars t)
 fromHole (Hole hId hIx hTy) = LiftedHoleTerm (runIdent hId) (fromIntegral hIx) hTy
 
@@ -113,6 +118,12 @@ fillsHole (BVar bvIx _ bvIdent) = \case
 
 unHole :: Hole t -> (Ident, Int)
 unHole (Hole hId hIx _) = (hId, hIx)
+
+containsHole :: forall x t. (Ident,Int) -> Exp x t (Vars t) -> Bool
+containsHole (idnt,indx) e = any matchesHole $ mapMaybe toHole (e ^.. cosmos)
+  where
+    matchesHole :: Hole t -> Bool
+    matchesHole (Hole idnt' indx' _) = idnt' == idnt && indx' == indx
 
 instance Pretty LiftResult where
   pretty (LiftResult decls expr) =
@@ -138,9 +149,10 @@ instance Pretty LiftResult where
    Without this scope information, lifting is impossible.
 -}
 data ToLift = ToLift
-  { varScopeAtDecl :: Set (BVar PurusType)
-  , tyVarScopeAtDecl :: Set (BVar (KindOf PurusType))
-  , declarations :: Set MonoBind
+  { liftedName :: (Ident,Int)
+  , liftedBody :: MonoScoped
+  , implicitArgs :: Set (BVar PurusType)
+  , peers :: Set (BVar PurusType)
   }
   deriving (Show, Eq, Ord)
 
@@ -148,11 +160,11 @@ instance Pretty ToLift where
   pretty ToLift {..} =
     pretty $
       prettify
-        [ "------ToLift-------"
-        , "Var Scope:\n" <> prettyStr (S.toList varScopeAtDecl)
-        , "Ty Var Scope:\n " <> prettyStr (S.toList tyVarScopeAtDecl)
-        , "Decls:\n" <> prettyStr (S.toList declarations)
-        , "-------------------"
+        [ "ToLift:"
+        , "  Name: " <> prettyStr liftedName
+        , "  Decl:\n" <> asExp liftedBody prettyStr
+        , "  Implicit args:\n" <> prettyStr (S.toList implicitArgs)
+        , "  Peers:\n" <> prettyStr (S.toList peers)
         ]
 
 oosInLiftResult :: LiftResult -> Map Ident (Set (BVar PurusType))

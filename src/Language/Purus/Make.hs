@@ -139,9 +139,9 @@ compile primModule orderedModules mainModuleName mainFunctionName =
       traceBracket "Found main function body:" (prettyStr mainFunctionBody)
       inlined <- runInline summedModule $ do
         liftResult <- lift (mainFunctionName, mainFunctionIx) mainFunctionBody
-        traceBracket "free variables in lift result" (prettyStr . M.toList . fmap S.toList $ oosInLiftResult liftResult)
+        traceBracket "lift result" (prettyStr liftResult) --"free variables in lift result" (prettyStr . M.toList . fmap S.toList $ oosInLiftResult liftResult)
         inlineResult <- inline liftResult
-        traceBracket "free variables in inline result" (prettyStr .  S.toList $ findOutOfScopeVars inlineResult)
+        -- traceBracket "free variables in inline result" (prettyStr .  S.toList $ findOutOfScopeVars inlineResult)
         pure inlineResult
       traceBracket "Done inlining. Result:" $ prettyStr inlined
       let !instantiated = applyPolyRowArgs $ instantiateTypes inlined
