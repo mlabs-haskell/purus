@@ -19,6 +19,7 @@ module Language.Purus.IR.Utils (
   traverseBind,
   mapBind,
   foldBinds,
+  foldMBinds,
   flatBinds,
   allDeclIdentifiers,
   traverseAlt,
@@ -37,7 +38,7 @@ module Language.Purus.IR.Utils (
 import Prelude
 
 import Bound (Scope, Var (..), abstract, fromScope)
-import Control.Monad (join)
+import Control.Monad (join, foldM)
 import Data.Void (Void)
 import Language.PureScript.CoreFn.Expr (PurusType)
 import Language.PureScript.CoreFn.TypeLike (TypeLike (KindOf))
@@ -314,6 +315,24 @@ foldBinds f e (x : xs) = case x of
     let e' = foldl' (\acc (nm, b) -> f acc nm b) e recBinds
      in foldBinds f e' xs
 
+foldMBinds ::
+  forall x t m r.
+  Monad m =>
+  ( r ->
+    (Ident, Int) ->
+    Scope (BVar t) (Exp x t) (Vars t) ->
+    m r
+  ) ->
+  r ->
+  [BindE t (Exp x t) (Vars t)] ->
+  m r
+foldMBinds f e [] = pure e
+foldMBinds f e (x : xs) = case x of
+  NonRecursive nm i b -> f e (nm,i) b >>= \e' -> foldMBinds f e' xs
+  Recursive recBinds -> do
+    e' <- foldM (\acc (nm,b) -> f acc nm b) e recBinds
+    foldMBinds f e' xs
+    
 flatBinds :: [BindE t (Exp x t) (Vars t)] -> Map (Ident, Int) (Scope (BVar t) (Exp x t) (Vars t))
 flatBinds = foldBinds (\acc nm scoped -> M.insert nm scoped acc) M.empty
 
