@@ -136,7 +136,7 @@ compile primModule orderedModules mainModuleName mainFunctionName =
       mainFunctionIx <- note (couldn'tFindMain 1) $ dsCxt ^? globalScope . at mainModuleName . folded . at mainFunctionName . folded
       -- traceM $ "Found main function Index: " <> show mainFunctionIx
       mainFunctionBody <- note (couldn'tFindMain 2) $ findDeclBodyWithIndex mainFunctionName mainFunctionIx decls
-      traceBracket "Found main function body:" (prettyStr mainFunctionBody)
+      traceBracket ("Found main function body for " <> prettyStr mainFunctionName <> ":") (prettyStr mainFunctionBody)
       inlined <- runInline summedModule $ do
         liftResult <- lift (mainFunctionName, mainFunctionIx) mainFunctionBody
         traceBracket "lift result" (prettyStr liftResult) --"free variables in lift result" (prettyStr . M.toList . fmap S.toList $ oosInLiftResult liftResult)
@@ -145,17 +145,19 @@ compile primModule orderedModules mainModuleName mainFunctionName =
         pure inlineResult
       traceBracket "Done inlining. Result:" $ prettyStr inlined
       let !instantiated = applyPolyRowArgs $ instantiateTypes inlined
-      --traceBracket "Done instantiating types. Result:" $ prettyStr instantiated
+      traceBracket "Done instantiating types. Result:" $ prettyStr instantiated
       withoutObjects <- instantiateTypes <$> runCounter (desugarObjects instantiated)
-      --traceBracket  "Desugared objects. Result:\n" $ prettyStr withoutObjects
+      traceBracket  "Desugared objects. Result:\n" $ prettyStr withoutObjects
       datatypes <- runCounter $ desugarObjectsInDatatypes (moduleDataTypes summedModule)
-      -- traceM "Desugared datatypes"
+      traceM "Desugared datatypes"
       runPlutusContext initDatatypeDict $ do
-        generateDatatypes datatypes
-        -- traceM "Generated PIR datatypes"
+        generateDatatypes withoutObjects datatypes
+        traceM "Generated PIR datatypes"
         withoutCases <- eliminateCases datatypes withoutObjects
-        -- traceM "Eliminated case expressions. Compiling to PIR..."
-        compileToPIR datatypes withoutCases
+        traceBracket "Eliminated Cases. Result:" $  prettyStr withoutCases
+        pir <- compileToPIR datatypes withoutCases
+        traceBracket "Compiled to PIR. Result: " $ docString (prettyPirReadable pir)
+        pure pir 
 
 -- traceM . docString $ prettyPirReadable pirTerm
 
@@ -252,13 +254,11 @@ evalTestModule path = do
   let toTest :: [Ident]
       toTest = concatMap cfnBindIdents moduleDecls
       nm     = runModuleName moduleName
-      goCompile x = catch @SomeException (pure $ compile syntheticPrim [mdl] moduleName x) $ \err ->
-                      throwIO . userError
-                        $ "Exception thrown when compiling " <> T.unpack (runIdent x)
-                          <> "Error message:\n" <> show err 
+      goCompile  = pure . compile syntheticPrim [mdl] moduleName
   made <- forM toTest $  \x ->  goCompile x >>= \case 
     Left err -> error $ "Error while compiling " <> T.unpack (runIdent x) <> "\nReason: " <> err
     Right res -> pure (runIdent x,res)
+  putStrLn $ "Starting evaluation of: " <> prettyStr (fst <$> made)
   evaluated <- flip traverse made $ \(x,e) -> do
       --traceM $ "\n\n---- " <> T.unpack x <> " ----"
       --traceM $ docString (prettyPirReadable e)
@@ -268,7 +268,7 @@ evalTestModule path = do
     EvaluationFailure -> putStrLn $ "\n\n> FAIL: Failed to evaluate " <> T.unpack eNm
     EvaluationSuccess res -> do
       putStrLn $ "\n\n> SUCCESS: Evaluated " <> T.unpack eNm
-      pure () -- print $ prettyPirReadable res
+      print $ prettyPirReadable res
 
 sanityCheck :: IO () 
 sanityCheck = evalTestModule "tests/purus/passing/Misc/output/Lib/Lib.cfn"
