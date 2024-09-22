@@ -9,7 +9,7 @@ import System.FilePath
 import Language.PureScript qualified as P
 import Data.Set qualified as S
 import Data.Foldable (traverse_)
-import System.Directory 
+import System.Directory
 import System.FilePath.Glob qualified as Glob
 import System.Exit qualified as Exit
 import Data.Function (on)
@@ -19,7 +19,7 @@ import Language.Purus.Eval
 import Language.Purus.Types
 import PlutusCore.Evaluation.Result
 import PlutusIR.Core.Instance.Pretty.Readable (prettyPirReadable)
-import Test.Tasty 
+import Test.Tasty
 import Test.Tasty.HUnit
 import Language.PureScript qualified as PureScript
 import Language.PureScript.CST.Errors qualified as PureScript.CST.Errors
