@@ -1,0 +1,30 @@
+Lib (tests/purus/passing/NonOrphanInstanceFunDepExtra/Lib.purs)
+
+Imported Modules: 
+------------------------------
+  Builtin,
+  Prim
+
+Exports: 
+------------------------------
+  
+
+Re-Exports: 
+------------------------------
+  
+
+Foreign: 
+------------------------------
+  
+
+Datatypes: 
+------------------------------
+newtype C$Dict (f :: Prim.Type) (l :: Prim.Type) (r :: Prim.Type) = 
+  C$Dict ((Prim.Record ({})))
+
+data L  = 
+  
+
+
+Declarations: 
+------------------------------

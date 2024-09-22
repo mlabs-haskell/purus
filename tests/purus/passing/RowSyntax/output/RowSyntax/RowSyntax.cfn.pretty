@@ -1,0 +1,49 @@
+RowSyntax (tests/purus/passing/RowSyntax/RowSyntax.purs)
+
+Imported Modules: 
+------------------------------
+  Builtin,
+  Prim,
+  RowSyntax
+
+Exports: 
+------------------------------
+  RowProxy,
+  aRowProxy,
+  moreFields,
+  isARow'
+
+Re-Exports: 
+------------------------------
+  
+
+Foreign: 
+------------------------------
+  
+
+Datatypes: 
+------------------------------
+newtype IsARow'$Dict (r :: (Prim.Row (Prim.Type))) = 
+  IsARow'$Dict ((Prim.Record ({})))
+
+data RowProxy (r :: (Prim.Row (Prim.Type))) = 
+  RowProxy 
+
+
+Declarations: 
+------------------------------
+isARow' :: (RowSyntax.IsARow'$Dict ((r :: (Prim.Row (Prim.Type)))))
+isARow' = 
+  (IsARow'$Dict: ((Prim.Record ({}@Prim.Type)) ->
+  ((RowSyntax.IsARow'$Dict ((r :: (Prim.Row (Prim.Type))))))))
+  ({  }: (Prim.Record ({}@Prim.Type)))
+
+moreFields :: (RowSyntax.RowProxy (( field1 :: Prim.Int
+, field2 :: Prim.String
+, field3 :: Prim.Boolean )))
+moreFields = 
+  (RowProxy: (RowSyntax.RowProxy
+  ((field1 :: Prim.Int, field2 :: Prim.String, field3 :: Prim.Boolean))))
+
+aRowProxy :: (RowSyntax.RowProxy ((field :: Prim.Int)))
+aRowProxy = (RowProxy: (RowSyntax.RowProxy ((field :: Prim.Int))))

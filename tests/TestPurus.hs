@@ -93,28 +93,23 @@ shouldPass = map (prefix </>) paths
         "4101",
         "4105",
         "4200",
-        -- Fails due to unexpected where on line 1
-        -- "4310",
-        -- "ClassRefSyntax",
+        "4310",
+        "ClassRefSyntax",
         "Coercible",
         "DctorOperatorAlias",
         "Demo",
         "ExplicitImportReExport",
         "ExportExplicit",
         "ExportExplicit2",
-        -- Fails due to unexpected or mismatched indentation on line 51
-        -- "ForeignKind",
+        "ForeignKind",
         "Import",
         "ImportExplicit",
         "ImportQualified",
-        -- Fails in ImportedClassName due to unexpected where on line 1
-        -- "InstanceUnnamedSimilarClassName",
+        "InstanceUnnamedSimilarClassName",
         "ModuleDeps",
-        -- Fails due to unexpected where on line 1
-        -- "Misc",
-        -- Fails on line 4 due to unexpected or mismatched indentation
-        -- "NonOrphanInstanceFunDepExtra",
-        -- "NonOrphanInstanceMulti",
+        "Misc",
+        "NonOrphanInstanceFunDepExtra",
+        "NonOrphanInstanceMulti",
         "PendingConflictingImports",
         "PendingConflictingImports2",
         "RedefinedFixity",
@@ -122,11 +117,9 @@ shouldPass = map (prefix </>) paths
         "ResolvableScopeConflict",
         "ResolvableScopeConflict2",
         "ResolvableScopeConflict3",
-        -- Fails on line 10 due to unexpected or mismatched indentation
-        -- "RowSyntax",
-        "ShadowedModuleName"
-        -- Fails due to unexpected where on line 5 
-        -- "TransitiveImport"
+        "RowSyntax",
+        "ShadowedModuleName",
+        "TransitiveImport"
         -- "prelude"
       ]
 
