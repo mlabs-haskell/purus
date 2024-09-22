@@ -91,6 +91,34 @@ compileForTests PSCMakeOptions{..} = do
       P.make makeActions (map snd ms)
     printWarningsAndErrors (P.optionsVerboseErrors pscmOpts) pscmJSONErrors moduleFiles makeWarnings makeErrors
 
+-- | Generalizes 'compileForTests'
+--
+-- NOTE(jaredponn): the implementation is mostly duplicated code from
+-- 'compileForTests'
+compileForTestsWith :: 
+    PSCMakeOptions -> 
+    -- | See the implementation of 'compileForTests' for what these parameters
+    -- are -- in particular, see the use of the 'printWarningsAndErrors' function
+    ([(FilePath, T.Text)] -> P.MultipleErrors -> Either P.MultipleErrors [P.ExternsFile] -> IO ()) -> 
+    IO ()
+compileForTestsWith PSCMakeOptions{..} f = do
+  included <- globWarningOnMisses warnFileTypeNotFound pscmInput
+  excluded <- globWarningOnMisses warnFileTypeNotFound pscmExclude
+  let input = included \\ excluded
+  if (null input) then  do
+    hPutStr stderr $ unlines [ "purs compile: No input files."
+                             , "Usage: For basic information, try the `--help' option."
+                             ]
+  else do
+    moduleFiles <- readUTF8FilesT input
+    (makeErrors, makeWarnings) <- runMake pscmOpts $ do
+      ms <- CST.parseModulesFromFiles id moduleFiles
+      let filePathMap = M.fromList $ map (\(fp, pm) -> (P.getModuleName $ CST.resPartial pm, Right fp)) ms
+      foreigns <- inferForeignModules filePathMap
+      let makeActions = buildMakeActions pscmOutputDir filePathMap foreigns pscmUsePrefix
+      P.make makeActions (map snd ms)
+    f moduleFiles makeWarnings makeErrors
+
 warnFileTypeNotFound :: String -> IO ()
 warnFileTypeNotFound = hPutStrLn stderr . ("purs compile: No files found using pattern: " ++)
 
