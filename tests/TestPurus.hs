@@ -224,9 +224,11 @@ shouldParseError = map (Arrow.first (prefix </>)) paths
     paths = [
         ("NestedConstructors", "Unexpected token 'S' at line 7, column 16"),
         ("CharLiteralInBinaryOp", "Unexpected token ''0'' at line 9, column 18"),
+        ("CharLiteralInConstructor", "Unexpected token ''_'' at line 9, column 24"),
         ("NumericLiteralInBinaryOp", "Unexpected token '0' at line 9, column 16"),
         ("NumericLiteralInConstructor", "Unexpected token '0' at line 6, column 14"),
-        ("CharLiteralInConstructor", "Unexpected token ''_'' at line 9, column 24"),
+        ("StringLiteralInConstructor", "Unexpected token '\"\"' at line 6, column 15"),
+        ("StringLiteralInBinaryOp", "Unexpected token '\"\"' at line 9, column 18"),
         ("NestedBinaryOps", "Unexpected token '_' at line 4, column 24"),
         ("VariableAsConstructor", "Unexpected token 'b' at line 4, column 13")
       ]

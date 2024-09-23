@@ -611,9 +611,7 @@ binderAtom :: { Binder () }
   : number { uncurry (BinderNumber () Nothing) $1 }
   | char { uncurry (BinderChar ()) $1 }
   | boolean { uncurry (BinderBoolean ()) $1 }
-  -- TODO(jaredponn): for now, we forbid @string@ as per the
-  -- specification
-  -- > | string { uncurry (BinderString ()) $1 }
+  | string { uncurry (BinderString ()) $1 }
   | '-' number { uncurry (BinderNumber () (Just $1)) $2 }
   | '_' { BinderWildcard () $1 }
   | ident %shift { BinderVar () $1 }
