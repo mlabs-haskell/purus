@@ -115,3 +115,20 @@ someCharLiteralCases = case 'a' of
     'b' -> True
     ('c') -> True
     _ -> True
+
+someStringLiteralPatterns :: String -> Boolean
+someStringLiteralPatterns "" = True
+someStringLiteralPatterns "a" = True
+someStringLiteralPatterns "banana" = True
+someStringLiteralPatterns ("") = True
+someStringLiteralPatterns (("a")) = True
+someStringLiteralPatterns ("banana") = True
+someStringLiteralPatterns _ = True
+
+someStringLiteralCases :: Boolean
+someStringLiteralCases = case "" of
+    "" -> True
+    "a" -> True
+    ("b") -> True
+    ("ccc") -> True
+    _ -> True

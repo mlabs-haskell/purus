@@ -21,7 +21,9 @@ Exports:
   someConstructorCases,
   someNumericLiteralCases,
   someNumericLiteralPatterns,
-  someCharLiteralCases
+  someCharLiteralCases,
+  someStringLiteralPatterns,
+  someStringLiteralCases
 
 Re-Exports: 
 ------------------------------
@@ -45,6 +47,27 @@ data Tuple (a :: Prim.Type) (b :: Prim.Type) =
 
 Declarations: 
 ------------------------------
+someStringLiteralPatterns :: (Prim.String -> (Prim.Boolean))
+someStringLiteralPatterns = 
+  \(v: Prim.String) -> 
+    case (v: Prim.String) of 
+       "" -> (True: Prim.Boolean)
+       "a" -> (True: Prim.Boolean)
+       "banana" -> (True: Prim.Boolean)
+       "" -> (True: Prim.Boolean)
+       "a" -> (True: Prim.Boolean)
+       "banana" -> (True: Prim.Boolean)
+       _ -> (True: Prim.Boolean)
+
+someStringLiteralCases :: Prim.Boolean
+someStringLiteralCases = 
+  case ("": Prim.String) of 
+     "" -> (True: Prim.Boolean)
+     "a" -> (True: Prim.Boolean)
+     "b" -> (True: Prim.Boolean)
+     "ccc" -> (True: Prim.Boolean)
+     _ -> (True: Prim.Boolean)
+
 someNumericLiteralPatterns :: (Prim.Int -> (Prim.Boolean))
 someNumericLiteralPatterns = 
   \(v: Prim.Int) -> 
