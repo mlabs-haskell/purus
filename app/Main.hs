@@ -15,7 +15,8 @@ import Data.Foldable (fold)
 import Options.Applicative qualified as Opts
 import System.Environment (getArgs)
 import System.IO qualified as IO
-import Text.PrettyPrint.ANSI.Leijen qualified as Doc
+import Prettyprinter as PP
+import Prettyprinter.Render.Terminal (AnsiStyle) 
 import Version (versionString)
 
 
@@ -31,19 +32,14 @@ main = do
     infoModList = Opts.fullDesc <> headerInfo <> footerInfo
     headerInfo  = Opts.progDesc "The PureScript compiler and tools"
     footerInfo  = Opts.footerDoc (Just footer)
-
-    footer =
-      mconcat
-        [ para $
-            "For help using each individual command, run `purs COMMAND --help`. " ++
-            "For example, `purs compile --help` displays options specific to the `compile` command."
-        , Doc.hardline
-        , Doc.hardline
-        , Doc.text $ "purs " ++ versionString
-        ]
-
-    para :: String -> Doc.Doc
-    para = foldr (Doc.</>) Doc.empty . map Doc.text . words
+    footer :: Doc AnsiStyle
+    footer = PP.vsep [
+      "For help using each individual command, run `purs COMMAND --help`.",
+      "For example, `purs compile --help` displays options specific to the `compile` command.",
+      "",
+      "",
+      "purs " <> PP.pretty versionString
+      ]
 
     -- | Displays full command help when invoked with no arguments.
     execParserPure :: Opts.ParserInfo a -> [String] -> Opts.ParserResult a

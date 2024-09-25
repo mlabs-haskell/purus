@@ -113,7 +113,7 @@ import Control.Monad.Except (
   MonadError (throwError),
  )
 
-import PlutusCore.Name (Unique (Unique))
+import PlutusCore.Name.Unique (Unique (Unique))
 import PlutusIR (
   Name (Name),
  )

@@ -156,7 +156,7 @@ common defaults
     -- modules must be parseable by this library otherwise the compiler
     -- will reject them. It should therefore always be pinned to a single
     -- specific version.
-    aeson >=2.0.3.0 && <2.1,
+    aeson,
     aeson-better-errors >=0.9.1.1 && <0.10,
     algebraic-graphs ==0.7,
     ansi-terminal >=0.11.3 && <0.12,
@@ -198,29 +198,30 @@ common defaults
     pattern-arrows >=0.0.2 && <0.1,
     process >= 1.6.13.1 && <2.0,
     prettyprinter ==1.7.1,
+    prettyprinter-ansi-terminal,
     protolude >=0.3.1 && <0.4,
     regex-tdfa >=1.3.1.2 && <1.4,
     safe >=0.3.19 && <0.4,
     scientific >=0.3.7.0 && <0.4,
     semigroups ==0.20.*,
-    semialign >=1.2.0.1 && <1.3,
+    semialign,
     sourcemap >=0.1.7 && <0.2,
     random ==1.2.1.2,
     stm >=2.5.0.2 && <2.6,
     stringsearch >=0.3.6.6 && <0.4,
     template-haskell >=2.18.0.0 && <2.19,
     text >=1.2.5.0 && <2.3,
-    th-abstraction ==0.4.5.0,
-    these >=1.1.1.1 && <1.2,
+    th-abstraction,
+    these,
     time >=1.11.1.1 && <1.12,
     transformers >=0.5.6.2 && <0.6,
     transformers-base >=0.4.6 && <0.5,
     utf8-string >=1.0.2 && <1.1,
-    vector >=0.12.3.1 && <0.13,
+    vector,
     witherable >=0.4.2 && <0.5,
-    plutus-core ==1.22.0.0,
+    plutus-core ==1.23.0.0,
     plutus-core:plutus-ir,
-    plutus-ledger-api ==1.22.0.0
+    plutus-ledger-api ==1.23.0.0
 
 library
   import: defaults
@@ -452,7 +453,7 @@ executable purs
     ansi-wl-pprint >=0.6.9 && <0.7,
     exceptions >=0.10.4 && <0.11,
     network >=3.1.2.7 && <3.2,
-    optparse-applicative >=0.17.0.0 && <0.18,
+    optparse-applicative,
     purescript,
     purs-lib
   if flag(release)
@@ -474,7 +475,7 @@ library purs-lib
     ansi-wl-pprint >=0.6.9 && <0.7,
     exceptions >=0.10.4 && <0.11,
     network >=3.1.2.7 && <3.2,
-    optparse-applicative >=0.17.0.0 && <0.18,
+    optparse-applicative,
     purescript
   if flag(release)
     cpp-options: -DRELEASE
@@ -513,7 +514,7 @@ test-suite tests
     HUnit >=1.6.2.0 && <1.7,
     newtype >=0.2.2.0 && <0.3,
     QuickCheck >=2.14.2 && <2.15,
-    plutus-core ==1.22.0.0,
+    plutus-core ==1.23.0.0,
     regex-base >=0.94.0.2 && <0.95,
     split >=0.2.3.4 && <0.3,
     typed-process >=0.2.10.1 && <0.3,
