@@ -19,8 +19,10 @@
     haskell-nix = {
       url = "github:input-output-hk/haskell.nix";
     };
-    CHaP.url = "github:input-output-hk/cardano-haskell-packages?ref=repo";
-    CHaP.flake = false;
+    CHaP = {
+      url = "github:intersectMBO/cardano-haskell-packages?ref=repo";
+      flake = false;
+    };
     iohk-nix.url = "github:input-output-hk/iohk-nix";
     iohk-nix.inputs.nixpkgs.follows = "haskell-nix/nixpkgs";
   };

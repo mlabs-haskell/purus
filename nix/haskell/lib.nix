@@ -34,7 +34,6 @@ in
 , ghcVersion ? "ghc928" # : string
 , haskellModules ? [ ]
 , externalDependencies ? [ ]
-  # deadnix: skip
 , externalRepositories ? { }
 }:
 let
@@ -66,9 +65,7 @@ let
     name = name;
 
     compiler-nix-name = ghcVersion;
-    inputMap = {
-      "https://input-output-hk.github.io/cardano-haskell-packages" = inputs.CHaP;
-    };
+    inputMap = externalRepositories;
 
     modules = customHackages.modules ++ fixedHaskellModules;
     inherit (customHackages) extra-hackages extra-hackage-tarballs;
