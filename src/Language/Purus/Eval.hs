@@ -36,9 +36,11 @@ import PlutusCore.Evaluation.Machine.Ck (
  )
 import PlutusCore.Evaluation.Machine.ExBudgetingDefaults qualified as PLC
 import PlutusIR (Name, Program (Program))
-import PlutusIR.Compiler (CompilationCtx, Compiling, compileProgram, compileToReadable, toDefaultCompilationCtx)
+import PlutusIR.Compiler (CompilationCtx, Compiling, compileProgram, compileToReadable, toDefaultCompilationCtx, ccOpts)
 import PlutusIR.Compiler.Provenance (Provenance (Original))
+import PlutusIR.Compiler.Types (coDoSimplifierRemoveDeadBindings)
 import PlutusIR.Error (Error)
+import Control.Lens (over, set)
 
 type PLCProgram uni fun a = PLC.Program PLC.TyName PLC.Name uni fun (Provenance a)
 
@@ -76,10 +78,14 @@ runCompile x =
     res :: Either e b
     res = do
       plcConfig <- getDefTypeCheckConfig (Original ())
-      let ctx = toDefaultCompilationCtx plcConfig
+      let ctx = disableDeadCodeElimination $ toDefaultCompilationCtx plcConfig
       join $ flip runReader ctx $ runQuoteT $ runExceptT $ runExceptT x
    in
     first show res
+ where
+   disableDeadCodeElimination :: CompilationCtx DefaultUni DefaultFun ()
+                              -> CompilationCtx DefaultUni DefaultFun ()
+   disableDeadCodeElimination = set  (ccOpts . coDoSimplifierRemoveDeadBindings ) False
 
 -- temporary list of test cases used to validate compiler behavior
 passing :: [Text]

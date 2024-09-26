@@ -1,0 +1,33 @@
+M1 (tests/purus/passing/CoreFn/ImportExplicit/M1.purs)
+
+Imported Modules: 
+------------------------------
+  Builtin,
+  Prim
+
+Exports: 
+------------------------------
+  X,
+  Y,
+  Z
+
+Re-Exports: 
+------------------------------
+  
+
+Foreign: 
+------------------------------
+  
+
+Datatypes: 
+------------------------------
+data X  = 
+  X 
+  | Y 
+
+data Z  = 
+  Z 
+
+
+Declarations: 
+------------------------------

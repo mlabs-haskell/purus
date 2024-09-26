@@ -44,9 +44,12 @@ import Language.PureScript.Names (coerceProperName, runProperName)
 import Language.PureScript.Names qualified as N
 import Language.PureScript.PSString (mkString, prettyPrintStringJS)
 import Language.PureScript.Types qualified as T
+import Debug.Trace (traceM)
 
 import Data.List (partition)
 import Debug.Trace (trace)
+import Language.PureScript.Constants.Prim qualified as C
+import Language.PureScript.Errors (pattern NullSourceAnn)
 
 type ConvertM a = State (Map Text T.SourceType) a
 
@@ -243,7 +246,15 @@ convertType' withinVta fileName = go
             let nm = getIdent (nameValue a)
             b' <- go b
             bindTv nm b'
-          doBind (TypeVarName (v, a)) = internalError $ "Error: Universally quantified type variable without kind annotation: " <> (Text.unpack . getIdent . nameValue $ a) <> "\nat: " <> show v
+          doBind (TypeVarName (v, a)) = do
+            traceM $  "WARNING: Universally quantified type variable without kind annotation: '"
+                       <> (Text.unpack . getIdent . nameValue $ a)
+                       <> "'  \nat: " <> show v
+                       <> "  defaulting kind to Prim.Type"
+            let nm = getIdent (nameValue a)
+                kType = T.TypeConstructor NullSourceAnn C.Type
+            bindTv nm kType
+
 
           mkForAll a b v t = do
             let ann' = widenLeft (tokAnn $ nameTok a) $ T.getAnnForType t
@@ -255,7 +266,15 @@ convertType' withinVta fileName = go
             bindTv nm b'
             pure $ mkForAll a b' v t
           -- TODO: Fix this better
-          k (TypeVarName (v, a)) t = internalError $ "Error: Universally quantified type variable without kind annotation: " <> (Text.unpack . getIdent . nameValue $ a) <> "\nat: " <> show v
+          k (TypeVarName (v, a)) t = do
+            traceM $  "WARNING: Universally quantified type variable without kind annotation: '"
+                       <> (Text.unpack . getIdent . nameValue $ a)
+                       <> "'  \nat: " <> show v
+                       <> "  defaulting kind to Prim.Type"
+            let nm = getIdent (nameValue a)
+                kType = T.TypeConstructor NullSourceAnn C.Type
+            bindTv nm kType
+            pure $ mkForAll a kType v t
         traverse_ doBind bindings
         inner <- go ty
         ty' <- foldrM k inner bindings

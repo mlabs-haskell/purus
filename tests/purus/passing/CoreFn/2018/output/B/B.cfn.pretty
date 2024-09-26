@@ -1,0 +1,29 @@
+B (tests/purus/passing/CoreFn/2018/B.purs)
+
+Imported Modules: 
+------------------------------
+  Builtin,
+  Prim
+
+Exports: 
+------------------------------
+  X,
+  Y
+
+Re-Exports: 
+------------------------------
+  
+
+Foreign: 
+------------------------------
+  
+
+Datatypes: 
+------------------------------
+data Foo  = 
+  X 
+  | Y 
+
+
+Declarations: 
+------------------------------

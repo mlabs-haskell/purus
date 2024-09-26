@@ -7,6 +7,7 @@ import Control.Exception (throwIO)
 
 import Data.Text (Text)
 import Data.Text qualified as T
+import Data.Text.Lazy qualified as LT
 
 import Data.Map qualified as M
 import Data.Set qualified as S
@@ -16,7 +17,7 @@ import Data.Function (on)
 import Control.Exception
 import Control.Monad (forM)
 import Data.Foldable (foldrM, forM_)
-import Data.List (delete, foldl', groupBy, sortBy, stripPrefix)
+import Data.List (delete, foldl', groupBy, sortBy, stripPrefix, find)
 
 import System.FilePath (
   makeRelative,
@@ -24,9 +25,10 @@ import System.FilePath (
   takeExtensions,
   (</>),
  )
+import System.IO
 
 import Language.PureScript.CoreFn.Ann (Ann)
-import Language.PureScript.CoreFn.Expr (Bind, PurusType, cfnBindIdents)
+import Language.PureScript.CoreFn.Expr (Bind (..), PurusType, cfnBindIdents)
 import Language.PureScript.CoreFn.Module (Module (..))
 import Language.PureScript.Names (
   Ident (Ident),
@@ -64,7 +66,7 @@ import Language.Purus.Prim.Data (primDataPS)
 import Language.Purus.Types (PIRTerm, PLCTerm, initDatatypeDict)
 import Language.Purus.Utils (
   decodeModuleIO,
-  findDeclBodyWithIndex,
+  findDeclBodyWithIndex, findMain,
  )
 import Language.Purus.Make.Prim (syntheticPrim)
 
@@ -85,6 +87,8 @@ import PlutusIR.Core.Instance.Pretty.Readable (prettyPirReadable)
 import Debug.Trace (traceM)
 
 import Language.Purus.Pipeline.Lift.Types
+import System.Directory
+
 
 -- import Debug.Trace (traceM)
 -- import PlutusIR.Core.Instance.Pretty.Readable (prettyPirReadable)
@@ -157,6 +161,7 @@ compile primModule orderedModules mainModuleName mainFunctionName =
         traceBracket "Eliminated Cases. Result:" $  prettyStr withoutCases
         pir <- compileToPIR datatypes withoutCases
         traceBracket "Compiled to PIR. Result: " $ docString (prettyPirReadable pir)
+        -- traceBracket "PIR Raw:" $ LT.unpack (pShowNoColor pir)
         pure pir 
 
 -- traceM . docString $ prettyPirReadable pirTerm
@@ -228,7 +233,7 @@ make path mainModule mainFunction primModule = do
 -- for exploration/repl testing, this hardcodes `tests/purus/passing/Lib` as the target directory and
 -- we only select the name of the main function
 makeForTest :: Text -> IO PIRTerm
-makeForTest main = make "tests/purus/passing/Misc" "Lib" main  (Just syntheticPrim)
+makeForTest main = make "tests/purus/passing/CoreFn/Misc" "Lib" main  (Just syntheticPrim)
 
 evalForTest_ :: Text -> IO ()
 evalForTest_ main = (fst <$> evalForTest main) >>= \case
@@ -247,23 +252,25 @@ note msg = \case
   Nothing -> throwError msg
   Just x -> pure x
 
-
-evalTestModule :: FilePath -> IO ()
-evalTestModule path = do
+makeTestModule :: FilePath -> IO [(Text,PIRTerm)]
+makeTestModule path = do
   mdl@Module{..} <- decodeModuleIO path
   let toTest :: [Ident]
       toTest = concatMap cfnBindIdents moduleDecls
       nm     = runModuleName moduleName
       goCompile  = pure . compile syntheticPrim [mdl] moduleName
-  made <- forM toTest $  \x ->  goCompile x >>= \case 
+  forM toTest $  \x ->  goCompile x >>= \case
     Left err -> error $ "Error while compiling " <> T.unpack (runIdent x) <> "\nReason: " <> err
     Right res -> pure (runIdent x,res)
+
+
+evalTestModule :: FilePath -> IO ()
+evalTestModule path = do
+  made <- makeTestModule path
   putStrLn $ "Starting evaluation of: " <> prettyStr (fst <$> made)
   evaluated <- flip traverse made $ \(x,e) -> do
-      --traceM $ "\n\n---- " <> T.unpack x <> " ----"
-      --traceM $ docString (prettyPirReadable e)
       res <- fst <$> evaluateTerm e
-      pure $ (x,res)
+      pure (x,res)
   forM_ evaluated $ \(eNm,eRes) -> case eRes of
     EvaluationFailure -> putStrLn $ "\n\n> FAIL: Failed to evaluate " <> T.unpack eNm
     EvaluationSuccess res -> do
@@ -271,4 +278,39 @@ evalTestModule path = do
       print $ prettyPirReadable res
 
 sanityCheck :: IO () 
-sanityCheck = evalTestModule "tests/purus/passing/Misc/output/Lib/Lib.cfn"
+sanityCheck = evalTestModule "tests/purus/passing/CoreFn/Misc/output/Lib/Lib.cfn"
+
+sanityCheckNoEval :: IO ()
+sanityCheckNoEval = do
+  let path = "tests/purus/passing/CoreFn/Misc/output/Lib/Lib.cfn"
+  mdl@Module{..} <- decodeModuleIO path
+  removeFile "sanityCheckNoEval.txt"
+  withFile "sanityCheckNoEval.txt" AppendMode $ \h ->  do
+   made <- makeTestModule path
+   forM_ made $ \(nm,pirterm) -> do
+     let nmStr = T.unpack nm
+         pirStr = docString $ prettyPirReadable pirterm
+         origStr = unsafeFindDeclStr mdl nm
+         msg = "\n\n------ " <> nmStr <> " ------\n\n"
+               <> "Original coreFn declaration:\n" <> origStr
+               <> "\n\nCompiled PIR expression:\n" <> pirStr
+               <> "\n------------\n"
+     putStrLn msg
+     hPutStr h msg
+   hClose h
+ where
+   findDecl :: Ident -> [Bind Ann] -> Maybe (Bind Ann)
+   findDecl _ [] = Nothing
+   findDecl i (bnd@(NonRec _ i' _):bs)
+     | i == i' = Just bnd
+     | otherwise = findDecl i bs
+   findDecl i (Rec xs:bs) = case find (\x -> snd (fst x) == i) xs  of
+                              Nothing -> findDecl i bs
+                              Just ((a,_),body) -> Just $ NonRec a i body
+
+   unsafeFindDeclStr :: Module (Bind Ann) PurusType PurusType Ann
+                  -> Text
+                  -> String
+   unsafeFindDeclStr mdl nm = case findDecl (Ident nm) (moduleDecls mdl) of
+           Nothing -> "error: couldn't find a declaration for " <> prettyStr nm
+           Just bnd  -> prettyStr bnd

@@ -19,7 +19,6 @@ import Data.Either (lefts)
 import Data.List.NonEmpty qualified as NE
 import Data.Set qualified as S
 import Data.Text qualified as T
-import Debug.Trace (traceM)
 import Language.PureScript.AST.Binders qualified as A
 import Language.PureScript.AST.Declarations qualified as A
 import Language.PureScript.AST.Literals (Literal (..))
@@ -128,6 +127,9 @@ import Language.Purus.Pretty (ppType, prettyStr, renderExprStr)
 import Prettyprinter (Pretty (pretty))
 import Language.PureScript.Sugar (desugarGuardedExprs)
 import Control.Lens.Plated
+
+traceM :: forall f. Applicative f => String -> f ()
+traceM _ = pure ()
 
 desugarCasesEverywhere :: (M m) => A.Declaration -> m A.Declaration
 desugarCasesEverywhere d = traverseDeclBodies (transformM $ desugarGuardedExprs (A.declSourceSpan d)) d

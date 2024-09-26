@@ -1,0 +1,27 @@
+Lib (tests/purus/passing/CoreFn/4200/Lib.purs)
+
+Imported Modules: 
+------------------------------
+  Builtin,
+  Prim
+
+Exports: 
+------------------------------
+  E
+
+Re-Exports: 
+------------------------------
+  
+
+Foreign: 
+------------------------------
+  
+
+Datatypes: 
+------------------------------
+data T (msg :: Prim.Type) = 
+  E 
+
+
+Declarations: 
+------------------------------

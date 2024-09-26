@@ -18,25 +18,12 @@ import Language.Purus.Eval
 import Language.Purus.Types
 import PlutusCore.Evaluation.Result
 import PlutusIR.Core.Instance.Pretty.Readable (prettyPirReadable)
+import Test.Tasty 
 import Test.Tasty.HUnit
 
 shouldPassTests :: IO ()
-shouldPassTests = do
-  traverse_ runPurusDefault shouldPass
-  -- let misc =  "./tests/purus/passing/Misc/output/Lib/index.cfn"
-  {- UPLC tests disabled atm while we rewrite stuff
+shouldPassTests = defaultMain coreFnTests
 
-  uplc1 <- declToUPLC misc "main"
-  writeFile "./tests/purus/passing/Misc/output/Lib/main.plc" (show uplc1)
-  uplc2 <- declToUPLC misc "minus"
-  writeFile "./tests/purus/passing/Misc/output/Lib/fakeminus.plc" (show uplc2)
-  defaultMain $
-    runPLCProgramTest
-    "mainTest"
-    (EvaluationSuccess (Constant () (Some (ValueOf DefaultUniInteger 2))),[])
-    misc
-    "main"
-  -}
 runPurus :: P.CodegenTarget -> FilePath ->  IO ()
 runPurus target dir =  do
     outDirExists <- doesDirectoryExist outputDir
@@ -46,10 +33,10 @@ runPurus target dir =  do
         createDirectory outputDir
       unless outDirExists $ createDirectory outputDir
     files <- concat <$> getTestFiles dir
-    print files
-    print ("Compiling " <> dir)
+    -- print files
+    --print ("Compiling " <> dir)
     compileForTests (makeOpts files)
-    print ("Done with " <> dir)
+    -- print ("Done with " <> dir)
   where
     outputDir = dir </> "output"
 
@@ -69,6 +56,13 @@ runPurus target dir =  do
       optionsNoComments = True,
       optionsCodegenTargets = S.singleton target
     }
+
+-- path to a Purus project directory, outputs serialized CoreFn 
+compileToCoreFnTest :: FilePath -> TestTree
+compileToCoreFnTest path = testCase (path) $ runPurusDefault path
+
+coreFnTests :: TestTree
+coreFnTests = testGroup "CoreFn tests" $ compileToCoreFnTest <$> shouldPassCoreFn
 
 runPurusDefault :: FilePath -> IO ()
 runPurusDefault path = runPurus P.CoreFn path
@@ -106,10 +100,10 @@ runDefaultEvalTest nm targetDir expected
       EvaluationFailure -> assertFailure nm
 
 
-shouldPass :: [FilePath]
-shouldPass = map (prefix </>) paths
+shouldPassCoreFn :: [FilePath]
+shouldPassCoreFn = map (prefix </>) paths
   where
-    prefix = "tests/purus/passing"
+    prefix = "tests/purus/passing/CoreFn"
     paths = [
          "2018",
         "2138",
@@ -146,7 +140,6 @@ shouldPass = map (prefix </>) paths
         "ShadowedModuleName",
         "TransitiveImport",
         "Validator"
-        -- "prelude"
       ]
 
 

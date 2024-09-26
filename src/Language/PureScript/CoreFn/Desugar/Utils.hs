@@ -329,7 +329,7 @@ pTrace = traceM . show
 
 -- | Given a string and a monadic action, produce a trace with the given message before & after the action (with pretty lines to make it more readable)
 wrapTrace :: (Monad m) => String -> m a -> m a
-wrapTrace msg act = do
+wrapTrace msg act =  act {- -do
   traceM startMsg
   res <- act
   traceM endMsg
@@ -339,7 +339,7 @@ wrapTrace msg act = do
     pad str = padding <> str <> padding
     startMsg = pad $ "BEGIN " <> msg
     endMsg = pad $ "END " <> msg
-
+-} 
 {-
   This is used to solve a problem that arises with re-exported instances.
 

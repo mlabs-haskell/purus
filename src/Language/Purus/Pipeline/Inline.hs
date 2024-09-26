@@ -74,7 +74,7 @@ import Language.Purus.IR.Utils (
   traverseBind,
   unBVar,
   viaExp,
-  viaExpM,
+  viaExpM, fromExp,
  )
 import Language.Purus.Pipeline.Inline.Types (
   InlineBodyData (..),
@@ -231,7 +231,10 @@ handleSelfRecursive (nm, indx) (NotALoopBreaker body)
           updatedOriginalBody = fmap f body
           updatedOriginalDecl = ((nm, indx), updatedOriginalBody)
           abstr = abstract $ \case B bv -> Just bv; _ -> Nothing
-          newBreakerDecl = ((newNm, u), abstr . V .  F $ LiftedHole (runIdent nm)  (fromIntegral u) bodyTy)
+          newBreakerDecl = ((newNm, u), abstr . V .  F $ LiftedHole (runIdent nm)  (fromIntegral indx) bodyTy)
+          pretendLet = LetE [Recursive [updatedOriginalDecl, newBreakerDecl]] (abstr . V . B $ BVar indx bodyTy nm)
+          msg = prettify ["handleSelfRecursive", "INPUT:\n" <> prettyStr (toExp body), "OUTPUT:\n" <> prettyStr pretendLet]
+      doTraceM "handleSelfRecursive" msg 
       pure $ M.fromList [NotALoopBreaker <$> updatedOriginalDecl, IsALoopBreaker <$> newBreakerDecl]
 
 inlineWithData :: MonoExp -> InlineState MonoExp

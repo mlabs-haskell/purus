@@ -156,7 +156,7 @@ common defaults
     -- modules must be parseable by this library otherwise the compiler
     -- will reject them. It should therefore always be pinned to a single
     -- specific version.
-    aeson,
+    aeson >=2.0.3.0 && <2.1,
     aeson-better-errors >=0.9.1.1 && <0.10,
     algebraic-graphs ==0.7,
     ansi-terminal >=0.11.3 && <0.12,
@@ -183,7 +183,7 @@ common defaults
     file-embed >=0.0.15.0 && <0.1,
     filepath >=1.4.2.2 && <1.5,
     Glob >=0.10.2 && <0.11,
-    hashable, 
+    hashable,
     haskeline >=0.8.2 && <0.9,
     language-javascript ==0.7.0.0,
     lens ==5.2.3,
