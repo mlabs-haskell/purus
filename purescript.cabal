@@ -218,7 +218,7 @@ common defaults
     utf8-string >=1.0.2 && <1.1,
     vector,
     witherable >=0.4.2 && <0.5,
-    plutus-core ==1.30.0.0,
+    plutus-core ==1.31.0.0,
     plutus-core:plutus-ir
 
 library
@@ -514,7 +514,6 @@ test-suite tests
     HUnit >=1.6.2.0 && <1.7,
     newtype >=0.2.2.0 && <0.3,
     QuickCheck >=2.14.2 && <2.15,
-    plutus-core ==1.30.0.0,
     regex-base >=0.94.0.2 && <0.95,
     split >=0.2.3.4 && <0.3,
     typed-process >=0.2.10.1 && <0.3,
