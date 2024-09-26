@@ -67,13 +67,13 @@ let
 
     compiler-nix-name = ghcVersion;
     inputMap = {
-      "https://input-output-hk.github.io/cardano-haskell-packages" = inputs.CHaP;
+      "https://chap.intersectmbo.org/" = inputs.CHaP;
     };
 
     modules = customHackages.modules ++ fixedHaskellModules;
     inherit (customHackages) extra-hackages extra-hackage-tarballs;
 
-    index-state = "2024-06-17T12:18:52Z";
+    index-state = "2024-09-17T19:03:21Z";
 
     shell = {
       withHoogle = true;

@@ -1,5 +1,5 @@
 repository cardano-haskell-packages
-  url: https://input-output-hk.github.io/cardano-haskell-packages
+  url: https://chap.intersectmbo.org/
   secure: True
   root-keys:
     3e0cce471cf09815f930210f7827266fd09045445d65923e6d0238a6cd15126f
@@ -12,11 +12,9 @@ repository cardano-haskell-packages
 packages:
   purescript.cabal
 
--- HACK: plutus core cannot build without it, remove after bump.
-constraints:
-  nothunks < 0.2
-
 test-show-details: direct
 
 index-state:
   , cardano-haskell-packages 2024-06-17T12:18:52Z
+
+allow-newer: aeson-better-errors:aeson

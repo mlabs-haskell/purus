@@ -23,7 +23,7 @@ import Language.Purus.Debug (doTrace)
 import Language.Purus.IR (BVar, BindE (..), Exp)
 import Language.Purus.IR.Utils (IR_Decl, Vars, WithObjects, foldBinds, toExp)
 
-import Codec.CBOR.Extras (SerialiseViaFlat (SerialiseViaFlat))
+import Codec.Extras.SerialiseViaFlat (SerialiseViaFlat (SerialiseViaFlat))
 import PlutusCore qualified as PLC
 import UntypedPlutusCore qualified as UPLC
 
