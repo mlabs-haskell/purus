@@ -1,0 +1,78 @@
+
+------ unIdentitee ------
+letrec
+  data (Identitee_469 :: * -> *) a_470 | match_Identitee_471 where
+    Identitee_472 : a_470 -> Identitee_469 a_470
+in
+\(v_450 : Identitee_469 integer) ->
+  match_Identitee_471 {integer} v_450 {integer} (\(x_451 : integer) -> x_451)
+------------
+
+------ testValidator ------
+letrec
+  data Boolean_469 | match_Boolean_470 where
+    False_471 : Boolean_469
+    True_472 : Boolean_469
+in
+/\a_458 b_457 c_456 ->
+  \(datum_453 : a_458) (redeemer_454 : b_457) (context_455 : c_456) -> True_472
+------------
+
+------ testValidatorApplied ------
+letrec
+  data Boolean_469 | match_Boolean_470 where
+    False_471 : Boolean_469
+    True_472 : Boolean_469
+in
+(/\a_458 b_457 c_456 ->
+   \(datum_453 : a_458) (redeemer_454 : b_457) (context_455 : c_456) ->
+     True_472)
+  {string}
+  {string}
+  {string}
+  "datum"
+  "redeemer"
+  "context"
+------------
+
+------ testIdentitee ------
+letrec
+  data (Identitee_469 :: * -> *) a_470 | match_Identitee_471 where
+    Identitee_472 : a_470 -> Identitee_469 a_470
+in
+(\(v_450 : Identitee_469 integer) ->
+   match_Identitee_471 {integer} v_450 {integer} (\(x_451 : integer) -> x_451))
+  (Identitee_472 {integer} 101)
+------------
+
+------ plus ------
+addInteger
+------------
+
+------ testPlus ------
+addInteger 2 2
+------------
+
+------ multiply ------
+multiplyInteger
+------------
+
+------ testMultiply ------
+multiplyInteger 2 2
+------------
+
+------ minus ------
+subtractInteger
+------------
+
+------ testMinus ------
+subtractInteger 10 6
+------------
+
+------ divide ------
+divideInteger
+------------
+
+------ testDivide ------
+divideInteger 4 2
+------------

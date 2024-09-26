@@ -26,7 +26,6 @@ import Data.Text (Text)
 import Data.Text qualified as T
 
 import Control.Monad.State (gets, modify, execState, State, MonadState (..))
-import Debug.Trace (traceM)
 
 import Language.PureScript.CoreFn.TypeLike
 import Language.PureScript.CoreFn.Module
@@ -148,7 +147,6 @@ getConstructorName :: Qualified Ident -> PlutusContext (Maybe PLC.Name)
 getConstructorName qi =
   doTraceM "getConstructorName" (show qi) >> do
     ctors <- gets (view constrNames)
-    traceM $ show ctors
     pure $ ctors ^? at qi . folded . _1
 
 prettyQPN :: Qualified (ProperName 'TypeName) -> String

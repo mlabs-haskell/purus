@@ -1,0 +1,70 @@
+
+------ testInt ------
+letrec
+  data (Tuple1_465 :: * -> *) t1_466 | match_Tuple1_467 where
+    Tuple1_468 : t1_466 -> Tuple1_465 t1_466
+in
+Tuple1_468 {integer -> string} (\(v_450 : integer) -> "4")
+------------
+
+------ runTest ------
+letrec
+  data (Tuple1_466 :: * -> *) t1_467 | match_Tuple1_468 where
+    Tuple1_469 : t1_467 -> Tuple1_466 t1_467
+in
+/\a_453 ->
+  \(dict_452 : Tuple1_466 (a_453 -> string)) ->
+    match_Tuple1_468
+      {a_453 -> string}
+      dict_452
+      {a_453 -> string}
+      (\(`<ACCESSOR>_465` : a_453 -> string) -> `<ACCESSOR>_465`)
+------------
+
+------ mappend ------
+\(v_455 : string) (v1_456 : string) -> "mappend"
+------------
+
+------ test/\ ------
+letrec
+  data (Tuple_467 :: * -> * -> *) a_468 b_469 | match_Tuple_470 where
+    Tuple_471 : a_468 -> b_469 -> Tuple_467 a_468 b_469
+  data (Tuple1_472 :: * -> *) t1_473 | match_Tuple1_474 where
+    Tuple1_475 : t1_473 -> Tuple1_472 t1_473
+in
+/\a_464 b_463 ->
+  \(dictTest_458 : Tuple1_472 (a_464 -> string))
+   (dictTest1_459 : Tuple1_472 (b_463 -> string)) ->
+    Tuple1_475
+      {Tuple_467 a_464 b_463 -> string}
+      (\(v_460 : Tuple_467 a_464 b_463) ->
+         match_Tuple_470
+           {a_464}
+           {b_463}
+           v_460
+           {string}
+           (\(a_461 : a_464) (b_462 : b_463) ->
+              (\(v_455 : string) (v1_456 : string) -> "mappend")
+                ((/\a_453 ->
+                    \(dict_452 : Tuple1_472 (a_453 -> string)) ->
+                      match_Tuple1_474
+                        {a_453 -> string}
+                        dict_452
+                        {a_453 -> string}
+                        (\(`<ACCESSOR>_466` : a_453 -> string) ->
+                           `<ACCESSOR>_466`))
+                   {a_464}
+                   dictTest_458
+                   a_461)
+                ((/\a_453 ->
+                    \(dict_452 : Tuple1_472 (a_453 -> string)) ->
+                      match_Tuple1_474
+                        {a_453 -> string}
+                        dict_452
+                        {a_453 -> string}
+                        (\(`<ACCESSOR>_465` : a_453 -> string) ->
+                           `<ACCESSOR>_465`))
+                   {b_463}
+                   dictTest1_459
+                   b_462)))
+------------

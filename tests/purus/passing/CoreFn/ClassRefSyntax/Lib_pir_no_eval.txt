@@ -1,0 +1,14 @@
+
+------ go ------
+letrec
+  data (Tuple1_453 :: * -> *) t1_454 | match_Tuple1_455 where
+    Tuple1_456 : t1_454 -> Tuple1_453 t1_454
+in
+/\a_451 ->
+  \(dict_450 : Tuple1_453 (a_451 -> a_451)) ->
+    match_Tuple1_455
+      {a_451 -> a_451}
+      dict_450
+      {a_451 -> a_451}
+      (\(`<ACCESSOR>_452` : a_451 -> a_451) -> `<ACCESSOR>_452`)
+------------

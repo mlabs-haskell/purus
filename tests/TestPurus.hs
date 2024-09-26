@@ -9,7 +9,7 @@ import System.FilePath
 import Language.PureScript qualified as P
 import Data.Set qualified as S
 import Data.Foldable (traverse_)
-import System.Directory (removeDirectoryRecursive, doesDirectoryExist, createDirectory)
+import System.Directory 
 import System.FilePath.Glob qualified as Glob
 import Data.Function (on)
 import Data.List (sortBy, stripPrefix, groupBy)
@@ -22,10 +22,13 @@ import Test.Tasty
 import Test.Tasty.HUnit
 
 shouldPassTests :: IO ()
-shouldPassTests = defaultMain coreFnTests
+shouldPassTests = do
+  cfn <- coreFnTests
+  pir <- pirTests
+  defaultMain $ testGroup "Purus Tests" [cfn,pir]
 
-runPurus :: P.CodegenTarget -> FilePath ->  IO ()
-runPurus target dir =  do
+runPurusCoreFn :: P.CodegenTarget -> FilePath ->  IO ()
+runPurusCoreFn target dir =  do
     outDirExists <- doesDirectoryExist outputDir
     when (target /= P.CheckCoreFn) $ do
       when outDirExists $ do
@@ -33,10 +36,7 @@ runPurus target dir =  do
         createDirectory outputDir
       unless outDirExists $ createDirectory outputDir
     files <- concat <$> getTestFiles dir
-    -- print files
-    --print ("Compiling " <> dir)
     compileForTests (makeOpts files)
-    -- print ("Done with " <> dir)
   where
     outputDir = dir </> "output"
 
@@ -57,29 +57,42 @@ runPurus target dir =  do
       optionsCodegenTargets = S.singleton target
     }
 
+-- TODO: Move modules into a directory specifically for PIR non-eval tests (for now this should be OK)
+pirTests :: IO TestTree
+pirTests = do
+  let coreFnTestPath = "tests/purus/passing/CoreFn"
+  allTestDirectories <- listDirectory coreFnTestPath
+  let trees = map (\dir -> testCase dir $ compileDirNoEval (coreFnTestPath </> dir)) allTestDirectories
+  pure $ testGroup "PIR Tests (No Evaluation)" trees
+
 -- path to a Purus project directory, outputs serialized CoreFn 
 compileToCoreFnTest :: FilePath -> TestTree
-compileToCoreFnTest path = testCase (path) $ runPurusDefault path
+compileToCoreFnTest path = testCase (path) $ runPurusCoreFnDefault path
 
-coreFnTests :: TestTree
-coreFnTests = testGroup "CoreFn tests" $ compileToCoreFnTest <$> shouldPassCoreFn
+coreFnTests :: IO TestTree
+coreFnTests = do
+  let coreFnTestPath = "tests/purus/passing/CoreFn"
+  allTestDirectories <- listDirectory coreFnTestPath
+  let trees = map (\dir -> compileToCoreFnTest (coreFnTestPath </> dir)) allTestDirectories
+  pure $ testGroup "CoreFn Tests" trees
 
-runPurusDefault :: FilePath -> IO ()
-runPurusDefault path = runPurus P.CoreFn path
+
+runPurusCoreFnDefault :: FilePath -> IO ()
+runPurusCoreFnDefault path = runPurusCoreFn P.CoreFn path
 
 runPurusGolden :: FilePath -> IO ()
-runPurusGolden path = runPurus P.CheckCoreFn path
+runPurusGolden path = runPurusCoreFn P.CheckCoreFn path
 
 runFullPipeline_ :: FilePath -> Text -> Text -> IO ()
 runFullPipeline_ targetDir mainModuleName mainFunctionName = do
-  runPurusDefault targetDir
+  runPurusCoreFnDefault targetDir
   pir <- make targetDir mainModuleName mainFunctionName Nothing
   result <- evaluateTerm pir
   print $ prettyPirReadable result
 
 runFullPipeline :: FilePath -> Text -> Text -> IO (EvaluationResult PLCTerm, [Text])
 runFullPipeline targetDir mainModuleName mainFunctionName = do
-  runPurusDefault targetDir
+  runPurusCoreFnDefault targetDir
   pir <- make targetDir mainModuleName mainFunctionName Nothing
   evaluateTerm pir
 

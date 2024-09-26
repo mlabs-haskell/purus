@@ -62,7 +62,7 @@ import Data.Set qualified as S
 
 import Control.Monad.Reader (asks, foldM)
 
-import Debug.Trace (trace, traceM)
+
 
 import Data.Text qualified as T
 
@@ -81,6 +81,11 @@ import Prettyprinter (
 import Control.Monad.State.Strict (StateT, execStateT)
 import Control.Monad.State (State, execState)
 import Control.Monad.State qualified as St
+
+-- TODO Actually remove the traces for real
+
+traceM :: forall f. Applicative f => String -> f ()
+traceM _ = pure ()
 
 {- Given a collection of declarations that will be lifted, determine for each declaration
    the "deep" (recursive) set of NEW variable dependencies which need to be added
@@ -374,7 +379,7 @@ lift mainNm _e = do
       deps <- determineTopLevelDependencies e
       let res | null deps = e
               | otherwise = LetE deps (fromExp e)
-      traceM $ "embedMain res:\n" <> prettyStr res
+      --traceM $ "embedMain res:\n" <> prettyStr res
       pure res 
 
     handleSelfRecursive :: (Ident,Int) -> MonoExp -> Inline MonoExp

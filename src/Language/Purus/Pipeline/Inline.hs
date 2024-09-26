@@ -124,7 +124,7 @@ import Prettyprinter (
   (<+>),
  )
 import Control.Monad.State.Strict (StateT, evalStateT, execStateT, MonadTrans (..))
-import Debug.Trace (trace)
+
 
 inline :: LiftResult -> Inline MonoExp
 inline (LiftResult [] bodyE) = pure bodyE 
