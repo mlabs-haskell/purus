@@ -63,6 +63,7 @@ import Language.Purus.IR.Utils (
   deepMapMaybeBound,
   flatBinds,
   foldBinds,
+  foldMBinds,
   isConstructorE,
   mapBind,
   mkBVar,
@@ -73,7 +74,7 @@ import Language.Purus.IR.Utils (
   traverseBind,
   unBVar,
   viaExp,
-  viaExpM,
+  viaExpM, fromExp,
  )
 import Language.Purus.Pipeline.Inline.Types (
   InlineBodyData (..),
@@ -91,6 +92,7 @@ import Language.Purus.Pipeline.Lift.Types (
   MonoScoped,
   toHole,
   unHole,
+  containsHole,
   pattern LiftedHole,
  )
 import Language.Purus.Pipeline.Monad (Inline, MonadCounter (next))
@@ -109,7 +111,7 @@ import Algebra.Graph.AdjacencyMap.Algorithm (Cycle, scc, topSort)
 import Algebra.Graph.NonEmpty.AdjacencyMap (fromNonEmpty)
 
 import Control.Lens.Combinators (at, cosmos, transformM)
-import Control.Lens.Operators ((.=), (^..))
+import Control.Lens.Operators ((.=), (^..), (.~), (%=))
 
 import Bound (Var (..))
 import Bound.Scope (abstract)
@@ -121,10 +123,14 @@ import Prettyprinter (
   vcat,
   (<+>),
  )
+import Control.Monad.State.Strict (StateT, evalStateT, execStateT, MonadTrans (..))
+
 
 inline :: LiftResult -> Inline MonoExp
+inline (LiftResult [] bodyE) = pure bodyE 
 inline (LiftResult decls bodyE) = do
   declsPrepared <- inlineInLifted decls
+  bodyPrepared  <- inlineWithData' declsPrepared bodyE
   let plugHoles :: forall (f :: * -> *). (Functor f) => f (Vars PurusType) -> f (Vars PurusType)
       plugHoles = fmap $ \case
         F (LiftedHole hNm hIndx hTy) -> B (BVar (fromInteger hIndx) hTy (Ident hNm))
@@ -133,8 +139,7 @@ inline (LiftResult decls bodyE) = do
       inlinedBodyE =
         abstract (\case B bv -> Just bv; _ -> Nothing)
           . plugHoles
-          . inlineWithData' declsPrepared
-          $ bodyE
+          $ bodyPrepared
       onlyLoopBreakers =
         M.foldlWithKey'
           ( \acc (n, i) v -> case v of
@@ -145,12 +150,8 @@ inline (LiftResult decls bodyE) = do
           []
           declsPrepared
       flatLB = M.toList $ flatBinds onlyLoopBreakers
-  declsSelfRecHandled <-
-    map (\((n, i), b) -> NonRecursive n i b)
-      . M.toList
-      . M.unions
-      <$> traverse (uncurry handleSelfRecursive) flatLB
-  cleanup declsSelfRecHandled inlinedBodyE
+  let declsRebuilt = map (\((n, i), b) -> NonRecursive n i b) flatLB
+  cleanup declsRebuilt inlinedBodyE
   where
     {- If we just returned the set of lifted declarations as-is, they might have
        ill-formed types. In particular, they may have out of scope type variables
@@ -205,33 +206,36 @@ inline (LiftResult decls bodyE) = do
           pure result
 
 -- sorry koz. in my heart i know you're right about type synonyms, but...
-type InlineState a = State (Map (Ident, Int) InlineBodyData) a
+type InlineState a = StateT (Map (Ident, Int) InlineBodyData) Inline a
 
-inlineWithData' :: Map (Ident, Int) InlineBodyData -> MonoExp -> MonoExp
-inlineWithData' d e = evalState (inlineWithData e) d
+inlineWithData' :: Map (Ident, Int) InlineBodyData -> MonoExp -> Inline MonoExp
+inlineWithData' d e = evalStateT (inlineWithData e) d
 
-handleSelfRecursive :: (Ident, Int) -> MonoScoped -> Inline (Map (Ident, Int) MonoScoped)
-handleSelfRecursive (nm, indx) body
-  | not (containsBVar nm indx body) = pure $ M.singleton (nm, indx) body
+handleSelfRecursive :: (Ident, Int) -> InlineBodyData -> Inline (Map (Ident, Int) InlineBodyData)
+handleSelfRecursive nm lb@(IsALoopBreaker _) = pure $ M.singleton nm lb
+handleSelfRecursive (nm, indx) (NotALoopBreaker body)
+  | not (containsHole (nm,indx) $ toExp body) = pure $ M.singleton (nm, indx) (NotALoopBreaker body)
   | otherwise = do
       u <- next
       let uTxt = T.pack (show u)
           newNm = case nm of
-            Ident t -> Ident $ t <> "$" <> uTxt
-            GenIdent (Just t) i -> GenIdent (Just $ t <> "$" <> uTxt) i -- we only care about a unique ord property for the maps
-            GenIdent Nothing i -> GenIdent (Just $ "$" <> uTxt) i
+            Ident t -> Ident $ t <> "$B" <> uTxt
+            GenIdent (Just t) i -> GenIdent (Just $ t <> "$B" <> uTxt) i -- we only care about a unique ord property for the maps
+            GenIdent Nothing i -> GenIdent (Just $ "$B" <> uTxt) i
             other -> other
           bodyTy = expTy' id body
           f = \case
-            (BVar bvIx bvTy bvNm) ->
-              if bvIx == indx && bvNm == nm
-                then Just (BVar u bvTy newNm)
-                else Nothing
-          updatedOriginalBody = viaExp (deepMapMaybeBound f) body
+            F (LiftedHole (Ident -> hNm) (fromInteger -> hIx) hTy)
+              | hNm == nm && hIx == indx -> F $ LiftedHole  (runIdent newNm) (fromIntegral u) hTy 
+            other -> other
+          updatedOriginalBody = fmap f body
           updatedOriginalDecl = ((nm, indx), updatedOriginalBody)
           abstr = abstract $ \case B bv -> Just bv; _ -> Nothing
-          newBreakerDecl = ((newNm, u), abstr . V . B $ BVar indx bodyTy nm)
-      pure $ M.fromList [updatedOriginalDecl, newBreakerDecl]
+          newBreakerDecl = ((newNm, u), abstr . V .  F $ LiftedHole (runIdent nm)  (fromIntegral indx) bodyTy)
+          pretendLet = LetE [Recursive [updatedOriginalDecl, newBreakerDecl]] (abstr . V . B $ BVar indx bodyTy nm)
+          msg = prettify ["handleSelfRecursive", "INPUT:\n" <> prettyStr (toExp body), "OUTPUT:\n" <> prettyStr pretendLet]
+      doTraceM "handleSelfRecursive" msg 
+      pure $ M.fromList [NotALoopBreaker <$> updatedOriginalDecl, IsALoopBreaker <$> newBreakerDecl]
 
 inlineWithData :: MonoExp -> InlineState MonoExp
 inlineWithData = transformM go''
@@ -245,7 +249,7 @@ inlineWithData = transformM go''
     go ex =
       get >>= \dict -> case ex of
         fv@(V (F {})) -> case toHole fv of
-          Just (Hole hId hIx _) -> case M.lookup (hId, hIx) dict of
+          Just (Hole hId hIx hTy) -> case M.lookup (hId, hIx) dict of
             Just (NotALoopBreaker (toExp -> e)) -> do
               let msg =
                     prettify
@@ -254,7 +258,7 @@ inlineWithData = transformM go''
                       ]
               doTraceM "inlineWithData" msg
               pure e
-            _ -> pure fv
+            _ -> pure . V . B $ BVar hIx hTy hId 
           _ -> pure fv
         V b@B {} -> pure $ V b
         AppE e1 e2 -> AppE <$> go e1 <*> go e2
@@ -276,22 +280,8 @@ inlineWithData = transformM go''
         TyInstE t e -> TyInstE t <$> go e
         TyAbs bv e -> TyAbs bv <$> go e
 
-doneInlining :: MonoExp -> InlineState Bool
-doneInlining me = do
-  dct <- get
-  let allInlineable = M.keysSet $ M.filter notALoopBreaker dct
-      allHoles = S.fromList $ mapMaybe (fmap unHole . toHole) (me ^.. cosmos)
-      result = S.null $ S.intersection allHoles allInlineable
-      msg =
-        prettify
-          [ "Input Expr:\n" <> prettyStr me
-          , "All Inlineable Vars:\n" <> prettyStr (S.toList allInlineable)
-          , "All Holes in expr:\n" <> prettyStr (S.toList allHoles)
-          , "Not yet inlined:\n" <> prettyStr (S.toList $ S.intersection allHoles allInlineable)
-          , "Are we done?: " <> show result
-          ]
-  doTraceM "doneInlining" msg
-  pure result
+doneInlining :: MonoExp -> Bool
+doneInlining me =  null $ mapMaybe (fmap unHole . toHole) (me ^.. cosmos)
 
 prettyDict :: Map (Ident, Int) InlineBodyData -> String
 prettyDict =
@@ -304,17 +294,19 @@ prettyDict =
 inlineInLifted :: [MonoBind] -> Inline (Map (Ident, Int) InlineBodyData)
 inlineInLifted decls = do
   let breakers = S.map getLoopBreaker . breakLoops $ allLiftedDependencies
-      dict =
-        foldBinds
+  dict <-
+        foldMBinds
           ( \acc nm b ->
               if nm `S.member` breakers
-                then M.insert nm (IsALoopBreaker b) acc
-                else M.insert nm (NotALoopBreaker b) acc
+                then pure $ M.insert nm (IsALoopBreaker b) acc
+                else do
+                  selfRecGroup <- handleSelfRecursive nm (NotALoopBreaker b)
+                  pure $ selfRecGroup <> acc
           )
           M.empty
           decls
-  let res = flip execState dict $ update [] (M.keys dict)
-      msg = prettify ["Input:\n" <> prettyStr decls, "Result:\n" <> prettyDict res, "Breakers:\n" <> prettyStr (S.toList breakers)]
+  res <- flip execStateT dict $ update [] (M.keys dict)
+  let msg = prettify ["Input:\n" <> prettyStr decls, "Result:\n" <> prettyDict res, "Breakers:\n" <> prettyStr (S.toList breakers)]
   doTraceM "inlineLifted" msg
   pure res
   where
@@ -327,10 +319,11 @@ inlineInLifted decls = do
     update retry (i : is) = do
       doTraceM "update" (prettify ["GO", "RETRY STACK:\n" <> prettyStr retry, "ACTIVE STACK:\n" <> prettyStr (i : is)])
       s <- get
-      let e = s M.! i
-      done1 <- doneInlining . toExp . getInlineBody $ e
+      let eData = s M.! i
+          e     = getInlineBody eData
+          done1 = doneInlining $ toExp e
       unless done1 $ do
-        e' <- go e
+        e' <- go eData
         at i .= Just e'
         update (i : retry) is
       when done1 $ do

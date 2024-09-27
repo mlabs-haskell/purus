@@ -35,11 +35,16 @@ import Language.PureScript.TypeChecker.Skolems (newSkolemConstant, skolemize)
 import Language.PureScript.Types (Constraint (..), RowListItem (..), SourceType, Type (..), WildcardData (..), alignRowsWith, everythingOnTypes, everywhereOnTypes, everywhereOnTypesM, getAnnForType, mkForAll, rowFromList, srcTUnknown, pattern REmptyKinded)
 
 import Data.Bifunctor (bimap)
-import Debug.Trace
 import Language.Purus.Pretty.Types (prettyTypeStr)
 
+trace :: forall a. String -> a -> a
+trace _ x = x
+
+traceM :: forall f. Applicative f => String -> f ()
+traceM _ = pure () 
+
 moduleTraces :: Bool
-moduleTraces = True
+moduleTraces = False
 
 goTrace :: forall x. String -> x -> x
 goTrace str x

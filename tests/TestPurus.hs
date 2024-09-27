@@ -9,14 +9,18 @@ import System.FilePath
 import Language.PureScript qualified as P
 import Data.Set qualified as S
 import Data.Foldable (traverse_)
-import System.Directory (removeDirectoryRecursive, doesDirectoryExist, createDirectory)
+import System.Directory
 import System.FilePath.Glob qualified as Glob
 import System.Exit qualified as Exit
 import Data.Function (on)
 import Data.List (sortBy, stripPrefix, groupBy)
 import Language.Purus.Make
 import Language.Purus.Eval
+import Language.Purus.Types
+import PlutusCore.Evaluation.Result
 import PlutusIR.Core.Instance.Pretty.Readable (prettyPirReadable)
+import Test.Tasty
+import Test.Tasty.HUnit
 import Language.PureScript qualified as PureScript
 import Language.PureScript.CST.Errors qualified as PureScript.CST.Errors
 import Data.Maybe qualified as Maybe
@@ -24,25 +28,21 @@ import Control.Arrow qualified as Arrow
 
 shouldPassTests :: IO ()
 shouldPassTests = do
-  traverse_ runPurusDefault shouldPass
-  traverse_ runPurusParseError shouldParseError
-  -- let misc =  "./tests/purus/passing/Misc/output/Lib/index.cfn"
-  {- UPLC tests disabled atm while we rewrite stuff
+  cfn <- coreFnTests
+  pir <- pirTests
+  defaultMain $ testGroup "Purus Tests" [cfn,pir,parserTests]
 
-  uplc1 <- declToUPLC misc "main"
-  writeFile "./tests/purus/passing/Misc/output/Lib/main.plc" (show uplc1)
-  uplc2 <- declToUPLC misc "minus"
-  writeFile "./tests/purus/passing/Misc/output/Lib/fakeminus.plc" (show uplc2)
-  defaultMain $
-    runPLCProgramTest
-    "mainTest"
-    (EvaluationSuccess (Constant () (Some (ValueOf DefaultUniInteger 2))),[])
-    misc
-    "main"
-  -}
 
-runPurus :: P.CodegenTarget -> FilePath ->  IO ()
-runPurus target dir =  do
+parserTests :: TestTree
+parserTests = testGroup "Parser" $ map go shouldParseError
+  where
+    -- Jared provides the directory names so we need to add the full (relative) path (esp since I moved them)
+
+    go :: (FilePath,String) -> TestTree
+    go (path,msg) = testCase path $ runPurusParseError (path,msg)
+
+runPurusCoreFn :: P.CodegenTarget -> FilePath ->  IO ()
+runPurusCoreFn target dir =  do
     outDirExists <- doesDirectoryExist outputDir
     when (target /= P.CheckCoreFn) $ do
       when outDirExists $ do
@@ -50,10 +50,7 @@ runPurus target dir =  do
         createDirectory outputDir
       unless outDirExists $ createDirectory outputDir
     files <- concat <$> getTestFiles dir
-    print files
-    print ("Compiling " <> dir)
     compileForTests (makeOpts files)
-    print ("Done with " <> dir)
   where
     outputDir = dir </> "output"
 
@@ -74,21 +71,44 @@ runPurus target dir =  do
       optionsCodegenTargets = S.singleton target
     }
 
+-- TODO: Move modules into a directory specifically for PIR non-eval tests (for now this should be OK)
+pirTests :: IO TestTree
+pirTests = do
+  let coreFnTestPath = "tests/purus/passing/CoreFn"
+  allTestDirectories <- listDirectory coreFnTestPath
+  let trees = map (\dir -> testCase dir $ compileDirNoEval (coreFnTestPath </> dir)) allTestDirectories
+  pure $ testGroup "PIR Tests (No Evaluation)" trees
+
+-- path to a Purus project directory, outputs serialized CoreFn
+compileToCoreFnTest :: FilePath -> TestTree
+compileToCoreFnTest path = testCase (path) $ runPurusCoreFnDefault path
+
+coreFnTests :: IO TestTree
+coreFnTests = do
+  let coreFnTestPath = "tests/purus/passing/CoreFn"
+  allTestDirectories <- listDirectory coreFnTestPath
+  let trees = map (\dir -> compileToCoreFnTest (coreFnTestPath </> dir)) allTestDirectories
+  pure $ testGroup "CoreFn Tests" trees
+
+
+runPurusCoreFnDefault :: FilePath -> IO ()
+runPurusCoreFnDefault path = runPurusCoreFn P.CoreFn path
+
 -- | Runs purus but succeeds only in the case of a parse error.
 runPurusShouldParseErrorWithMessage ::
-    P.CodegenTarget -> 
-    FilePath -> 
-    String -> 
+    P.CodegenTarget ->
+    FilePath ->
+    String ->
     IO ()
-runPurusShouldParseErrorWithMessage target dir errMsg = 
+runPurusShouldParseErrorWithMessage target dir errMsg =
     runPurusWith target dir $ \_files _warnings errors ->
         case errors of
             Right _ -> do
                 putStrLn "Compilation succeeded, but expected parse error"
                 Exit.exitFailure
-            Left PureScript.MultipleErrors{PureScript.runMultipleErrors = psErrors } -> 
-                case Maybe.mapMaybe 
-                        (\(PureScript.ErrorMessage _ simpleErrMsg) -> case simpleErrMsg of 
+            Left PureScript.MultipleErrors{PureScript.runMultipleErrors = psErrors } ->
+                case Maybe.mapMaybe
+                        (\(PureScript.ErrorMessage _ simpleErrMsg) -> case simpleErrMsg of
                             PureScript.ErrorParsingCSTModule parserError -> Just parserError
                             _ -> Nothing
                                 ) psErrors of
@@ -102,16 +122,16 @@ runPurusShouldParseErrorWithMessage target dir errMsg =
                         prettyErr = PureScript.CST.Errors.prettyPrintError parserErrorInfo
 
                     _ -> putStrLn "Too many parser errors" >> Exit.exitFailure
-                    
-                
+
+
 
 -- | Runs purus with a function with the output of the compiler. This is useful
 -- to create test cases that should fail.
-runPurusWith:: 
-    P.CodegenTarget -> 
-    FilePath -> 
+runPurusWith::
+    P.CodegenTarget ->
+    FilePath ->
     -- | Arguments are: files, warnings, errors
-    ([(FilePath, Text)] -> PureScript.MultipleErrors -> Either PureScript.MultipleErrors [PureScript.ExternsFile] -> IO ()) -> 
+    ([(FilePath, Text)] -> PureScript.MultipleErrors -> Either PureScript.MultipleErrors [PureScript.ExternsFile] -> IO ()) ->
     IO ()
 runPurusWith target dir f =  do
     outDirExists <- doesDirectoryExist outputDir
@@ -146,64 +166,43 @@ runPurusWith target dir f =  do
     }
 
 runPurusDefault :: FilePath -> IO ()
-runPurusDefault path = runPurus P.CoreFn path
+runPurusDefault path = runPurusCoreFn P.CoreFn path
 
 runPurusParseError :: (FilePath, String) -> IO ()
 runPurusParseError (path, errMsg) = runPurusShouldParseErrorWithMessage P.CoreFn path errMsg
 
 runPurusGolden :: FilePath -> IO ()
-runPurusGolden path = runPurus P.CheckCoreFn path
+runPurusGolden path = runPurusCoreFn P.CheckCoreFn path
 
-runFullPipeline :: FilePath -> Text -> Text -> IO ()
-runFullPipeline targetDir mainModuleName mainFunctionName = do
-  runPurusDefault targetDir
+runFullPipeline_ :: FilePath -> Text -> Text -> IO ()
+runFullPipeline_ targetDir mainModuleName mainFunctionName = do
+  runPurusCoreFnDefault targetDir
   pir <- make targetDir mainModuleName mainFunctionName Nothing
   result <- evaluateTerm pir
   print $ prettyPirReadable result
 
+runFullPipeline :: FilePath -> Text -> Text -> IO (EvaluationResult PLCTerm, [Text])
+runFullPipeline targetDir mainModuleName mainFunctionName = do
+  runPurusCoreFnDefault targetDir
+  pir <- make targetDir mainModuleName mainFunctionName Nothing
+  evaluateTerm pir
 
-shouldPass :: [FilePath]
-shouldPass = map (prefix </>) paths
-  where
-    prefix = "tests/purus/passing"
-    paths = [
-        "2018",
-        "2138",
-        "2609",
-        "4035",
-        "4101",
-        "4105",
-        "4200",
-        "4310",
-        "ClassRefSyntax",
-        "Coercible",
-        "DctorOperatorAlias",
-        "Demo",
-        "ExplicitImportReExport",
-        "ExportExplicit",
-        "ExportExplicit2",
-        "ForeignKind",
-        "Import",
-        "ImportExplicit",
-        "ImportQualified",
-        "InstanceUnnamedSimilarClassName",
-        "ModuleDeps",
-        "Misc",
-        "NonOrphanInstanceFunDepExtra",
-        "NonOrphanInstanceMulti",
-        "PendingConflictingImports",
-        "PendingConflictingImports2",
-        "RedefinedFixity",
-        "ReExportQualified",
-        "ResolvableScopeConflict",
-        "ResolvableScopeConflict2",
-        "ResolvableScopeConflict3",
-        "RowSyntax",
-        "ShadowedModuleName",
-        "TransitiveImport",
-        -- "prelude"
-        "ValidPatterns"
-      ]
+{- These assumes that name of the main module is "Main" and the
+   name of the main function is "Main".
+
+   For now this recompiles everything from scratch
+-}
+
+runDefaultCheckEvalSuccess :: String -> FilePath ->  Assertion
+runDefaultCheckEvalSuccess nm targetDir
+  = (fst <$> runFullPipeline targetDir "Main" "main") >>= assertBool nm . isEvaluationSuccess
+
+runDefaultEvalTest :: String -> FilePath -> PLCTerm -> Assertion
+runDefaultEvalTest nm targetDir expected
+  = (fst <$> runFullPipeline targetDir "Main" "main") >>= \case
+      EvaluationSuccess resTerm -> assertEqual nm expected resTerm
+      EvaluationFailure -> assertFailure nm
+
 
 -- | 'shouldParseError' is a list of tuples of:
 --
@@ -221,7 +220,7 @@ shouldPass = map (prefix </>) paths
 shouldParseError :: [(FilePath, String)]
 shouldParseError = map (Arrow.first (prefix </>)) paths
   where
-    prefix = "tests/purus/invalid-parses"
+    prefix = "tests/purus/passing/invalid-parses"
     paths = [
         ("NestedConstructors", "Unexpected token 'S' at line 7, column 16"),
         ("CharLiteralInBinaryOp", "Unexpected token ''0'' at line 9, column 18"),

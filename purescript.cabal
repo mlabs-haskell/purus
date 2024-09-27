@@ -183,6 +183,7 @@ common defaults
     file-embed >=0.0.15.0 && <0.1,
     filepath >=1.4.2.2 && <1.5,
     Glob >=0.10.2 && <0.11,
+    hashable,
     haskeline >=0.8.2 && <0.9,
     language-javascript ==0.7.0.0,
     lens ==5.2.3,
@@ -252,6 +253,7 @@ library
     Language.PureScript.CoreFn.CSE
     Language.PureScript.CoreFn.Desugar
     Language.PureScript.CoreFn.Desugar.Utils
+    Language.PureScript.CoreFn.Desugar.TypeClasses
     Language.PureScript.CoreFn.Expr
     Language.PureScript.CoreFn.FromJSON
     Language.PureScript.CoreFn.Meta
@@ -517,7 +519,8 @@ test-suite tests
     regex-base >=0.94.0.2 && <0.95,
     split >=0.2.3.4 && <0.3,
     typed-process >=0.2.10.1 && <0.3,
-    tasty ==1.5
+    tasty ==1.5,
+    tasty-hunit
   build-tool-depends:
       hspec-discover:hspec-discover -any
     -- we need the compiler's executable available for the ide tests

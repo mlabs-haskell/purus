@@ -71,6 +71,7 @@ import PlutusIR.MkPir (mkConstant)
 import Bound (Var (..))
 import Control.Lens (view)
 import Language.Purus.Pipeline.CompileToPIR.Utils (builtinSubstitutions)
+import Control.Monad.Reader (MonadReader(local))
 
 type PIRTermBind = Binding PLC.TyName Name DefaultUni DefaultFun ()
 
@@ -84,14 +85,16 @@ compileToPIR ::
 compileToPIR _datatypes _exp = do
   resBody <- compileToPIR' _datatypes _exp
   datatypes <- view pirDatatypes
-  let binds = NE.fromList $ map (PIR.DatatypeBind ()) . M.elems $ datatypes
+  let binds =  map (PIR.DatatypeBind ()) . M.elems $ datatypes
       msg =
         prettify
           [ "INPUT:\n" <> prettyStr _exp
           , "OUTPUT (BODY):\n" <> prettyStr resBody
           ]
   doTraceM "compileToPIR" msg
-  pure $ PIR.Let () PIR.Rec binds resBody
+  case binds of
+    [] -> pure resBody
+    _ -> pure $ PIR.Let () PIR.Rec (NE.fromList binds) resBody
 
 compileToPIR' ::
   Datatypes IR.Kind Ty ->
@@ -156,8 +159,9 @@ compileToPIR' datatypes _exp =
       let bvKind = mkKind bvT
           bvNmTxt = runIdent bvNm
           tNm = PIR.TyName $ PIR.Name (runIdent bvNm) (Unique bvIx)
-      bindTV bvNmTxt tNm
-      e' <- compileToPIR' datatypes e
+      e' <- local id $ do
+        bindTV bvNmTxt tNm
+        compileToPIR' datatypes e
       pure $ PIR.TyAbs () tNm bvKind e'
   where
     convertBind ::

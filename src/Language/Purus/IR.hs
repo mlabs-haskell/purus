@@ -41,7 +41,7 @@ import Language.PureScript.Types (
   genPureName,
  )
 
-import Language.Purus.Debug (doTrace)
+import Language.Purus.Debug (doTrace, prettify)
 import Language.Purus.Pretty ((<::>))
 import Language.Purus.Pretty.Common (prettyStr)
 
@@ -764,7 +764,7 @@ analyzeApp e = (,appArgs e) <$> appFun e
         go other = Just other
     appFun _ = Nothing
 
-expTy :: forall x t a. (TypeLike t, Pretty t) => (a -> Var (BVar t) (FVar t)) -> Exp x t a -> t
+expTy :: forall x t a. (Pretty a, Pretty (KindOf t), TypeLike t, Pretty t) => (a -> Var (BVar t) (FVar t)) -> Exp x t a -> t
 expTy f = \case
   V x -> case f x of
     B (BVar _ t _) -> t
@@ -779,7 +779,7 @@ expTy f = \case
   TyInstE t e -> instTy t $ expTy f e
   TyAbs (BVar _ k idnt) inner -> quantify1 (runIdent idnt) k (expTy f inner)
 
-expTy' :: forall x t a. (TypeLike t, Pretty t) => (a -> Var (BVar t) (FVar t)) -> Scope (BVar t) (Exp x t) a -> t
+expTy' :: forall x t a. (TypeLike t, Pretty t, Pretty (KindOf t), Pretty a) => (a -> Var (BVar t) (FVar t)) -> Scope (BVar t) (Exp x t) a -> t
 expTy' f scoped = case instantiateEither (either (V . B) (V . F)) scoped of
   V x -> case x >>= f of
     B (BVar _ t _) -> t
@@ -804,15 +804,15 @@ expTy' f scoped = case instantiateEither (either (V . B) (V . F)) scoped of
 {- | Gets the type of an application expression.
   (Name might be a bit confusing, does not apply types)
 -}
-appType :: forall x t a. (TypeLike t, Pretty t) => (a -> Var (BVar t) (FVar t)) -> Exp x t a -> Exp x t a -> t
+appType :: forall x t a. (TypeLike t, Pretty t, Pretty (KindOf t), Pretty a) => (a -> Var (BVar t) (FVar t)) -> Exp x t a -> Exp x t a -> t
 appType h fe ae = doTrace "appType" msg result
   where
-    errmsg =
-      ( "\nINPUT FUN:\n"
-          <> prettyStr (expTy h fe)
-          <> "\n\nINPUT ARGS:\n"
-          <> prettyStr (expTy h ae)
-      )
+    errmsg = prettify [
+             "INPUT FUN TY:\n" <> prettyStr (expTy h fe)
+           , "INPUT FUN:\n" <> prettyStr fe
+           , "INPUT ARG TY:\n" <> prettyStr (expTy h ae)
+           , "INPUT ARG:\n" <> prettyStr ae
+           ] 
 
     msg = errmsg <> "\n\nRESULT\n: " <> prettyStr result
 

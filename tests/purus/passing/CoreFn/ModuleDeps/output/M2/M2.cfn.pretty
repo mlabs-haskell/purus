@@ -1,0 +1,29 @@
+M2 (tests/purus/passing/CoreFn/ModuleDeps/M2.purs)
+
+Imported Modules: 
+------------------------------
+  Builtin,
+  M3,
+  Prim
+
+Exports: 
+------------------------------
+  bar
+
+Re-Exports: 
+------------------------------
+  
+
+Foreign: 
+------------------------------
+  
+
+Datatypes: 
+------------------------------
+
+
+
+Declarations: 
+------------------------------
+bar :: Prim.Int
+bar = (baz: Prim.Int)

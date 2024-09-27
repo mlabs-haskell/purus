@@ -1,0 +1,28 @@
+B (tests/purus/passing/CoreFn/PendingConflictingImports/B.purs)
+
+Imported Modules: 
+------------------------------
+  Builtin,
+  Prim
+
+Exports: 
+------------------------------
+  thing
+
+Re-Exports: 
+------------------------------
+  
+
+Foreign: 
+------------------------------
+  
+
+Datatypes: 
+------------------------------
+
+
+
+Declarations: 
+------------------------------
+thing :: Prim.Int
+thing = (2: Prim.Int)

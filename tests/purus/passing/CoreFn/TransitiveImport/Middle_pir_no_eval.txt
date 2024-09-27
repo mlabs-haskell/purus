@@ -1,0 +1,22 @@
+
+------ uneet ------
+letrec
+  data Uneet-457 | match_Uneet-458 where
+    Uneet-459 : Uneet-457
+in
+Uneet-459
+------------
+
+------ middle ------
+letrec
+  data (Tuple1-458 :: * -> *) t1-459 | match_Tuple1-460 where
+    Tuple1-461 : t1-459 -> Tuple1-458 t1-459
+in
+/\a-453 ->
+  \(dict-452 : Tuple1-458 (a-453 -> a-453)) ->
+    match_Tuple1-460
+      {a-453 -> a-453}
+      dict-452
+      {a-453 -> a-453}
+      (\(`<ACCESSOR>`-457 : a-453 -> a-453) -> `<ACCESSOR>`-457)
+------------

@@ -19,6 +19,7 @@ import Data.Graph (SCC (..), stronglyConnComp)
 import Data.List (find, partition)
 import Data.List.NonEmpty (nonEmpty)
 import Data.List.NonEmpty qualified as NEL
+import Data.Foldable (foldl')
 import Data.Map qualified as M
 import Data.Maybe (catMaybes, isJust, mapMaybe)
 import Data.Set qualified as S
@@ -35,6 +36,8 @@ import Language.PureScript.PSString (mkString)
 import Language.PureScript.Sugar.CaseDeclarations (desugarCases)
 import Language.PureScript.TypeClassDictionaries (superclassName)
 import Language.PureScript.Types
+
+import Language.PureScript.CoreFn.TypeLike (funTy)
 
 type MemberMap = M.Map (ModuleName, ProperName 'ClassName) TypeClassData
 
@@ -281,7 +284,7 @@ typeClassDictionaryDeclaration ::
 typeClassDictionaryDeclaration sa name args implies members =
   let superclassTypes =
         superClassDictionaryNames implies
-          `zip` [ function unit (foldl srcTypeApp (srcTypeConstructor (fmap (coerceProperName . dictTypeName) superclass)) tyArgs)
+          `zip` [ foldl' srcTypeApp (srcTypeConstructor (fmap (coerceProperName . dictTypeName) superclass)) tyArgs
                 | (Constraint _ superclass _ tyArgs _) <- implies
                 ]
       members' = map (first runIdent . memberToNameAndType) members
@@ -301,27 +304,27 @@ typeClassMemberToDictionaryAccessor ::
   Declaration ->
   Declaration
 typeClassMemberToDictionaryAccessor mn name args (TypeDeclaration (TypeDeclarationData sa@(ss, _) ident ty)) =
-  let className = Qualified (ByModuleName mn) name
-      dictIdent = Ident "dict"
-      dictObjIdent = Ident "v"
-      ctor = ConstructorBinder ss (coerceProperName . dictTypeName <$> className) [VarBinder ss dictObjIdent]
-      -- NOTE: changing this from ByNullSourcePos to the real source pos to hopefully make conversion to typed CoreFn AST work
-      acsr = Accessor (mkString $ runIdent ident) (Var ss (Qualified {- -ByNullSourcePos -} (BySourcePos $ spanStart ss) dictObjIdent))
-      visibility = second (const TypeVarVisible) <$> args
-   in ValueDecl
+  ValueDecl
         sa
         ident
         Public
         []
-        [ MkUnguarded
-            ( TypedValue False (Abs (VarBinder ss dictIdent) (Case [Var ss $ Qualified ByNullSourcePos dictIdent] [CaseAlternative [ctor] [MkUnguarded acsr]])) $
-                addVisibility visibility (moveQuantifiersToFront NullSourceAnn (quantify (srcConstrainedType (srcConstraint className [] (map (uncurry srcTypeVar) args) Nothing) ty)))
-            )
+        [ MkUnguarded ( TypedValue False lam lamTy )
         ]
+ where
+   className    = Qualified (ByModuleName mn) name
+   dictIdent    = Ident "dict"
+   dictTyCon    = TypeConstructor NullSourceAnn (Qualified (ByModuleName mn) $ coerceProperName (dictTypeName  name))
+   dictTy       = foldl' (TypeApp NullSourceAnn) dictTyCon (uncurry (TypeVar NullSourceAnn) <$> args)
+   -- NOTE: changing this from ByNullSourcePos to the real source pos to hopefully make conversion to typed CoreFn AST work
+   acsr = Accessor (mkString $ runIdent ident) (Var ss (Qualified (BySourcePos $ spanStart ss) dictIdent))
+   lam  = Abs (TypedBinder dictTy (VarBinder ss dictIdent)) acsr
+   lamTy = addVisibility visibility (moveQuantifiersToFront NullSourceAnn (quantify (srcConstrainedType (srcConstraint className [] (map (uncurry srcTypeVar) args) Nothing) ty)))
+   visibility = second (const TypeVarVisible) <$> args
+
+
 typeClassMemberToDictionaryAccessor _ _ _ _ = internalError "Invalid declaration in type class definition"
 
-unit :: SourceType
-unit = srcTypeApp tyRecord srcREmpty
 
 typeInstanceDictionaryDeclaration ::
   forall m.
@@ -365,7 +368,7 @@ typeInstanceDictionaryDeclaration sa@(ss, _) name mn deps className tys decls =
     -- The dictionary itself is a record literal (unless unreachable, in which case it's undefined).
     superclassesDicts <- for typeClassSuperclasses $ \(Constraint _ superclass _ suTyArgs _) -> do
       let tyArgs = map (replaceAllTypeVars (zip (map fst typeClassArguments) tys)) suTyArgs
-      pure $ Abs (VarBinder ss UnusedIdent) (DeferredDictionary superclass tyArgs)
+      pure $ (DeferredDictionary superclass tyArgs)
     let superclasses = superClassDictionaryNames typeClassSuperclasses `zip` superclassesDicts
 
     let props = Literal ss $ ObjectLiteral $ map (first mkString) (members ++ superclasses)
