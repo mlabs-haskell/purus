@@ -1,0 +1,31 @@
+Lib (tests/purus/passing/CoreFn/ClassRefSyntax/Lib.purs)
+
+Imported Modules: 
+------------------------------
+  Builtin,
+  Prim
+
+Exports: 
+------------------------------
+  go
+
+Re-Exports: 
+------------------------------
+  
+
+Foreign: 
+------------------------------
+  
+
+Datatypes: 
+------------------------------
+
+
+
+Declarations: 
+------------------------------
+go :: forall (@a :: Prim.Type). ({ go :: ((a :: Prim.Type) -> ((a :: Prim.Type))) } -> (((a :: Prim.Type) -> ((a :: Prim.Type)))))
+go = 
+  \(dict: {   go :: ((a :: Prim.Type) -> ((a :: Prim.Type))) }) -> 
+    (dict: {   go :: ((a :: Prim.Type) -> ((a :: Prim.Type))) })
+    .go

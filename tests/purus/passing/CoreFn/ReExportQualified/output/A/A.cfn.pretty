@@ -1,0 +1,28 @@
+A (tests/purus/passing/CoreFn/ReExportQualified/A.purs)
+
+Imported Modules: 
+------------------------------
+  Builtin,
+  Prim
+
+Exports: 
+------------------------------
+  x
+
+Re-Exports: 
+------------------------------
+  
+
+Foreign: 
+------------------------------
+  
+
+Datatypes: 
+------------------------------
+
+
+
+Declarations: 
+------------------------------
+x :: Prim.String
+x = ("Do": Prim.String)

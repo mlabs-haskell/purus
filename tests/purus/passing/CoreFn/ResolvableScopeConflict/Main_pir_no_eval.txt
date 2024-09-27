@@ -1,0 +1,13 @@
+
+------ what ------
+letrec
+  data Boolean-455 | match_Boolean-456 where
+    False-457 : Boolean-455
+    True-458 : Boolean-455
+in
+\(v-453 : Boolean-455) -> match_Boolean-456 v-453 {integer} 3 1
+------------
+
+------ main ------
+"Done"
+------------

@@ -9,33 +9,26 @@ import System.FilePath
 import Language.PureScript qualified as P
 import Data.Set qualified as S
 import Data.Foldable (traverse_)
-import System.Directory (removeDirectoryRecursive, doesDirectoryExist, createDirectory)
+import System.Directory 
 import System.FilePath.Glob qualified as Glob
 import Data.Function (on)
 import Data.List (sortBy, stripPrefix, groupBy)
 import Language.Purus.Make
 import Language.Purus.Eval
+import Language.Purus.Types
+import PlutusCore.Evaluation.Result
 import PlutusIR.Core.Instance.Pretty.Readable (prettyPirReadable)
+import Test.Tasty 
+import Test.Tasty.HUnit
 
 shouldPassTests :: IO ()
 shouldPassTests = do
-  traverse_ runPurusDefault shouldPass
-  -- let misc =  "./tests/purus/passing/Misc/output/Lib/index.cfn"
-  {- UPLC tests disabled atm while we rewrite stuff
+  cfn <- coreFnTests
+  pir <- pirTests
+  defaultMain $ testGroup "Purus Tests" [cfn,pir]
 
-  uplc1 <- declToUPLC misc "main"
-  writeFile "./tests/purus/passing/Misc/output/Lib/main.plc" (show uplc1)
-  uplc2 <- declToUPLC misc "minus"
-  writeFile "./tests/purus/passing/Misc/output/Lib/fakeminus.plc" (show uplc2)
-  defaultMain $
-    runPLCProgramTest
-    "mainTest"
-    (EvaluationSuccess (Constant () (Some (ValueOf DefaultUniInteger 2))),[])
-    misc
-    "main"
-  -}
-runPurus :: P.CodegenTarget -> FilePath ->  IO ()
-runPurus target dir =  do
+runPurusCoreFn :: P.CodegenTarget -> FilePath ->  IO ()
+runPurusCoreFn target dir =  do
     outDirExists <- doesDirectoryExist outputDir
     when (target /= P.CheckCoreFn) $ do
       when outDirExists $ do
@@ -43,10 +36,7 @@ runPurus target dir =  do
         createDirectory outputDir
       unless outDirExists $ createDirectory outputDir
     files <- concat <$> getTestFiles dir
-    print files
-    print ("Compiling " <> dir)
     compileForTests (makeOpts files)
-    print ("Done with " <> dir)
   where
     outputDir = dir </> "output"
 
@@ -67,26 +57,68 @@ runPurus target dir =  do
       optionsCodegenTargets = S.singleton target
     }
 
-runPurusDefault :: FilePath -> IO ()
-runPurusDefault path = runPurus P.CoreFn path
+-- TODO: Move modules into a directory specifically for PIR non-eval tests (for now this should be OK)
+pirTests :: IO TestTree
+pirTests = do
+  let coreFnTestPath = "tests/purus/passing/CoreFn"
+  allTestDirectories <- listDirectory coreFnTestPath
+  let trees = map (\dir -> testCase dir $ compileDirNoEval (coreFnTestPath </> dir)) allTestDirectories
+  pure $ testGroup "PIR Tests (No Evaluation)" trees
+
+-- path to a Purus project directory, outputs serialized CoreFn 
+compileToCoreFnTest :: FilePath -> TestTree
+compileToCoreFnTest path = testCase (path) $ runPurusCoreFnDefault path
+
+coreFnTests :: IO TestTree
+coreFnTests = do
+  let coreFnTestPath = "tests/purus/passing/CoreFn"
+  allTestDirectories <- listDirectory coreFnTestPath
+  let trees = map (\dir -> compileToCoreFnTest (coreFnTestPath </> dir)) allTestDirectories
+  pure $ testGroup "CoreFn Tests" trees
+
+
+runPurusCoreFnDefault :: FilePath -> IO ()
+runPurusCoreFnDefault path = runPurusCoreFn P.CoreFn path
 
 runPurusGolden :: FilePath -> IO ()
-runPurusGolden path = runPurus P.CheckCoreFn path
+runPurusGolden path = runPurusCoreFn P.CheckCoreFn path
 
-runFullPipeline :: FilePath -> Text -> Text -> IO ()
-runFullPipeline targetDir mainModuleName mainFunctionName = do
-  runPurusDefault targetDir
+runFullPipeline_ :: FilePath -> Text -> Text -> IO ()
+runFullPipeline_ targetDir mainModuleName mainFunctionName = do
+  runPurusCoreFnDefault targetDir
   pir <- make targetDir mainModuleName mainFunctionName Nothing
   result <- evaluateTerm pir
   print $ prettyPirReadable result
 
+runFullPipeline :: FilePath -> Text -> Text -> IO (EvaluationResult PLCTerm, [Text])
+runFullPipeline targetDir mainModuleName mainFunctionName = do
+  runPurusCoreFnDefault targetDir
+  pir <- make targetDir mainModuleName mainFunctionName Nothing
+  evaluateTerm pir
 
-shouldPass :: [FilePath]
-shouldPass = map (prefix </>) paths
+{- These assumes that name of the main module is "Main" and the
+   name of the main function is "Main".
+
+   For now this recompiles everything from scratch
+-}
+
+runDefaultCheckEvalSuccess :: String -> FilePath ->  Assertion
+runDefaultCheckEvalSuccess nm targetDir
+  = (fst <$> runFullPipeline targetDir "Main" "main") >>= assertBool nm . isEvaluationSuccess
+
+runDefaultEvalTest :: String -> FilePath -> PLCTerm -> Assertion
+runDefaultEvalTest nm targetDir expected
+  = (fst <$> runFullPipeline targetDir "Main" "main") >>= \case
+      EvaluationSuccess resTerm -> assertEqual nm expected resTerm
+      EvaluationFailure -> assertFailure nm
+
+
+shouldPassCoreFn :: [FilePath]
+shouldPassCoreFn = map (prefix </>) paths
   where
-    prefix = "tests/purus/passing"
+    prefix = "tests/purus/passing/CoreFn"
     paths = [
-        "2018",
+         "2018",
         "2138",
         "2609",
         "4035",
@@ -119,8 +151,8 @@ shouldPass = map (prefix </>) paths
         "ResolvableScopeConflict3",
         "RowSyntax",
         "ShadowedModuleName",
-        "TransitiveImport"
-        -- "prelude"
+        "TransitiveImport",
+        "Validator"
       ]
 
 

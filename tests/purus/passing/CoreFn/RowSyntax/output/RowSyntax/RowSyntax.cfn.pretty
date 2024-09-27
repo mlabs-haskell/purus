@@ -1,0 +1,43 @@
+RowSyntax (tests/purus/passing/CoreFn/RowSyntax/RowSyntax.purs)
+
+Imported Modules: 
+------------------------------
+  Builtin,
+  Prim,
+  RowSyntax
+
+Exports: 
+------------------------------
+  RowProxy,
+  aRowProxy,
+  moreFields,
+  isARow'
+
+Re-Exports: 
+------------------------------
+  
+
+Foreign: 
+------------------------------
+  
+
+Datatypes: 
+------------------------------
+data RowProxy (r :: (Prim.Row (Prim.Type))) = 
+  RowProxy 
+
+
+Declarations: 
+------------------------------
+isARow' :: (Prim.Record ({}@Prim.Type))
+isARow' = ({  }: (Prim.Record ({}@Prim.Type)))
+
+moreFields :: (RowSyntax.RowProxy (( field1 :: Prim.Int
+, field2 :: Prim.String
+, field3 :: Prim.Boolean )))
+moreFields = 
+  (RowProxy: (RowSyntax.RowProxy
+  ((field1 :: Prim.Int, field2 :: Prim.String, field3 :: Prim.Boolean))))
+
+aRowProxy :: (RowSyntax.RowProxy ((field :: Prim.Int)))
+aRowProxy = (RowProxy: (RowSyntax.RowProxy ((field :: Prim.Int))))

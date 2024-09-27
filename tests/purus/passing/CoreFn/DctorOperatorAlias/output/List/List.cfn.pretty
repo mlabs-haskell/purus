@@ -1,0 +1,30 @@
+List (tests/purus/passing/CoreFn/DctorOperatorAlias/List.purs)
+
+Imported Modules: 
+------------------------------
+  Builtin,
+  List,
+  Prim
+
+Exports: 
+------------------------------
+  Cons,
+  Nil
+
+Re-Exports: 
+------------------------------
+  
+
+Foreign: 
+------------------------------
+  
+
+Datatypes: 
+------------------------------
+data List (a :: Prim.Type) = 
+  Cons ((a :: Prim.Type)) ((List.List ((a :: Prim.Type))))
+  | Nil 
+
+
+Declarations: 
+------------------------------

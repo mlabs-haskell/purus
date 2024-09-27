@@ -1,0 +1,29 @@
+C (tests/purus/passing/CoreFn/ReExportQualified/C.purs)
+
+Imported Modules: 
+------------------------------
+  A,
+  B,
+  Builtin,
+  Prim
+
+Exports: 
+------------------------------
+  
+
+Re-Exports: 
+------------------------------
+  A.x,
+  B.y
+
+Foreign: 
+------------------------------
+  
+
+Datatypes: 
+------------------------------
+
+
+
+Declarations: 
+------------------------------

@@ -1,0 +1,8 @@
+
+------ concat ------
+\(v-452 : string) (v1-453 : string) -> "concat"
+------------
+
+------ main ------
+(\(v-452 : string) (v1-453 : string) -> "concat") "Do" "ne"
+------------

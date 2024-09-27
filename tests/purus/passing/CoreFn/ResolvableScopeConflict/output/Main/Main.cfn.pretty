@@ -1,0 +1,38 @@
+Main (tests/purus/passing/CoreFn/ResolvableScopeConflict/ResolvableScopeConflict.purs)
+
+Imported Modules: 
+------------------------------
+  A,
+  B,
+  Builtin,
+  Prim
+
+Exports: 
+------------------------------
+  what,
+  main
+
+Re-Exports: 
+------------------------------
+  
+
+Foreign: 
+------------------------------
+  
+
+Datatypes: 
+------------------------------
+
+
+
+Declarations: 
+------------------------------
+what :: (Prim.Boolean -> (Prim.Int))
+what = 
+  \(v: Prim.Boolean) -> 
+    case (v: Prim.Boolean) of 
+       True -> (thing: Prim.Int)
+       False -> (zing: Prim.Int)
+
+main :: Prim.String
+main = ("Done": Prim.String)

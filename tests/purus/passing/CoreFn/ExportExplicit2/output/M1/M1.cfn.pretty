@@ -1,0 +1,32 @@
+M1 (tests/purus/passing/CoreFn/ExportExplicit2/M1.purs)
+
+Imported Modules: 
+------------------------------
+  Builtin,
+  M1,
+  Prim
+
+Exports: 
+------------------------------
+  bar
+
+Re-Exports: 
+------------------------------
+  
+
+Foreign: 
+------------------------------
+  
+
+Datatypes: 
+------------------------------
+
+
+
+Declarations: 
+------------------------------
+foo :: Prim.Int
+foo = (0: Prim.Int)
+
+bar :: Prim.Int
+bar = (foo: Prim.Int)

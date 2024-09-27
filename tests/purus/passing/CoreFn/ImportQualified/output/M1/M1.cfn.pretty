@@ -1,0 +1,28 @@
+M1 (tests/purus/passing/CoreFn/ImportQualified/M1.purs)
+
+Imported Modules: 
+------------------------------
+  Builtin,
+  Prim
+
+Exports: 
+------------------------------
+  log
+
+Re-Exports: 
+------------------------------
+  
+
+Foreign: 
+------------------------------
+  
+
+Datatypes: 
+------------------------------
+
+
+
+Declarations: 
+------------------------------
+log :: forall (t1 :: Prim.Type). ((t1 :: Prim.Type) -> ((t1 :: Prim.Type)))
+log = \(x: (t1 :: Prim.Type)) -> (x: (t1 :: Prim.Type))
