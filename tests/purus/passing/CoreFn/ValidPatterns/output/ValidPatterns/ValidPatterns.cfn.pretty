@@ -1,4 +1,4 @@
-ValidPatterns (tests/purus/passing/ValidPatterns/ValidPatterns.purs)
+ValidPatterns (tests/purus/passing/CoreFn/ValidPatterns/ValidPatterns.purs)
 
 Imported Modules: 
 ------------------------------
