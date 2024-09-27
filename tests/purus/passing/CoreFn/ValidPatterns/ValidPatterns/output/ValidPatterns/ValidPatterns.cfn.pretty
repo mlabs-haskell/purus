@@ -1,0 +1,208 @@
+ValidPatterns (tests/purus/passing/ValidPatterns/ValidPatterns.purs)
+
+Imported Modules: 
+------------------------------
+  Builtin,
+  Prim,
+  ValidPatterns
+
+Exports: 
+------------------------------
+  Tuple,
+  A,
+  B,
+  C,
+  D,
+  myConstructorPatterns,
+  myBinaryOpPattern,
+  myNumericLiteralPattern,
+  myCharLiteralPattern,
+  someBinOpCases,
+  someConstructorCases,
+  someNumericLiteralCases,
+  someNumericLiteralPatterns,
+  someCharLiteralCases,
+  someStringLiteralPatterns,
+  someStringLiteralCases
+
+Re-Exports: 
+------------------------------
+  
+
+Foreign: 
+------------------------------
+  
+
+Datatypes: 
+------------------------------
+data Constructors (a :: Prim.Type) (b :: Prim.Type) (c :: Prim.Type) = 
+  A ((a :: Prim.Type)) ((b :: Prim.Type)) ((c :: Prim.Type))
+  | B ((b :: Prim.Type)) ((c :: Prim.Type))
+  | C ((c :: Prim.Type))
+  | D 
+
+data Tuple (a :: Prim.Type) (b :: Prim.Type) = 
+  Tuple ((a :: Prim.Type)) ((b :: Prim.Type))
+
+
+Declarations: 
+------------------------------
+someStringLiteralPatterns :: (Prim.String -> (Prim.Boolean))
+someStringLiteralPatterns = 
+  \(v: Prim.String) -> 
+    case (v: Prim.String) of 
+       "" -> (True: Prim.Boolean)
+       "a" -> (True: Prim.Boolean)
+       "banana" -> (True: Prim.Boolean)
+       "" -> (True: Prim.Boolean)
+       "a" -> (True: Prim.Boolean)
+       "banana" -> (True: Prim.Boolean)
+       _ -> (True: Prim.Boolean)
+
+someStringLiteralCases :: Prim.Boolean
+someStringLiteralCases = 
+  case ("": Prim.String) of 
+     "" -> (True: Prim.Boolean)
+     "a" -> (True: Prim.Boolean)
+     "b" -> (True: Prim.Boolean)
+     "ccc" -> (True: Prim.Boolean)
+     _ -> (True: Prim.Boolean)
+
+someNumericLiteralPatterns :: (Prim.Int -> (Prim.Boolean))
+someNumericLiteralPatterns = 
+  \(v: Prim.Int) -> 
+    case (v: Prim.Int) of 
+       -3 -> (True: Prim.Boolean)
+       -3 -> (True: Prim.Boolean)
+       0 -> (True: Prim.Boolean)
+       1 -> (True: Prim.Boolean)
+       _ -> (True: Prim.Boolean)
+
+someNumericLiteralCases :: Prim.Boolean
+someNumericLiteralCases = 
+  case (0: Prim.Int) of 
+     1 -> (True: Prim.Boolean)
+     2 -> (True: Prim.Boolean)
+     3 -> (True: Prim.Boolean)
+     -3 -> (True: Prim.Boolean)
+     _ -> (True: Prim.Boolean)
+
+someConstructorCases :: Prim.Boolean
+someConstructorCases = 
+  let
+    someConstructor :: (((ValidPatterns.Constructors (Prim.Char)) (Prim.Char)) (Prim.Char))
+    someConstructor = 
+      (A: forall (@a :: Prim.Type)
+      (@b :: Prim.Type)
+      (@c :: Prim.Type). ((a :: Prim.Type) ->
+      (((b :: Prim.Type) ->
+      (((c :: Prim.Type) ->
+      ((((ValidPatterns.Constructors
+      ((a :: Prim.Type))) ((b :: Prim.Type))) ((c :: Prim.Type))))))))))
+      ("'a'": Prim.Char)
+      ("'b'": Prim.Char)
+      ("'c'": Prim.Char)
+  in case (someConstructor: (((ValidPatterns.Constructors (Prim.Char)) (Prim.Char)) (Prim.Char))) of 
+        A _ _ _ -> (True: Prim.Boolean)
+        A _ _ _ -> (True: Prim.Boolean)
+        B _ _ -> (True: Prim.Boolean)
+        C _ -> (True: Prim.Boolean)
+        C _ -> (True: Prim.Boolean)
+        C _ -> (True: Prim.Boolean)
+        D -> (True: Prim.Boolean)
+        D -> (True: Prim.Boolean)
+
+someCharLiteralCases :: Prim.Boolean
+someCharLiteralCases = 
+  case ("'a'": Prim.Char) of 
+     'a' -> (True: Prim.Boolean)
+     'b' -> (True: Prim.Boolean)
+     'c' -> (True: Prim.Boolean)
+     _ -> (True: Prim.Boolean)
+
+someBinOpCases :: Prim.Boolean
+someBinOpCases = 
+  let
+    someTuple :: ((ValidPatterns.Tuple (Prim.Char)) (Prim.Char))
+    someTuple = 
+      (Tuple: forall (@a :: Prim.Type)
+      (@b :: Prim.Type). ((a :: Prim.Type) ->
+      (((b :: Prim.Type) ->
+      (((ValidPatterns.Tuple ((a :: Prim.Type))) ((b :: Prim.Type))))))))
+      ("'a'": Prim.Char)
+      ("'b'": Prim.Char)
+  in case (someTuple: ((ValidPatterns.Tuple (Prim.Char)) (Prim.Char))) of 
+        Tuple a b -> (True: Prim.Boolean)
+        Tuple _ _ -> (True: Prim.Boolean)
+        Tuple _ _ -> (True: Prim.Boolean)
+
+myNumericLiteralPattern :: (Prim.Int -> (Prim.Boolean))
+myNumericLiteralPattern = 
+  \(v: Prim.Int) -> 
+    case (v: Prim.Int) of 
+       0 -> (True: Prim.Boolean)
+       0 -> (True: Prim.Boolean)
+       _ -> (True: Prim.Boolean)
+       a -> (True: Prim.Boolean)
+       a -> (True: Prim.Boolean)
+
+myConstructorPatterns :: forall (a :: Prim.Type) (b :: Prim.Type) (c :: Prim.Type). ((((ValidPatterns.Constructors ((a :: Prim.Type))) ((b :: Prim.Type))) ((c :: Prim.Type))) -> (Prim.Boolean))
+myConstructorPatterns = 
+  \(v: (((ValidPatterns.Constructors
+    ((a :: Prim.Type))) ((b :: Prim.Type))) ((c :: Prim.Type)))) -> 
+    case (v: (((ValidPatterns.Constructors ((a :: Prim.Type))) ((b :: Prim.Type))) ((c :: Prim.Type)))) of 
+       A _ _ _ -> (True: Prim.Boolean)
+       A a _ _ -> (True: Prim.Boolean)
+       A a b _ -> (True: Prim.Boolean)
+       A a b c -> (True: Prim.Boolean)
+       A _ b c -> (True: Prim.Boolean)
+       B _ _ -> (True: Prim.Boolean)
+       B b _ -> (True: Prim.Boolean)
+       B b c -> (True: Prim.Boolean)
+       C _ -> (True: Prim.Boolean)
+       C c -> (True: Prim.Boolean)
+       D -> (True: Prim.Boolean)
+       D -> (True: Prim.Boolean)
+       A _ _ _ -> (True: Prim.Boolean)
+       A a _ _ -> (True: Prim.Boolean)
+       A a b _ -> (True: Prim.Boolean)
+       A a b c -> (True: Prim.Boolean)
+       A _ b c -> (True: Prim.Boolean)
+       B _ _ -> (True: Prim.Boolean)
+       B b _ -> (True: Prim.Boolean)
+       B b c -> (True: Prim.Boolean)
+       C _ -> (True: Prim.Boolean)
+       C c -> (True: Prim.Boolean)
+       D -> (True: Prim.Boolean)
+
+myCharLiteralPattern :: (Prim.Char -> (Prim.Boolean))
+myCharLiteralPattern = 
+  \(v: Prim.Char) -> 
+    case (v: Prim.Char) of 
+       'a' -> (True: Prim.Boolean)
+       'b' -> (True: Prim.Boolean)
+       _ -> (True: Prim.Boolean)
+       a -> (True: Prim.Boolean)
+       a -> (True: Prim.Boolean)
+
+myBinaryOpPattern :: forall (a :: Prim.Type) (b :: Prim.Type). (((ValidPatterns.Tuple ((a :: Prim.Type))) ((b :: Prim.Type))) -> (Prim.Boolean))
+myBinaryOpPattern = 
+  \(v: ((ValidPatterns.Tuple ((a :: Prim.Type))) ((b :: Prim.Type)))) -> 
+    case (v: ((ValidPatterns.Tuple ((a :: Prim.Type))) ((b :: Prim.Type)))) of 
+       Tuple _ _ -> (True: Prim.Boolean)
+       Tuple a b -> (True: Prim.Boolean)
+       Tuple _ b -> (True: Prim.Boolean)
+       Tuple a _ -> (True: Prim.Boolean)
+       Tuple _ _ -> (True: Prim.Boolean)
+       Tuple a b -> (True: Prim.Boolean)
+       Tuple _ b -> (True: Prim.Boolean)
+       Tuple a _ -> (True: Prim.Boolean)
+       Tuple _ _ -> (True: Prim.Boolean)
+       Tuple a b -> (True: Prim.Boolean)
+       Tuple _ b -> (True: Prim.Boolean)
+       Tuple a _ -> (True: Prim.Boolean)
+       Tuple _ _ -> (True: Prim.Boolean)
+       Tuple a b -> (True: Prim.Boolean)
+       Tuple _ b -> (True: Prim.Boolean)
+       Tuple a _ -> (True: Prim.Boolean)
+       _ -> (True: Prim.Boolean)

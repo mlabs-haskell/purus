@@ -582,30 +582,51 @@ binder :: { Binder () }
   | binder1 '::' type { BinderTyped () $1 $2 $3 }
 
 binder1 :: { Binder () }
-  : binder2 { $1 }
-  | binder1 qualOp binder2 { BinderOp () $1 (getQualifiedOpName $2) $3 }
-
-binder2 :: { Binder () }
-  : many(binderAtom) {% toBinderConstructor $1 }
-  | '-' number { uncurry (BinderNumber () (Just $1)) $2 }
+  : binderAtom { $1 }
+  | qualProperName many(binderVar) {%
+        toBinderConstructor $ BinderConstructor () (getQualifiedProperName $1) [] NE.:| NE.toList $2
+    }
+  | delim('{', recordBinder, ',', '}') { BinderRecord () $1 }
+  -- NOTE(jaredponn): the following rule would give reduce/reduce
+  -- conflicts
+  -- > | binderVar qualOp binderVar { BinderOp () $1 (getQualifiedOpName $2) $3 }
+  -- The problem is with examples like
+  -- @( a   )@
+  -- and
+  -- @( a   ) + @
+  -- where  ^~~~ here, it doesn't know which reduction to do (either
+  -- @binderVar@ or a @qualOp@)... So, we do the GHC strategy of "parsing
+  -- overgenerously" and fixing it later (actually immediately in this rule)
+  -- REMARK(jaredponn): see 'Language.PureScript.CST.Utils.toBinderConstructor'
+  -- for how we adapted the error handling
+  | binder1 qualOp binderVar {% 
+    let binderOp = BinderOp () $1 (getQualifiedOpName $2) $3 
+    in case unwrapBinderParens $1 of
+        BinderWildcard () _srcTok -> return binderOp
+        BinderVar () _ident -> return binderOp
+        _ -> unexpectedToks binderRange unexpectedBinder ErrToken $1 
+    }
 
 binderAtom :: { Binder () }
+  : number { uncurry (BinderNumber () Nothing) $1 }
+  | char { uncurry (BinderChar ()) $1 }
+  | boolean { uncurry (BinderBoolean ()) $1 }
+  | string { uncurry (BinderString ()) $1 }
+  | '-' number { uncurry (BinderNumber () (Just $1)) $2 }
+  | '_' { BinderWildcard () $1 }
+  | ident %shift { BinderVar () $1 }
+  | qualProperName { BinderConstructor () (getQualifiedProperName $1) [] }
+  | '(' binder1 ')' { BinderParens () (Wrapped $1 $2 $3) }
+
+binderVar :: { Binder () } 
   : '_' { BinderWildcard () $1 }
   | ident %shift { BinderVar () $1 }
-  | ident '@' binderAtom { BinderNamed () $1 $2 $3 }
-  | qualProperName { BinderConstructor () (getQualifiedProperName $1) [] }
-  | boolean { uncurry (BinderBoolean ()) $1 }
-  | char { uncurry (BinderChar ()) $1 }
-  | string { uncurry (BinderString ()) $1 }
-  | number { uncurry (BinderNumber () Nothing) $1 }
-  | delim('[', binder, ',', ']') { BinderList () $1 }
-  | delim('{', recordBinder, ',', '}') { BinderRecord () $1 }
-  | '(' binder ')' { BinderParens () (Wrapped $1 $2 $3) }
+  | '(' binderVar ')' { BinderParens () (Wrapped $1 $2 $3) }
 
 recordBinder :: { RecordLabeled (Binder ()) }
   : label {% fmap RecordPun . toName Ident $ lblTok $1 }
-  | label '=' binder {% addFailure [$2] ErrRecordUpdateInCtr *> pure (RecordPun $ unexpectedName $ lblTok $1) }
-  | label ':' binder { RecordField $1 $2 $3 }
+  | label '=' binderVar {% addFailure [$2] ErrRecordUpdateInCtr *> pure (RecordPun $ unexpectedName $ lblTok $1) }
+  | label ':' binderVar { RecordField $1 $2 $3 }
 
 -- By splitting up the module header from the body, we can incrementally parse
 -- just the header, and then continue parsing the body while still sharing work.
