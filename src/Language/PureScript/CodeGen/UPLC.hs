@@ -1,4 +1,3 @@
-{-# LANGUAGE TypeApplications #-}
 -- TODO: Remove this module
 {-# OPTIONS_GHC -Wno-redundant-constraints #-}
 
@@ -40,7 +39,7 @@ import Language.PureScript.Types (SourceType)
 import Language.PureScript.Types qualified as T
 import PlutusCore (someValue)
 import PlutusCore qualified as PLC
-import PlutusCore.Pretty (prettyPlcReadableDef)
+import PlutusCore.Pretty (prettyPlcReadableSimple)
 import PlutusIR qualified as PIR
 
 -- Stolen from Ply, not 100% sure if this is what we want, i.e. maybe there should be an annotation?
@@ -152,4 +151,4 @@ exprToTerm = \case
        pure $ PIR.Constr a 0 terms -- the evaluator should use 0 based indices? i hope?
 -}
 printUPLC :: forall m. (MonadIO m) => PIRProgram -> m ()
-printUPLC program = liftIO . print $ prettyPlcReadableDef program
+printUPLC program = liftIO . print $ prettyPlcReadableSimple program

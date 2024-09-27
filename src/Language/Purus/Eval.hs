@@ -1,5 +1,3 @@
-{-# LANGUAGE TypeApplications #-}
-
 module Language.Purus.Eval (
   compileToUPLC,
   evaluateTerm,
@@ -32,8 +30,9 @@ import PlutusCore.Default (
   DefaultUni,
  )
 import PlutusCore.Evaluation.Machine.Ck (
-  EvaluationResult,
-  unsafeEvaluateCk,
+  EvaluationResult (EvaluationFailure, EvaluationSuccess),
+  unsafeToEvaluationResult,
+  evaluateCk
  )
 import PlutusCore.Evaluation.Machine.ExBudgetingDefaults qualified as PLC
 import PlutusIR (Name, Program (Program))
@@ -45,7 +44,10 @@ type PLCProgram uni fun a = PLC.Program PLC.TyName PLC.Name uni fun (Provenance 
 
 {- Evaluates a UPLC Program -}
 runPLCProgram :: PLCProgram DefaultUni DefaultFun () -> (EvaluationResult PLCTerm, [Text])
-runPLCProgram (PLC.Program _ _ c) = unsafeEvaluateCk PLC.defaultBuiltinsRuntime $ void c
+runPLCProgram (PLC.Program _ _ c) = case evaluateCk PLC.defaultBuiltinsRuntimeForTesting . void $ c of 
+  (result, logs) -> case result of 
+    Left _ -> (EvaluationFailure, logs)
+    Right t -> (EvaluationSuccess t, logs)
 
 {- Evaluates a PIR Term -}
 evaluateTerm :: PIRTerm -> IO (EvaluationResult (PLC.Term PLC.TyName Name DefaultUni DefaultFun ()), [Text])

@@ -952,6 +952,15 @@ tyBuiltinList = TypeApp nullSourceAnn (srcTypeConstructor PLC.BuiltinList)
 tyByteString :: SourceType
 tyByteString = srcTypeConstructor PLC.BuiltinByteString
 
+tyElementG1 :: SourceType
+tyElementG1 = srcTypeConstructor PLC.BuiltinElementG1
+
+tyElementG2 :: SourceType
+tyElementG2 = srcTypeConstructor PLC.BuiltinElementG2
+
+tyMlResult :: SourceType
+tyMlResult = srcTypeConstructor PLC.BuiltinMlResult
+
 tyUnit :: SourceType
 tyUnit = srcTypeConstructor C.Unit
 
@@ -971,6 +980,9 @@ builtinTypes =
     , (PLC.BuiltinPair, (kindType -:> kindType -:> kindType, ExternData [Representational, Representational]))
     , (PLC.BuiltinList, (kindType -:> kindType, ExternData [Representational]))
     , (PLC.BuiltinByteString, (kindType, ExternData []))
+    , (PLC.BuiltinElementG1, (kindType, ExternData []))
+    , (PLC.BuiltinElementG2, (kindType, ExternData []))
+    , (PLC.BuiltinMlResult, (kindType, ExternData []))
     ]
 
 primFunctions :: M.Map (Qualified Ident) (SourceType, NameKind, NameVisibility)
@@ -1058,6 +1070,28 @@ builtinCxt =
       PLC.I_mkPairData #@ tyBuiltinData -:> tyBuiltinData -:> tyBuiltinPair tyBuiltinData tyBuiltinData
     , PLC.I_mkNilData #@ tyUnit -:> tyBuiltinList tyBuiltinData
     , PLC.I_mkNilPairData #@ tyUnit -:> tyBuiltinList (tyBuiltinPair tyBuiltinData tyBuiltinData)
-    -- TODO: the Bls12 crypto primfuns
-    -- NOTE: IntegerToByteString & ByteStringToInteger don't appear to be in the version of PlutusCore we have?
+    , -- BLS primitives
+      PLC.I_bls12_381_G1_add #@ tyElementG1 -:> tyElementG1 -:> tyElementG1
+    , PLC.I_bls12_381_G1_neg #@ tyElementG1 -:> tyElementG1
+    , PLC.I_bls12_381_G1_scalarMul #@ tyInt -:> tyElementG1 -:> tyElementG1
+    , PLC.I_bls12_381_G1_compress #@ tyElementG1 -:> tyByteString
+    , PLC.I_bls12_381_G1_uncompress #@ tyByteString -:> tyElementG1
+    , PLC.I_bls12_381_G1_hashToGroup #@ tyByteString -:> tyByteString -:> tyElementG1
+    , PLC.I_bls12_381_G1_equal #@ tyElementG1 -:> tyElementG1 -:> tyBoolean
+    , PLC.I_bls12_381_G2_add #@ tyElementG2 -:> tyElementG2 -:> tyElementG2
+    , PLC.I_bls12_381_G2_neg #@ tyElementG2 -:> tyElementG2
+    , PLC.I_bls12_381_G2_scalarMul #@ tyInt -:> tyElementG2 -:> tyElementG2
+    , PLC.I_bls12_381_G2_compress #@ tyElementG2 -:> tyByteString
+    , PLC.I_bls12_381_G2_uncompress #@ tyByteString -:> tyElementG2
+    , PLC.I_bls12_381_G2_hashToGroup #@ tyByteString -:> tyByteString -:> tyElementG2
+    , PLC.I_bls12_381_G2_equal #@ tyElementG2 -:> tyElementG2 -:> tyBoolean
+    , PLC.I_bls12_381_millerLoop #@ tyElementG1 -:> tyElementG2 -:> tyMlResult
+    , PLC.I_bls12_381_mulMlResult #@ tyMlResult -:> tyMlResult -:> tyMlResult
+    , PLC.I_bls12_381_finalVerify #@ tyMlResult -:> tyMlResult -:> tyBoolean
+    , -- More hashes
+      PLC.I_keccak_256 #@ tyByteString -:> tyByteString
+    , PLC.I_blake2b_224 #@ tyByteString -:> tyByteString
+    , -- Conversion
+      PLC.I_integerToByteString #@ tyBoolean -:> tyInt -:> tyInt -:> tyByteString
+    , PLC.I_byteStringToInteger #@ tyBoolean -:> tyByteString -:> tyInt
     ]

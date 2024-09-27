@@ -217,6 +217,9 @@ handleBuiltinTy = \case
   C.BuiltinPair -> pure $ TyBuiltin () (PLC.SomeTypeIn PLC.DefaultUniProtoPair)
   C.BuiltinList -> pure $ TyBuiltin () (PLC.SomeTypeIn PLC.DefaultUniProtoList)
   C.BuiltinByteString -> pure $ TyBuiltin () (PLC.SomeTypeIn PLC.DefaultUniByteString)
+  C.BuiltinElementG1 -> pure $ TyBuiltin () (PLC.SomeTypeIn PLC.DefaultUniBLS12_381_G1_Element)
+  C.BuiltinElementG2 -> pure $ TyBuiltin () (PLC.SomeTypeIn PLC.DefaultUniBLS12_381_G2_Element)
+  C.BuiltinMlResult -> pure $ TyBuiltin () (PLC.SomeTypeIn PLC.DefaultUniBLS12_381_MlResult)
   other -> Left $ "Error when translating to PIR types: unsupported builtin type: " <> show other
 
 handlePrimTy :: Qualified (ProperName 'TypeName) -> Maybe (PLC.Type tyname PLC.DefaultUni ())
