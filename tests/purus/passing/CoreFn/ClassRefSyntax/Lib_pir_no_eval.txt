@@ -1,14 +1,14 @@
 
 ------ go ------
 letrec
-  data (Tuple1_453 :: * -> *) t1_454 | match_Tuple1_455 where
-    Tuple1_456 : t1_454 -> Tuple1_453 t1_454
+  data (Tuple1-453 :: * -> *) t1-454 | match_Tuple1-455 where
+    Tuple1-456 : t1-454 -> Tuple1-453 t1-454
 in
-/\a_451 ->
-  \(dict_450 : Tuple1_453 (a_451 -> a_451)) ->
-    match_Tuple1_455
-      {a_451 -> a_451}
-      dict_450
-      {a_451 -> a_451}
-      (\(`<ACCESSOR>_452` : a_451 -> a_451) -> `<ACCESSOR>_452`)
+/\a-451 ->
+  \(dict-450 : Tuple1-453 (a-451 -> a-451)) ->
+    match_Tuple1-455
+      {a-451 -> a-451}
+      dict-450
+      {a-451 -> a-451}
+      (\(`<ACCESSOR>`-452 : a-451 -> a-451) -> `<ACCESSOR>`-452)
 ------------

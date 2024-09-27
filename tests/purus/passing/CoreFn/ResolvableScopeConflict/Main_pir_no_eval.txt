@@ -1,11 +1,11 @@
 
 ------ what ------
 letrec
-  data Boolean_455 | match_Boolean_456 where
-    False_457 : Boolean_455
-    True_458 : Boolean_455
+  data Boolean-455 | match_Boolean-456 where
+    False-457 : Boolean-455
+    True-458 : Boolean-455
 in
-\(v_453 : Boolean_455) -> match_Boolean_456 v_453 {integer} 3 1
+\(v-453 : Boolean-455) -> match_Boolean-456 v-453 {integer} 3 1
 ------------
 
 ------ main ------

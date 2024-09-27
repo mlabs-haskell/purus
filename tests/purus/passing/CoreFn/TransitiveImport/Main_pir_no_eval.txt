@@ -1,19 +1,19 @@
 
 ------ main ------
 letrec
-  data (Tuple1_458 :: * -> *) t1_459 | match_Tuple1_460 where
-    Tuple1_461 : t1_459 -> Tuple1_458 t1_459
-  data Uneet_462 | match_Uneet_463 where
-    Uneet_464 : Uneet_462
+  data (Tuple1-458 :: * -> *) t1-459 | match_Tuple1-460 where
+    Tuple1-461 : t1-459 -> Tuple1-458 t1-459
+  data Uneet-462 | match_Uneet-463 where
+    Uneet-464 : Uneet-462
 in
-(/\a_453 ->
-   \(dict_452 : Tuple1_458 (a_453 -> a_453)) ->
-     match_Tuple1_460
-       {a_453 -> a_453}
-       dict_452
-       {a_453 -> a_453}
-       (\(`<ACCESSOR>_457` : a_453 -> a_453) -> `<ACCESSOR>_457`))
-  {Uneet_462}
-  (Tuple1_461 {Uneet_462 -> Uneet_462} (\(v_450 : Uneet_462) -> Uneet_464))
-  Uneet_464
+(/\a-453 ->
+   \(dict-452 : Tuple1-458 (a-453 -> a-453)) ->
+     match_Tuple1-460
+       {a-453 -> a-453}
+       dict-452
+       {a-453 -> a-453}
+       (\(`<ACCESSOR>`-457 : a-453 -> a-453) -> `<ACCESSOR>`-457))
+  {Uneet-462}
+  (Tuple1-461 {Uneet-462 -> Uneet-462} (\(v-450 : Uneet-462) -> Uneet-464))
+  Uneet-464
 ------------

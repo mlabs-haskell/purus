@@ -1,32 +1,32 @@
 
 ------ unIdentitee ------
 letrec
-  data (Identitee_469 :: * -> *) a_470 | match_Identitee_471 where
-    Identitee_472 : a_470 -> Identitee_469 a_470
+  data (Identitee-469 :: * -> *) a-470 | match_Identitee-471 where
+    Identitee-472 : a-470 -> Identitee-469 a-470
 in
-\(v_450 : Identitee_469 integer) ->
-  match_Identitee_471 {integer} v_450 {integer} (\(x_451 : integer) -> x_451)
+\(v-450 : Identitee-469 integer) ->
+  match_Identitee-471 {integer} v-450 {integer} (\(x-451 : integer) -> x-451)
 ------------
 
 ------ testValidator ------
 letrec
-  data Boolean_469 | match_Boolean_470 where
-    False_471 : Boolean_469
-    True_472 : Boolean_469
+  data Boolean-469 | match_Boolean-470 where
+    False-471 : Boolean-469
+    True-472 : Boolean-469
 in
-/\a_458 b_457 c_456 ->
-  \(datum_453 : a_458) (redeemer_454 : b_457) (context_455 : c_456) -> True_472
+/\a-458 b-457 c-456 ->
+  \(datum-453 : a-458) (redeemer-454 : b-457) (context-455 : c-456) -> True-472
 ------------
 
 ------ testValidatorApplied ------
 letrec
-  data Boolean_469 | match_Boolean_470 where
-    False_471 : Boolean_469
-    True_472 : Boolean_469
+  data Boolean-469 | match_Boolean-470 where
+    False-471 : Boolean-469
+    True-472 : Boolean-469
 in
-(/\a_458 b_457 c_456 ->
-   \(datum_453 : a_458) (redeemer_454 : b_457) (context_455 : c_456) ->
-     True_472)
+(/\a-458 b-457 c-456 ->
+   \(datum-453 : a-458) (redeemer-454 : b-457) (context-455 : c-456) ->
+     True-472)
   {string}
   {string}
   {string}
@@ -37,12 +37,12 @@ in
 
 ------ testIdentitee ------
 letrec
-  data (Identitee_469 :: * -> *) a_470 | match_Identitee_471 where
-    Identitee_472 : a_470 -> Identitee_469 a_470
+  data (Identitee-469 :: * -> *) a-470 | match_Identitee-471 where
+    Identitee-472 : a-470 -> Identitee-469 a-470
 in
-(\(v_450 : Identitee_469 integer) ->
-   match_Identitee_471 {integer} v_450 {integer} (\(x_451 : integer) -> x_451))
-  (Identitee_472 {integer} 101)
+(\(v-450 : Identitee-469 integer) ->
+   match_Identitee-471 {integer} v-450 {integer} (\(x-451 : integer) -> x-451))
+  (Identitee-472 {integer} 101)
 ------------
 
 ------ plus ------

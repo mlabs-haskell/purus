@@ -1,38 +1,38 @@
 
 ------ testForLiftPoly ------
 letrec
-  data Boolean_525 | match_Boolean_526 where
-    False_527 : Boolean_525
-    True_528 : Boolean_525
+  data Boolean-525 | match_Boolean-526 where
+    False-527 : Boolean-525
+    True-528 : Boolean-525
 in
-/\a_463 ->
-  \(x_450 : a_463) ->
-    (\(x_523 : a_463) (a_458 : a_463) (b_459 : Boolean_525) ->
-       (\(c_455 : a_463) (d_456 : Boolean_525) ->
-          (\(y_453 : a_463) -> True_528) c_455)
-         a_458
-         b_459)
-      x_450
-      x_450
-      True_528
+/\a-463 ->
+  \(x-450 : a-463) ->
+    (\(x-523 : a-463) (a-458 : a-463) (b-459 : Boolean-525) ->
+       (\(c-455 : a-463) (d-456 : Boolean-525) ->
+          (\(y-453 : a-463) -> True-528) c-455)
+         a-458
+         b-459)
+      x-450
+      x-450
+      True-528
 ------------
 
 ------ testForLiftPolyApplied ------
 letrec
-  data Boolean_525 | match_Boolean_526 where
-    False_527 : Boolean_525
-    True_528 : Boolean_525
+  data Boolean-525 | match_Boolean-526 where
+    False-527 : Boolean-525
+    True-528 : Boolean-525
 in
-(/\a_463 ->
-   \(x_450 : a_463) ->
-     (\(x_523 : a_463) (a_458 : a_463) (b_459 : Boolean_525) ->
-        (\(c_455 : a_463) (d_456 : Boolean_525) ->
-           (\(y_453 : a_463) -> True_528) c_455)
-          a_458
-          b_459)
-       x_450
-       x_450
-       True_528)
+(/\a-463 ->
+   \(x-450 : a-463) ->
+     (\(x-523 : a-463) (a-458 : a-463) (b-459 : Boolean-525) ->
+        (\(c-455 : a-463) (d-456 : Boolean-525) ->
+           (\(y-453 : a-463) -> True-528) c-455)
+          a-458
+          b-459)
+       x-450
+       x-450
+       True-528)
   {string}
   "hello"
 ------------
@@ -43,360 +43,360 @@ addInteger
 
 ------ or ------
 letrec
-  data Boolean_523 | match_Boolean_524 where
-    False_525 : Boolean_523
-    True_526 : Boolean_523
+  data Boolean-523 | match_Boolean-524 where
+    False-525 : Boolean-523
+    True-526 : Boolean-523
 in
-\(b1_467 : Boolean_523) (b2_468 : Boolean_523) -> b2_468
+\(b1-467 : Boolean-523) (b2-468 : Boolean-523) -> b2-468
 ------------
 
 ------ not ------
 letrec
-  data Boolean_523 | match_Boolean_524 where
-    False_525 : Boolean_523
-    True_526 : Boolean_523
+  data Boolean-523 | match_Boolean-524 where
+    False-525 : Boolean-523
+    True-526 : Boolean-523
 in
-\(b_470 : Boolean_523) -> True_526
+\(b-470 : Boolean-523) -> True-526
 ------------
 
 ------ fakeLT ------
 letrec
-  data Boolean_523 | match_Boolean_524 where
-    False_525 : Boolean_523
-    True_526 : Boolean_523
+  data Boolean-523 | match_Boolean-524 where
+    False-525 : Boolean-523
+    True-526 : Boolean-523
 in
-\(v_472 : integer) (v1_473 : integer) -> True_526
+\(v-472 : integer) (v1-473 : integer) -> True-526
 ------------
 
 ------ testForLift ------
 letrec
-  data Boolean_526 | match_Boolean_527 where
-    False_528 : Boolean_526
-    True_529 : Boolean_526
+  data Boolean-526 | match_Boolean-527 where
+    False-528 : Boolean-526
+    True-529 : Boolean-526
 in
 letrec
-  !j_476 : integer -> integer -> integer -> integer
-    = \(x_525 : integer) (c_477 : integer) (d_478 : integer) ->
-        addInteger c_477 (g_482 x_525 d_478)
-  !g_482 : integer -> integer -> integer
-    = \(x_523 : integer) (a_483 : integer) -> multiplyInteger x_523 x_523
+  !j-476 : integer -> integer -> integer -> integer
+    = \(x-525 : integer) (c-477 : integer) (d-478 : integer) ->
+        addInteger c-477 (g-482 x-525 d-478)
+  !g-482 : integer -> integer -> integer
+    = \(x-523 : integer) (a-483 : integer) -> multiplyInteger x-523 x-523
 in
-\(x_475 : integer) ->
-  (\(x_524 : integer) (a_480 : integer) (b_481 : integer) ->
-     (\(v_472 : integer) (v1_473 : integer) -> True_529)
-       (g_482 x_524 a_480)
-       (j_476 x_524 4 b_481))
-    x_475
-    x_475
+\(x-475 : integer) ->
+  (\(x-524 : integer) (a-480 : integer) (b-481 : integer) ->
+     (\(v-472 : integer) (v1-473 : integer) -> True-529)
+       (g-482 x-524 a-480)
+       (j-476 x-524 4 b-481))
+    x-475
+    x-475
     3
 ------------
 
 ------ testForLiftApplied ------
 letrec
-  data Boolean_526 | match_Boolean_527 where
-    False_528 : Boolean_526
-    True_529 : Boolean_526
+  data Boolean-526 | match_Boolean-527 where
+    False-528 : Boolean-526
+    True-529 : Boolean-526
 in
 letrec
-  !j_476 : integer -> integer -> integer -> integer
-    = \(x_525 : integer) (c_477 : integer) (d_478 : integer) ->
+  !j-476 : integer -> integer -> integer -> integer
+    = \(x-525 : integer) (c-477 : integer) (d-478 : integer) ->
         addInteger
-          c_477
-          ((\(x_523 : integer) (a_483 : integer) -> multiplyInteger x_523 x_523)
-             x_525
-             d_478)
-  !h_479 : integer -> integer -> integer -> Boolean_526
-    = \(x_524 : integer) (a_480 : integer) (b_481 : integer) ->
-        (\(v_472 : integer) (v1_473 : integer) -> True_529)
-          ((\(x_523 : integer) (a_483 : integer) -> multiplyInteger x_523 x_523)
-             x_524
-             a_480)
-          (j_476 x_524 4 b_481)
+          c-477
+          ((\(x-523 : integer) (a-483 : integer) -> multiplyInteger x-523 x-523)
+             x-525
+             d-478)
+  !h-479 : integer -> integer -> integer -> Boolean-526
+    = \(x-524 : integer) (a-480 : integer) (b-481 : integer) ->
+        (\(v-472 : integer) (v1-473 : integer) -> True-529)
+          ((\(x-523 : integer) (a-483 : integer) -> multiplyInteger x-523 x-523)
+             x-524
+             a-480)
+          (j-476 x-524 4 b-481)
 in
-(\(x_475 : integer) -> h_479 x_475 x_475 3) 2
+(\(x-475 : integer) -> h-479 x-475 x-475 3) 2
 ------------
 
 ------ testForLift' ------
 letrec
-  data Boolean_525 | match_Boolean_526 where
-    False_527 : Boolean_525
-    True_528 : Boolean_525
+  data Boolean-525 | match_Boolean-526 where
+    False-527 : Boolean-525
+    True-528 : Boolean-525
 in
 letrec
-  !h_487 : integer -> integer -> integer -> Boolean_525
-    = \(x_524 : integer) (a_488 : integer) (b_489 : integer) ->
-        (\(v_472 : integer) (v1_473 : integer) -> True_528)
-          ((\(x_523 : integer) (a_491 : integer) -> multiplyInteger x_523 x_523)
-             x_524
-             a_488)
+  !h-487 : integer -> integer -> integer -> Boolean-525
+    = \(x-524 : integer) (a-488 : integer) (b-489 : integer) ->
+        (\(v-472 : integer) (v1-473 : integer) -> True-528)
+          ((\(x-523 : integer) (a-491 : integer) -> multiplyInteger x-523 x-523)
+             x-524
+             a-488)
           4
 in
-\(x_486 : integer) -> h_487 x_486 x_486 3
+\(x-486 : integer) -> h-487 x-486 x-486 3
 ------------
 
 ------ testForLiftApplied' ------
 letrec
-  data Boolean_525 | match_Boolean_526 where
-    False_527 : Boolean_525
-    True_528 : Boolean_525
+  data Boolean-525 | match_Boolean-526 where
+    False-527 : Boolean-525
+    True-528 : Boolean-525
 in
 letrec
-  !h_487 : integer -> integer -> integer -> Boolean_525
-    = \(x_524 : integer) (a_488 : integer) (b_489 : integer) ->
-        (\(v_472 : integer) (v1_473 : integer) -> True_528)
-          ((\(x_523 : integer) (a_491 : integer) -> multiplyInteger x_523 x_523)
-             x_524
-             a_488)
+  !h-487 : integer -> integer -> integer -> Boolean-525
+    = \(x-524 : integer) (a-488 : integer) (b-489 : integer) ->
+        (\(v-472 : integer) (v1-473 : integer) -> True-528)
+          ((\(x-523 : integer) (a-491 : integer) -> multiplyInteger x-523 x-523)
+             x-524
+             a-488)
           4
 in
-(\(x_486 : integer) -> h_487 x_486 x_486 3) 101
+(\(x-486 : integer) -> h-487 x-486 x-486 3) 101
 ------------
 
 ------ and ------
 letrec
-  data Boolean_523 | match_Boolean_524 where
-    False_525 : Boolean_523
-    True_526 : Boolean_523
+  data Boolean-523 | match_Boolean-524 where
+    False-525 : Boolean-523
+    True-526 : Boolean-523
 in
-\(p_494 : Boolean_523) (q_495 : Boolean_523) ->
-  (\(b_470 : Boolean_523) -> True_526)
-    ((\(b1_467 : Boolean_523) (b2_468 : Boolean_523) -> b2_468)
-       ((\(b_470 : Boolean_523) -> True_526) p_494)
-       ((\(b_470 : Boolean_523) -> True_526) q_495))
+\(p-494 : Boolean-523) (q-495 : Boolean-523) ->
+  (\(b-470 : Boolean-523) -> True-526)
+    ((\(b1-467 : Boolean-523) (b2-468 : Boolean-523) -> b2-468)
+       ((\(b-470 : Boolean-523) -> True-526) p-494)
+       ((\(b-470 : Boolean-523) -> True-526) q-495))
 ------------
 
 ------ iff ------
 letrec
-  data Boolean_523 | match_Boolean_524 where
-    False_525 : Boolean_523
-    True_526 : Boolean_523
+  data Boolean-523 | match_Boolean-524 where
+    False-525 : Boolean-523
+    True-526 : Boolean-523
 in
-\(p_497 : Boolean_523) (q_498 : Boolean_523) ->
-  (\(b1_467 : Boolean_523) (b2_468 : Boolean_523) -> b2_468)
-    ((\(p_494 : Boolean_523) (q_495 : Boolean_523) ->
-        (\(b_470 : Boolean_523) -> True_526)
-          ((\(b1_467 : Boolean_523) (b2_468 : Boolean_523) -> b2_468)
-             ((\(b_470 : Boolean_523) -> True_526) p_494)
-             ((\(b_470 : Boolean_523) -> True_526) q_495)))
-       p_497
-       q_498)
-    ((\(p_494 : Boolean_523) (q_495 : Boolean_523) ->
-        (\(b_470 : Boolean_523) -> True_526)
-          ((\(b1_467 : Boolean_523) (b2_468 : Boolean_523) -> b2_468)
-             ((\(b_470 : Boolean_523) -> True_526) p_494)
-             ((\(b_470 : Boolean_523) -> True_526) q_495)))
-       ((\(b_470 : Boolean_523) -> True_526) p_497)
-       ((\(b_470 : Boolean_523) -> True_526) q_498))
+\(p-497 : Boolean-523) (q-498 : Boolean-523) ->
+  (\(b1-467 : Boolean-523) (b2-468 : Boolean-523) -> b2-468)
+    ((\(p-494 : Boolean-523) (q-495 : Boolean-523) ->
+        (\(b-470 : Boolean-523) -> True-526)
+          ((\(b1-467 : Boolean-523) (b2-468 : Boolean-523) -> b2-468)
+             ((\(b-470 : Boolean-523) -> True-526) p-494)
+             ((\(b-470 : Boolean-523) -> True-526) q-495)))
+       p-497
+       q-498)
+    ((\(p-494 : Boolean-523) (q-495 : Boolean-523) ->
+        (\(b-470 : Boolean-523) -> True-526)
+          ((\(b1-467 : Boolean-523) (b2-468 : Boolean-523) -> b2-468)
+             ((\(b-470 : Boolean-523) -> True-526) p-494)
+             ((\(b-470 : Boolean-523) -> True-526) q-495)))
+       ((\(b-470 : Boolean-523) -> True-526) p-497)
+       ((\(b-470 : Boolean-523) -> True-526) q-498))
 ------------
 
 ------ ghcInlinerPaperEx ------
 letrec
-  data Boolean_523 | match_Boolean_524 where
-    False_525 : Boolean_523
-    True_526 : Boolean_523
+  data Boolean-523 | match_Boolean-524 where
+    False-525 : Boolean-523
+    True-526 : Boolean-523
 in
 letrec
-  !g_502 : Boolean_523 -> Boolean_523
-    = \(x_503 : Boolean_523) ->
-        (\(p_497 : Boolean_523) (q_498 : Boolean_523) ->
-           (\(b1_467 : Boolean_523) (b2_468 : Boolean_523) -> b2_468)
-             ((\(p_494 : Boolean_523) (q_495 : Boolean_523) ->
-                 (\(b_470 : Boolean_523) -> True_526)
-                   ((\(b1_467 : Boolean_523) (b2_468 : Boolean_523) -> b2_468)
-                      ((\(b_470 : Boolean_523) -> True_526) p_494)
-                      ((\(b_470 : Boolean_523) -> True_526) q_495)))
-                p_497
-                q_498)
-             ((\(p_494 : Boolean_523) (q_495 : Boolean_523) ->
-                 (\(b_470 : Boolean_523) -> True_526)
-                   ((\(b1_467 : Boolean_523) (b2_468 : Boolean_523) -> b2_468)
-                      ((\(b_470 : Boolean_523) -> True_526) p_494)
-                      ((\(b_470 : Boolean_523) -> True_526) q_495)))
-                ((\(b_470 : Boolean_523) -> True_526) p_497)
-                ((\(b_470 : Boolean_523) -> True_526) q_498)))
-          ((\(x_501 : Boolean_523) ->
-              (\(p_494 : Boolean_523) (q_495 : Boolean_523) ->
-                 (\(b_470 : Boolean_523) -> True_526)
-                   ((\(b1_467 : Boolean_523) (b2_468 : Boolean_523) -> b2_468)
-                      ((\(b_470 : Boolean_523) -> True_526) p_494)
-                      ((\(b_470 : Boolean_523) -> True_526) q_495)))
-                ((\(x_505 : Boolean_523) ->
-                    g_502 ((\(b_470 : Boolean_523) -> True_526) x_505))
-                   True_526)
-                x_501)
-             x_503)
-          False_525
+  !g-502 : Boolean-523 -> Boolean-523
+    = \(x-503 : Boolean-523) ->
+        (\(p-497 : Boolean-523) (q-498 : Boolean-523) ->
+           (\(b1-467 : Boolean-523) (b2-468 : Boolean-523) -> b2-468)
+             ((\(p-494 : Boolean-523) (q-495 : Boolean-523) ->
+                 (\(b-470 : Boolean-523) -> True-526)
+                   ((\(b1-467 : Boolean-523) (b2-468 : Boolean-523) -> b2-468)
+                      ((\(b-470 : Boolean-523) -> True-526) p-494)
+                      ((\(b-470 : Boolean-523) -> True-526) q-495)))
+                p-497
+                q-498)
+             ((\(p-494 : Boolean-523) (q-495 : Boolean-523) ->
+                 (\(b-470 : Boolean-523) -> True-526)
+                   ((\(b1-467 : Boolean-523) (b2-468 : Boolean-523) -> b2-468)
+                      ((\(b-470 : Boolean-523) -> True-526) p-494)
+                      ((\(b-470 : Boolean-523) -> True-526) q-495)))
+                ((\(b-470 : Boolean-523) -> True-526) p-497)
+                ((\(b-470 : Boolean-523) -> True-526) q-498)))
+          ((\(x-501 : Boolean-523) ->
+              (\(p-494 : Boolean-523) (q-495 : Boolean-523) ->
+                 (\(b-470 : Boolean-523) -> True-526)
+                   ((\(b1-467 : Boolean-523) (b2-468 : Boolean-523) -> b2-468)
+                      ((\(b-470 : Boolean-523) -> True-526) p-494)
+                      ((\(b-470 : Boolean-523) -> True-526) q-495)))
+                ((\(x-505 : Boolean-523) ->
+                    g-502 ((\(b-470 : Boolean-523) -> True-526) x-505))
+                   True-526)
+                x-501)
+             x-503)
+          False-525
 in
-(\(x_507 : Boolean_523) ->
-   g_502
-     ((\(p_497 : Boolean_523) (q_498 : Boolean_523) ->
-         (\(b1_467 : Boolean_523) (b2_468 : Boolean_523) -> b2_468)
-           ((\(p_494 : Boolean_523) (q_495 : Boolean_523) ->
-               (\(b_470 : Boolean_523) -> True_526)
-                 ((\(b1_467 : Boolean_523) (b2_468 : Boolean_523) -> b2_468)
-                    ((\(b_470 : Boolean_523) -> True_526) p_494)
-                    ((\(b_470 : Boolean_523) -> True_526) q_495)))
-              p_497
-              q_498)
-           ((\(p_494 : Boolean_523) (q_495 : Boolean_523) ->
-               (\(b_470 : Boolean_523) -> True_526)
-                 ((\(b1_467 : Boolean_523) (b2_468 : Boolean_523) -> b2_468)
-                    ((\(b_470 : Boolean_523) -> True_526) p_494)
-                    ((\(b_470 : Boolean_523) -> True_526) q_495)))
-              ((\(b_470 : Boolean_523) -> True_526) p_497)
-              ((\(b_470 : Boolean_523) -> True_526) q_498)))
-        x_507
-        ((\(b_470 : Boolean_523) -> True_526) x_507)))
-  False_525
+(\(x-507 : Boolean-523) ->
+   g-502
+     ((\(p-497 : Boolean-523) (q-498 : Boolean-523) ->
+         (\(b1-467 : Boolean-523) (b2-468 : Boolean-523) -> b2-468)
+           ((\(p-494 : Boolean-523) (q-495 : Boolean-523) ->
+               (\(b-470 : Boolean-523) -> True-526)
+                 ((\(b1-467 : Boolean-523) (b2-468 : Boolean-523) -> b2-468)
+                    ((\(b-470 : Boolean-523) -> True-526) p-494)
+                    ((\(b-470 : Boolean-523) -> True-526) q-495)))
+              p-497
+              q-498)
+           ((\(p-494 : Boolean-523) (q-495 : Boolean-523) ->
+               (\(b-470 : Boolean-523) -> True-526)
+                 ((\(b1-467 : Boolean-523) (b2-468 : Boolean-523) -> b2-468)
+                    ((\(b-470 : Boolean-523) -> True-526) p-494)
+                    ((\(b-470 : Boolean-523) -> True-526) q-495)))
+              ((\(b-470 : Boolean-523) -> True-526) p-497)
+              ((\(b-470 : Boolean-523) -> True-526) q-498)))
+        x-507
+        ((\(b-470 : Boolean-523) -> True-526) x-507)))
+  False-525
 ------------
 
 ------ kozsTwoSCCEx ------
 letrec
-  data Boolean_523 | match_Boolean_524 where
-    False_525 : Boolean_523
-    True_526 : Boolean_523
+  data Boolean-523 | match_Boolean-524 where
+    False-525 : Boolean-523
+    True-526 : Boolean-523
 in
 letrec
-  !h_511 : Boolean_523 -> Boolean_523
-    = \(x_512 : Boolean_523) ->
-        (\(b_470 : Boolean_523) -> True_526)
-          ((\(x_516 : Boolean_523) ->
-              (\(b_470 : Boolean_523) -> True_526)
-                ((\(x_514 : Boolean_523) ->
-                    (\(p_494 : Boolean_523) (q_495 : Boolean_523) ->
-                       (\(b_470 : Boolean_523) -> True_526)
-                         ((\(b1_467 : Boolean_523) (b2_468 : Boolean_523) ->
-                             b2_468)
-                            ((\(b_470 : Boolean_523) -> True_526) p_494)
-                            ((\(b_470 : Boolean_523) -> True_526) q_495)))
-                      ((\(b_470 : Boolean_523) -> True_526) (h_511 x_514))
-                      ((\(b_470 : Boolean_523) -> True_526) x_514))
-                   x_516))
-             x_512)
-  !b_519 : Boolean_523 -> Boolean_523
-    = \(x_520 : Boolean_523) ->
-        (\(p_494 : Boolean_523) (q_495 : Boolean_523) ->
-           (\(b_470 : Boolean_523) -> True_526)
-             ((\(b1_467 : Boolean_523) (b2_468 : Boolean_523) -> b2_468)
-                ((\(b_470 : Boolean_523) -> True_526) p_494)
-                ((\(b_470 : Boolean_523) -> True_526) q_495)))
-          x_520
-          ((\(p_494 : Boolean_523) (q_495 : Boolean_523) ->
-              (\(b_470 : Boolean_523) -> True_526)
-                ((\(b1_467 : Boolean_523) (b2_468 : Boolean_523) -> b2_468)
-                   ((\(b_470 : Boolean_523) -> True_526) p_494)
-                   ((\(b_470 : Boolean_523) -> True_526) q_495)))
-             ((\(x_518 : Boolean_523) ->
-                 (\(b_470 : Boolean_523) -> True_526)
-                   ((\(p_494 : Boolean_523) (q_495 : Boolean_523) ->
-                       (\(b_470 : Boolean_523) -> True_526)
-                         ((\(b1_467 : Boolean_523) (b2_468 : Boolean_523) ->
-                             b2_468)
-                            ((\(b_470 : Boolean_523) -> True_526) p_494)
-                            ((\(b_470 : Boolean_523) -> True_526) q_495)))
-                      ((\(x_516 : Boolean_523) ->
-                          (\(b_470 : Boolean_523) -> True_526)
-                            ((\(x_514 : Boolean_523) ->
-                                (\(p_494 : Boolean_523) (q_495 : Boolean_523) ->
-                                   (\(b_470 : Boolean_523) -> True_526)
-                                     ((\(b1_467 : Boolean_523)
-                                        (b2_468 : Boolean_523) ->
-                                         b2_468)
-                                        ((\(b_470 : Boolean_523) -> True_526)
-                                           p_494)
-                                        ((\(b_470 : Boolean_523) -> True_526)
-                                           q_495)))
-                                  ((\(b_470 : Boolean_523) -> True_526)
-                                     (h_511 x_514))
-                                  ((\(b_470 : Boolean_523) -> True_526) x_514))
-                               x_516))
-                         x_518)
-                      (b_519 x_518)))
-                x_520)
-             (h_511 x_520))
+  !h-511 : Boolean-523 -> Boolean-523
+    = \(x-512 : Boolean-523) ->
+        (\(b-470 : Boolean-523) -> True-526)
+          ((\(x-516 : Boolean-523) ->
+              (\(b-470 : Boolean-523) -> True-526)
+                ((\(x-514 : Boolean-523) ->
+                    (\(p-494 : Boolean-523) (q-495 : Boolean-523) ->
+                       (\(b-470 : Boolean-523) -> True-526)
+                         ((\(b1-467 : Boolean-523) (b2-468 : Boolean-523) ->
+                             b2-468)
+                            ((\(b-470 : Boolean-523) -> True-526) p-494)
+                            ((\(b-470 : Boolean-523) -> True-526) q-495)))
+                      ((\(b-470 : Boolean-523) -> True-526) (h-511 x-514))
+                      ((\(b-470 : Boolean-523) -> True-526) x-514))
+                   x-516))
+             x-512)
+  !b-519 : Boolean-523 -> Boolean-523
+    = \(x-520 : Boolean-523) ->
+        (\(p-494 : Boolean-523) (q-495 : Boolean-523) ->
+           (\(b-470 : Boolean-523) -> True-526)
+             ((\(b1-467 : Boolean-523) (b2-468 : Boolean-523) -> b2-468)
+                ((\(b-470 : Boolean-523) -> True-526) p-494)
+                ((\(b-470 : Boolean-523) -> True-526) q-495)))
+          x-520
+          ((\(p-494 : Boolean-523) (q-495 : Boolean-523) ->
+              (\(b-470 : Boolean-523) -> True-526)
+                ((\(b1-467 : Boolean-523) (b2-468 : Boolean-523) -> b2-468)
+                   ((\(b-470 : Boolean-523) -> True-526) p-494)
+                   ((\(b-470 : Boolean-523) -> True-526) q-495)))
+             ((\(x-518 : Boolean-523) ->
+                 (\(b-470 : Boolean-523) -> True-526)
+                   ((\(p-494 : Boolean-523) (q-495 : Boolean-523) ->
+                       (\(b-470 : Boolean-523) -> True-526)
+                         ((\(b1-467 : Boolean-523) (b2-468 : Boolean-523) ->
+                             b2-468)
+                            ((\(b-470 : Boolean-523) -> True-526) p-494)
+                            ((\(b-470 : Boolean-523) -> True-526) q-495)))
+                      ((\(x-516 : Boolean-523) ->
+                          (\(b-470 : Boolean-523) -> True-526)
+                            ((\(x-514 : Boolean-523) ->
+                                (\(p-494 : Boolean-523) (q-495 : Boolean-523) ->
+                                   (\(b-470 : Boolean-523) -> True-526)
+                                     ((\(b1-467 : Boolean-523)
+                                        (b2-468 : Boolean-523) ->
+                                         b2-468)
+                                        ((\(b-470 : Boolean-523) -> True-526)
+                                           p-494)
+                                        ((\(b-470 : Boolean-523) -> True-526)
+                                           q-495)))
+                                  ((\(b-470 : Boolean-523) -> True-526)
+                                     (h-511 x-514))
+                                  ((\(b-470 : Boolean-523) -> True-526) x-514))
+                               x-516))
+                         x-518)
+                      (b-519 x-518)))
+                x-520)
+             (h-511 x-520))
 in
-(\(p_494 : Boolean_523) (q_495 : Boolean_523) ->
-   (\(b_470 : Boolean_523) -> True_526)
-     ((\(b1_467 : Boolean_523) (b2_468 : Boolean_523) -> b2_468)
-        ((\(b_470 : Boolean_523) -> True_526) p_494)
-        ((\(b_470 : Boolean_523) -> True_526) q_495)))
-  ((\(x_522 : Boolean_523) ->
-      (\(p_494 : Boolean_523) (q_495 : Boolean_523) ->
-         (\(b_470 : Boolean_523) -> True_526)
-           ((\(b1_467 : Boolean_523) (b2_468 : Boolean_523) -> b2_468)
-              ((\(b_470 : Boolean_523) -> True_526) p_494)
-              ((\(b_470 : Boolean_523) -> True_526) q_495)))
-        (b_519 x_522)
-        x_522)
-     True_526)
-  ((\(p_494 : Boolean_523) (q_495 : Boolean_523) ->
-      (\(b_470 : Boolean_523) -> True_526)
-        ((\(b1_467 : Boolean_523) (b2_468 : Boolean_523) -> b2_468)
-           ((\(b_470 : Boolean_523) -> True_526) p_494)
-           ((\(b_470 : Boolean_523) -> True_526) q_495)))
-     (b_519 True_526)
-     ((\(p_494 : Boolean_523) (q_495 : Boolean_523) ->
-         (\(b_470 : Boolean_523) -> True_526)
-           ((\(b1_467 : Boolean_523) (b2_468 : Boolean_523) -> b2_468)
-              ((\(b_470 : Boolean_523) -> True_526) p_494)
-              ((\(b_470 : Boolean_523) -> True_526) q_495)))
-        ((\(x_518 : Boolean_523) ->
-            (\(b_470 : Boolean_523) -> True_526)
-              ((\(p_494 : Boolean_523) (q_495 : Boolean_523) ->
-                  (\(b_470 : Boolean_523) -> True_526)
-                    ((\(b1_467 : Boolean_523) (b2_468 : Boolean_523) -> b2_468)
-                       ((\(b_470 : Boolean_523) -> True_526) p_494)
-                       ((\(b_470 : Boolean_523) -> True_526) q_495)))
-                 ((\(x_516 : Boolean_523) ->
-                     (\(b_470 : Boolean_523) -> True_526)
-                       ((\(x_514 : Boolean_523) ->
-                           (\(p_494 : Boolean_523) (q_495 : Boolean_523) ->
-                              (\(b_470 : Boolean_523) -> True_526)
-                                ((\(b1_467 : Boolean_523)
-                                   (b2_468 : Boolean_523) ->
-                                    b2_468)
-                                   ((\(b_470 : Boolean_523) -> True_526) p_494)
-                                   ((\(b_470 : Boolean_523) -> True_526)
-                                      q_495)))
-                             ((\(b_470 : Boolean_523) -> True_526)
-                                (h_511 x_514))
-                             ((\(b_470 : Boolean_523) -> True_526) x_514))
-                          x_516))
-                    x_518)
-                 (b_519 x_518)))
-           True_526)
-        ((\(p_494 : Boolean_523) (q_495 : Boolean_523) ->
-            (\(b_470 : Boolean_523) -> True_526)
-              ((\(b1_467 : Boolean_523) (b2_468 : Boolean_523) -> b2_468)
-                 ((\(b_470 : Boolean_523) -> True_526) p_494)
-                 ((\(b_470 : Boolean_523) -> True_526) q_495)))
-           ((\(x_516 : Boolean_523) ->
-               (\(b_470 : Boolean_523) -> True_526)
-                 ((\(x_514 : Boolean_523) ->
-                     (\(p_494 : Boolean_523) (q_495 : Boolean_523) ->
-                        (\(b_470 : Boolean_523) -> True_526)
-                          ((\(b1_467 : Boolean_523) (b2_468 : Boolean_523) ->
-                              b2_468)
-                             ((\(b_470 : Boolean_523) -> True_526) p_494)
-                             ((\(b_470 : Boolean_523) -> True_526) q_495)))
-                       ((\(b_470 : Boolean_523) -> True_526) (h_511 x_514))
-                       ((\(b_470 : Boolean_523) -> True_526) x_514))
-                    x_516))
-              True_526)
-           ((\(p_494 : Boolean_523) (q_495 : Boolean_523) ->
-               (\(b_470 : Boolean_523) -> True_526)
-                 ((\(b1_467 : Boolean_523) (b2_468 : Boolean_523) -> b2_468)
-                    ((\(b_470 : Boolean_523) -> True_526) p_494)
-                    ((\(b_470 : Boolean_523) -> True_526) q_495)))
-              ((\(x_514 : Boolean_523) ->
-                  (\(p_494 : Boolean_523) (q_495 : Boolean_523) ->
-                     (\(b_470 : Boolean_523) -> True_526)
-                       ((\(b1_467 : Boolean_523) (b2_468 : Boolean_523) ->
-                           b2_468)
-                          ((\(b_470 : Boolean_523) -> True_526) p_494)
-                          ((\(b_470 : Boolean_523) -> True_526) q_495)))
-                    ((\(b_470 : Boolean_523) -> True_526) (h_511 x_514))
-                    ((\(b_470 : Boolean_523) -> True_526) x_514))
-                 True_526)
-              (h_511 True_526)))))
+(\(p-494 : Boolean-523) (q-495 : Boolean-523) ->
+   (\(b-470 : Boolean-523) -> True-526)
+     ((\(b1-467 : Boolean-523) (b2-468 : Boolean-523) -> b2-468)
+        ((\(b-470 : Boolean-523) -> True-526) p-494)
+        ((\(b-470 : Boolean-523) -> True-526) q-495)))
+  ((\(x-522 : Boolean-523) ->
+      (\(p-494 : Boolean-523) (q-495 : Boolean-523) ->
+         (\(b-470 : Boolean-523) -> True-526)
+           ((\(b1-467 : Boolean-523) (b2-468 : Boolean-523) -> b2-468)
+              ((\(b-470 : Boolean-523) -> True-526) p-494)
+              ((\(b-470 : Boolean-523) -> True-526) q-495)))
+        (b-519 x-522)
+        x-522)
+     True-526)
+  ((\(p-494 : Boolean-523) (q-495 : Boolean-523) ->
+      (\(b-470 : Boolean-523) -> True-526)
+        ((\(b1-467 : Boolean-523) (b2-468 : Boolean-523) -> b2-468)
+           ((\(b-470 : Boolean-523) -> True-526) p-494)
+           ((\(b-470 : Boolean-523) -> True-526) q-495)))
+     (b-519 True-526)
+     ((\(p-494 : Boolean-523) (q-495 : Boolean-523) ->
+         (\(b-470 : Boolean-523) -> True-526)
+           ((\(b1-467 : Boolean-523) (b2-468 : Boolean-523) -> b2-468)
+              ((\(b-470 : Boolean-523) -> True-526) p-494)
+              ((\(b-470 : Boolean-523) -> True-526) q-495)))
+        ((\(x-518 : Boolean-523) ->
+            (\(b-470 : Boolean-523) -> True-526)
+              ((\(p-494 : Boolean-523) (q-495 : Boolean-523) ->
+                  (\(b-470 : Boolean-523) -> True-526)
+                    ((\(b1-467 : Boolean-523) (b2-468 : Boolean-523) -> b2-468)
+                       ((\(b-470 : Boolean-523) -> True-526) p-494)
+                       ((\(b-470 : Boolean-523) -> True-526) q-495)))
+                 ((\(x-516 : Boolean-523) ->
+                     (\(b-470 : Boolean-523) -> True-526)
+                       ((\(x-514 : Boolean-523) ->
+                           (\(p-494 : Boolean-523) (q-495 : Boolean-523) ->
+                              (\(b-470 : Boolean-523) -> True-526)
+                                ((\(b1-467 : Boolean-523)
+                                   (b2-468 : Boolean-523) ->
+                                    b2-468)
+                                   ((\(b-470 : Boolean-523) -> True-526) p-494)
+                                   ((\(b-470 : Boolean-523) -> True-526)
+                                      q-495)))
+                             ((\(b-470 : Boolean-523) -> True-526)
+                                (h-511 x-514))
+                             ((\(b-470 : Boolean-523) -> True-526) x-514))
+                          x-516))
+                    x-518)
+                 (b-519 x-518)))
+           True-526)
+        ((\(p-494 : Boolean-523) (q-495 : Boolean-523) ->
+            (\(b-470 : Boolean-523) -> True-526)
+              ((\(b1-467 : Boolean-523) (b2-468 : Boolean-523) -> b2-468)
+                 ((\(b-470 : Boolean-523) -> True-526) p-494)
+                 ((\(b-470 : Boolean-523) -> True-526) q-495)))
+           ((\(x-516 : Boolean-523) ->
+               (\(b-470 : Boolean-523) -> True-526)
+                 ((\(x-514 : Boolean-523) ->
+                     (\(p-494 : Boolean-523) (q-495 : Boolean-523) ->
+                        (\(b-470 : Boolean-523) -> True-526)
+                          ((\(b1-467 : Boolean-523) (b2-468 : Boolean-523) ->
+                              b2-468)
+                             ((\(b-470 : Boolean-523) -> True-526) p-494)
+                             ((\(b-470 : Boolean-523) -> True-526) q-495)))
+                       ((\(b-470 : Boolean-523) -> True-526) (h-511 x-514))
+                       ((\(b-470 : Boolean-523) -> True-526) x-514))
+                    x-516))
+              True-526)
+           ((\(p-494 : Boolean-523) (q-495 : Boolean-523) ->
+               (\(b-470 : Boolean-523) -> True-526)
+                 ((\(b1-467 : Boolean-523) (b2-468 : Boolean-523) -> b2-468)
+                    ((\(b-470 : Boolean-523) -> True-526) p-494)
+                    ((\(b-470 : Boolean-523) -> True-526) q-495)))
+              ((\(x-514 : Boolean-523) ->
+                  (\(p-494 : Boolean-523) (q-495 : Boolean-523) ->
+                     (\(b-470 : Boolean-523) -> True-526)
+                       ((\(b1-467 : Boolean-523) (b2-468 : Boolean-523) ->
+                           b2-468)
+                          ((\(b-470 : Boolean-523) -> True-526) p-494)
+                          ((\(b-470 : Boolean-523) -> True-526) q-495)))
+                    ((\(b-470 : Boolean-523) -> True-526) (h-511 x-514))
+                    ((\(b-470 : Boolean-523) -> True-526) x-514))
+                 True-526)
+              (h-511 True-526)))))
 ------------

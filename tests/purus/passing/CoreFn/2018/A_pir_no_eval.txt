@@ -1,9 +1,9 @@
 
 ------ foo ------
 letrec
-  data Foo_451 | match_Foo_452 where
-    X_453 : Foo_451
-    Y_454 : Foo_451
+  data Foo-451 | match_Foo-452 where
+    X-453 : Foo-451
+    Y-454 : Foo-451
 in
-\(x_450 : Foo_451) -> x_450
+\(x-450 : Foo-451) -> x-450
 ------------
