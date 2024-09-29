@@ -12,6 +12,8 @@ repository cardano-haskell-packages
 packages:
   purescript.cabal
 
+tests: True
+
 test-show-details: direct
 
 index-state:
