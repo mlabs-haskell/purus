@@ -1,0 +1,14 @@
+
+------ foo ------
+letrec
+  data (Tuple1-453 :: * -> *) t1-454 | match_Tuple1-455 where
+    Tuple1-456 : t1-454 -> Tuple1-453 t1-454
+in
+/\a-451 ->
+  \(dict-450 : Tuple1-453 (a-451 -> integer)) ->
+    match_Tuple1-455
+      {a-451 -> integer}
+      dict-450
+      {a-451 -> integer}
+      (\(`<ACCESSOR>`-452 : a-451 -> integer) -> `<ACCESSOR>`-452)
+------------

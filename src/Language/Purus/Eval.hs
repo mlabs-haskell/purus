@@ -1,5 +1,3 @@
-{-# LANGUAGE TypeApplications #-}
-
 module Language.Purus.Eval (
   compileToUPLC,
   evaluateTerm,
@@ -32,20 +30,26 @@ import PlutusCore.Default (
   DefaultUni,
  )
 import PlutusCore.Evaluation.Machine.Ck (
-  EvaluationResult,
-  unsafeEvaluateCk,
+  EvaluationResult (EvaluationFailure, EvaluationSuccess),
+  unsafeToEvaluationResult,
+  evaluateCk
  )
 import PlutusCore.Evaluation.Machine.ExBudgetingDefaults qualified as PLC
 import PlutusIR (Name, Program (Program))
-import PlutusIR.Compiler (CompilationCtx, Compiling, compileProgram, compileToReadable, toDefaultCompilationCtx)
+import PlutusIR.Compiler (CompilationCtx, Compiling, compileProgram, compileToReadable, toDefaultCompilationCtx, ccOpts)
 import PlutusIR.Compiler.Provenance (Provenance (Original))
+import PlutusIR.Compiler.Types (coDoSimplifierRemoveDeadBindings)
 import PlutusIR.Error (Error)
+import Control.Lens (over, set)
 
 type PLCProgram uni fun a = PLC.Program PLC.TyName PLC.Name uni fun (Provenance a)
 
 {- Evaluates a UPLC Program -}
 runPLCProgram :: PLCProgram DefaultUni DefaultFun () -> (EvaluationResult PLCTerm, [Text])
-runPLCProgram (PLC.Program _ _ c) = unsafeEvaluateCk PLC.defaultBuiltinsRuntime $ void c
+runPLCProgram (PLC.Program _ _ c) = case evaluateCk PLC.defaultBuiltinsRuntimeForTesting . void $ c of 
+  (result, logs) -> case result of 
+    Left _ -> (EvaluationFailure, logs)
+    Right t -> (EvaluationSuccess t, logs)
 
 {- Evaluates a PIR Term -}
 evaluateTerm :: PIRTerm -> IO (EvaluationResult (PLC.Term PLC.TyName Name DefaultUni DefaultFun ()), [Text])
@@ -74,10 +78,14 @@ runCompile x =
     res :: Either e b
     res = do
       plcConfig <- getDefTypeCheckConfig (Original ())
-      let ctx = toDefaultCompilationCtx plcConfig
+      let ctx = disableDeadCodeElimination $ toDefaultCompilationCtx plcConfig
       join $ flip runReader ctx $ runQuoteT $ runExceptT $ runExceptT x
    in
     first show res
+ where
+   disableDeadCodeElimination :: CompilationCtx DefaultUni DefaultFun ()
+                              -> CompilationCtx DefaultUni DefaultFun ()
+   disableDeadCodeElimination = set  (ccOpts . coDoSimplifierRemoveDeadBindings ) False
 
 -- temporary list of test cases used to validate compiler behavior
 passing :: [Text]

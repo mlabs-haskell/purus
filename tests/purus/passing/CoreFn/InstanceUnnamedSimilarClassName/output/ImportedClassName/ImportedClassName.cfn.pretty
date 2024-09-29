@@ -1,0 +1,31 @@
+ImportedClassName (tests/purus/passing/CoreFn/InstanceUnnamedSimilarClassName/ImportedClassName.purs)
+
+Imported Modules: 
+------------------------------
+  Builtin,
+  Prim
+
+Exports: 
+------------------------------
+  foo
+
+Re-Exports: 
+------------------------------
+  
+
+Foreign: 
+------------------------------
+  
+
+Datatypes: 
+------------------------------
+
+
+
+Declarations: 
+------------------------------
+foo :: forall (@a :: Prim.Type). ({ foo :: ((a :: Prim.Type) -> (Prim.Int)) } -> (((a :: Prim.Type) -> (Prim.Int))))
+foo = 
+  \(dict: {   foo :: ((a :: Prim.Type) -> (Prim.Int)) }) -> 
+    (dict: {   foo :: ((a :: Prim.Type) -> (Prim.Int)) })
+    .foo

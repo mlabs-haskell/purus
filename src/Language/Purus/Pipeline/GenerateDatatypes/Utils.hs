@@ -15,18 +15,20 @@ module Language.Purus.Pipeline.GenerateDatatypes.Utils (
   mkNewTyVar,
   mkTyName,
   note,
+  determineDatatypeDependencies
 ) where
 
 import Prelude
 
+import Data.Map (Map)
 import Data.Map qualified as M
 import Data.Text (Text)
 import Data.Text qualified as T
 
-import Control.Monad.State (gets, modify)
-import Debug.Trace (traceM)
+import Control.Monad.State (gets, modify, execState, State, MonadState (..))
 
 import Language.PureScript.CoreFn.TypeLike
+import Language.PureScript.CoreFn.Module
 import Language.PureScript.Names (
   Ident (..),
   ProperName (..),
@@ -39,9 +41,8 @@ import Language.PureScript.Names (
  )
 
 import Language.Purus.Debug (doTraceM)
-import Language.Purus.IR (
-  Ty (..),
- )
+import Language.Purus.IR
+
 import Language.Purus.IR qualified as IR
 import Language.Purus.Pipeline.Monad (
   MonadCounter (next),
@@ -62,19 +63,18 @@ import PlutusIR (
  )
 import PlutusIR qualified as PIR
 
-import Control.Lens (
-  at,
-  folded,
-  over,
-  view,
-  (^?),
-  _1,
- )
+import Control.Lens
 import Control.Monad.Except (
   MonadError (throwError),
  )
 import Prettyprinter (Pretty (..))
 import System.Random (mkStdGen, randomR)
+import Language.Purus.IR.Utils (Vars)
+import Data.Foldable (traverse_, Foldable (..))
+import Language.Purus.Pretty (prettyStr)
+import Control.Monad (unless)
+import Data.Maybe (isJust)
+import Data.Set qualified as S
 
 foldr1Err :: (Foldable t) => String -> (a -> a -> a) -> t a -> a
 foldr1Err msg f ta
@@ -147,7 +147,6 @@ getConstructorName :: Qualified Ident -> PlutusContext (Maybe PLC.Name)
 getConstructorName qi =
   doTraceM "getConstructorName" (show qi) >> do
     ctors <- gets (view constrNames)
-    traceM $ show ctors
     pure $ ctors ^? at qi . folded . _1
 
 prettyQPN :: Qualified (ProperName 'TypeName) -> String
@@ -178,3 +177,37 @@ analyzeTyApp t = (,tyAppArgs t) <$> tyAppFun t
           Just tX' -> Just tX'
         go other = Just other
     tyAppFun _ = Nothing
+
+determineDatatypeDependencies :: forall x
+                               . Exp x Ty (Vars Ty)
+                              -> Datatypes IR.Kind  Ty
+                              -> Datatypes IR.Kind Ty
+determineDatatypeDependencies e (Datatypes tDict _) = rebuildDatatypes $ execState (traverse_ go tyConsInE) M.empty
+  where
+    tyConsInE = e ^.. cosmos . to (expTy id) . cosmos . _TyCon
+
+    rebuildDatatypes :: Map (Qualified (ProperName 'TypeName)) (DataDecl Kind Ty)
+                     -> Datatypes (KindOf Ty) Ty
+    rebuildDatatypes dtDeps = Datatypes dtDeps ctors
+      where
+        ctors = M.foldlWithKey'
+                  (\acc tn ddecl  ->
+                     let ctorNames = ddecl ^..  dDataCtors . folded . cdCtorName
+                     in foldl' (\acc' cn -> M.insert cn tn acc') acc ctorNames
+                   ) M.empty dtDeps 
+
+    go :: Qualified (ProperName 'TypeName)
+       -> State (Map (Qualified (ProperName 'TypeName)) (DataDecl(KindOf Ty) Ty)) ()
+    go tn = do
+     s <- get
+     let alreadySeen = isJust $ M.lookup tn s
+     unless alreadySeen $ do
+       case M.lookup tn tDict of
+          Nothing -> pure ()
+          Just ddecl@(DataDecl _ _ _ ctors) -> do
+            at tn .= Just ddecl
+            visitedTypes <- gets M.keysSet
+            let knownTypes = M.keysSet tDict
+                everyReference = S.fromList $ ctors ^.. folded . cdCtorFields . folded .  _2 . cosmos . _TyCon
+                notYetVisited = S.intersection knownTypes $ S.difference everyReference visitedTypes
+            traverse_ go notYetVisited 

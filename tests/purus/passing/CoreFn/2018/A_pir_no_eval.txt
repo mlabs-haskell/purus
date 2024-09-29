@@ -1,0 +1,9 @@
+
+------ foo ------
+letrec
+  data Foo-451 | match_Foo-452 where
+    X-453 : Foo-451
+    Y-454 : Foo-451
+in
+\(x-450 : Foo-451) -> x-450
+------------

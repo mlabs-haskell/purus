@@ -1,0 +1,27 @@
+Coercible.Lib2 (tests/purus/passing/CoreFn/Coercible/Lib2.purs)
+
+Imported Modules: 
+------------------------------
+  Builtin,
+  Prim
+
+Exports: 
+------------------------------
+  NTLib2
+
+Re-Exports: 
+------------------------------
+  
+
+Foreign: 
+------------------------------
+  
+
+Datatypes: 
+------------------------------
+newtype NTLib2 (a :: Prim.Type) = 
+  NTLib2 ((a :: Prim.Type))
+
+
+Declarations: 
+------------------------------

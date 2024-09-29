@@ -1,3 +1,4 @@
+{-# LANGUAGE TypeApplications #-}
 module Language.Purus.Make where
 
 import Prelude
@@ -6,24 +7,29 @@ import Control.Exception (throwIO)
 
 import Data.Text (Text)
 import Data.Text qualified as T
+import Data.Text.Lazy qualified as LT
 
 import Data.Map qualified as M
 import Data.Set qualified as S
 
 import Data.Function (on)
 
-import Data.Foldable (foldrM)
-import Data.List (delete, foldl', groupBy, sortBy, stripPrefix)
+import Control.Exception
+import Control.Monad (forM)
+import Data.Foldable (foldrM, forM_)
+import Data.List (delete, foldl', groupBy, sortBy, stripPrefix, find)
 
 import System.FilePath (
   makeRelative,
+  takeBaseName,
   takeDirectory,
   takeExtensions,
   (</>),
  )
+import System.IO
 
 import Language.PureScript.CoreFn.Ann (Ann)
-import Language.PureScript.CoreFn.Expr (Bind, PurusType)
+import Language.PureScript.CoreFn.Expr (Bind (..), PurusType, cfnBindIdents)
 import Language.PureScript.CoreFn.Module (Module (..))
 import Language.PureScript.Names (
   Ident (Ident),
@@ -56,16 +62,16 @@ import Language.Purus.Pipeline.Monad (
   runInline,
   runPlutusContext,
  )
-import Language.Purus.Pretty.Common (prettyStr)
+import Language.Purus.Pretty.Common (prettyStr, docString)
 import Language.Purus.Prim.Data (primDataPS)
 import Language.Purus.Types (PIRTerm, PLCTerm, initDatatypeDict)
 import Language.Purus.Utils (
   decodeModuleIO,
-  findDeclBodyWithIndex,
+  findDeclBodyWithIndex, findMain,
  )
 import Language.Purus.Make.Prim (syntheticPrim)
 
-import Control.Monad.Except (MonadError (throwError))
+import Control.Monad.Except (MonadError (throwError), when)
 import Control.Monad.State (evalStateT)
 
 import Control.Lens (At (at))
@@ -77,8 +83,13 @@ import Algebra.Graph.AdjacencyMap.Algorithm (topSort)
 
 import System.FilePath.Glob qualified as Glob
 
-import PlutusCore.Evaluation.Result (EvaluationResult(EvaluationSuccess))
+import PlutusCore.Evaluation.Result (EvaluationResult(..))
 import PlutusIR.Core.Instance.Pretty.Readable (prettyPirReadable)
+
+
+import Language.Purus.Pipeline.Lift.Types
+import System.Directory
+
 
 -- import Debug.Trace (traceM)
 -- import PlutusIR.Core.Instance.Pretty.Readable (prettyPirReadable)
@@ -115,7 +126,7 @@ compile primModule orderedModules mainModuleName mainFunctionName =
     go = do
       (summedModule, dsCxt) <- runDesugarCore $ desugarCoreModules primModule orderedModules
       let
-        -- traceBracket lbl msg = traceM ("\n" <> lbl <> "\n\n" <> msg <> "\n\n")
+        --traceBracket lbl msg = traceM ("\n" <> lbl <> "\n\n" <> msg <> "\n\n")
         decls = moduleDecls summedModule
         declIdentsSet = foldBinds (\acc nm _ -> S.insert nm acc) S.empty decls
         couldn'tFindMain n =
@@ -130,21 +141,29 @@ compile primModule orderedModules mainModuleName mainFunctionName =
       mainFunctionIx <- note (couldn'tFindMain 1) $ dsCxt ^? globalScope . at mainModuleName . folded . at mainFunctionName . folded
       -- traceM $ "Found main function Index: " <> show mainFunctionIx
       mainFunctionBody <- note (couldn'tFindMain 2) $ findDeclBodyWithIndex mainFunctionName mainFunctionIx decls
-      -- traceM "Found main function body"
-      inlined <- runInline summedModule $ lift (mainFunctionName, mainFunctionIx) mainFunctionBody >>= inline
-      -- traceBracket "Done inlining. Result:" $ prettyStr inlined
+      --traceBracket ("Found main function body for " <> prettyStr mainFunctionName <> ":") (prettyStr mainFunctionBody)
+      inlined <- runInline summedModule $ do
+        liftResult <- lift (mainFunctionName, mainFunctionIx) mainFunctionBody
+        --traceBracket "lift result" (prettyStr liftResult) --"free variables in lift result" (prettyStr . M.toList . fmap S.toList $ oosInLiftResult liftResult)
+        inlineResult <- inline liftResult
+        -- traceBracket "free variables in inline result" (prettyStr .  S.toList $ findOutOfScopeVars inlineResult)
+        pure inlineResult
+      --traceBracket "Done inlining. Result:" $ prettyStr inlined
       let !instantiated = applyPolyRowArgs $ instantiateTypes inlined
-      -- traceBracket "Done instantiating types. Result:" $ prettyStr instantiated
+      --raceBracket "Done instantiating types. Result:" $ prettyStr instantiated
       withoutObjects <- instantiateTypes <$> runCounter (desugarObjects instantiated)
-      -- traceBracket  "Desugared objects. Result:\n" $ prettyStr withoutObjects
+      --traceBracket  "Desugared objects. Result:\n" $ prettyStr withoutObjects
       datatypes <- runCounter $ desugarObjectsInDatatypes (moduleDataTypes summedModule)
-      -- traceM "Desugared datatypes"
+      --traceM "Desugared datatypes"
       runPlutusContext initDatatypeDict $ do
-        generateDatatypes datatypes
+        generateDatatypes withoutObjects datatypes
         -- traceM "Generated PIR datatypes"
         withoutCases <- eliminateCases datatypes withoutObjects
-        -- traceM "Eliminated case expressions. Compiling to PIR..."
-        compileToPIR datatypes withoutCases
+        -- traceBracket "Eliminated Cases. Result:" $  prettyStr withoutCases
+        pir <- compileToPIR datatypes withoutCases
+        -- traceBracket "Compiled to PIR. Result: " $ docString (prettyPirReadable pir)
+        -- traceBracket "PIR Raw:" $ LT.unpack (pShowNoColor pir)
+        pure pir 
 
 -- traceM . docString $ prettyPirReadable pirTerm
 
@@ -215,18 +234,126 @@ make path mainModule mainFunction primModule = do
 -- for exploration/repl testing, this hardcodes `tests/purus/passing/Lib` as the target directory and
 -- we only select the name of the main function
 makeForTest :: Text -> IO PIRTerm
-makeForTest main = make "tests/purus/passing/Misc" "Lib" main  (Just syntheticPrim) -- NOTE[A]
+makeForTest main = make "tests/purus/passing/CoreFn/Misc" "Lib" main  (Just syntheticPrim)
 
+
+
+{- Takes a path to a Purus project directory, the name of
+   a target module, and a list of expression names and
+   compiles them to PIR.
+
+   Assumes that the directory already contains an "output" directory with serialized
+   CoreFn files
+-}
 evalForTest_ :: Text -> IO ()
 evalForTest_ main = (fst <$> evalForTest main) >>= \case
   EvaluationSuccess res -> print $ prettyPirReadable res
   _ -> error $ "failed to evaluate " <> T.unpack main
 
 evalForTest :: Text -> IO (EvaluationResult PLCTerm, [Text])
-evalForTest main = makeForTest main >>= evaluateTerm
+evalForTest main = do
+  pir <- makeForTest main
+  -- traceM . docString $ prettyPirReadable pir
+  evaluateTerm pir
 
 -- TODO put this somewhere else
 note :: (MonadError String m) => String -> Maybe a -> m a
 note msg = \case
   Nothing -> throwError msg
   Just x -> pure x
+
+makeTestModule :: FilePath -> IO [(Text,PIRTerm)]
+makeTestModule path = do
+  mdl@Module{..} <- decodeModuleIO path
+  let toTest :: [Ident]
+      toTest = concatMap cfnBindIdents moduleDecls
+      nm     = runModuleName moduleName
+      goCompile  = pure . compile syntheticPrim [mdl] moduleName
+  forM toTest $  \x ->  goCompile x >>= \case
+    Left err -> error $ "Error while compiling " <> T.unpack (runIdent x) <> "\nReason: " <> err
+    Right res -> pure (runIdent x,res)
+
+evalTestModule :: FilePath -> IO ()
+evalTestModule path = do
+  made <- makeTestModule path
+  putStrLn $ "Starting evaluation of: " <> prettyStr (fst <$> made)
+  evaluated <- flip traverse made $ \(x,e) -> do
+      res <- fst <$> evaluateTerm e
+      pure (x,res)
+  forM_ evaluated $ \(eNm,eRes) -> case eRes of
+    EvaluationFailure -> putStrLn $ "\n\n> FAIL: Failed to evaluate " <> T.unpack eNm
+    EvaluationSuccess res -> do
+      putStrLn $ "\n\n> SUCCESS: Evaluated " <> T.unpack eNm
+      print $ prettyPirReadable res
+
+sanityCheck :: IO () 
+sanityCheck = evalTestModule "tests/purus/passing/CoreFn/Misc/output/Lib/Lib.cfn"
+
+-- takes a path to a project dir, returns (ModuleName,Decl Identifier)
+allValueDeclarations :: FilePath -> IO [(ModuleName,Text)]
+allValueDeclarations path = do
+  allModules <- getFilesToCompile path >>= modulesInDependencyOrder
+  let allDecls = map (\mdl -> (moduleName mdl, moduleDecls mdl)) allModules
+      go mn  = \case
+        NonRec _ ident _ -> [(mn,runIdent ident)]
+        Rec xs -> map (\((_,ident),_) -> (mn,runIdent ident)) xs
+  pure $ concatMap (\(mdl,dcls) -> concatMap (go mdl)  dcls)  allDecls
+
+compileDirNoEval :: FilePath -> IO ()
+compileDirNoEval path = do
+  allDecls <- allValueDeclarations path
+  let allModuleNames = runModuleName . fst <$> allDecls
+  forM_ allModuleNames $ \mn -> do
+    let outFilePath = path </> T.unpack mn <> "_pir_no_eval.txt"
+    outFileExists <- doesFileExist outFilePath
+    when outFileExists $
+      removeFile outFilePath
+  forM_ allDecls $ \(runModuleName -> mn, declNm) -> do
+    let outFilePath = path </> T.unpack mn <> "_pir_no_eval.txt"
+    withFile outFilePath AppendMode $ \h -> do
+      result <- make path mn declNm (Just syntheticPrim)
+      let nmStr = T.unpack declNm
+          pirStr = docString $ prettyPirReadable result
+          msg = "\n------ " <> nmStr <> " ------\n"
+               <>  pirStr
+               <> "\n------------\n"
+      -- putStrLn msg
+      hPutStr h msg
+      hClose h 
+
+compileModuleNoEval :: FilePath -> IO ()
+compileModuleNoEval path = do
+  let baseName = takeBaseName path
+      pathDir  = takeDirectory path
+      outFilePath = pathDir </> baseName </> "_pir_decls_no_eval.txt"
+  mdl <- decodeModuleIO path
+  removeFile outFilePath
+  withFile outFilePath  AppendMode $ \h ->  do
+   made <- makeTestModule path
+   forM_ made $ \(nm,pirterm) -> do
+     let nmStr = T.unpack nm
+         pirStr = docString $ prettyPirReadable pirterm
+         origStr = unsafeFindDeclStr mdl nm
+         msg = "\n\n------ " <> nmStr <> " ------\n\n"
+               <> "Original coreFn declaration:\n" <> origStr
+               <> "\n\nCompiled PIR expression:\n" <> pirStr
+               <> "\n------------\n"
+     putStrLn msg
+     hPutStr h msg
+   hClose h
+ where
+   findDecl :: Ident -> [Bind Ann] -> Maybe (Bind Ann)
+   findDecl _ [] = Nothing
+   findDecl i (bnd@(NonRec _ i' _):bs)
+     | i == i' = Just bnd
+     | otherwise = findDecl i bs
+   findDecl i (Rec xs:bs) = case find (\x -> snd (fst x) == i) xs  of
+                              Nothing -> findDecl i bs
+                              Just ((a,_),body) -> Just $ NonRec a i body
+
+   unsafeFindDeclStr :: Module (Bind Ann) PurusType PurusType Ann
+                  -> Text
+                  -> String
+   unsafeFindDeclStr mdl nm = case findDecl (Ident nm) (moduleDecls mdl) of
+           Nothing -> "error: couldn't find a declaration for " <> prettyStr nm
+           Just bnd  -> prettyStr bnd

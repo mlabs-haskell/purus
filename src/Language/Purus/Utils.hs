@@ -1,3 +1,5 @@
+{-# OPTIONS_GHC -Werror #-}
+
 module Language.Purus.Utils where
 
 import Prelude
@@ -21,8 +23,15 @@ import Language.Purus.Debug (doTrace)
 import Language.Purus.IR (BVar, BindE (..), Exp)
 import Language.Purus.IR.Utils (IR_Decl, Vars, WithObjects, foldBinds, toExp)
 
+import PlutusCore.Compiler.Erase (eraseTerm)
+import Codec.Extras.SerialiseViaFlat (SerialiseViaFlat (SerialiseViaFlat))
+import PlutusCore qualified as PLC
+import UntypedPlutusCore qualified as UPLC
+
 import Control.Exception (throwIO)
 
+import Data.Default.Class (def)
+import Data.Functor (void)
 import Data.List (find)
 
 import Data.ByteString (ByteString)
@@ -36,6 +45,26 @@ import Data.Text qualified as T
 import Data.Aeson qualified as Aeson
 
 import Bound (Scope)
+
+import Codec.Serialise (writeFileSerialise)
+
+plcToUplc :: PLC.Term PLC.TyName PLC.Name PLC.DefaultUni PLC.DefaultFun () -> 
+  Either (PLC.Error PLC.DefaultUni PLC.DefaultFun ()) (UPLC.Term UPLC.NamedDeBruijn PLC.DefaultUni PLC.DefaultFun ())
+plcToUplc t = do
+  PLC.runQuoteT $ do
+    tcConfig <- PLC.TypeCheckConfig PLC.defKindCheckConfig <$> PLC.builtinMeaningsToTypes def ()
+    void . PLC.inferType tcConfig $ t
+  UPLC.deBruijnTerm . eraseTerm $ t
+
+serializePlc :: 
+  FilePath -> 
+  UPLC.Term UPLC.NamedDeBruijn PLC.DefaultUni PLC.DefaultFun () ->
+  IO ()
+serializePlc path = 
+  writeFileSerialise path . 
+  SerialiseViaFlat . 
+  UPLC.UnrestrictedProgram .
+  UPLC.Program () PLC.latestVersion 
 
 {- IO utility. Reads a CoreFn module from a source file.
 

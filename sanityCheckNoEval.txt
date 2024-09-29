@@ -1,0 +1,2476 @@
+
+
+------ testClassInt ------
+
+Original coreFn declaration:
+testClassInt :: { testMethod :: (Prim.Int -> (Prim.Boolean)) }
+testClassInt = 
+  ({ testMethod: \(x: Prim.Int) -> (True: Prim.Boolean) }: {
+                                                             testMethod :: (Prim.Int ->
+                                                             (Prim.Boolean))
+                                                           })
+
+Compiled PIR expression:
+letrec
+  data Boolean_710 | match_Boolean_711 where
+    False_712 : Boolean_710
+    True_713 : Boolean_710
+  data (Tuple1_714 :: * -> *) t1_715 | match_Tuple1_716 where
+    Tuple1_717 : t1_715 -> Tuple1_714 t1_715
+in
+Tuple1_717 {integer -> Boolean_710} (\(x_450 : integer) -> True_713)
+------------
+
+
+------ eqInt ------
+
+Original coreFn declaration:
+eqInt :: { eq :: (Prim.Int -> ((Prim.Int -> (Prim.Boolean)))) }
+eqInt = 
+  ({ eq: \(v: Prim.Int) -> \(v1: Prim.Int) -> (True: Prim.Boolean) }: {
+                                                                        eq :: (Prim.Int ->
+                                                                        ((Prim.Int ->
+                                                                        (Prim.Boolean))))
+                                                                      })
+
+Compiled PIR expression:
+letrec
+  data Boolean_710 | match_Boolean_711 where
+    False_712 : Boolean_710
+    True_713 : Boolean_710
+  data (Tuple1_714 :: * -> *) t1_715 | match_Tuple1_716 where
+    Tuple1_717 : t1_715 -> Tuple1_714 t1_715
+in
+Tuple1_717
+  {integer -> integer -> Boolean_710}
+  (\(v_452 : integer) (v1_453 : integer) -> True_713)
+------------
+
+
+------ ordInt ------
+
+Original coreFn declaration:
+ordInt :: { compare :: (Prim.Int -> ((Prim.Int -> (Prim.Int)))), Eq :: { eq :: (Prim.Int -> ((Prim.Int -> (Prim.Boolean)))) } }
+ordInt = 
+  ({
+     Eq: (eqInt: {   eq :: (Prim.Int -> ((Prim.Int -> (Prim.Boolean)))) }),
+     compare: \(v: Prim.Int) -> 
+       \(v1: Prim.Int) -> 
+         (42: Prim.Int)
+   }: {
+        compare :: (Prim.Int -> ((Prim.Int -> (Prim.Int)))),
+        Eq :: {   eq :: (Prim.Int -> ((Prim.Int -> (Prim.Boolean)))) }
+      })
+
+Compiled PIR expression:
+letrec
+  data Boolean_710 | match_Boolean_711 where
+    False_712 : Boolean_710
+    True_713 : Boolean_710
+  data (Tuple1_714 :: * -> *) t1_715 | match_Tuple1_716 where
+    Tuple1_717 : t1_715 -> Tuple1_714 t1_715
+  data (Tuple2_718 :: * -> * -> *) t1_719 t2_720 | match_Tuple2_721 where
+    Tuple2_722 : t1_719 -> t2_720 -> Tuple2_718 t1_719 t2_720
+in
+Tuple2_722
+  {Tuple1_714 (integer -> integer -> Boolean_710)}
+  {integer -> integer -> integer}
+  (Tuple1_717
+     {integer -> integer -> Boolean_710}
+     (\(v_452 : integer) (v1_453 : integer) -> True_713))
+  (\(v_455 : integer) (v1_456 : integer) -> 42)
+------------
+
+
+------ eq2IntBoolean ------
+
+Original coreFn declaration:
+eq2IntBoolean :: { eq2 :: (Prim.Int -> ((Prim.Boolean -> (Prim.Boolean)))) }
+eq2IntBoolean = 
+  ({ eq2: \(v: Prim.Int) -> \(v1: Prim.Boolean) -> (True: Prim.Boolean) }: {
+                                                                             eq2 :: (Prim.Int ->
+                                                                             ((Prim.Boolean ->
+                                                                             (Prim.Boolean))))
+                                                                           })
+
+Compiled PIR expression:
+letrec
+  data Boolean_710 | match_Boolean_711 where
+    False_712 : Boolean_710
+    True_713 : Boolean_710
+  data (Tuple1_714 :: * -> *) t1_715 | match_Tuple1_716 where
+    Tuple1_717 : t1_715 -> Tuple1_714 t1_715
+in
+Tuple1_717
+  {integer -> Boolean_710 -> Boolean_710}
+  (\(v_458 : integer) (v1_459 : Boolean_710) -> True_713)
+------------
+
+
+------ unIdentitee ------
+
+Original coreFn declaration:
+unIdentitee :: ((Lib.Identitee (Prim.Int)) -> (Prim.Int))
+unIdentitee = 
+  \(v: (Lib.Identitee (Prim.Int))) -> 
+    case (v: (Lib.Identitee (Prim.Int))) of 
+       Identitee x -> (x: Prim.Int)
+
+Compiled PIR expression:
+letrec
+  data (Identitee_710 :: * -> *) a_711 | match_Identitee_712 where
+    Identitee_713 : a_711 -> Identitee_710 a_711
+in
+\(v_461 : Identitee_710 integer) ->
+  match_Identitee_712 {integer} v_461 {integer} (\(x_462 : integer) -> x_462)
+------------
+
+
+------ testasum ------
+
+Original coreFn declaration:
+testasum :: (Lib.ASum -> (Prim.Int))
+testasum = 
+  \(x: Lib.ASum) -> 
+    case (x: Lib.ASum) of 
+       Constr1 y -> (1: Prim.Int)
+       Constr2 z -> (2: Prim.Int)
+
+Compiled PIR expression:
+letrec
+  data ASum_710 | match_ASum_711 where
+    Constr1_712 : integer -> ASum_710
+    Constr2_713 : Boolean_714 -> ASum_710
+  data Boolean_714 | match_Boolean_715 where
+    False_716 : Boolean_714
+    True_717 : Boolean_714
+in
+\(x_464 : ASum_710) ->
+  match_ASum_711
+    x_464
+    {integer}
+    (\(y_465 : integer) -> 1)
+    (\(z_466 : Boolean_714) -> 2)
+------------
+
+
+------ testValidator ------
+
+Original coreFn declaration:
+testValidator :: forall (a :: Prim.Type) (b :: Prim.Type) (c :: Prim.Type). ((a :: Prim.Type) -> (((b :: Prim.Type) -> (((c :: Prim.Type) -> (Prim.Boolean))))))
+testValidator = 
+  \(datum: (a :: Prim.Type)) -> 
+    \(redeemer: (b :: Prim.Type)) -> 
+      \(context: (c :: Prim.Type)) -> 
+        (True: Prim.Boolean)
+
+Compiled PIR expression:
+letrec
+  data Boolean_710 | match_Boolean_711 where
+    False_712 : Boolean_710
+    True_713 : Boolean_710
+in
+/\a_473 b_472 c_471 ->
+  \(datum_468 : a_473) (redeemer_469 : b_472) (context_470 : c_471) -> True_713
+------------
+
+
+------ testValidatorApplied ------
+
+Original coreFn declaration:
+testValidatorApplied :: Prim.Boolean
+testValidatorApplied = 
+  (testValidator: forall (a :: Prim.Type)
+  (b :: Prim.Type)
+  (c :: Prim.Type). ((a :: Prim.Type) ->
+  (((b :: Prim.Type) -> (((c :: Prim.Type) -> (Prim.Boolean)))))))
+  ("datum": Prim.String)
+  ("redeemer": Prim.String)
+  ("context": Prim.String)
+
+Compiled PIR expression:
+letrec
+  data Boolean_710 | match_Boolean_711 where
+    False_712 : Boolean_710
+    True_713 : Boolean_710
+in
+(/\a_473 b_472 c_471 ->
+   \(datum_468 : a_473) (redeemer_469 : b_472) (context_470 : c_471) ->
+     True_713)
+  {string}
+  {string}
+  {string}
+  "datum"
+  "redeemer"
+  "context"
+------------
+
+
+------ testMethod ------
+
+Original coreFn declaration:
+testMethod :: forall (@a :: Prim.Type). ({ testMethod :: ((a :: Prim.Type) -> (Prim.Boolean)) } -> (((a :: Prim.Type) -> (Prim.Boolean))))
+testMethod = 
+  \(dict: {   testMethod :: ((a :: Prim.Type) -> (Prim.Boolean)) }) -> 
+    (dict: {   testMethod :: ((a :: Prim.Type) -> (Prim.Boolean)) })
+    .testMethod
+
+Compiled PIR expression:
+letrec
+  data Boolean_711 | match_Boolean_712 where
+    False_713 : Boolean_711
+    True_714 : Boolean_711
+  data (Tuple1_715 :: * -> *) t1_716 | match_Tuple1_717 where
+    Tuple1_718 : t1_716 -> Tuple1_715 t1_716
+in
+/\a_477 ->
+  \(dict_476 : Tuple1_715 (a_477 -> Boolean_711)) ->
+    match_Tuple1_717
+      {a_477 -> Boolean_711}
+      dict_476
+      {a_477 -> Boolean_711}
+      (\(`<ACCESSOR>_710` : a_477 -> Boolean_711) -> `<ACCESSOR>_710`)
+------------
+
+
+------ testTestClass ------
+
+Original coreFn declaration:
+testTestClass :: Prim.Boolean
+testTestClass = 
+  (testMethod: forall (@a :: Prim.Type). ({
+                                            testMethod :: ((a :: Prim.Type) ->
+                                            (Prim.Boolean))
+                                          } ->
+  (((a :: Prim.Type) -> (Prim.Boolean)))))
+  (testClassInt: {   testMethod :: (Prim.Int -> (Prim.Boolean)) })
+  (3: Prim.Int)
+
+Compiled PIR expression:
+letrec
+  data Boolean_711 | match_Boolean_712 where
+    False_713 : Boolean_711
+    True_714 : Boolean_711
+  data (Tuple1_715 :: * -> *) t1_716 | match_Tuple1_717 where
+    Tuple1_718 : t1_716 -> Tuple1_715 t1_716
+in
+(/\a_477 ->
+   \(dict_476 : Tuple1_715 (a_477 -> Boolean_711)) ->
+     match_Tuple1_717
+       {a_477 -> Boolean_711}
+       dict_476
+       {a_477 -> Boolean_711}
+       (\(`<ACCESSOR>_710` : a_477 -> Boolean_711) -> `<ACCESSOR>_710`))
+  {integer}
+  (Tuple1_718 {integer -> Boolean_711} (\(x_450 : integer) -> True_714))
+  3
+------------
+
+
+------ testLedgerTypes ------
+
+Original coreFn declaration:
+testLedgerTypes :: Prim.DCert
+testLedgerTypes = (DCertMir: Prim.DCert)
+
+Compiled PIR expression:
+letrec
+  data Credential_710 | match_Credential_711 where
+    PubKeyCredential_712 : PubKeyHash_713 -> Credential_710
+    ScriptCredential_714 : ScriptHash_715 -> Credential_710
+  data DCert_716 | match_DCert_717 where
+    DCertDelegRegKey_718 : StakingCredential_719 -> DCert_716
+    DCertDelegDeRegKey_720 : StakingCredential_719 -> DCert_716
+    DCertDelegDelegate_721 :
+      StakingCredential_719 -> PubKeyHash_713 -> DCert_716
+    DCertPoolRegister_722 : PubKeyHash_713 -> PubKeyHash_713 -> DCert_716
+    DCertPoolRetire_723 : PubKeyHash_713 -> integer -> DCert_716
+    DCertGenesis_724 : DCert_716
+    DCertMir_725 : DCert_716
+  data PubKeyHash_713 | match_PubKeyHash_726 where
+    PubKeyHash_727 : bytestring -> PubKeyHash_713
+  data ScriptHash_715 | match_ScriptHash_728 where
+    ScriptHash_729 : bytestring -> ScriptHash_715
+  data StakingCredential_719 | match_StakingCredential_730 where
+    StakingHash_731 : Credential_710 -> StakingCredential_719
+    StakingPtr_732 : integer -> integer -> integer -> StakingCredential_719
+in
+DCertMir_725
+------------
+
+
+------ testIdentitee ------
+
+Original coreFn declaration:
+testIdentitee :: Prim.Int
+testIdentitee = 
+  (unIdentitee: ((Lib.Identitee (Prim.Int)) -> (Prim.Int)))
+  ((Identitee: forall (@a :: Prim.Type). ((a :: Prim.Type) ->
+   ((Lib.Identitee ((a :: Prim.Type))))))
+   (101: Prim.Int))
+
+Compiled PIR expression:
+letrec
+  data (Identitee_710 :: * -> *) a_711 | match_Identitee_712 where
+    Identitee_713 : a_711 -> Identitee_710 a_711
+in
+(\(v_461 : Identitee_710 integer) ->
+   match_Identitee_712 {integer} v_461 {integer} (\(x_462 : integer) -> x_462))
+  (Identitee_713 {integer} 101)
+------------
+
+
+------ testForLiftPoly ------
+
+Original coreFn declaration:
+testForLiftPoly :: forall (a :: Prim.Type). ((a :: Prim.Type) -> (Prim.Boolean))
+testForLiftPoly = 
+  \(x: (a :: Prim.Type)) -> 
+    let
+      q :: (a :: Prim.Type)
+      q = (x: (a :: Prim.Type))
+      g :: (a*3 -> (Prim.Boolean))
+      g = \(y: a*3) -> (True: Prim.Boolean)
+      j :: (a*3 -> ((Prim.Boolean -> (Prim.Boolean))))
+      j = 
+        \(c: a*3) -> 
+          \(d: Prim.Boolean) -> 
+            case (d: Prim.Boolean) of 
+               True -> (d: Prim.Boolean)
+               _ -> (g: (a*3 -> (Prim.Boolean))) (c: a*3)
+      h :: (a*3 -> ((Prim.Boolean -> (Prim.Boolean))))
+      h = 
+        \(a: a*3) -> 
+          \(b: Prim.Boolean) -> 
+            let
+              i :: forall (b :: Prim.Type). ((b :: Prim.Type) -> (Prim.Boolean))
+              i = \(z: (b :: Prim.Type)) -> (False: Prim.Boolean)
+            in case ((g: (a*3 -> (Prim.Boolean))) (a: a*3)) of 
+                  True -> 
+                    (i: forall (b :: Prim.Type). ((b :: Prim.Type) ->
+                    (Prim.Boolean)))
+                    (q: a*3)
+                  _ -> 
+                    (j: (a*3 -> ((Prim.Boolean -> (Prim.Boolean)))))
+                    (a: a*3)
+                    (b: Prim.Boolean)
+    in (h: (a*3 -> ((Prim.Boolean -> (Prim.Boolean)))))
+       (x: (a :: Prim.Type))
+       (True: Prim.Boolean)
+
+Compiled PIR expression:
+letrec
+  data Boolean_712 | match_Boolean_713 where
+    False_714 : Boolean_712
+    True_715 : Boolean_712
+in
+/\a_495 ->
+  \(x_482 : a_495) ->
+    (\(x_710 : a_495) (a_490 : a_495) (b_491 : Boolean_712) ->
+       (\(c_487 : a_495) (d_488 : Boolean_712) ->
+          (\(y_485 : a_495) -> True_715) c_487)
+         a_490
+         b_491)
+      x_482
+      x_482
+      True_715
+------------
+
+
+------ testForLiftPolyApplied ------
+
+Original coreFn declaration:
+testForLiftPolyApplied :: Prim.Boolean
+testForLiftPolyApplied = 
+  (testForLiftPoly: forall (a :: Prim.Type). ((a :: Prim.Type) ->
+  (Prim.Boolean)))
+  ("hello": Prim.String)
+
+Compiled PIR expression:
+letrec
+  data Boolean_712 | match_Boolean_713 where
+    False_714 : Boolean_712
+    True_715 : Boolean_712
+in
+(/\a_495 ->
+   \(x_482 : a_495) ->
+     (\(x_710 : a_495) (a_490 : a_495) (b_491 : Boolean_712) ->
+        (\(c_487 : a_495) (d_488 : Boolean_712) ->
+           (\(y_485 : a_495) -> True_715) c_487)
+          a_490
+          b_491)
+       x_482
+       x_482
+       True_715)
+  {string}
+  "hello"
+------------
+
+
+------ testCons ------
+
+Original coreFn declaration:
+testCons :: List (Prim.Int)
+testCons = 
+  (Cons: forall (x :: Prim.Type). ((x :: Prim.Type) ->
+  ((List ((x :: Prim.Type)) -> (List ((x :: Prim.Type)))))))
+  (1: Prim.Int)
+  (Nil: List (Prim.Int))
+
+Compiled PIR expression:
+letrec
+  data (List_710 :: * -> *) a_711 | match_List_712 where
+    Nil_713 : List_710 a_711
+    Cons_714 : a_711 -> List_710 a_711 -> List_710 a_711
+in
+Cons_714 {integer} 1 (Nil_713 {integer})
+------------
+
+
+------ testBuiltin ------
+
+Original coreFn declaration:
+testBuiltin :: Prim.Int
+testBuiltin = 
+  (addInteger: (Prim.Int -> ((Prim.Int -> (Prim.Int)))))
+  (1: Prim.Int)
+  (2: Prim.Int)
+
+Compiled PIR expression:
+addInteger 1 2
+------------
+
+
+------ testBinders ------
+
+Original coreFn declaration:
+testBinders :: (Lib.TestBinderSum -> (Prim.Int))
+testBinders = 
+  \(x: Lib.TestBinderSum) -> 
+    case (x: Lib.TestBinderSum) of 
+       ConInt a -> (a: Prim.Int)
+       ConChar _ -> (5: Prim.Int)
+       ConNested conNest -> 
+         case (conNest: Lib.TestBinderSum) of 
+            ConInt n -> (n: Prim.Int)
+            _ -> (2: Prim.Int)
+       ConQuantified f -> 
+         (f: forall (x :: Prim.Type). ((x :: Prim.Type) -> (Prim.Int)))
+         ("hello": Prim.String)
+       ConConstrained g -> 
+         (g: forall (x :: Prim.Type). ({
+                                         eq :: ((x :: Prim.Type) ->
+                                         (((x :: Prim.Type) -> (Prim.Boolean))))
+                                       } ->
+         (((x :: Prim.Type) -> (Prim.Int)))))
+         (eqInt: {   eq :: (Prim.Int -> ((Prim.Int -> (Prim.Boolean)))) })
+         (2: Prim.Int)
+       ConNested other -> (7: Prim.Int)
+       ConObject obj -> (obj: { objField :: Prim.Int }).objField
+       ConObjectQuantified objQ -> 
+         ((objQ: {
+                   objFieldQ :: forall (x :: Prim.Type). ((x :: Prim.Type) ->
+                   (Prim.Int))
+                 })
+         .objFieldQ)
+         ("world": Prim.String)
+       ConObject objs -> 
+         case (objs: { objField :: Prim.Int }) of 
+            { objField: f } -> (f: Prim.Int)
+       other -> (0: Prim.Int)
+
+Compiled PIR expression:
+letrec
+  data TestBinderSum_712 | match_TestBinderSum_713 where
+    ConInt_714 : integer -> TestBinderSum_712
+    ConString_715 : string -> TestBinderSum_712
+    ConChar_716 : integer -> TestBinderSum_712
+    ConNested_717 : TestBinderSum_712 -> TestBinderSum_712
+    ConQuantified_718 : (all x_719. x_719 -> integer) -> TestBinderSum_712
+    ConConstrained_720 :
+      (all x_721.
+         Tuple1_722 (x_721 -> x_721 -> Boolean_723) -> x_721 -> integer) ->
+      TestBinderSum_712
+    ConObject_724 : Tuple1_722 integer -> TestBinderSum_712
+    ConObjectQuantified_725 :
+      Tuple1_722 (all x_726. x_726 -> integer) -> TestBinderSum_712
+  data Boolean_723 | match_Boolean_727 where
+    False_728 : Boolean_723
+    True_729 : Boolean_723
+  data (Tuple1_722 :: * -> *) t1_730 | match_Tuple1_731 where
+    Tuple1_732 : t1_730 -> Tuple1_722 t1_730
+in
+\(x_500 : TestBinderSum_712) -> 0
+------------
+
+
+------ testBindersCase ------
+
+Original coreFn declaration:
+testBindersCase :: Prim.Int
+testBindersCase = 
+  (testBinders: (Lib.TestBinderSum -> (Prim.Int)))
+  ((ConInt: (Prim.Int -> (Lib.TestBinderSum))) (2: Prim.Int))
+
+Compiled PIR expression:
+letrec
+  data TestBinderSum_712 | match_TestBinderSum_713 where
+    ConInt_714 : integer -> TestBinderSum_712
+    ConString_715 : string -> TestBinderSum_712
+    ConChar_716 : integer -> TestBinderSum_712
+    ConNested_717 : TestBinderSum_712 -> TestBinderSum_712
+    ConQuantified_718 : (all x_719. x_719 -> integer) -> TestBinderSum_712
+    ConConstrained_720 :
+      (all x_721.
+         Tuple1_722 (x_721 -> x_721 -> Boolean_723) -> x_721 -> integer) ->
+      TestBinderSum_712
+    ConObject_724 : Tuple1_722 integer -> TestBinderSum_712
+    ConObjectQuantified_725 :
+      Tuple1_722 (all x_726. x_726 -> integer) -> TestBinderSum_712
+  data Boolean_723 | match_Boolean_727 where
+    False_728 : Boolean_723
+    True_729 : Boolean_723
+  data (Tuple1_722 :: * -> *) t1_730 | match_Tuple1_731 where
+    Tuple1_732 : t1_730 -> Tuple1_722 t1_730
+in
+(\(x_500 : TestBinderSum_712) -> 0) (ConInt_714 2)
+------------
+
+
+------ someData ------
+
+Original coreFn declaration:
+someData :: Builtin.BuiltinData
+someData = (iData: (Prim.Int -> (Builtin.BuiltinData))) (1: Prim.Int)
+
+Compiled PIR expression:
+iData 1
+------------
+
+
+------ someDataList ------
+
+Original coreFn declaration:
+someDataList :: (Builtin.BuiltinList (Builtin.BuiltinData))
+someDataList = 
+  (mkCons: forall (a :: Prim.Type). ((a :: Prim.Type) ->
+  (((Builtin.BuiltinList ((a :: Prim.Type))) ->
+  ((Builtin.BuiltinList ((a :: Prim.Type))))))))
+  (someData: Builtin.BuiltinData)
+  ((mkNilData: (Prim.Unit -> ((Builtin.BuiltinList (Builtin.BuiltinData)))))
+   (unit: Prim.Unit))
+
+Compiled PIR expression:
+mkCons {data} (iData 1) (mkNilData ())
+------------
+
+
+------ testPrelude1 ------
+
+Original coreFn declaration:
+testPrelude1 :: Prim.Int
+testPrelude1 = 
+  (deserializeInt: (Builtin.BuiltinData -> (Prim.Int)))
+  (someData: Builtin.BuiltinData)
+
+Compiled PIR expression:
+unIData (iData 1)
+------------
+
+
+------ polyInObj ------
+
+Original coreFn declaration:
+polyInObj :: { bar :: forall (x :: Prim.Type). ((x :: Prim.Type) -> (Prim.Int)), baz :: Prim.Int }
+polyInObj = 
+  let
+    go :: forall (y :: Prim.Type). ((y :: Prim.Type) -> (Prim.Int))
+    go = \(v: (y :: Prim.Type)) -> (5: Prim.Int)
+  in ({
+        baz: (100: Prim.Int),
+        bar: (go: forall (y :: Prim.Type). ((y :: Prim.Type) -> (Prim.Int)))
+      }: {
+           bar :: forall (x :: Prim.Type). ((x :: Prim.Type) -> (Prim.Int)),
+           baz :: Prim.Int
+         })
+
+Compiled PIR expression:
+letrec
+  data (Tuple2_710 :: * -> * -> *) t1_711 t2_712 | match_Tuple2_713 where
+    Tuple2_714 : t1_711 -> t2_712 -> Tuple2_710 t1_711 t2_712
+in
+Tuple2_714
+  {all y_715. y_715 -> integer}
+  {integer}
+  (/\y_519 -> \(v_518 : y_519) -> 5)
+  100
+------------
+
+
+------ polyInObjMatch ------
+
+Original coreFn declaration:
+polyInObjMatch :: Prim.Int
+polyInObjMatch = 
+  case (polyInObj: { bar :: forall (x :: Prim.Type). ((x :: Prim.Type) -> (Prim.Int)), baz :: Prim.Int }) of 
+     { bar: f, baz: _ } -> 
+       (f: forall (x :: Prim.Type). ((x :: Prim.Type) -> (Prim.Int)))
+       ("hello": Prim.String)
+
+Compiled PIR expression:
+letrec
+  data (Tuple2_710 :: * -> * -> *) t1_711 t2_712 | match_Tuple2_713 where
+    Tuple2_714 : t1_711 -> t2_712 -> Tuple2_710 t1_711 t2_712
+in
+match_Tuple2_713
+  {all y_717. y_717 -> integer}
+  {integer}
+  (Tuple2_714
+     {all y_718. y_718 -> integer}
+     {integer}
+     (/\y_519 -> \(v_518 : y_519) -> 5)
+     100)
+  {integer}
+  (\(f_521 : all y_719. y_719 -> integer) (_t715_715 : integer) ->
+     f_521 {string} "hello")
+------------
+
+
+------ plus ------
+
+Original coreFn declaration:
+plus :: (Prim.Int -> ((Prim.Int -> (Prim.Int))))
+plus = 
+  \(a: Prim.Int) -> 
+    \(b: Prim.Int) -> 
+      (addInteger: (Prim.Int -> ((Prim.Int -> (Prim.Int)))))
+      (a: Prim.Int)
+      (b: Prim.Int)
+
+Compiled PIR expression:
+addInteger
+------------
+
+
+------ testPlus ------
+
+Original coreFn declaration:
+testPlus :: Prim.Int
+testPlus = 
+  (plus: (Prim.Int -> ((Prim.Int -> (Prim.Int))))) (1: Prim.Int) (1: Prim.Int)
+
+Compiled PIR expression:
+addInteger 1 1
+------------
+
+
+------ or ------
+
+Original coreFn declaration:
+or :: (Prim.Boolean -> ((Prim.Boolean -> (Prim.Boolean))))
+or = 
+  \(b1: Prim.Boolean) -> 
+    \(b2: Prim.Boolean) -> 
+      case (b1: Prim.Boolean) of 
+         True -> (True: Prim.Boolean)
+         _ -> (b2: Prim.Boolean)
+
+Compiled PIR expression:
+letrec
+  data Boolean_710 | match_Boolean_711 where
+    False_712 : Boolean_710
+    True_713 : Boolean_710
+in
+\(b1_525 : Boolean_710) (b2_526 : Boolean_710) -> b2_526
+------------
+
+
+------ opt2Int ------
+
+Original coreFn declaration:
+opt2Int :: ((Lib.Option (Prim.Int)) -> (Prim.Int))
+opt2Int = 
+  \(v: (Lib.Option (Prim.Int))) -> 
+    case (v: (Lib.Option (Prim.Int))) of 
+       Some i -> (i: Prim.Int)
+       Nada -> (0: Prim.Int)
+
+Compiled PIR expression:
+letrec
+  data (Option_710 :: * -> *) a_711 | match_Option_712 where
+    Some_713 : a_711 -> Option_710 a_711
+    Nada_714 : Option_710 a_711
+in
+\(v_528 : Option_710 integer) ->
+  match_Option_712 {integer} v_528 {integer} (\(i_529 : integer) -> i_529) 0
+------------
+
+
+------ testOpt2Int ------
+
+Original coreFn declaration:
+testOpt2Int :: Prim.Int
+testOpt2Int = 
+  (opt2Int: ((Lib.Option (Prim.Int)) -> (Prim.Int)))
+  ((Some: forall (@a :: Prim.Type). ((a :: Prim.Type) ->
+   ((Lib.Option ((a :: Prim.Type))))))
+   (3: Prim.Int))
+
+Compiled PIR expression:
+letrec
+  data (Option_710 :: * -> *) a_711 | match_Option_712 where
+    Some_713 : a_711 -> Option_710 a_711
+    Nada_714 : Option_710 a_711
+in
+(\(v_528 : Option_710 integer) ->
+   match_Option_712 {integer} v_528 {integer} (\(i_529 : integer) -> i_529) 0)
+  (Some_713 {integer} 3)
+------------
+
+
+------ not ------
+
+Original coreFn declaration:
+not :: (Prim.Boolean -> (Prim.Boolean))
+not = 
+  \(b: Prim.Boolean) -> 
+    case (b: Prim.Boolean) of 
+       True -> (False: Prim.Boolean)
+       _ -> (True: Prim.Boolean)
+
+Compiled PIR expression:
+letrec
+  data Boolean_710 | match_Boolean_711 where
+    False_712 : Boolean_710
+    True_713 : Boolean_710
+in
+\(b_532 : Boolean_710) -> True_713
+------------
+
+
+------ nestedBinds ------
+
+Original coreFn declaration:
+nestedBinds :: Prim.Int
+nestedBinds = 
+  let
+    g :: forall (a :: Prim.Type). ((a :: Prim.Type) -> (Prim.Int))
+    g = \(v: (a :: Prim.Type)) -> (5: Prim.Int)
+    f :: (Prim.Int -> (Prim.Int))
+    f = \(v: Prim.Int) -> (4: Prim.Int)
+    h :: Prim.Int
+    h = 
+      let
+        i :: Prim.Int
+        i = 
+          (g: forall (a :: Prim.Type). ((a :: Prim.Type) -> (Prim.Int)))
+          ("hello": Prim.String)
+        j :: Prim.Int
+        j = (f: (Prim.Int -> (Prim.Int))) (i: Prim.Int)
+      in (f: (Prim.Int -> (Prim.Int))) (j: Prim.Int)
+  in (h: Prim.Int)
+
+Compiled PIR expression:
+(\(v_538 : integer) -> 4)
+  ((\(v_538 : integer) -> 4)
+     ((/\a_536 -> \(v_535 : a_536) -> 5) {string} "hello"))
+------------
+
+
+------ nestedApplications ------
+
+Original coreFn declaration:
+nestedApplications :: Prim.Int
+nestedApplications = 
+  let
+    i :: (Prim.Int -> ((Prim.Int -> (Prim.Int))))
+    i = \(x: Prim.Int) -> \(v: Prim.Int) -> (x: Prim.Int)
+    h :: (Prim.Int -> (Prim.Int))
+    h = 
+      \(v: Prim.Int) -> 
+        case (v: Prim.Int) of 
+           2 -> (3: Prim.Int)
+           _ -> (5: Prim.Int)
+    g :: (Prim.Int -> (Prim.Int))
+    g = \(v: Prim.Int) -> (5: Prim.Int)
+    f :: (Prim.Int -> (Prim.Int))
+    f = \(x: Prim.Int) -> (x: Prim.Int)
+  in (i: (Prim.Int -> ((Prim.Int -> (Prim.Int)))))
+     ((f: (Prim.Int -> (Prim.Int)))
+      ((g: (Prim.Int -> (Prim.Int)))
+       ((h: (Prim.Int -> (Prim.Int))) (2: Prim.Int))))
+     (4: Prim.Int)
+
+Compiled PIR expression:
+(\(x_544 : integer) (v_545 : integer) -> x_544)
+  ((\(x_551 : integer) -> x_551)
+     ((\(v_549 : integer) -> 5) ((\(v_547 : integer) -> 5) 2)))
+  4
+------------
+
+
+------ mutuallyRecursiveBindingGroupNoTypes ------
+
+Original coreFn declaration:
+mutuallyRecursiveBindingGroupNoTypes :: Prim.Int
+mutuallyRecursiveBindingGroupNoTypes = 
+  let
+    h' :: (Prim.Int -> ((Prim.Int -> (Prim.Int))))
+    h' = \(x: Prim.Int) -> \(y: Prim.Int) -> (y: Prim.Int)
+    g' :: (Prim.Int -> (Prim.Int))
+    g' = 
+      \(y: Prim.Int) -> 
+        (h': (Prim.Int -> ((Prim.Int -> (Prim.Int)))))
+        ((f': (Prim.Int -> (Prim.Int))) (y: Prim.Int))
+        (3: Prim.Int)
+    f' :: (Prim.Int -> (Prim.Int))
+    f' = \(x: Prim.Int) -> (g': (Prim.Int -> (Prim.Int))) (2: Prim.Int)
+  in (g': (Prim.Int -> (Prim.Int))) (3: Prim.Int)
+
+Compiled PIR expression:
+letrec
+  !g'_556 : integer -> integer
+    = \(y_557 : integer) ->
+        (\(x_554 : integer) (y_555 : integer) -> y_555)
+          ((\(x_559 : integer) -> g'_556 2) y_557)
+          3
+in
+g'_556 3
+------------
+
+
+------ mutuallyRecursiveBindingGroup ------
+
+Original coreFn declaration:
+mutuallyRecursiveBindingGroup :: Prim.Int
+mutuallyRecursiveBindingGroup = 
+  let
+    h :: (Prim.Int -> ((Prim.Int -> (Prim.Int))))
+    h = 
+      \(x: Prim.Int) -> 
+        \(y: Prim.Int) -> 
+          (f: (Prim.Int -> (Prim.Int))) (y: Prim.Int)
+    g :: (Prim.Int -> (Prim.Int))
+    g = 
+      \(y: Prim.Int) -> 
+        (h: (Prim.Int -> ((Prim.Int -> (Prim.Int)))))
+        ((f: (Prim.Int -> (Prim.Int))) (y: Prim.Int))
+        (3: Prim.Int)
+    f :: (Prim.Int -> (Prim.Int))
+    f = \(x: Prim.Int) -> (g: (Prim.Int -> (Prim.Int))) (2: Prim.Int)
+  in (g: (Prim.Int -> (Prim.Int))) (3: Prim.Int)
+
+Compiled PIR expression:
+letrec
+  !f_565 : integer -> integer
+    = \(x_566 : integer) ->
+        (\(y_564 : integer) -> (\(x_562 : integer) -> f_565) (f_565 y_564) 3) 2
+in
+(\(y_564 : integer) -> (\(x_562 : integer) -> f_565) (f_565 y_564) 3) 3
+------------
+
+
+------ minus ------
+
+Original coreFn declaration:
+minus :: (Prim.Int -> ((Prim.Int -> (Prim.Int))))
+minus = \(v: Prim.Int) -> \(v1: Prim.Int) -> (42: Prim.Int)
+
+Compiled PIR expression:
+\(v_568 : integer) (v1_569 : integer) -> 42
+------------
+
+
+------ main ------
+
+Original coreFn declaration:
+main :: Prim.Int
+main = 
+  let
+    aFunction4 :: forall (r :: (Prim.Row (Prim.Type))). ({ a :: Prim.Int | (r :: (Prim.Row (Prim.Type))) } -> (Prim.Int))
+    aFunction4 = 
+      \(r: {   a :: Prim.Int | (r :: (Prim.Row (Prim.Type))) }) -> 
+        (r: {   a :: Prim.Int | (r :: (Prim.Row (Prim.Type))) })
+        .a
+  in (aFunction4: forall (r :: (Prim.Row (Prim.Type))). ({
+                                                           a :: Prim.Int | (r :: (Prim.Row
+                                                           (Prim.Type)))
+                                                         } ->
+     (Prim.Int)))
+     ({ b: ("hello": Prim.String), a: (101: Prim.Int) }: {
+                                                           a :: Prim.Int,
+                                                           b :: Prim.String
+                                                         })
+
+Compiled PIR expression:
+letrec
+  data (Tuple2_711 :: * -> * -> *) t1_712 t2_713 | match_Tuple2_714 where
+    Tuple2_715 : t1_712 -> t2_713 -> Tuple2_711 t1_712 t2_713
+in
+(\(r_572 : Tuple2_711 integer string) ->
+   match_Tuple2_714
+     {integer}
+     {string}
+     r_572
+     {integer}
+     (\(`<ACCESSOR>_710` : integer) (_t716_716 : string) -> `<ACCESSOR>_710`))
+  (Tuple2_715 {integer} {string} 101 "hello")
+------------
+
+
+------ litPattern ------
+
+Original coreFn declaration:
+litPattern :: (Prim.Int -> (Prim.Boolean))
+litPattern = 
+  \(n: Prim.Int) -> 
+    case (n: Prim.Int) of 
+       0 -> (False: Prim.Boolean)
+       1 -> (True: Prim.Boolean)
+       2 -> (True: Prim.Boolean)
+       3 -> (True: Prim.Boolean)
+       4 -> (True: Prim.Boolean)
+       _ -> (False: Prim.Boolean)
+
+Compiled PIR expression:
+letrec
+  data Boolean_710 | match_Boolean_711 where
+    False_712 : Boolean_710
+    True_713 : Boolean_710
+in
+\(n_575 : integer) -> False_712
+------------
+
+
+------ litPatternApplied ------
+
+Original coreFn declaration:
+litPatternApplied :: Prim.Boolean
+litPatternApplied = (litPattern: (Prim.Int -> (Prim.Boolean))) (5: Prim.Int)
+
+Compiled PIR expression:
+letrec
+  data Boolean_710 | match_Boolean_711 where
+    False_712 : Boolean_710
+    True_713 : Boolean_710
+in
+(\(n_575 : integer) -> False_712) 5
+------------
+
+
+------ isNullSomeDataList ------
+
+Original coreFn declaration:
+isNullSomeDataList :: Prim.Boolean
+isNullSomeDataList = 
+  (nullList: forall (a :: Prim.Type). ((Builtin.BuiltinList
+  ((a :: Prim.Type))) ->
+  (Prim.Boolean)))
+  (someDataList: (Builtin.BuiltinList (Builtin.BuiltinData)))
+
+Compiled PIR expression:
+letrec
+  data Boolean_710 | match_Boolean_711 where
+    False_712 : Boolean_710
+    True_713 : Boolean_710
+in
+(/\`l#714_714` ->
+   \(`a#715_715` : list `l#714_714`) ->
+     ifThenElse
+       {unit -> Boolean_710}
+       (nullList {`l#714_714`} `a#715_715`)
+       (\(`j#716_716` : unit) -> True_713)
+       (\(`q#717_717` : unit) -> False_712)
+       ())
+  {data}
+  (mkCons {data} (iData 1) (mkNilData ()))
+------------
+
+
+------ irrPattern ------
+
+Original coreFn declaration:
+irrPattern :: (Prim.Int -> (Prim.Int))
+irrPattern = \(n: Prim.Int) -> (2: Prim.Int)
+
+Compiled PIR expression:
+\(n_579 : integer) -> 2
+------------
+
+
+------ identitea ------
+
+Original coreFn declaration:
+identitea :: forall (x :: Prim.Type). ((x :: Prim.Type) -> ((x :: Prim.Type)))
+identitea = \(x: (x :: Prim.Type)) -> (x: (x :: Prim.Type))
+
+Compiled PIR expression:
+/\x_582 -> \(x_581 : x_582) -> x_581
+------------
+
+
+------ testIdConst ------
+
+Original coreFn declaration:
+testIdConst :: Prim.Int
+testIdConst = 
+  let
+    const :: forall (a :: Prim.Type) (b :: Prim.Type). ((a :: Prim.Type) -> (((b :: Prim.Type) -> ((a :: Prim.Type)))))
+    const = 
+      \(p: (a :: Prim.Type)) -> \(q: (b :: Prim.Type)) -> (p: (a :: Prim.Type))
+  in (identitea: forall (x :: Prim.Type). ((x :: Prim.Type) ->
+     ((x :: Prim.Type))))
+     ((const: forall (a :: Prim.Type)
+      (b :: Prim.Type). ((a :: Prim.Type) ->
+      (((b :: Prim.Type) -> ((a :: Prim.Type))))))
+      (5: Prim.Int)
+      (2: Prim.Int))
+
+Compiled PIR expression:
+(/\x_582 -> \(x_581 : x_582) -> x_581)
+  {integer}
+  ((/\a_588 b_587 -> \(p_585 : a_588) (q_586 : b_587) -> p_585)
+     {integer}
+     {integer}
+     5
+     2)
+------------
+
+
+------ id ------
+
+Original coreFn declaration:
+id :: forall (t :: Prim.Type). ((t :: Prim.Type) -> ((t :: Prim.Type)))
+id = \(x: (t :: Prim.Type)) -> (x: (t :: Prim.Type))
+
+Compiled PIR expression:
+/\t_591 -> \(x_590 : t_591) -> x_590
+------------
+
+
+------ objForall ------
+
+Original coreFn declaration:
+objForall :: forall (a :: Prim.Type) (b :: Prim.Type). { getIdA :: ((a :: Prim.Type) -> ((a :: Prim.Type))), getIdB :: ((b :: Prim.Type) -> ((b :: Prim.Type))) }
+objForall = 
+  ({
+     getIdB: (id: forall (t :: Prim.Type). ((t :: Prim.Type) ->
+     ((t :: Prim.Type)))),
+     getIdA: (id: forall (t :: Prim.Type). ((t :: Prim.Type) ->
+     ((t :: Prim.Type))))
+   }: forall (a :: Prim.Type)
+      (b :: Prim.Type). {
+                          getIdA :: ((a :: Prim.Type) -> ((a :: Prim.Type))),
+                          getIdB :: ((b :: Prim.Type) -> ((b :: Prim.Type)))
+                        })
+
+Compiled PIR expression:
+letrec
+  data (Tuple2_710 :: * -> * -> *) t1_711 t2_712 | match_Tuple2_713 where
+    Tuple2_714 : t1_711 -> t2_712 -> Tuple2_710 t1_711 t2_712
+in
+Tuple2_714
+  {all t_716. t_716 -> t_716}
+  {all t_715. t_715 -> t_715}
+  (/\t_591 -> \(x_590 : t_591) -> x_590)
+  (/\t_591 -> \(x_590 : t_591) -> x_590)
+------------
+
+
+------ testId ------
+
+Original coreFn declaration:
+testId :: Prim.Int
+testId = 
+  (id: forall (t :: Prim.Type). ((t :: Prim.Type) -> ((t :: Prim.Type))))
+  (2: Prim.Int)
+
+Compiled PIR expression:
+(/\t_591 -> \(x_590 : t_591) -> x_590) {integer} 2
+------------
+
+
+------ fakeLT ------
+
+Original coreFn declaration:
+fakeLT :: (Prim.Int -> ((Prim.Int -> (Prim.Boolean))))
+fakeLT = \(v: Prim.Int) -> \(v1: Prim.Int) -> (True: Prim.Boolean)
+
+Compiled PIR expression:
+letrec
+  data Boolean_710 | match_Boolean_711 where
+    False_712 : Boolean_710
+    True_713 : Boolean_710
+in
+\(v_595 : integer) (v1_596 : integer) -> True_713
+------------
+
+
+------ testForLift ------
+
+Original coreFn declaration:
+testForLift :: (Prim.Int -> (Prim.Boolean))
+testForLift = 
+  \(x: Prim.Int) -> 
+    let
+      j :: (Prim.Int -> ((Prim.Int -> (Prim.Int))))
+      j = 
+        \(c: Prim.Int) -> 
+          \(d: Prim.Int) -> 
+            (plus: (Prim.Int -> ((Prim.Int -> (Prim.Int)))))
+            (c: Prim.Int)
+            ((g: (Prim.Int -> (Prim.Int))) (d: Prim.Int))
+      h :: (Prim.Int -> ((Prim.Int -> (Prim.Boolean))))
+      h = 
+        \(a: Prim.Int) -> 
+          \(b: Prim.Int) -> 
+            (fakeLT: (Prim.Int -> ((Prim.Int -> (Prim.Boolean)))))
+            ((g: (Prim.Int -> (Prim.Int))) (a: Prim.Int))
+            ((j: (Prim.Int -> ((Prim.Int -> (Prim.Int)))))
+             (4: Prim.Int)
+             (b: Prim.Int))
+      g :: (Prim.Int -> (Prim.Int))
+      g = 
+        \(a: Prim.Int) -> 
+          case ((h: (Prim.Int -> ((Prim.Int -> (Prim.Boolean))))) (a: Prim.Int) (x: Prim.Int)) of 
+             True -> 
+               (j: (Prim.Int -> ((Prim.Int -> (Prim.Int)))))
+               (x: Prim.Int)
+               (1: Prim.Int)
+             _ -> 
+               (multiplyInteger: (Prim.Int -> ((Prim.Int -> (Prim.Int)))))
+               (x: Prim.Int)
+               (x: Prim.Int)
+    in (h: (Prim.Int -> ((Prim.Int -> (Prim.Boolean)))))
+       (x: Prim.Int)
+       (3: Prim.Int)
+
+Compiled PIR expression:
+letrec
+  data Boolean_713 | match_Boolean_714 where
+    False_715 : Boolean_713
+    True_716 : Boolean_713
+in
+letrec
+  !j_599 : integer -> integer -> integer -> integer
+    = \(x_712 : integer) (c_600 : integer) (d_601 : integer) ->
+        addInteger c_600 (g_605 x_712 d_601)
+  !g_605 : integer -> integer -> integer
+    = \(x_710 : integer) (a_606 : integer) -> multiplyInteger x_710 x_710
+in
+\(x_598 : integer) ->
+  (\(x_711 : integer) (a_603 : integer) (b_604 : integer) ->
+     (\(v_595 : integer) (v1_596 : integer) -> True_716)
+       (g_605 x_711 a_603)
+       (j_599 x_711 4 b_604))
+    x_598
+    x_598
+    3
+------------
+
+
+------ testForLiftApplied ------
+
+Original coreFn declaration:
+testForLiftApplied :: Prim.Boolean
+testForLiftApplied = (testForLift: (Prim.Int -> (Prim.Boolean))) (2: Prim.Int)
+
+Compiled PIR expression:
+letrec
+  data Boolean_713 | match_Boolean_714 where
+    False_715 : Boolean_713
+    True_716 : Boolean_713
+in
+letrec
+  !j_599 : integer -> integer -> integer -> integer
+    = \(x_712 : integer) (c_600 : integer) (d_601 : integer) ->
+        addInteger
+          c_600
+          ((\(x_710 : integer) (a_606 : integer) -> multiplyInteger x_710 x_710)
+             x_712
+             d_601)
+  !h_602 : integer -> integer -> integer -> Boolean_713
+    = \(x_711 : integer) (a_603 : integer) (b_604 : integer) ->
+        (\(v_595 : integer) (v1_596 : integer) -> True_716)
+          ((\(x_710 : integer) (a_606 : integer) -> multiplyInteger x_710 x_710)
+             x_711
+             a_603)
+          (j_599 x_711 4 b_604)
+in
+(\(x_598 : integer) -> h_602 x_598 x_598 3) 2
+------------
+
+
+------ testForLift' ------
+
+Original coreFn declaration:
+testForLift' :: (Prim.Int -> (Prim.Boolean))
+testForLift' = 
+  \(x: Prim.Int) -> 
+    let
+      h :: (Prim.Int -> ((Prim.Int -> (Prim.Boolean))))
+      h = 
+        \(a: Prim.Int) -> 
+          \(b: Prim.Int) -> 
+            (fakeLT: (Prim.Int -> ((Prim.Int -> (Prim.Boolean)))))
+            ((g: (Prim.Int -> (Prim.Int))) (a: Prim.Int))
+            (4: Prim.Int)
+      g :: (Prim.Int -> (Prim.Int))
+      g = 
+        \(a: Prim.Int) -> 
+          case ((h: (Prim.Int -> ((Prim.Int -> (Prim.Boolean))))) (a: Prim.Int) (x: Prim.Int)) of 
+             True -> 
+               (plus: (Prim.Int -> ((Prim.Int -> (Prim.Int)))))
+               (x: Prim.Int)
+               (x: Prim.Int)
+             _ -> 
+               (multiplyInteger: (Prim.Int -> ((Prim.Int -> (Prim.Int)))))
+               (x: Prim.Int)
+               (x: Prim.Int)
+    in (h: (Prim.Int -> ((Prim.Int -> (Prim.Boolean)))))
+       (x: Prim.Int)
+       (3: Prim.Int)
+
+Compiled PIR expression:
+letrec
+  data Boolean_712 | match_Boolean_713 where
+    False_714 : Boolean_712
+    True_715 : Boolean_712
+in
+letrec
+  !h_610 : integer -> integer -> integer -> Boolean_712
+    = \(x_711 : integer) (a_611 : integer) (b_612 : integer) ->
+        (\(v_595 : integer) (v1_596 : integer) -> True_715)
+          ((\(x_710 : integer) (a_614 : integer) -> multiplyInteger x_710 x_710)
+             x_711
+             a_611)
+          4
+in
+\(x_609 : integer) -> h_610 x_609 x_609 3
+------------
+
+
+------ testForLiftApplied' ------
+
+Original coreFn declaration:
+testForLiftApplied' :: Prim.Boolean
+testForLiftApplied' = 
+  (testForLift': (Prim.Int -> (Prim.Boolean))) (101: Prim.Int)
+
+Compiled PIR expression:
+letrec
+  data Boolean_712 | match_Boolean_713 where
+    False_714 : Boolean_712
+    True_715 : Boolean_712
+in
+letrec
+  !h_610 : integer -> integer -> integer -> Boolean_712
+    = \(x_711 : integer) (a_611 : integer) (b_612 : integer) ->
+        (\(v_595 : integer) (v1_596 : integer) -> True_715)
+          ((\(x_710 : integer) (a_614 : integer) -> multiplyInteger x_710 x_710)
+             x_711
+             a_611)
+          4
+in
+(\(x_609 : integer) -> h_610 x_609 x_609 3) 101
+------------
+
+
+------ eq2 ------
+
+Original coreFn declaration:
+eq2 :: forall (@a :: Prim.Type) (@b :: Prim.Type). ({ eq2 :: ((a :: Prim.Type) -> (((b :: Prim.Type) -> (Prim.Boolean)))) } -> (((a :: Prim.Type) -> (((b :: Prim.Type) -> (Prim.Boolean))))))
+eq2 = 
+  \(dict: {
+            eq2 :: ((a :: Prim.Type) -> (((b :: Prim.Type) -> (Prim.Boolean))))
+          }) -> 
+    (dict: {
+             eq2 :: ((a :: Prim.Type) -> (((b :: Prim.Type) -> (Prim.Boolean))))
+           })
+    .eq2
+
+Compiled PIR expression:
+letrec
+  data Boolean_711 | match_Boolean_712 where
+    False_713 : Boolean_711
+    True_714 : Boolean_711
+  data (Tuple1_715 :: * -> *) t1_716 | match_Tuple1_717 where
+    Tuple1_718 : t1_716 -> Tuple1_715 t1_716
+in
+/\a_619 b_618 ->
+  \(dict_617 : Tuple1_715 (a_619 -> b_618 -> Boolean_711)) ->
+    match_Tuple1_717
+      {a_619 -> b_618 -> Boolean_711}
+      dict_617
+      {a_619 -> b_618 -> Boolean_711}
+      (\(`<ACCESSOR>_710` : a_619 -> b_618 -> Boolean_711) -> `<ACCESSOR>_710`)
+------------
+
+
+------ testEq2 ------
+
+Original coreFn declaration:
+testEq2 :: Prim.Boolean
+testEq2 = 
+  (eq2: forall (@a :: Prim.Type)
+  (@b :: Prim.Type). ({
+                        eq2 :: ((a :: Prim.Type) ->
+                        (((b :: Prim.Type) -> (Prim.Boolean))))
+                      } ->
+  (((a :: Prim.Type) -> (((b :: Prim.Type) -> (Prim.Boolean)))))))
+  (eq2IntBoolean: ({
+                     eq2 :: (Prim.Int -> (((b :: Prim.Type) -> (Prim.Boolean))))
+                   } (Prim.Boolean)))
+  (101: Prim.Int)
+  (False: Prim.Boolean)
+
+Compiled PIR expression:
+letrec
+  data Boolean_711 | match_Boolean_712 where
+    False_713 : Boolean_711
+    True_714 : Boolean_711
+  data (Tuple1_715 :: * -> *) t1_716 | match_Tuple1_717 where
+    Tuple1_718 : t1_716 -> Tuple1_715 t1_716
+in
+(/\a_619 b_618 ->
+   \(dict_617 : Tuple1_715 (a_619 -> b_618 -> Boolean_711)) ->
+     match_Tuple1_717
+       {a_619 -> b_618 -> Boolean_711}
+       dict_617
+       {a_619 -> b_618 -> Boolean_711}
+       (\(`<ACCESSOR>_710` : a_619 -> b_618 -> Boolean_711) ->
+          `<ACCESSOR>_710`))
+  {integer}
+  {Boolean_711}
+  (Tuple1_718
+     {integer -> Boolean_711 -> Boolean_711}
+     (\(v_458 : integer) (v1_459 : Boolean_711) -> True_714))
+  101
+  False_713
+------------
+
+
+------ eq ------
+
+Original coreFn declaration:
+eq :: forall (@a :: Prim.Type). ({ eq :: ((a :: Prim.Type) -> (((a :: Prim.Type) -> (Prim.Boolean)))) } -> (((a :: Prim.Type) -> (((a :: Prim.Type) -> (Prim.Boolean))))))
+eq = 
+  \(dict: {
+            eq :: ((a :: Prim.Type) -> (((a :: Prim.Type) -> (Prim.Boolean))))
+          }) -> 
+    (dict: {
+             eq :: ((a :: Prim.Type) -> (((a :: Prim.Type) -> (Prim.Boolean))))
+           })
+    .eq
+
+Compiled PIR expression:
+letrec
+  data Boolean_711 | match_Boolean_712 where
+    False_713 : Boolean_711
+    True_714 : Boolean_711
+  data (Tuple1_715 :: * -> *) t1_716 | match_Tuple1_717 where
+    Tuple1_718 : t1_716 -> Tuple1_715 t1_716
+in
+/\a_623 ->
+  \(dict_622 : Tuple1_715 (a_623 -> a_623 -> Boolean_711)) ->
+    match_Tuple1_717
+      {a_623 -> a_623 -> Boolean_711}
+      dict_622
+      {a_623 -> a_623 -> Boolean_711}
+      (\(`<ACCESSOR>_710` : a_623 -> a_623 -> Boolean_711) -> `<ACCESSOR>_710`)
+------------
+
+
+------ guardedCase2 ------
+
+Original coreFn declaration:
+guardedCase2 :: Prim.Int
+guardedCase2 = 
+  let
+    v :: forall ($27 :: Prim.Type). (($27 :: Prim.Type) -> (Prim.Int))
+    v = \(v1: ($27 :: Prim.Type)) -> (0: Prim.Int)
+  in case (polyInObj: { bar :: forall (x :: Prim.Type). ((x :: Prim.Type) -> (Prim.Int)), baz :: Prim.Int }) of 
+        { bar: _, baz: x } -> 
+          let
+            v1 :: Prim.Boolean
+            v1 = 
+              (eq: forall (@a :: Prim.Type). ({
+                                                eq :: ((a :: Prim.Type) ->
+                                                (((a :: Prim.Type) ->
+                                                (Prim.Boolean))))
+                                              } ->
+              (((a :: Prim.Type) -> (((a :: Prim.Type) -> (Prim.Boolean)))))))
+              (eqInt: {   eq :: (Prim.Int -> ((Prim.Int -> (Prim.Boolean)))) })
+              (x: Prim.Int)
+              (4: Prim.Int)
+          in case (v1: Prim.Boolean) of 
+                True -> (x: Prim.Int)
+                _ -> 
+                  (v: forall ($27 :: Prim.Type). (($27 :: Prim.Type) ->
+                  (Prim.Int)))
+                  (True: Prim.Boolean)
+        _ -> 
+          (v: forall ($27 :: Prim.Type). (($27 :: Prim.Type) -> (Prim.Int)))
+          (True: Prim.Boolean)
+
+Compiled PIR expression:
+letrec
+  data Boolean_712 | match_Boolean_713 where
+    False_714 : Boolean_712
+    True_715 : Boolean_712
+  data (Tuple1_716 :: * -> *) t1_717 | match_Tuple1_718 where
+    Tuple1_719 : t1_717 -> Tuple1_716 t1_717
+  data (Tuple2_720 :: * -> * -> *) t1_721 t2_722 | match_Tuple2_723 where
+    Tuple2_724 : t1_721 -> t2_722 -> Tuple2_720 t1_721 t2_722
+in
+(/\`$27_627` -> \(v1_626 : `$27_627`) -> 0) {Boolean_712} True_715
+------------
+
+
+------ testEqViaOrd ------
+
+Original coreFn declaration:
+testEqViaOrd :: forall (a :: Prim.Type). ({ compare :: ((a :: Prim.Type) -> (((a :: Prim.Type) -> (Prim.Int)))), Eq :: { eq :: ((a :: Prim.Type) -> (((a :: Prim.Type) -> (Prim.Boolean)))) } } -> (((a :: Prim.Type) -> (((a :: Prim.Type) -> (Prim.Boolean))))))
+testEqViaOrd = 
+  \(dictOrd: {
+               compare :: ((a :: Prim.Type) ->
+               (((a :: Prim.Type) -> (Prim.Int)))),
+               Eq :: {
+                       eq :: ((a :: Prim.Type) ->
+                       (((a :: Prim.Type) -> (Prim.Boolean))))
+                     }
+             }) -> 
+    \(a: (a :: Prim.Type)) -> 
+      \(b: (a :: Prim.Type)) -> 
+        (eq: forall (@a :: Prim.Type). ({
+                                          eq :: ((a :: Prim.Type) ->
+                                          (((a :: Prim.Type) ->
+                                          (Prim.Boolean))))
+                                        } ->
+        (((a :: Prim.Type) -> (((a :: Prim.Type) -> (Prim.Boolean)))))))
+        ((dictOrd: {
+                     compare :: ((a :: Prim.Type) ->
+                     (((a :: Prim.Type) -> (Prim.Int)))),
+                     Eq :: {
+                             eq :: ((a :: Prim.Type) ->
+                             (((a :: Prim.Type) -> (Prim.Boolean))))
+                           }
+                   })
+        .Eq)
+        (a: (a :: Prim.Type))
+        (b: (a :: Prim.Type))
+
+Compiled PIR expression:
+letrec
+  data Boolean_712 | match_Boolean_713 where
+    False_714 : Boolean_712
+    True_715 : Boolean_712
+  data (Tuple1_716 :: * -> *) t1_717 | match_Tuple1_718 where
+    Tuple1_719 : t1_717 -> Tuple1_716 t1_717
+  data (Tuple2_720 :: * -> * -> *) t1_721 t2_722 | match_Tuple2_723 where
+    Tuple2_724 : t1_721 -> t2_722 -> Tuple2_720 t1_721 t2_722
+in
+/\a_634 ->
+  \(dictOrd_631 :
+      Tuple2_720
+        (Tuple1_716 (a_634 -> a_634 -> Boolean_712))
+        (a_634 -> a_634 -> integer))
+   (a_632 : a_634)
+   (b_633 : a_634) ->
+    (/\a_623 ->
+       \(dict_622 : Tuple1_716 (a_623 -> a_623 -> Boolean_712)) ->
+         match_Tuple1_718
+           {a_623 -> a_623 -> Boolean_712}
+           dict_622
+           {a_623 -> a_623 -> Boolean_712}
+           (\(`<ACCESSOR>_711` : a_623 -> a_623 -> Boolean_712) ->
+              `<ACCESSOR>_711`))
+      {a_634}
+      (match_Tuple2_723
+         {Tuple1_716 (a_634 -> a_634 -> Boolean_712)}
+         {a_634 -> a_634 -> integer}
+         dictOrd_631
+         {Tuple1_716 (a_634 -> a_634 -> Boolean_712)}
+         (\(`<ACCESSOR>_710` : Tuple1_716 (a_634 -> a_634 -> Boolean_712))
+           (_t726_726 : a_634 -> a_634 -> integer) ->
+            `<ACCESSOR>_710`))
+      a_632
+      b_633
+------------
+
+
+------ testSuperClass ------
+
+Original coreFn declaration:
+testSuperClass :: Prim.Boolean
+testSuperClass = 
+  (testEqViaOrd: forall (a :: Prim.Type). ({
+                                             compare :: ((a :: Prim.Type) ->
+                                             (((a :: Prim.Type) ->
+                                             (Prim.Int)))),
+                                             Eq :: {
+                                                     eq :: ((a :: Prim.Type) ->
+                                                     (((a :: Prim.Type) ->
+                                                     (Prim.Boolean))))
+                                                   }
+                                           } ->
+  (((a :: Prim.Type) -> (((a :: Prim.Type) -> (Prim.Boolean)))))))
+  (ordInt: {
+             compare :: (Prim.Int -> ((Prim.Int -> (Prim.Int)))),
+             Eq :: {   eq :: (Prim.Int -> ((Prim.Int -> (Prim.Boolean)))) }
+           })
+  (1: Prim.Int)
+  (2: Prim.Int)
+
+Compiled PIR expression:
+letrec
+  data Boolean_712 | match_Boolean_713 where
+    False_714 : Boolean_712
+    True_715 : Boolean_712
+  data (Tuple1_716 :: * -> *) t1_717 | match_Tuple1_718 where
+    Tuple1_719 : t1_717 -> Tuple1_716 t1_717
+  data (Tuple2_720 :: * -> * -> *) t1_721 t2_722 | match_Tuple2_723 where
+    Tuple2_724 : t1_721 -> t2_722 -> Tuple2_720 t1_721 t2_722
+in
+(/\a_634 ->
+   \(dictOrd_631 :
+       Tuple2_720
+         (Tuple1_716 (a_634 -> a_634 -> Boolean_712))
+         (a_634 -> a_634 -> integer))
+    (a_632 : a_634)
+    (b_633 : a_634) ->
+     (/\a_623 ->
+        \(dict_622 : Tuple1_716 (a_623 -> a_623 -> Boolean_712)) ->
+          match_Tuple1_718
+            {a_623 -> a_623 -> Boolean_712}
+            dict_622
+            {a_623 -> a_623 -> Boolean_712}
+            (\(`<ACCESSOR>_711` : a_623 -> a_623 -> Boolean_712) ->
+               `<ACCESSOR>_711`))
+       {a_634}
+       (match_Tuple2_723
+          {Tuple1_716 (a_634 -> a_634 -> Boolean_712)}
+          {a_634 -> a_634 -> integer}
+          dictOrd_631
+          {Tuple1_716 (a_634 -> a_634 -> Boolean_712)}
+          (\(`<ACCESSOR>_710` : Tuple1_716 (a_634 -> a_634 -> Boolean_712))
+            (_t726_726 : a_634 -> a_634 -> integer) ->
+             `<ACCESSOR>_710`))
+       a_632
+       b_633)
+  {integer}
+  (Tuple2_724
+     {Tuple1_716 (integer -> integer -> Boolean_712)}
+     {integer -> integer -> integer}
+     (Tuple1_719
+        {integer -> integer -> Boolean_712}
+        (\(v_452 : integer) (v1_453 : integer) -> True_715))
+     (\(v_455 : integer) (v1_456 : integer) -> 42))
+  1
+  2
+------------
+
+
+------ cons ------
+
+Original coreFn declaration:
+cons :: forall (a :: Prim.Type). ((a :: Prim.Type) -> ((List ((a :: Prim.Type)) -> (List ((a :: Prim.Type))))))
+cons = 
+  \(x: (a :: Prim.Type)) -> 
+    \(xs: List ((a :: Prim.Type))) -> 
+      (Cons: forall (x :: Prim.Type). ((x :: Prim.Type) ->
+      ((List ((x :: Prim.Type)) -> (List ((x :: Prim.Type)))))))
+      (x: (a :: Prim.Type))
+      (Nil: List ((a :: Prim.Type)))
+
+Compiled PIR expression:
+letrec
+  data (List_710 :: * -> *) a_711 | match_List_712 where
+    Nil_713 : List_710 a_711
+    Cons_714 : a_711 -> List_710 a_711 -> List_710 a_711
+in
+/\a_639 ->
+  \(x_637 : a_639) (xs_638 : List_710 a_639) ->
+    Cons_714 {a_639} x_637 (Nil_713 {a_639})
+------------
+
+
+------ consEmptyList1 ------
+
+Original coreFn declaration:
+consEmptyList1 :: List (Prim.Int)
+consEmptyList1 = 
+  (cons: forall (a :: Prim.Type). ((a :: Prim.Type) ->
+  ((List ((a :: Prim.Type)) -> (List ((a :: Prim.Type)))))))
+  (1: Prim.Int)
+  (Nil: List (Prim.Int))
+
+Compiled PIR expression:
+letrec
+  data (List_710 :: * -> *) a_711 | match_List_712 where
+    Nil_713 : List_710 a_711
+    Cons_714 : a_711 -> List_710 a_711 -> List_710 a_711
+in
+(/\a_639 ->
+   \(x_637 : a_639) (xs_638 : List_710 a_639) ->
+     Cons_714 {a_639} x_637 (Nil_713 {a_639}))
+  {integer}
+  1
+  (Nil_713 {integer})
+------------
+
+
+------ consEmptyList2 ------
+
+Original coreFn declaration:
+consEmptyList2 :: List (Prim.String)
+consEmptyList2 = 
+  (cons: forall (a :: Prim.Type). ((a :: Prim.Type) ->
+  ((List ((a :: Prim.Type)) -> (List ((a :: Prim.Type)))))))
+  ("hello": Prim.String)
+  (Nil: List (Prim.String))
+
+Compiled PIR expression:
+letrec
+  data (List_710 :: * -> *) a_711 | match_List_712 where
+    Nil_713 : List_710 a_711
+    Cons_714 : a_711 -> List_710 a_711 -> List_710 a_711
+in
+(/\a_639 ->
+   \(x_637 : a_639) (xs_638 : List_710 a_639) ->
+     Cons_714 {a_639} x_637 (Nil_713 {a_639}))
+  {string}
+  "hello"
+  (Nil_713 {string})
+------------
+
+
+------ compare ------
+
+Original coreFn declaration:
+compare :: forall (@a :: Prim.Type). ({ compare :: ((a :: Prim.Type) -> (((a :: Prim.Type) -> (Prim.Int)))), Eq :: { eq :: ((a :: Prim.Type) -> (((a :: Prim.Type) -> (Prim.Boolean)))) } } -> (((a :: Prim.Type) -> (((a :: Prim.Type) -> (Prim.Int))))))
+compare = 
+  \(dict: {
+            compare :: ((a :: Prim.Type) -> (((a :: Prim.Type) -> (Prim.Int)))),
+            Eq :: {
+                    eq :: ((a :: Prim.Type) ->
+                    (((a :: Prim.Type) -> (Prim.Boolean))))
+                  }
+          }) -> 
+    (dict: {
+             compare :: ((a :: Prim.Type) ->
+             (((a :: Prim.Type) -> (Prim.Int)))),
+             Eq :: {
+                     eq :: ((a :: Prim.Type) ->
+                     (((a :: Prim.Type) -> (Prim.Boolean))))
+                   }
+           })
+    .compare
+
+Compiled PIR expression:
+letrec
+  data Boolean_711 | match_Boolean_712 where
+    False_713 : Boolean_711
+    True_714 : Boolean_711
+  data (Tuple1_715 :: * -> *) t1_716 | match_Tuple1_717 where
+    Tuple1_718 : t1_716 -> Tuple1_715 t1_716
+  data (Tuple2_719 :: * -> * -> *) t1_720 t2_721 | match_Tuple2_722 where
+    Tuple2_723 : t1_720 -> t2_721 -> Tuple2_719 t1_720 t2_721
+in
+/\a_644 ->
+  \(dict_643 :
+      Tuple2_719
+        (Tuple1_715 (a_644 -> a_644 -> Boolean_711))
+        (a_644 -> a_644 -> integer)) ->
+    match_Tuple2_722
+      {Tuple1_715 (a_644 -> a_644 -> Boolean_711)}
+      {a_644 -> a_644 -> integer}
+      dict_643
+      {a_644 -> a_644 -> integer}
+      (\(_t724_724 : Tuple1_715 (a_644 -> a_644 -> Boolean_711))
+        (`<ACCESSOR>_710` : a_644 -> a_644 -> integer) ->
+         `<ACCESSOR>_710`)
+------------
+
+
+------ brokenEven ------
+
+Original coreFn declaration:
+brokenEven :: (Prim.Int -> (Prim.Int))
+brokenEven = 
+  \(n: Prim.Int) -> 
+    case ((eq: forall (@a :: Prim.Type). ({ eq :: ((a :: Prim.Type) -> (((a :: Prim.Type) -> (Prim.Boolean)))) } -> (((a :: Prim.Type) -> (((a :: Prim.Type) -> (Prim.Boolean))))))) (eqInt: { eq :: (Prim.Int -> ((Prim.Int -> (Prim.Boolean)))) }) (n: Prim.Int) (0: Prim.Int)) of 
+       True -> (1: Prim.Int)
+       _ -> 
+         (brokenEven: (Prim.Int -> (Prim.Int)))
+         ((minus: (Prim.Int -> ((Prim.Int -> (Prim.Int)))))
+          (n: Prim.Int)
+          (2: Prim.Int))
+
+Compiled PIR expression:
+letrec
+  data Boolean_713 | match_Boolean_714 where
+    False_715 : Boolean_713
+    True_716 : Boolean_713
+  data (Tuple1_717 :: * -> *) t1_718 | match_Tuple1_719 where
+    Tuple1_720 : t1_718 -> Tuple1_717 t1_718
+in
+letrec
+  !`brokenEven$B710_710` : integer -> integer
+    = \(n_646 : integer) ->
+        `brokenEven$B710_710`
+          ((\(v_568 : integer) (v1_569 : integer) -> 42) n_646 2)
+in
+\(n_646 : integer) ->
+  `brokenEven$B710_710` ((\(v_568 : integer) (v1_569 : integer) -> 42) n_646 2)
+------------
+
+
+------ arrForall ------
+
+Original coreFn declaration:
+arrForall :: List (forall (t :: Prim.Type). ((t :: Prim.Type) -> ((t :: Prim.Type))))
+arrForall = 
+  (Cons: forall (x :: Prim.Type). ((x :: Prim.Type) ->
+  ((List ((x :: Prim.Type)) -> (List ((x :: Prim.Type)))))))
+  (id: forall (t :: Prim.Type). ((t :: Prim.Type) -> ((t :: Prim.Type))))
+  (Nil: List (forall (a :: Prim.Type). ((a :: Prim.Type) ->
+  ((a :: Prim.Type)))))
+
+Compiled PIR expression:
+letrec
+  data (List_710 :: * -> *) a_711 | match_List_712 where
+    Nil_713 : List_710 a_711
+    Cons_714 : a_711 -> List_710 a_711 -> List_710 a_711
+in
+Cons_714
+  {all t_715. t_715 -> t_715}
+  (/\t_591 -> \(x_590 : t_591) -> x_590)
+  (Nil_713 {all a_716. a_716 -> a_716})
+------------
+
+
+------ apIdentitea ------
+
+Original coreFn declaration:
+apIdentitea :: Prim.Int
+apIdentitea = 
+  (identitea: forall (x :: Prim.Type). ((x :: Prim.Type) -> ((x :: Prim.Type))))
+  (2: Prim.Int)
+
+Compiled PIR expression:
+(/\x_582 -> \(x_581 : x_582) -> x_581) {integer} 2
+------------
+
+
+------ and ------
+
+Original coreFn declaration:
+and :: (Prim.Boolean -> ((Prim.Boolean -> (Prim.Boolean))))
+and = 
+  \(p: Prim.Boolean) -> 
+    \(q: Prim.Boolean) -> 
+      (not: (Prim.Boolean -> (Prim.Boolean)))
+      ((or: (Prim.Boolean -> ((Prim.Boolean -> (Prim.Boolean)))))
+       ((not: (Prim.Boolean -> (Prim.Boolean))) (p: Prim.Boolean))
+       ((not: (Prim.Boolean -> (Prim.Boolean))) (q: Prim.Boolean)))
+
+Compiled PIR expression:
+letrec
+  data Boolean_710 | match_Boolean_711 where
+    False_712 : Boolean_710
+    True_713 : Boolean_710
+in
+\(p_650 : Boolean_710) (q_651 : Boolean_710) ->
+  (\(b_532 : Boolean_710) -> True_713)
+    ((\(b1_525 : Boolean_710) (b2_526 : Boolean_710) -> b2_526)
+       ((\(b_532 : Boolean_710) -> True_713) p_650)
+       ((\(b_532 : Boolean_710) -> True_713) q_651))
+------------
+
+
+------ iff ------
+
+Original coreFn declaration:
+iff :: (Prim.Boolean -> ((Prim.Boolean -> (Prim.Boolean))))
+iff = 
+  \(p: Prim.Boolean) -> 
+    \(q: Prim.Boolean) -> 
+      (or: (Prim.Boolean -> ((Prim.Boolean -> (Prim.Boolean)))))
+      ((and: (Prim.Boolean -> ((Prim.Boolean -> (Prim.Boolean)))))
+       (p: Prim.Boolean)
+       (q: Prim.Boolean))
+      ((and: (Prim.Boolean -> ((Prim.Boolean -> (Prim.Boolean)))))
+       ((not: (Prim.Boolean -> (Prim.Boolean))) (p: Prim.Boolean))
+       ((not: (Prim.Boolean -> (Prim.Boolean))) (q: Prim.Boolean)))
+
+Compiled PIR expression:
+letrec
+  data Boolean_710 | match_Boolean_711 where
+    False_712 : Boolean_710
+    True_713 : Boolean_710
+in
+\(p_653 : Boolean_710) (q_654 : Boolean_710) ->
+  (\(b1_525 : Boolean_710) (b2_526 : Boolean_710) -> b2_526)
+    ((\(p_650 : Boolean_710) (q_651 : Boolean_710) ->
+        (\(b_532 : Boolean_710) -> True_713)
+          ((\(b1_525 : Boolean_710) (b2_526 : Boolean_710) -> b2_526)
+             ((\(b_532 : Boolean_710) -> True_713) p_650)
+             ((\(b_532 : Boolean_710) -> True_713) q_651)))
+       p_653
+       q_654)
+    ((\(p_650 : Boolean_710) (q_651 : Boolean_710) ->
+        (\(b_532 : Boolean_710) -> True_713)
+          ((\(b1_525 : Boolean_710) (b2_526 : Boolean_710) -> b2_526)
+             ((\(b_532 : Boolean_710) -> True_713) p_650)
+             ((\(b_532 : Boolean_710) -> True_713) q_651)))
+       ((\(b_532 : Boolean_710) -> True_713) p_653)
+       ((\(b_532 : Boolean_710) -> True_713) q_654))
+------------
+
+
+------ ghcInlinerPaperEx ------
+
+Original coreFn declaration:
+ghcInlinerPaperEx :: Prim.Boolean
+ghcInlinerPaperEx = 
+  let
+    h :: (Prim.Boolean -> (Prim.Boolean))
+    h = 
+      \(x: Prim.Boolean) -> 
+        (and: (Prim.Boolean -> ((Prim.Boolean -> (Prim.Boolean)))))
+        ((f: (Prim.Boolean -> (Prim.Boolean))) (True: Prim.Boolean))
+        (x: Prim.Boolean)
+    g :: (Prim.Boolean -> (Prim.Boolean))
+    g = 
+      \(x: Prim.Boolean) -> 
+        (iff: (Prim.Boolean -> ((Prim.Boolean -> (Prim.Boolean)))))
+        ((h: (Prim.Boolean -> (Prim.Boolean))) (x: Prim.Boolean))
+        (False: Prim.Boolean)
+    f :: (Prim.Boolean -> (Prim.Boolean))
+    f = 
+      \(x: Prim.Boolean) -> 
+        (g: (Prim.Boolean -> (Prim.Boolean)))
+        ((not: (Prim.Boolean -> (Prim.Boolean))) (x: Prim.Boolean))
+    q :: (Prim.Boolean -> (Prim.Boolean))
+    q = 
+      \(x: Prim.Boolean) -> 
+        (g: (Prim.Boolean -> (Prim.Boolean)))
+        ((iff: (Prim.Boolean -> ((Prim.Boolean -> (Prim.Boolean)))))
+         (x: Prim.Boolean)
+         ((not: (Prim.Boolean -> (Prim.Boolean))) (x: Prim.Boolean)))
+    p :: Prim.Boolean
+    p = (q: (Prim.Boolean -> (Prim.Boolean))) (False: Prim.Boolean)
+  in (p: Prim.Boolean)
+
+Compiled PIR expression:
+letrec
+  data Boolean_710 | match_Boolean_711 where
+    False_712 : Boolean_710
+    True_713 : Boolean_710
+in
+letrec
+  !g_658 : Boolean_710 -> Boolean_710
+    = \(x_659 : Boolean_710) ->
+        (\(p_653 : Boolean_710) (q_654 : Boolean_710) ->
+           (\(b1_525 : Boolean_710) (b2_526 : Boolean_710) -> b2_526)
+             ((\(p_650 : Boolean_710) (q_651 : Boolean_710) ->
+                 (\(b_532 : Boolean_710) -> True_713)
+                   ((\(b1_525 : Boolean_710) (b2_526 : Boolean_710) -> b2_526)
+                      ((\(b_532 : Boolean_710) -> True_713) p_650)
+                      ((\(b_532 : Boolean_710) -> True_713) q_651)))
+                p_653
+                q_654)
+             ((\(p_650 : Boolean_710) (q_651 : Boolean_710) ->
+                 (\(b_532 : Boolean_710) -> True_713)
+                   ((\(b1_525 : Boolean_710) (b2_526 : Boolean_710) -> b2_526)
+                      ((\(b_532 : Boolean_710) -> True_713) p_650)
+                      ((\(b_532 : Boolean_710) -> True_713) q_651)))
+                ((\(b_532 : Boolean_710) -> True_713) p_653)
+                ((\(b_532 : Boolean_710) -> True_713) q_654)))
+          ((\(x_657 : Boolean_710) ->
+              (\(p_650 : Boolean_710) (q_651 : Boolean_710) ->
+                 (\(b_532 : Boolean_710) -> True_713)
+                   ((\(b1_525 : Boolean_710) (b2_526 : Boolean_710) -> b2_526)
+                      ((\(b_532 : Boolean_710) -> True_713) p_650)
+                      ((\(b_532 : Boolean_710) -> True_713) q_651)))
+                ((\(x_661 : Boolean_710) ->
+                    g_658 ((\(b_532 : Boolean_710) -> True_713) x_661))
+                   True_713)
+                x_657)
+             x_659)
+          False_712
+in
+(\(x_663 : Boolean_710) ->
+   g_658
+     ((\(p_653 : Boolean_710) (q_654 : Boolean_710) ->
+         (\(b1_525 : Boolean_710) (b2_526 : Boolean_710) -> b2_526)
+           ((\(p_650 : Boolean_710) (q_651 : Boolean_710) ->
+               (\(b_532 : Boolean_710) -> True_713)
+                 ((\(b1_525 : Boolean_710) (b2_526 : Boolean_710) -> b2_526)
+                    ((\(b_532 : Boolean_710) -> True_713) p_650)
+                    ((\(b_532 : Boolean_710) -> True_713) q_651)))
+              p_653
+              q_654)
+           ((\(p_650 : Boolean_710) (q_651 : Boolean_710) ->
+               (\(b_532 : Boolean_710) -> True_713)
+                 ((\(b1_525 : Boolean_710) (b2_526 : Boolean_710) -> b2_526)
+                    ((\(b_532 : Boolean_710) -> True_713) p_650)
+                    ((\(b_532 : Boolean_710) -> True_713) q_651)))
+              ((\(b_532 : Boolean_710) -> True_713) p_653)
+              ((\(b_532 : Boolean_710) -> True_713) q_654)))
+        x_663
+        ((\(b_532 : Boolean_710) -> True_713) x_663)))
+  False_712
+------------
+
+
+------ kozsTwoSCCEx ------
+
+Original coreFn declaration:
+kozsTwoSCCEx :: Prim.Boolean
+kozsTwoSCCEx = 
+  let
+    z :: Prim.Boolean
+    z = (True: Prim.Boolean)
+    h :: (Prim.Boolean -> (Prim.Boolean))
+    h = 
+      \(x: Prim.Boolean) -> 
+        (not: (Prim.Boolean -> (Prim.Boolean)))
+        ((f: (Prim.Boolean -> (Prim.Boolean))) (x: Prim.Boolean))
+    g :: (Prim.Boolean -> (Prim.Boolean))
+    g = 
+      \(x: Prim.Boolean) -> 
+        (and: (Prim.Boolean -> ((Prim.Boolean -> (Prim.Boolean)))))
+        ((not: (Prim.Boolean -> (Prim.Boolean)))
+         ((h: (Prim.Boolean -> (Prim.Boolean))) (x: Prim.Boolean)))
+        ((not: (Prim.Boolean -> (Prim.Boolean))) (x: Prim.Boolean))
+    f :: (Prim.Boolean -> (Prim.Boolean))
+    f = 
+      \(x: Prim.Boolean) -> 
+        (not: (Prim.Boolean -> (Prim.Boolean)))
+        ((g: (Prim.Boolean -> (Prim.Boolean))) (x: Prim.Boolean))
+    c :: (Prim.Boolean -> (Prim.Boolean))
+    c = 
+      \(x: Prim.Boolean) -> 
+        (not: (Prim.Boolean -> (Prim.Boolean)))
+        ((and: (Prim.Boolean -> ((Prim.Boolean -> (Prim.Boolean)))))
+         ((f: (Prim.Boolean -> (Prim.Boolean))) (x: Prim.Boolean))
+         ((b: (Prim.Boolean -> (Prim.Boolean))) (x: Prim.Boolean)))
+    b :: (Prim.Boolean -> (Prim.Boolean))
+    b = 
+      \(x: Prim.Boolean) -> 
+        (and: (Prim.Boolean -> ((Prim.Boolean -> (Prim.Boolean)))))
+        (x: Prim.Boolean)
+        ((and: (Prim.Boolean -> ((Prim.Boolean -> (Prim.Boolean)))))
+         ((c: (Prim.Boolean -> (Prim.Boolean))) (x: Prim.Boolean))
+         ((h: (Prim.Boolean -> (Prim.Boolean))) (x: Prim.Boolean)))
+    a :: (Prim.Boolean -> (Prim.Boolean))
+    a = 
+      \(x: Prim.Boolean) -> 
+        (and: (Prim.Boolean -> ((Prim.Boolean -> (Prim.Boolean)))))
+        ((b: (Prim.Boolean -> (Prim.Boolean))) (x: Prim.Boolean))
+        (x: Prim.Boolean)
+  in (and: (Prim.Boolean -> ((Prim.Boolean -> (Prim.Boolean)))))
+     ((a: (Prim.Boolean -> (Prim.Boolean))) (z: Prim.Boolean))
+     ((and: (Prim.Boolean -> ((Prim.Boolean -> (Prim.Boolean)))))
+      ((b: (Prim.Boolean -> (Prim.Boolean))) (z: Prim.Boolean))
+      ((and: (Prim.Boolean -> ((Prim.Boolean -> (Prim.Boolean)))))
+       ((c: (Prim.Boolean -> (Prim.Boolean))) (z: Prim.Boolean))
+       ((and: (Prim.Boolean -> ((Prim.Boolean -> (Prim.Boolean)))))
+        ((f: (Prim.Boolean -> (Prim.Boolean))) (z: Prim.Boolean))
+        ((and: (Prim.Boolean -> ((Prim.Boolean -> (Prim.Boolean)))))
+         ((g: (Prim.Boolean -> (Prim.Boolean))) (z: Prim.Boolean))
+         ((h: (Prim.Boolean -> (Prim.Boolean))) (z: Prim.Boolean))))))
+
+Compiled PIR expression:
+letrec
+  data Boolean_710 | match_Boolean_711 where
+    False_712 : Boolean_710
+    True_713 : Boolean_710
+in
+letrec
+  !h_667 : Boolean_710 -> Boolean_710
+    = \(x_668 : Boolean_710) ->
+        (\(b_532 : Boolean_710) -> True_713)
+          ((\(x_672 : Boolean_710) ->
+              (\(b_532 : Boolean_710) -> True_713)
+                ((\(x_670 : Boolean_710) ->
+                    (\(p_650 : Boolean_710) (q_651 : Boolean_710) ->
+                       (\(b_532 : Boolean_710) -> True_713)
+                         ((\(b1_525 : Boolean_710) (b2_526 : Boolean_710) ->
+                             b2_526)
+                            ((\(b_532 : Boolean_710) -> True_713) p_650)
+                            ((\(b_532 : Boolean_710) -> True_713) q_651)))
+                      ((\(b_532 : Boolean_710) -> True_713) (h_667 x_670))
+                      ((\(b_532 : Boolean_710) -> True_713) x_670))
+                   x_672))
+             x_668)
+  !b_675 : Boolean_710 -> Boolean_710
+    = \(x_676 : Boolean_710) ->
+        (\(p_650 : Boolean_710) (q_651 : Boolean_710) ->
+           (\(b_532 : Boolean_710) -> True_713)
+             ((\(b1_525 : Boolean_710) (b2_526 : Boolean_710) -> b2_526)
+                ((\(b_532 : Boolean_710) -> True_713) p_650)
+                ((\(b_532 : Boolean_710) -> True_713) q_651)))
+          x_676
+          ((\(p_650 : Boolean_710) (q_651 : Boolean_710) ->
+              (\(b_532 : Boolean_710) -> True_713)
+                ((\(b1_525 : Boolean_710) (b2_526 : Boolean_710) -> b2_526)
+                   ((\(b_532 : Boolean_710) -> True_713) p_650)
+                   ((\(b_532 : Boolean_710) -> True_713) q_651)))
+             ((\(x_674 : Boolean_710) ->
+                 (\(b_532 : Boolean_710) -> True_713)
+                   ((\(p_650 : Boolean_710) (q_651 : Boolean_710) ->
+                       (\(b_532 : Boolean_710) -> True_713)
+                         ((\(b1_525 : Boolean_710) (b2_526 : Boolean_710) ->
+                             b2_526)
+                            ((\(b_532 : Boolean_710) -> True_713) p_650)
+                            ((\(b_532 : Boolean_710) -> True_713) q_651)))
+                      ((\(x_672 : Boolean_710) ->
+                          (\(b_532 : Boolean_710) -> True_713)
+                            ((\(x_670 : Boolean_710) ->
+                                (\(p_650 : Boolean_710) (q_651 : Boolean_710) ->
+                                   (\(b_532 : Boolean_710) -> True_713)
+                                     ((\(b1_525 : Boolean_710)
+                                        (b2_526 : Boolean_710) ->
+                                         b2_526)
+                                        ((\(b_532 : Boolean_710) -> True_713)
+                                           p_650)
+                                        ((\(b_532 : Boolean_710) -> True_713)
+                                           q_651)))
+                                  ((\(b_532 : Boolean_710) -> True_713)
+                                     (h_667 x_670))
+                                  ((\(b_532 : Boolean_710) -> True_713) x_670))
+                               x_672))
+                         x_674)
+                      (b_675 x_674)))
+                x_676)
+             (h_667 x_676))
+in
+(\(p_650 : Boolean_710) (q_651 : Boolean_710) ->
+   (\(b_532 : Boolean_710) -> True_713)
+     ((\(b1_525 : Boolean_710) (b2_526 : Boolean_710) -> b2_526)
+        ((\(b_532 : Boolean_710) -> True_713) p_650)
+        ((\(b_532 : Boolean_710) -> True_713) q_651)))
+  ((\(x_678 : Boolean_710) ->
+      (\(p_650 : Boolean_710) (q_651 : Boolean_710) ->
+         (\(b_532 : Boolean_710) -> True_713)
+           ((\(b1_525 : Boolean_710) (b2_526 : Boolean_710) -> b2_526)
+              ((\(b_532 : Boolean_710) -> True_713) p_650)
+              ((\(b_532 : Boolean_710) -> True_713) q_651)))
+        (b_675 x_678)
+        x_678)
+     True_713)
+  ((\(p_650 : Boolean_710) (q_651 : Boolean_710) ->
+      (\(b_532 : Boolean_710) -> True_713)
+        ((\(b1_525 : Boolean_710) (b2_526 : Boolean_710) -> b2_526)
+           ((\(b_532 : Boolean_710) -> True_713) p_650)
+           ((\(b_532 : Boolean_710) -> True_713) q_651)))
+     (b_675 True_713)
+     ((\(p_650 : Boolean_710) (q_651 : Boolean_710) ->
+         (\(b_532 : Boolean_710) -> True_713)
+           ((\(b1_525 : Boolean_710) (b2_526 : Boolean_710) -> b2_526)
+              ((\(b_532 : Boolean_710) -> True_713) p_650)
+              ((\(b_532 : Boolean_710) -> True_713) q_651)))
+        ((\(x_674 : Boolean_710) ->
+            (\(b_532 : Boolean_710) -> True_713)
+              ((\(p_650 : Boolean_710) (q_651 : Boolean_710) ->
+                  (\(b_532 : Boolean_710) -> True_713)
+                    ((\(b1_525 : Boolean_710) (b2_526 : Boolean_710) -> b2_526)
+                       ((\(b_532 : Boolean_710) -> True_713) p_650)
+                       ((\(b_532 : Boolean_710) -> True_713) q_651)))
+                 ((\(x_672 : Boolean_710) ->
+                     (\(b_532 : Boolean_710) -> True_713)
+                       ((\(x_670 : Boolean_710) ->
+                           (\(p_650 : Boolean_710) (q_651 : Boolean_710) ->
+                              (\(b_532 : Boolean_710) -> True_713)
+                                ((\(b1_525 : Boolean_710)
+                                   (b2_526 : Boolean_710) ->
+                                    b2_526)
+                                   ((\(b_532 : Boolean_710) -> True_713) p_650)
+                                   ((\(b_532 : Boolean_710) -> True_713)
+                                      q_651)))
+                             ((\(b_532 : Boolean_710) -> True_713)
+                                (h_667 x_670))
+                             ((\(b_532 : Boolean_710) -> True_713) x_670))
+                          x_672))
+                    x_674)
+                 (b_675 x_674)))
+           True_713)
+        ((\(p_650 : Boolean_710) (q_651 : Boolean_710) ->
+            (\(b_532 : Boolean_710) -> True_713)
+              ((\(b1_525 : Boolean_710) (b2_526 : Boolean_710) -> b2_526)
+                 ((\(b_532 : Boolean_710) -> True_713) p_650)
+                 ((\(b_532 : Boolean_710) -> True_713) q_651)))
+           ((\(x_672 : Boolean_710) ->
+               (\(b_532 : Boolean_710) -> True_713)
+                 ((\(x_670 : Boolean_710) ->
+                     (\(p_650 : Boolean_710) (q_651 : Boolean_710) ->
+                        (\(b_532 : Boolean_710) -> True_713)
+                          ((\(b1_525 : Boolean_710) (b2_526 : Boolean_710) ->
+                              b2_526)
+                             ((\(b_532 : Boolean_710) -> True_713) p_650)
+                             ((\(b_532 : Boolean_710) -> True_713) q_651)))
+                       ((\(b_532 : Boolean_710) -> True_713) (h_667 x_670))
+                       ((\(b_532 : Boolean_710) -> True_713) x_670))
+                    x_672))
+              True_713)
+           ((\(p_650 : Boolean_710) (q_651 : Boolean_710) ->
+               (\(b_532 : Boolean_710) -> True_713)
+                 ((\(b1_525 : Boolean_710) (b2_526 : Boolean_710) -> b2_526)
+                    ((\(b_532 : Boolean_710) -> True_713) p_650)
+                    ((\(b_532 : Boolean_710) -> True_713) q_651)))
+              ((\(x_670 : Boolean_710) ->
+                  (\(p_650 : Boolean_710) (q_651 : Boolean_710) ->
+                     (\(b_532 : Boolean_710) -> True_713)
+                       ((\(b1_525 : Boolean_710) (b2_526 : Boolean_710) ->
+                           b2_526)
+                          ((\(b_532 : Boolean_710) -> True_713) p_650)
+                          ((\(b_532 : Boolean_710) -> True_713) q_651)))
+                    ((\(b_532 : Boolean_710) -> True_713) (h_667 x_670))
+                    ((\(b_532 : Boolean_710) -> True_713) x_670))
+                 True_713)
+              (h_667 True_713)))))
+------------
+
+
+------ anObj ------
+
+Original coreFn declaration:
+anObj :: { foo :: Prim.Int }
+anObj = ({ foo: (3: Prim.Int) }: { foo :: Prim.Int })
+
+Compiled PIR expression:
+letrec
+  data (Tuple1_710 :: * -> *) t1_711 | match_Tuple1_712 where
+    Tuple1_713 : t1_711 -> Tuple1_710 t1_711
+in
+Tuple1_713 {integer} 3
+------------
+
+
+------ objUpdate ------
+
+Original coreFn declaration:
+objUpdate :: { foo :: Prim.Int }
+objUpdate = 
+  let
+    v :: { foo :: Prim.Int }
+    v = (anObj: { foo :: Prim.Int })
+  in (v: { foo :: Prim.Int }) { foo = (4: Prim.Int) }
+
+Compiled PIR expression:
+letrec
+  data (Tuple1_711 :: * -> *) t1_712 | match_Tuple1_713 where
+    Tuple1_714 : t1_712 -> Tuple1_711 t1_712
+in
+match_Tuple1_713
+  {integer}
+  (Tuple1_714 {integer} 3)
+  {Tuple1_711 integer}
+  (\(_t715_715 : integer) -> Tuple1_714 {integer} 4)
+------------
+
+
+------ anIntLit ------
+
+Original coreFn declaration:
+anIntLit :: Prim.Int
+anIntLit = (1: Prim.Int)
+
+Compiled PIR expression:
+1
+------------
+
+
+------ aVal ------
+
+Original coreFn declaration:
+aVal :: Prim.Int
+aVal = (1: Prim.Int)
+
+Compiled PIR expression:
+1
+------------
+
+
+------ aStringLit ------
+
+Original coreFn declaration:
+aStringLit :: Prim.String
+aStringLit = ("woop": Prim.String)
+
+Compiled PIR expression:
+"woop"
+------------
+
+
+------ aPred ------
+
+Original coreFn declaration:
+aPred :: (Prim.Int -> (Prim.Boolean))
+aPred = \(v: Prim.Int) -> (True: Prim.Boolean)
+
+Compiled PIR expression:
+letrec
+  data Boolean_710 | match_Boolean_711 where
+    False_712 : Boolean_710
+    True_713 : Boolean_710
+in
+\(v_686 : integer) -> True_713
+------------
+
+
+------ guardedCase ------
+
+Original coreFn declaration:
+guardedCase :: (Prim.Int -> ((Prim.Int -> (Prim.Int))))
+guardedCase = 
+  \(w: Prim.Int) -> 
+    \(x: Prim.Int) -> 
+      let
+        v :: forall ($30 :: Prim.Type). (($30 :: Prim.Type) -> (Prim.Int))
+        v = \(v1: ($30 :: Prim.Type)) -> (0: Prim.Int)
+      in case (w: Prim.Int) (x: Prim.Int) of 
+            y z -> 
+              let
+                v1 :: Prim.Boolean
+                v1 = 
+                  (eq: forall (@a :: Prim.Type). ({
+                                                    eq :: ((a :: Prim.Type) ->
+                                                    (((a :: Prim.Type) ->
+                                                    (Prim.Boolean))))
+                                                  } ->
+                  (((a :: Prim.Type) ->
+                  (((a :: Prim.Type) -> (Prim.Boolean)))))))
+                  (eqInt: {
+                            eq :: (Prim.Int -> ((Prim.Int -> (Prim.Boolean))))
+                          })
+                  (y: Prim.Int)
+                  (2: Prim.Int)
+              in case (v1: Prim.Boolean) of 
+                    True -> 
+                      let
+                        v2 :: Prim.Boolean
+                        v2 = (aPred: (Prim.Int -> (Prim.Boolean))) (y: Prim.Int)
+                      in case (v2: Prim.Boolean) of 
+                            True -> 
+                              let
+                                v3 :: Prim.Boolean
+                                v3 = 
+                                  (eq: forall (@a :: Prim.Type). ({
+                                                                    eq :: ((a :: Prim.Type) ->
+                                                                    (((a :: Prim.Type) ->
+                                                                    (Prim.Boolean))))
+                                                                  } ->
+                                  (((a :: Prim.Type) ->
+                                  (((a :: Prim.Type) -> (Prim.Boolean)))))))
+                                  (eqInt: {
+                                            eq :: (Prim.Int ->
+                                            ((Prim.Int -> (Prim.Boolean))))
+                                          })
+                                  (z: Prim.Int)
+                                  (0: Prim.Int)
+                              in case (v3: Prim.Boolean) of 
+                                    True -> 
+                                      let
+                                        v4 :: Prim.Boolean
+                                        v4 = 
+                                          (eq: forall (@a :: Prim.Type). ({
+                                                                            eq :: ((a :: Prim.Type) ->
+                                                                            (((a :: Prim.Type) ->
+                                                                            (Prim.Boolean))))
+                                                                          } ->
+                                          (((a :: Prim.Type) ->
+                                          (((a :: Prim.Type) ->
+                                          (Prim.Boolean)))))))
+                                          (eqInt: {
+                                                    eq :: (Prim.Int ->
+                                                    ((Prim.Int ->
+                                                    (Prim.Boolean))))
+                                                  })
+                                          (y: Prim.Int)
+                                          (nestedBinds: Prim.Int)
+                                      in case (v4: Prim.Boolean) of 
+                                            True -> (2: Prim.Int)
+                                            _ -> 
+                                              (v: forall ($30 :: Prim.Type). (($30 :: Prim.Type) ->
+                                              (Prim.Int)))
+                                              (True: Prim.Boolean)
+                                    _ -> 
+                                      (v: forall ($30 :: Prim.Type). (($30 :: Prim.Type) ->
+                                      (Prim.Int)))
+                                      (True: Prim.Boolean)
+                            _ -> 
+                              (v: forall ($30 :: Prim.Type). (($30 :: Prim.Type) ->
+                              (Prim.Int)))
+                              (True: Prim.Boolean)
+                    _ -> 
+                      (v: forall ($30 :: Prim.Type). (($30 :: Prim.Type) ->
+                      (Prim.Int)))
+                      (True: Prim.Boolean)
+
+Compiled PIR expression:
+letrec
+  data Boolean_717 | match_Boolean_718 where
+    False_719 : Boolean_717
+    True_720 : Boolean_717
+  data (Tuple1_721 :: * -> *) t1_722 | match_Tuple1_723 where
+    Tuple1_724 : t1_722 -> Tuple1_721 t1_722
+  data (Tuple2_725 :: * -> * -> *) t1_726 t2_727 | match_Tuple2_728 where
+    Tuple2_729 : t1_726 -> t2_727 -> Tuple2_725 t1_726 t2_727
+in
+\(w_688 : integer) (x_689 : integer) ->
+  match_Tuple2_728
+    {integer}
+    {integer}
+    (Tuple2_729 {integer} {integer} w_688 x_689)
+    {integer}
+    (\(y_693 : integer) (z_694 : integer) ->
+       (/\`$30_692` -> \(v1_691 : `$30_692`) -> 0) {Boolean_717} True_720)
+------------
+
+
+------ aList2 ------
+
+Original coreFn declaration:
+aList2 :: List (Prim.Int)
+aList2 = 
+  (Cons: forall (x :: Prim.Type). ((x :: Prim.Type) ->
+  ((List ((x :: Prim.Type)) -> (List ((x :: Prim.Type)))))))
+  (1: Prim.Int)
+  ((Cons: forall (x :: Prim.Type). ((x :: Prim.Type) ->
+   ((List ((x :: Prim.Type)) -> (List ((x :: Prim.Type)))))))
+   (2: Prim.Int)
+   (Nil: List (Prim.Int)))
+
+Compiled PIR expression:
+letrec
+  data (List_710 :: * -> *) a_711 | match_List_712 where
+    Nil_713 : List_710 a_711
+    Cons_714 : a_711 -> List_710 a_711 -> List_710 a_711
+in
+Cons_714 {integer} 1 (Cons_714 {integer} 2 (Nil_713 {integer}))
+------------
+
+
+------ aList ------
+
+Original coreFn declaration:
+aList :: List (Prim.Int)
+aList = 
+  (Cons: forall (x :: Prim.Type). ((x :: Prim.Type) ->
+  ((List ((x :: Prim.Type)) -> (List ((x :: Prim.Type)))))))
+  (1: Prim.Int)
+  ((Cons: forall (x :: Prim.Type). ((x :: Prim.Type) ->
+   ((List ((x :: Prim.Type)) -> (List ((x :: Prim.Type)))))))
+   (2: Prim.Int)
+   ((Cons: forall (x :: Prim.Type). ((x :: Prim.Type) ->
+    ((List ((x :: Prim.Type)) -> (List ((x :: Prim.Type)))))))
+    (3: Prim.Int)
+    ((Cons: forall (x :: Prim.Type). ((x :: Prim.Type) ->
+     ((List ((x :: Prim.Type)) -> (List ((x :: Prim.Type)))))))
+     (4: Prim.Int)
+     ((Cons: forall (x :: Prim.Type). ((x :: Prim.Type) ->
+      ((List ((x :: Prim.Type)) -> (List ((x :: Prim.Type)))))))
+      (5: Prim.Int)
+      (Nil: List (Prim.Int))))))
+
+Compiled PIR expression:
+letrec
+  data (List_710 :: * -> *) a_711 | match_List_712 where
+    Nil_713 : List_710 a_711
+    Cons_714 : a_711 -> List_710 a_711 -> List_710 a_711
+in
+Cons_714
+  {integer}
+  1
+  (Cons_714
+     {integer}
+     2
+     (Cons_714
+        {integer}
+        3
+        (Cons_714 {integer} 4 (Cons_714 {integer} 5 (Nil_713 {integer})))))
+------------
+
+
+------ aFunction3 ------
+
+Original coreFn declaration:
+aFunction3 :: (Prim.Int -> (Prim.Int))
+aFunction3 = 
+  \(x: Prim.Int) -> 
+    case ((eq: forall (@a :: Prim.Type). ({ eq :: ((a :: Prim.Type) -> (((a :: Prim.Type) -> (Prim.Boolean)))) } -> (((a :: Prim.Type) -> (((a :: Prim.Type) -> (Prim.Boolean))))))) (eqInt: { eq :: (Prim.Int -> ((Prim.Int -> (Prim.Boolean)))) }) (x: Prim.Int) (2: Prim.Int)) of 
+       True -> (4: Prim.Int)
+       _ -> (1: Prim.Int)
+
+Compiled PIR expression:
+letrec
+  data Boolean_711 | match_Boolean_712 where
+    False_713 : Boolean_711
+    True_714 : Boolean_711
+  data (Tuple1_715 :: * -> *) t1_716 | match_Tuple1_717 where
+    Tuple1_718 : t1_716 -> Tuple1_715 t1_716
+in
+\(x_702 : integer) -> 1
+------------
+
+
+------ aFunction2 ------
+
+Original coreFn declaration:
+aFunction2 :: (Prim.Int -> (List (Prim.Int)))
+aFunction2 = 
+  \(x: Prim.Int) -> 
+    (Cons: forall (x :: Prim.Type). ((x :: Prim.Type) ->
+    ((List ((x :: Prim.Type)) -> (List ((x :: Prim.Type)))))))
+    (x: Prim.Int)
+    ((Cons: forall (x :: Prim.Type). ((x :: Prim.Type) ->
+     ((List ((x :: Prim.Type)) -> (List ((x :: Prim.Type)))))))
+     (1: Prim.Int)
+     (Nil: List (Prim.Int)))
+
+Compiled PIR expression:
+letrec
+  data (List_710 :: * -> *) a_711 | match_List_712 where
+    Nil_713 : List_710 a_711
+    Cons_714 : a_711 -> List_710 a_711 -> List_710 a_711
+in
+\(x_704 : integer) ->
+  Cons_714 {integer} x_704 (Cons_714 {integer} 1 (Nil_713 {integer}))
+------------
+
+
+------ aFunction ------
+
+Original coreFn declaration:
+aFunction :: forall (x :: Prim.Type). ((x :: Prim.Type) -> ((forall (y :: Prim.Type). ((y :: Prim.Type) -> (Prim.Int)) -> (Prim.Int))))
+aFunction = 
+  \(any: (x :: Prim.Type)) -> 
+    \(f: forall (y :: Prim.Type). ((y :: Prim.Type) -> (Prim.Int))) -> 
+      (f: forall (y :: Prim.Type). ((y :: Prim.Type) -> (Prim.Int)))
+      (any: (x :: Prim.Type))
+
+Compiled PIR expression:
+/\x_708 ->
+  \(any_706 : x_708) (f_707 : all y_710. y_710 -> integer) ->
+    f_707 {x_708} any_706
+------------
+
+
+------ aBool ------
+
+Original coreFn declaration:
+aBool :: Prim.Boolean
+aBool = (True: Prim.Boolean)
+
+Compiled PIR expression:
+letrec
+  data Boolean_710 | match_Boolean_711 where
+    False_712 : Boolean_710
+    True_713 : Boolean_710
+in
+True_713
+------------
