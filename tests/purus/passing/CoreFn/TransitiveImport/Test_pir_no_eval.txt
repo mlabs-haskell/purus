@@ -1,0 +1,24 @@
+
+------ testClsUneet ------
+letrec
+  data (Tuple1-457 :: * -> *) t1-458 | match_Tuple1-459 where
+    Tuple1-460 : t1-458 -> Tuple1-457 t1-458
+  data Uneet-461 | match_Uneet-462 where
+    Uneet-463 : Uneet-461
+in
+Tuple1-460 {Uneet-461 -> Uneet-461} (\(v-450 : Uneet-461) -> Uneet-463)
+------------
+
+------ test ------
+letrec
+  data (Tuple1-458 :: * -> *) t1-459 | match_Tuple1-460 where
+    Tuple1-461 : t1-459 -> Tuple1-458 t1-459
+in
+/\a-453 ->
+  \(dict-452 : Tuple1-458 (a-453 -> a-453)) ->
+    match_Tuple1-460
+      {a-453 -> a-453}
+      dict-452
+      {a-453 -> a-453}
+      (\(`<ACCESSOR>`-457 : a-453 -> a-453) -> `<ACCESSOR>`-457)
+------------

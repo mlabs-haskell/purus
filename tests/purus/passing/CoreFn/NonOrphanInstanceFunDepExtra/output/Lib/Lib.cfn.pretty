@@ -1,0 +1,27 @@
+Lib (tests/purus/passing/CoreFn/NonOrphanInstanceFunDepExtra/Lib.purs)
+
+Imported Modules: 
+------------------------------
+  Builtin,
+  Prim
+
+Exports: 
+------------------------------
+  
+
+Re-Exports: 
+------------------------------
+  
+
+Foreign: 
+------------------------------
+  
+
+Datatypes: 
+------------------------------
+data L  = 
+  
+
+
+Declarations: 
+------------------------------

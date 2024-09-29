@@ -1,0 +1,1217 @@
+
+------ testClassInt ------
+letrec
+  data Boolean-710 | match_Boolean-711 where
+    False-712 : Boolean-710
+    True-713 : Boolean-710
+  data (Tuple1-714 :: * -> *) t1-715 | match_Tuple1-716 where
+    Tuple1-717 : t1-715 -> Tuple1-714 t1-715
+in
+Tuple1-717 {integer -> Boolean-710} (\(x-450 : integer) -> True-713)
+------------
+
+------ eqInt ------
+letrec
+  data Boolean-710 | match_Boolean-711 where
+    False-712 : Boolean-710
+    True-713 : Boolean-710
+  data (Tuple1-714 :: * -> *) t1-715 | match_Tuple1-716 where
+    Tuple1-717 : t1-715 -> Tuple1-714 t1-715
+in
+Tuple1-717
+  {integer -> integer -> Boolean-710}
+  (\(v-452 : integer) (v1-453 : integer) -> True-713)
+------------
+
+------ ordInt ------
+letrec
+  data Boolean-710 | match_Boolean-711 where
+    False-712 : Boolean-710
+    True-713 : Boolean-710
+  data (Tuple1-714 :: * -> *) t1-715 | match_Tuple1-716 where
+    Tuple1-717 : t1-715 -> Tuple1-714 t1-715
+  data (Tuple2-718 :: * -> * -> *) t1-719 t2-720 | match_Tuple2-721 where
+    Tuple2-722 : t1-719 -> t2-720 -> Tuple2-718 t1-719 t2-720
+in
+Tuple2-722
+  {Tuple1-714 (integer -> integer -> Boolean-710)}
+  {integer -> integer -> integer}
+  (Tuple1-717
+     {integer -> integer -> Boolean-710}
+     (\(v-452 : integer) (v1-453 : integer) -> True-713))
+  (\(v-455 : integer) (v1-456 : integer) -> 42)
+------------
+
+------ eq2IntBoolean ------
+letrec
+  data Boolean-710 | match_Boolean-711 where
+    False-712 : Boolean-710
+    True-713 : Boolean-710
+  data (Tuple1-714 :: * -> *) t1-715 | match_Tuple1-716 where
+    Tuple1-717 : t1-715 -> Tuple1-714 t1-715
+in
+Tuple1-717
+  {integer -> Boolean-710 -> Boolean-710}
+  (\(v-458 : integer) (v1-459 : Boolean-710) -> True-713)
+------------
+
+------ unIdentitee ------
+letrec
+  data (Identitee-710 :: * -> *) a-711 | match_Identitee-712 where
+    Identitee-713 : a-711 -> Identitee-710 a-711
+in
+\(v-461 : Identitee-710 integer) ->
+  match_Identitee-712 {integer} v-461 {integer} (\(x-462 : integer) -> x-462)
+------------
+
+------ testasum ------
+letrec
+  data ASum-710 | match_ASum-711 where
+    Constr1-712 : integer -> ASum-710
+    Constr2-713 : Boolean-714 -> ASum-710
+  data Boolean-714 | match_Boolean-715 where
+    False-716 : Boolean-714
+    True-717 : Boolean-714
+in
+\(x-464 : ASum-710) ->
+  match_ASum-711
+    x-464
+    {integer}
+    (\(y-465 : integer) -> 1)
+    (\(z-466 : Boolean-714) -> 2)
+------------
+
+------ testValidator ------
+letrec
+  data Boolean-710 | match_Boolean-711 where
+    False-712 : Boolean-710
+    True-713 : Boolean-710
+in
+/\a-473 b-472 c-471 ->
+  \(datum-468 : a-473) (redeemer-469 : b-472) (context-470 : c-471) -> True-713
+------------
+
+------ testValidatorApplied ------
+letrec
+  data Boolean-710 | match_Boolean-711 where
+    False-712 : Boolean-710
+    True-713 : Boolean-710
+in
+(/\a-473 b-472 c-471 ->
+   \(datum-468 : a-473) (redeemer-469 : b-472) (context-470 : c-471) ->
+     True-713)
+  {string}
+  {string}
+  {string}
+  "datum"
+  "redeemer"
+  "context"
+------------
+
+------ testMethod ------
+letrec
+  data Boolean-711 | match_Boolean-712 where
+    False-713 : Boolean-711
+    True-714 : Boolean-711
+  data (Tuple1-715 :: * -> *) t1-716 | match_Tuple1-717 where
+    Tuple1-718 : t1-716 -> Tuple1-715 t1-716
+in
+/\a-477 ->
+  \(dict-476 : Tuple1-715 (a-477 -> Boolean-711)) ->
+    match_Tuple1-717
+      {a-477 -> Boolean-711}
+      dict-476
+      {a-477 -> Boolean-711}
+      (\(`<ACCESSOR>`-710 : a-477 -> Boolean-711) -> `<ACCESSOR>`-710)
+------------
+
+------ testTestClass ------
+letrec
+  data Boolean-711 | match_Boolean-712 where
+    False-713 : Boolean-711
+    True-714 : Boolean-711
+  data (Tuple1-715 :: * -> *) t1-716 | match_Tuple1-717 where
+    Tuple1-718 : t1-716 -> Tuple1-715 t1-716
+in
+(/\a-477 ->
+   \(dict-476 : Tuple1-715 (a-477 -> Boolean-711)) ->
+     match_Tuple1-717
+       {a-477 -> Boolean-711}
+       dict-476
+       {a-477 -> Boolean-711}
+       (\(`<ACCESSOR>`-710 : a-477 -> Boolean-711) -> `<ACCESSOR>`-710))
+  {integer}
+  (Tuple1-718 {integer -> Boolean-711} (\(x-450 : integer) -> True-714))
+  3
+------------
+
+------ testLedgerTypes ------
+letrec
+  data Credential-710 | match_Credential-711 where
+    PubKeyCredential-712 : PubKeyHash-713 -> Credential-710
+    ScriptCredential-714 : ScriptHash-715 -> Credential-710
+  data DCert-716 | match_DCert-717 where
+    DCertDelegRegKey-718 : StakingCredential-719 -> DCert-716
+    DCertDelegDeRegKey-720 : StakingCredential-719 -> DCert-716
+    DCertDelegDelegate-721 :
+      StakingCredential-719 -> PubKeyHash-713 -> DCert-716
+    DCertPoolRegister-722 : PubKeyHash-713 -> PubKeyHash-713 -> DCert-716
+    DCertPoolRetire-723 : PubKeyHash-713 -> integer -> DCert-716
+    DCertGenesis-724 : DCert-716
+    DCertMir-725 : DCert-716
+  data PubKeyHash-713 | match_PubKeyHash-726 where
+    PubKeyHash-727 : bytestring -> PubKeyHash-713
+  data ScriptHash-715 | match_ScriptHash-728 where
+    ScriptHash-729 : bytestring -> ScriptHash-715
+  data StakingCredential-719 | match_StakingCredential-730 where
+    StakingHash-731 : Credential-710 -> StakingCredential-719
+    StakingPtr-732 : integer -> integer -> integer -> StakingCredential-719
+in
+DCertMir-725
+------------
+
+------ testIdentitee ------
+letrec
+  data (Identitee-710 :: * -> *) a-711 | match_Identitee-712 where
+    Identitee-713 : a-711 -> Identitee-710 a-711
+in
+(\(v-461 : Identitee-710 integer) ->
+   match_Identitee-712 {integer} v-461 {integer} (\(x-462 : integer) -> x-462))
+  (Identitee-713 {integer} 101)
+------------
+
+------ testForLiftPoly ------
+letrec
+  data Boolean-712 | match_Boolean-713 where
+    False-714 : Boolean-712
+    True-715 : Boolean-712
+in
+/\a-495 ->
+  \(x-482 : a-495) ->
+    (\(x-710 : a-495) (a-490 : a-495) (b-491 : Boolean-712) ->
+       (\(c-487 : a-495) (d-488 : Boolean-712) ->
+          (\(y-485 : a-495) -> True-715) c-487)
+         a-490
+         b-491)
+      x-482
+      x-482
+      True-715
+------------
+
+------ testForLiftPolyApplied ------
+letrec
+  data Boolean-712 | match_Boolean-713 where
+    False-714 : Boolean-712
+    True-715 : Boolean-712
+in
+(/\a-495 ->
+   \(x-482 : a-495) ->
+     (\(x-710 : a-495) (a-490 : a-495) (b-491 : Boolean-712) ->
+        (\(c-487 : a-495) (d-488 : Boolean-712) ->
+           (\(y-485 : a-495) -> True-715) c-487)
+          a-490
+          b-491)
+       x-482
+       x-482
+       True-715)
+  {string}
+  "hello"
+------------
+
+------ testCons ------
+letrec
+  data (List-710 :: * -> *) a-711 | match_List-712 where
+    Nil-713 : List-710 a-711
+    Cons-714 : a-711 -> List-710 a-711 -> List-710 a-711
+in
+Cons-714 {integer} 1 (Nil-713 {integer})
+------------
+
+------ testBuiltin ------
+addInteger 1 2
+------------
+
+------ testBinders ------
+letrec
+  data TestBinderSum-712 | match_TestBinderSum-713 where
+    ConInt-714 : integer -> TestBinderSum-712
+    ConString-715 : string -> TestBinderSum-712
+    ConChar-716 : integer -> TestBinderSum-712
+    ConNested-717 : TestBinderSum-712 -> TestBinderSum-712
+    ConQuantified-718 : (all x-719. x-719 -> integer) -> TestBinderSum-712
+    ConConstrained-720 :
+      (all x-721.
+         Tuple1-722 (x-721 -> x-721 -> Boolean-723) -> x-721 -> integer) ->
+      TestBinderSum-712
+    ConObject-724 : Tuple1-722 integer -> TestBinderSum-712
+    ConObjectQuantified-725 :
+      Tuple1-722 (all x-726. x-726 -> integer) -> TestBinderSum-712
+  data Boolean-723 | match_Boolean-727 where
+    False-728 : Boolean-723
+    True-729 : Boolean-723
+  data (Tuple1-722 :: * -> *) t1-730 | match_Tuple1-731 where
+    Tuple1-732 : t1-730 -> Tuple1-722 t1-730
+in
+\(x-500 : TestBinderSum-712) -> 0
+------------
+
+------ testBindersCase ------
+letrec
+  data TestBinderSum-712 | match_TestBinderSum-713 where
+    ConInt-714 : integer -> TestBinderSum-712
+    ConString-715 : string -> TestBinderSum-712
+    ConChar-716 : integer -> TestBinderSum-712
+    ConNested-717 : TestBinderSum-712 -> TestBinderSum-712
+    ConQuantified-718 : (all x-719. x-719 -> integer) -> TestBinderSum-712
+    ConConstrained-720 :
+      (all x-721.
+         Tuple1-722 (x-721 -> x-721 -> Boolean-723) -> x-721 -> integer) ->
+      TestBinderSum-712
+    ConObject-724 : Tuple1-722 integer -> TestBinderSum-712
+    ConObjectQuantified-725 :
+      Tuple1-722 (all x-726. x-726 -> integer) -> TestBinderSum-712
+  data Boolean-723 | match_Boolean-727 where
+    False-728 : Boolean-723
+    True-729 : Boolean-723
+  data (Tuple1-722 :: * -> *) t1-730 | match_Tuple1-731 where
+    Tuple1-732 : t1-730 -> Tuple1-722 t1-730
+in
+(\(x-500 : TestBinderSum-712) -> 0) (ConInt-714 2)
+------------
+
+------ someData ------
+iData 1
+------------
+
+------ someDataList ------
+mkCons {data} (iData 1) (mkNilData ())
+------------
+
+------ testPrelude1 ------
+unIData (iData 1)
+------------
+
+------ polyInObj ------
+letrec
+  data (Tuple2-710 :: * -> * -> *) t1-711 t2-712 | match_Tuple2-713 where
+    Tuple2-714 : t1-711 -> t2-712 -> Tuple2-710 t1-711 t2-712
+in
+Tuple2-714
+  {all y-715. y-715 -> integer}
+  {integer}
+  (/\y-519 -> \(v-518 : y-519) -> 5)
+  100
+------------
+
+------ polyInObjMatch ------
+letrec
+  data (Tuple2-710 :: * -> * -> *) t1-711 t2-712 | match_Tuple2-713 where
+    Tuple2-714 : t1-711 -> t2-712 -> Tuple2-710 t1-711 t2-712
+in
+match_Tuple2-713
+  {all y-717. y-717 -> integer}
+  {integer}
+  (Tuple2-714
+     {all y-718. y-718 -> integer}
+     {integer}
+     (/\y-519 -> \(v-518 : y-519) -> 5)
+     100)
+  {integer}
+  (\(f-521 : all y-719. y-719 -> integer) (_t715-715 : integer) ->
+     f-521 {string} "hello")
+------------
+
+------ plus ------
+addInteger
+------------
+
+------ testPlus ------
+addInteger 1 1
+------------
+
+------ or ------
+letrec
+  data Boolean-710 | match_Boolean-711 where
+    False-712 : Boolean-710
+    True-713 : Boolean-710
+in
+\(b1-525 : Boolean-710) (b2-526 : Boolean-710) -> b2-526
+------------
+
+------ opt2Int ------
+letrec
+  data (Option-710 :: * -> *) a-711 | match_Option-712 where
+    Some-713 : a-711 -> Option-710 a-711
+    Nada-714 : Option-710 a-711
+in
+\(v-528 : Option-710 integer) ->
+  match_Option-712 {integer} v-528 {integer} (\(i-529 : integer) -> i-529) 0
+------------
+
+------ testOpt2Int ------
+letrec
+  data (Option-710 :: * -> *) a-711 | match_Option-712 where
+    Some-713 : a-711 -> Option-710 a-711
+    Nada-714 : Option-710 a-711
+in
+(\(v-528 : Option-710 integer) ->
+   match_Option-712 {integer} v-528 {integer} (\(i-529 : integer) -> i-529) 0)
+  (Some-713 {integer} 3)
+------------
+
+------ not ------
+letrec
+  data Boolean-710 | match_Boolean-711 where
+    False-712 : Boolean-710
+    True-713 : Boolean-710
+in
+\(b-532 : Boolean-710) -> True-713
+------------
+
+------ nestedBinds ------
+(\(v-538 : integer) -> 4)
+  ((\(v-538 : integer) -> 4)
+     ((/\a-536 -> \(v-535 : a-536) -> 5) {string} "hello"))
+------------
+
+------ nestedApplications ------
+(\(x-544 : integer) (v-545 : integer) -> x-544)
+  ((\(x-551 : integer) -> x-551)
+     ((\(v-549 : integer) -> 5) ((\(v-547 : integer) -> 5) 2)))
+  4
+------------
+
+------ mutuallyRecursiveBindingGroupNoTypes ------
+letrec
+  !g'-556 : integer -> integer
+    = \(y-557 : integer) ->
+        (\(x-554 : integer) (y-555 : integer) -> y-555)
+          ((\(x-559 : integer) -> g'-556 2) y-557)
+          3
+in
+g'-556 3
+------------
+
+------ mutuallyRecursiveBindingGroup ------
+letrec
+  !f-565 : integer -> integer
+    = \(x-566 : integer) ->
+        (\(y-564 : integer) -> (\(x-562 : integer) -> f-565) (f-565 y-564) 3) 2
+in
+(\(y-564 : integer) -> (\(x-562 : integer) -> f-565) (f-565 y-564) 3) 3
+------------
+
+------ minus ------
+\(v-568 : integer) (v1-569 : integer) -> 42
+------------
+
+------ main ------
+letrec
+  data (Tuple2-711 :: * -> * -> *) t1-712 t2-713 | match_Tuple2-714 where
+    Tuple2-715 : t1-712 -> t2-713 -> Tuple2-711 t1-712 t2-713
+in
+(\(r-572 : Tuple2-711 integer string) ->
+   match_Tuple2-714
+     {integer}
+     {string}
+     r-572
+     {integer}
+     (\(`<ACCESSOR>`-710 : integer) (_t716-716 : string) -> `<ACCESSOR>`-710))
+  (Tuple2-715 {integer} {string} 101 "hello")
+------------
+
+------ litPattern ------
+letrec
+  data Boolean-710 | match_Boolean-711 where
+    False-712 : Boolean-710
+    True-713 : Boolean-710
+in
+\(n-575 : integer) -> False-712
+------------
+
+------ litPatternApplied ------
+letrec
+  data Boolean-710 | match_Boolean-711 where
+    False-712 : Boolean-710
+    True-713 : Boolean-710
+in
+(\(n-575 : integer) -> False-712) 5
+------------
+
+------ isNullSomeDataList ------
+letrec
+  data Boolean-710 | match_Boolean-711 where
+    False-712 : Boolean-710
+    True-713 : Boolean-710
+in
+(/\`l#714`-714 ->
+   \(`a#715`-715 : list `l#714`-714) ->
+     ifThenElse
+       {unit -> Boolean-710}
+       (nullList {`l#714`-714} `a#715`-715)
+       (\(`j#716`-716 : unit) -> True-713)
+       (\(`q#717`-717 : unit) -> False-712)
+       ())
+  {data}
+  (mkCons {data} (iData 1) (mkNilData ()))
+------------
+
+------ irrPattern ------
+\(n-579 : integer) -> 2
+------------
+
+------ identitea ------
+/\x-582 -> \(x-581 : x-582) -> x-581
+------------
+
+------ testIdConst ------
+(/\x-582 -> \(x-581 : x-582) -> x-581)
+  {integer}
+  ((/\a-588 b-587 -> \(p-585 : a-588) (q-586 : b-587) -> p-585)
+     {integer}
+     {integer}
+     5
+     2)
+------------
+
+------ id ------
+/\t-591 -> \(x-590 : t-591) -> x-590
+------------
+
+------ objForall ------
+letrec
+  data (Tuple2-710 :: * -> * -> *) t1-711 t2-712 | match_Tuple2-713 where
+    Tuple2-714 : t1-711 -> t2-712 -> Tuple2-710 t1-711 t2-712
+in
+Tuple2-714
+  {all t-716. t-716 -> t-716}
+  {all t-715. t-715 -> t-715}
+  (/\t-591 -> \(x-590 : t-591) -> x-590)
+  (/\t-591 -> \(x-590 : t-591) -> x-590)
+------------
+
+------ testId ------
+(/\t-591 -> \(x-590 : t-591) -> x-590) {integer} 2
+------------
+
+------ fakeLT ------
+letrec
+  data Boolean-710 | match_Boolean-711 where
+    False-712 : Boolean-710
+    True-713 : Boolean-710
+in
+\(v-595 : integer) (v1-596 : integer) -> True-713
+------------
+
+------ testForLift ------
+letrec
+  data Boolean-713 | match_Boolean-714 where
+    False-715 : Boolean-713
+    True-716 : Boolean-713
+in
+letrec
+  !j-599 : integer -> integer -> integer -> integer
+    = \(x-712 : integer) (c-600 : integer) (d-601 : integer) ->
+        addInteger c-600 (g-605 x-712 d-601)
+  !g-605 : integer -> integer -> integer
+    = \(x-710 : integer) (a-606 : integer) -> multiplyInteger x-710 x-710
+in
+\(x-598 : integer) ->
+  (\(x-711 : integer) (a-603 : integer) (b-604 : integer) ->
+     (\(v-595 : integer) (v1-596 : integer) -> True-716)
+       (g-605 x-711 a-603)
+       (j-599 x-711 4 b-604))
+    x-598
+    x-598
+    3
+------------
+
+------ testForLiftApplied ------
+letrec
+  data Boolean-713 | match_Boolean-714 where
+    False-715 : Boolean-713
+    True-716 : Boolean-713
+in
+letrec
+  !j-599 : integer -> integer -> integer -> integer
+    = \(x-712 : integer) (c-600 : integer) (d-601 : integer) ->
+        addInteger
+          c-600
+          ((\(x-710 : integer) (a-606 : integer) -> multiplyInteger x-710 x-710)
+             x-712
+             d-601)
+  !h-602 : integer -> integer -> integer -> Boolean-713
+    = \(x-711 : integer) (a-603 : integer) (b-604 : integer) ->
+        (\(v-595 : integer) (v1-596 : integer) -> True-716)
+          ((\(x-710 : integer) (a-606 : integer) -> multiplyInteger x-710 x-710)
+             x-711
+             a-603)
+          (j-599 x-711 4 b-604)
+in
+(\(x-598 : integer) -> h-602 x-598 x-598 3) 2
+------------
+
+------ testForLift' ------
+letrec
+  data Boolean-712 | match_Boolean-713 where
+    False-714 : Boolean-712
+    True-715 : Boolean-712
+in
+letrec
+  !h-610 : integer -> integer -> integer -> Boolean-712
+    = \(x-711 : integer) (a-611 : integer) (b-612 : integer) ->
+        (\(v-595 : integer) (v1-596 : integer) -> True-715)
+          ((\(x-710 : integer) (a-614 : integer) -> multiplyInteger x-710 x-710)
+             x-711
+             a-611)
+          4
+in
+\(x-609 : integer) -> h-610 x-609 x-609 3
+------------
+
+------ testForLiftApplied' ------
+letrec
+  data Boolean-712 | match_Boolean-713 where
+    False-714 : Boolean-712
+    True-715 : Boolean-712
+in
+letrec
+  !h-610 : integer -> integer -> integer -> Boolean-712
+    = \(x-711 : integer) (a-611 : integer) (b-612 : integer) ->
+        (\(v-595 : integer) (v1-596 : integer) -> True-715)
+          ((\(x-710 : integer) (a-614 : integer) -> multiplyInteger x-710 x-710)
+             x-711
+             a-611)
+          4
+in
+(\(x-609 : integer) -> h-610 x-609 x-609 3) 101
+------------
+
+------ eq2 ------
+letrec
+  data Boolean-711 | match_Boolean-712 where
+    False-713 : Boolean-711
+    True-714 : Boolean-711
+  data (Tuple1-715 :: * -> *) t1-716 | match_Tuple1-717 where
+    Tuple1-718 : t1-716 -> Tuple1-715 t1-716
+in
+/\a-619 b-618 ->
+  \(dict-617 : Tuple1-715 (a-619 -> b-618 -> Boolean-711)) ->
+    match_Tuple1-717
+      {a-619 -> b-618 -> Boolean-711}
+      dict-617
+      {a-619 -> b-618 -> Boolean-711}
+      (\(`<ACCESSOR>`-710 : a-619 -> b-618 -> Boolean-711) -> `<ACCESSOR>`-710)
+------------
+
+------ testEq2 ------
+letrec
+  data Boolean-711 | match_Boolean-712 where
+    False-713 : Boolean-711
+    True-714 : Boolean-711
+  data (Tuple1-715 :: * -> *) t1-716 | match_Tuple1-717 where
+    Tuple1-718 : t1-716 -> Tuple1-715 t1-716
+in
+(/\a-619 b-618 ->
+   \(dict-617 : Tuple1-715 (a-619 -> b-618 -> Boolean-711)) ->
+     match_Tuple1-717
+       {a-619 -> b-618 -> Boolean-711}
+       dict-617
+       {a-619 -> b-618 -> Boolean-711}
+       (\(`<ACCESSOR>`-710 : a-619 -> b-618 -> Boolean-711) ->
+          `<ACCESSOR>`-710))
+  {integer}
+  {Boolean-711}
+  (Tuple1-718
+     {integer -> Boolean-711 -> Boolean-711}
+     (\(v-458 : integer) (v1-459 : Boolean-711) -> True-714))
+  101
+  False-713
+------------
+
+------ eq ------
+letrec
+  data Boolean-711 | match_Boolean-712 where
+    False-713 : Boolean-711
+    True-714 : Boolean-711
+  data (Tuple1-715 :: * -> *) t1-716 | match_Tuple1-717 where
+    Tuple1-718 : t1-716 -> Tuple1-715 t1-716
+in
+/\a-623 ->
+  \(dict-622 : Tuple1-715 (a-623 -> a-623 -> Boolean-711)) ->
+    match_Tuple1-717
+      {a-623 -> a-623 -> Boolean-711}
+      dict-622
+      {a-623 -> a-623 -> Boolean-711}
+      (\(`<ACCESSOR>`-710 : a-623 -> a-623 -> Boolean-711) -> `<ACCESSOR>`-710)
+------------
+
+------ guardedCase2 ------
+letrec
+  data Boolean-712 | match_Boolean-713 where
+    False-714 : Boolean-712
+    True-715 : Boolean-712
+  data (Tuple1-716 :: * -> *) t1-717 | match_Tuple1-718 where
+    Tuple1-719 : t1-717 -> Tuple1-716 t1-717
+  data (Tuple2-720 :: * -> * -> *) t1-721 t2-722 | match_Tuple2-723 where
+    Tuple2-724 : t1-721 -> t2-722 -> Tuple2-720 t1-721 t2-722
+in
+(/\`$27`-627 -> \(v1-626 : `$27`-627) -> 0) {Boolean-712} True-715
+------------
+
+------ testEqViaOrd ------
+letrec
+  data Boolean-712 | match_Boolean-713 where
+    False-714 : Boolean-712
+    True-715 : Boolean-712
+  data (Tuple1-716 :: * -> *) t1-717 | match_Tuple1-718 where
+    Tuple1-719 : t1-717 -> Tuple1-716 t1-717
+  data (Tuple2-720 :: * -> * -> *) t1-721 t2-722 | match_Tuple2-723 where
+    Tuple2-724 : t1-721 -> t2-722 -> Tuple2-720 t1-721 t2-722
+in
+/\a-634 ->
+  \(dictOrd-631 :
+      Tuple2-720
+        (Tuple1-716 (a-634 -> a-634 -> Boolean-712))
+        (a-634 -> a-634 -> integer))
+   (a-632 : a-634)
+   (b-633 : a-634) ->
+    (/\a-623 ->
+       \(dict-622 : Tuple1-716 (a-623 -> a-623 -> Boolean-712)) ->
+         match_Tuple1-718
+           {a-623 -> a-623 -> Boolean-712}
+           dict-622
+           {a-623 -> a-623 -> Boolean-712}
+           (\(`<ACCESSOR>`-711 : a-623 -> a-623 -> Boolean-712) ->
+              `<ACCESSOR>`-711))
+      {a-634}
+      (match_Tuple2-723
+         {Tuple1-716 (a-634 -> a-634 -> Boolean-712)}
+         {a-634 -> a-634 -> integer}
+         dictOrd-631
+         {Tuple1-716 (a-634 -> a-634 -> Boolean-712)}
+         (\(`<ACCESSOR>`-710 : Tuple1-716 (a-634 -> a-634 -> Boolean-712))
+           (_t726-726 : a-634 -> a-634 -> integer) ->
+            `<ACCESSOR>`-710))
+      a-632
+      b-633
+------------
+
+------ testSuperClass ------
+letrec
+  data Boolean-712 | match_Boolean-713 where
+    False-714 : Boolean-712
+    True-715 : Boolean-712
+  data (Tuple1-716 :: * -> *) t1-717 | match_Tuple1-718 where
+    Tuple1-719 : t1-717 -> Tuple1-716 t1-717
+  data (Tuple2-720 :: * -> * -> *) t1-721 t2-722 | match_Tuple2-723 where
+    Tuple2-724 : t1-721 -> t2-722 -> Tuple2-720 t1-721 t2-722
+in
+(/\a-634 ->
+   \(dictOrd-631 :
+       Tuple2-720
+         (Tuple1-716 (a-634 -> a-634 -> Boolean-712))
+         (a-634 -> a-634 -> integer))
+    (a-632 : a-634)
+    (b-633 : a-634) ->
+     (/\a-623 ->
+        \(dict-622 : Tuple1-716 (a-623 -> a-623 -> Boolean-712)) ->
+          match_Tuple1-718
+            {a-623 -> a-623 -> Boolean-712}
+            dict-622
+            {a-623 -> a-623 -> Boolean-712}
+            (\(`<ACCESSOR>`-711 : a-623 -> a-623 -> Boolean-712) ->
+               `<ACCESSOR>`-711))
+       {a-634}
+       (match_Tuple2-723
+          {Tuple1-716 (a-634 -> a-634 -> Boolean-712)}
+          {a-634 -> a-634 -> integer}
+          dictOrd-631
+          {Tuple1-716 (a-634 -> a-634 -> Boolean-712)}
+          (\(`<ACCESSOR>`-710 : Tuple1-716 (a-634 -> a-634 -> Boolean-712))
+            (_t726-726 : a-634 -> a-634 -> integer) ->
+             `<ACCESSOR>`-710))
+       a-632
+       b-633)
+  {integer}
+  (Tuple2-724
+     {Tuple1-716 (integer -> integer -> Boolean-712)}
+     {integer -> integer -> integer}
+     (Tuple1-719
+        {integer -> integer -> Boolean-712}
+        (\(v-452 : integer) (v1-453 : integer) -> True-715))
+     (\(v-455 : integer) (v1-456 : integer) -> 42))
+  1
+  2
+------------
+
+------ cons ------
+letrec
+  data (List-710 :: * -> *) a-711 | match_List-712 where
+    Nil-713 : List-710 a-711
+    Cons-714 : a-711 -> List-710 a-711 -> List-710 a-711
+in
+/\a-639 ->
+  \(x-637 : a-639) (xs-638 : List-710 a-639) ->
+    Cons-714 {a-639} x-637 (Nil-713 {a-639})
+------------
+
+------ consEmptyList1 ------
+letrec
+  data (List-710 :: * -> *) a-711 | match_List-712 where
+    Nil-713 : List-710 a-711
+    Cons-714 : a-711 -> List-710 a-711 -> List-710 a-711
+in
+(/\a-639 ->
+   \(x-637 : a-639) (xs-638 : List-710 a-639) ->
+     Cons-714 {a-639} x-637 (Nil-713 {a-639}))
+  {integer}
+  1
+  (Nil-713 {integer})
+------------
+
+------ consEmptyList2 ------
+letrec
+  data (List-710 :: * -> *) a-711 | match_List-712 where
+    Nil-713 : List-710 a-711
+    Cons-714 : a-711 -> List-710 a-711 -> List-710 a-711
+in
+(/\a-639 ->
+   \(x-637 : a-639) (xs-638 : List-710 a-639) ->
+     Cons-714 {a-639} x-637 (Nil-713 {a-639}))
+  {string}
+  "hello"
+  (Nil-713 {string})
+------------
+
+------ compare ------
+letrec
+  data Boolean-711 | match_Boolean-712 where
+    False-713 : Boolean-711
+    True-714 : Boolean-711
+  data (Tuple1-715 :: * -> *) t1-716 | match_Tuple1-717 where
+    Tuple1-718 : t1-716 -> Tuple1-715 t1-716
+  data (Tuple2-719 :: * -> * -> *) t1-720 t2-721 | match_Tuple2-722 where
+    Tuple2-723 : t1-720 -> t2-721 -> Tuple2-719 t1-720 t2-721
+in
+/\a-644 ->
+  \(dict-643 :
+      Tuple2-719
+        (Tuple1-715 (a-644 -> a-644 -> Boolean-711))
+        (a-644 -> a-644 -> integer)) ->
+    match_Tuple2-722
+      {Tuple1-715 (a-644 -> a-644 -> Boolean-711)}
+      {a-644 -> a-644 -> integer}
+      dict-643
+      {a-644 -> a-644 -> integer}
+      (\(_t724-724 : Tuple1-715 (a-644 -> a-644 -> Boolean-711))
+        (`<ACCESSOR>`-710 : a-644 -> a-644 -> integer) ->
+         `<ACCESSOR>`-710)
+------------
+
+------ brokenEven ------
+letrec
+  data Boolean-713 | match_Boolean-714 where
+    False-715 : Boolean-713
+    True-716 : Boolean-713
+  data (Tuple1-717 :: * -> *) t1-718 | match_Tuple1-719 where
+    Tuple1-720 : t1-718 -> Tuple1-717 t1-718
+in
+letrec
+  !`brokenEven$B710`-710 : integer -> integer
+    = \(n-646 : integer) ->
+        `brokenEven$B710`-710
+          ((\(v-568 : integer) (v1-569 : integer) -> 42) n-646 2)
+in
+\(n-646 : integer) ->
+  `brokenEven$B710`-710 ((\(v-568 : integer) (v1-569 : integer) -> 42) n-646 2)
+------------
+
+------ arrForall ------
+letrec
+  data (List-710 :: * -> *) a-711 | match_List-712 where
+    Nil-713 : List-710 a-711
+    Cons-714 : a-711 -> List-710 a-711 -> List-710 a-711
+in
+Cons-714
+  {all t-715. t-715 -> t-715}
+  (/\t-591 -> \(x-590 : t-591) -> x-590)
+  (Nil-713 {all a-716. a-716 -> a-716})
+------------
+
+------ apIdentitea ------
+(/\x-582 -> \(x-581 : x-582) -> x-581) {integer} 2
+------------
+
+------ and ------
+letrec
+  data Boolean-710 | match_Boolean-711 where
+    False-712 : Boolean-710
+    True-713 : Boolean-710
+in
+\(p-650 : Boolean-710) (q-651 : Boolean-710) ->
+  (\(b-532 : Boolean-710) -> True-713)
+    ((\(b1-525 : Boolean-710) (b2-526 : Boolean-710) -> b2-526)
+       ((\(b-532 : Boolean-710) -> True-713) p-650)
+       ((\(b-532 : Boolean-710) -> True-713) q-651))
+------------
+
+------ iff ------
+letrec
+  data Boolean-710 | match_Boolean-711 where
+    False-712 : Boolean-710
+    True-713 : Boolean-710
+in
+\(p-653 : Boolean-710) (q-654 : Boolean-710) ->
+  (\(b1-525 : Boolean-710) (b2-526 : Boolean-710) -> b2-526)
+    ((\(p-650 : Boolean-710) (q-651 : Boolean-710) ->
+        (\(b-532 : Boolean-710) -> True-713)
+          ((\(b1-525 : Boolean-710) (b2-526 : Boolean-710) -> b2-526)
+             ((\(b-532 : Boolean-710) -> True-713) p-650)
+             ((\(b-532 : Boolean-710) -> True-713) q-651)))
+       p-653
+       q-654)
+    ((\(p-650 : Boolean-710) (q-651 : Boolean-710) ->
+        (\(b-532 : Boolean-710) -> True-713)
+          ((\(b1-525 : Boolean-710) (b2-526 : Boolean-710) -> b2-526)
+             ((\(b-532 : Boolean-710) -> True-713) p-650)
+             ((\(b-532 : Boolean-710) -> True-713) q-651)))
+       ((\(b-532 : Boolean-710) -> True-713) p-653)
+       ((\(b-532 : Boolean-710) -> True-713) q-654))
+------------
+
+------ ghcInlinerPaperEx ------
+letrec
+  data Boolean-710 | match_Boolean-711 where
+    False-712 : Boolean-710
+    True-713 : Boolean-710
+in
+letrec
+  !g-658 : Boolean-710 -> Boolean-710
+    = \(x-659 : Boolean-710) ->
+        (\(p-653 : Boolean-710) (q-654 : Boolean-710) ->
+           (\(b1-525 : Boolean-710) (b2-526 : Boolean-710) -> b2-526)
+             ((\(p-650 : Boolean-710) (q-651 : Boolean-710) ->
+                 (\(b-532 : Boolean-710) -> True-713)
+                   ((\(b1-525 : Boolean-710) (b2-526 : Boolean-710) -> b2-526)
+                      ((\(b-532 : Boolean-710) -> True-713) p-650)
+                      ((\(b-532 : Boolean-710) -> True-713) q-651)))
+                p-653
+                q-654)
+             ((\(p-650 : Boolean-710) (q-651 : Boolean-710) ->
+                 (\(b-532 : Boolean-710) -> True-713)
+                   ((\(b1-525 : Boolean-710) (b2-526 : Boolean-710) -> b2-526)
+                      ((\(b-532 : Boolean-710) -> True-713) p-650)
+                      ((\(b-532 : Boolean-710) -> True-713) q-651)))
+                ((\(b-532 : Boolean-710) -> True-713) p-653)
+                ((\(b-532 : Boolean-710) -> True-713) q-654)))
+          ((\(x-657 : Boolean-710) ->
+              (\(p-650 : Boolean-710) (q-651 : Boolean-710) ->
+                 (\(b-532 : Boolean-710) -> True-713)
+                   ((\(b1-525 : Boolean-710) (b2-526 : Boolean-710) -> b2-526)
+                      ((\(b-532 : Boolean-710) -> True-713) p-650)
+                      ((\(b-532 : Boolean-710) -> True-713) q-651)))
+                ((\(x-661 : Boolean-710) ->
+                    g-658 ((\(b-532 : Boolean-710) -> True-713) x-661))
+                   True-713)
+                x-657)
+             x-659)
+          False-712
+in
+(\(x-663 : Boolean-710) ->
+   g-658
+     ((\(p-653 : Boolean-710) (q-654 : Boolean-710) ->
+         (\(b1-525 : Boolean-710) (b2-526 : Boolean-710) -> b2-526)
+           ((\(p-650 : Boolean-710) (q-651 : Boolean-710) ->
+               (\(b-532 : Boolean-710) -> True-713)
+                 ((\(b1-525 : Boolean-710) (b2-526 : Boolean-710) -> b2-526)
+                    ((\(b-532 : Boolean-710) -> True-713) p-650)
+                    ((\(b-532 : Boolean-710) -> True-713) q-651)))
+              p-653
+              q-654)
+           ((\(p-650 : Boolean-710) (q-651 : Boolean-710) ->
+               (\(b-532 : Boolean-710) -> True-713)
+                 ((\(b1-525 : Boolean-710) (b2-526 : Boolean-710) -> b2-526)
+                    ((\(b-532 : Boolean-710) -> True-713) p-650)
+                    ((\(b-532 : Boolean-710) -> True-713) q-651)))
+              ((\(b-532 : Boolean-710) -> True-713) p-653)
+              ((\(b-532 : Boolean-710) -> True-713) q-654)))
+        x-663
+        ((\(b-532 : Boolean-710) -> True-713) x-663)))
+  False-712
+------------
+
+------ kozsTwoSCCEx ------
+letrec
+  data Boolean-710 | match_Boolean-711 where
+    False-712 : Boolean-710
+    True-713 : Boolean-710
+in
+letrec
+  !h-667 : Boolean-710 -> Boolean-710
+    = \(x-668 : Boolean-710) ->
+        (\(b-532 : Boolean-710) -> True-713)
+          ((\(x-672 : Boolean-710) ->
+              (\(b-532 : Boolean-710) -> True-713)
+                ((\(x-670 : Boolean-710) ->
+                    (\(p-650 : Boolean-710) (q-651 : Boolean-710) ->
+                       (\(b-532 : Boolean-710) -> True-713)
+                         ((\(b1-525 : Boolean-710) (b2-526 : Boolean-710) ->
+                             b2-526)
+                            ((\(b-532 : Boolean-710) -> True-713) p-650)
+                            ((\(b-532 : Boolean-710) -> True-713) q-651)))
+                      ((\(b-532 : Boolean-710) -> True-713) (h-667 x-670))
+                      ((\(b-532 : Boolean-710) -> True-713) x-670))
+                   x-672))
+             x-668)
+  !b-675 : Boolean-710 -> Boolean-710
+    = \(x-676 : Boolean-710) ->
+        (\(p-650 : Boolean-710) (q-651 : Boolean-710) ->
+           (\(b-532 : Boolean-710) -> True-713)
+             ((\(b1-525 : Boolean-710) (b2-526 : Boolean-710) -> b2-526)
+                ((\(b-532 : Boolean-710) -> True-713) p-650)
+                ((\(b-532 : Boolean-710) -> True-713) q-651)))
+          x-676
+          ((\(p-650 : Boolean-710) (q-651 : Boolean-710) ->
+              (\(b-532 : Boolean-710) -> True-713)
+                ((\(b1-525 : Boolean-710) (b2-526 : Boolean-710) -> b2-526)
+                   ((\(b-532 : Boolean-710) -> True-713) p-650)
+                   ((\(b-532 : Boolean-710) -> True-713) q-651)))
+             ((\(x-674 : Boolean-710) ->
+                 (\(b-532 : Boolean-710) -> True-713)
+                   ((\(p-650 : Boolean-710) (q-651 : Boolean-710) ->
+                       (\(b-532 : Boolean-710) -> True-713)
+                         ((\(b1-525 : Boolean-710) (b2-526 : Boolean-710) ->
+                             b2-526)
+                            ((\(b-532 : Boolean-710) -> True-713) p-650)
+                            ((\(b-532 : Boolean-710) -> True-713) q-651)))
+                      ((\(x-672 : Boolean-710) ->
+                          (\(b-532 : Boolean-710) -> True-713)
+                            ((\(x-670 : Boolean-710) ->
+                                (\(p-650 : Boolean-710) (q-651 : Boolean-710) ->
+                                   (\(b-532 : Boolean-710) -> True-713)
+                                     ((\(b1-525 : Boolean-710)
+                                        (b2-526 : Boolean-710) ->
+                                         b2-526)
+                                        ((\(b-532 : Boolean-710) -> True-713)
+                                           p-650)
+                                        ((\(b-532 : Boolean-710) -> True-713)
+                                           q-651)))
+                                  ((\(b-532 : Boolean-710) -> True-713)
+                                     (h-667 x-670))
+                                  ((\(b-532 : Boolean-710) -> True-713) x-670))
+                               x-672))
+                         x-674)
+                      (b-675 x-674)))
+                x-676)
+             (h-667 x-676))
+in
+(\(p-650 : Boolean-710) (q-651 : Boolean-710) ->
+   (\(b-532 : Boolean-710) -> True-713)
+     ((\(b1-525 : Boolean-710) (b2-526 : Boolean-710) -> b2-526)
+        ((\(b-532 : Boolean-710) -> True-713) p-650)
+        ((\(b-532 : Boolean-710) -> True-713) q-651)))
+  ((\(x-678 : Boolean-710) ->
+      (\(p-650 : Boolean-710) (q-651 : Boolean-710) ->
+         (\(b-532 : Boolean-710) -> True-713)
+           ((\(b1-525 : Boolean-710) (b2-526 : Boolean-710) -> b2-526)
+              ((\(b-532 : Boolean-710) -> True-713) p-650)
+              ((\(b-532 : Boolean-710) -> True-713) q-651)))
+        (b-675 x-678)
+        x-678)
+     True-713)
+  ((\(p-650 : Boolean-710) (q-651 : Boolean-710) ->
+      (\(b-532 : Boolean-710) -> True-713)
+        ((\(b1-525 : Boolean-710) (b2-526 : Boolean-710) -> b2-526)
+           ((\(b-532 : Boolean-710) -> True-713) p-650)
+           ((\(b-532 : Boolean-710) -> True-713) q-651)))
+     (b-675 True-713)
+     ((\(p-650 : Boolean-710) (q-651 : Boolean-710) ->
+         (\(b-532 : Boolean-710) -> True-713)
+           ((\(b1-525 : Boolean-710) (b2-526 : Boolean-710) -> b2-526)
+              ((\(b-532 : Boolean-710) -> True-713) p-650)
+              ((\(b-532 : Boolean-710) -> True-713) q-651)))
+        ((\(x-674 : Boolean-710) ->
+            (\(b-532 : Boolean-710) -> True-713)
+              ((\(p-650 : Boolean-710) (q-651 : Boolean-710) ->
+                  (\(b-532 : Boolean-710) -> True-713)
+                    ((\(b1-525 : Boolean-710) (b2-526 : Boolean-710) -> b2-526)
+                       ((\(b-532 : Boolean-710) -> True-713) p-650)
+                       ((\(b-532 : Boolean-710) -> True-713) q-651)))
+                 ((\(x-672 : Boolean-710) ->
+                     (\(b-532 : Boolean-710) -> True-713)
+                       ((\(x-670 : Boolean-710) ->
+                           (\(p-650 : Boolean-710) (q-651 : Boolean-710) ->
+                              (\(b-532 : Boolean-710) -> True-713)
+                                ((\(b1-525 : Boolean-710)
+                                   (b2-526 : Boolean-710) ->
+                                    b2-526)
+                                   ((\(b-532 : Boolean-710) -> True-713) p-650)
+                                   ((\(b-532 : Boolean-710) -> True-713)
+                                      q-651)))
+                             ((\(b-532 : Boolean-710) -> True-713)
+                                (h-667 x-670))
+                             ((\(b-532 : Boolean-710) -> True-713) x-670))
+                          x-672))
+                    x-674)
+                 (b-675 x-674)))
+           True-713)
+        ((\(p-650 : Boolean-710) (q-651 : Boolean-710) ->
+            (\(b-532 : Boolean-710) -> True-713)
+              ((\(b1-525 : Boolean-710) (b2-526 : Boolean-710) -> b2-526)
+                 ((\(b-532 : Boolean-710) -> True-713) p-650)
+                 ((\(b-532 : Boolean-710) -> True-713) q-651)))
+           ((\(x-672 : Boolean-710) ->
+               (\(b-532 : Boolean-710) -> True-713)
+                 ((\(x-670 : Boolean-710) ->
+                     (\(p-650 : Boolean-710) (q-651 : Boolean-710) ->
+                        (\(b-532 : Boolean-710) -> True-713)
+                          ((\(b1-525 : Boolean-710) (b2-526 : Boolean-710) ->
+                              b2-526)
+                             ((\(b-532 : Boolean-710) -> True-713) p-650)
+                             ((\(b-532 : Boolean-710) -> True-713) q-651)))
+                       ((\(b-532 : Boolean-710) -> True-713) (h-667 x-670))
+                       ((\(b-532 : Boolean-710) -> True-713) x-670))
+                    x-672))
+              True-713)
+           ((\(p-650 : Boolean-710) (q-651 : Boolean-710) ->
+               (\(b-532 : Boolean-710) -> True-713)
+                 ((\(b1-525 : Boolean-710) (b2-526 : Boolean-710) -> b2-526)
+                    ((\(b-532 : Boolean-710) -> True-713) p-650)
+                    ((\(b-532 : Boolean-710) -> True-713) q-651)))
+              ((\(x-670 : Boolean-710) ->
+                  (\(p-650 : Boolean-710) (q-651 : Boolean-710) ->
+                     (\(b-532 : Boolean-710) -> True-713)
+                       ((\(b1-525 : Boolean-710) (b2-526 : Boolean-710) ->
+                           b2-526)
+                          ((\(b-532 : Boolean-710) -> True-713) p-650)
+                          ((\(b-532 : Boolean-710) -> True-713) q-651)))
+                    ((\(b-532 : Boolean-710) -> True-713) (h-667 x-670))
+                    ((\(b-532 : Boolean-710) -> True-713) x-670))
+                 True-713)
+              (h-667 True-713)))))
+------------
+
+------ anObj ------
+letrec
+  data (Tuple1-710 :: * -> *) t1-711 | match_Tuple1-712 where
+    Tuple1-713 : t1-711 -> Tuple1-710 t1-711
+in
+Tuple1-713 {integer} 3
+------------
+
+------ objUpdate ------
+letrec
+  data (Tuple1-711 :: * -> *) t1-712 | match_Tuple1-713 where
+    Tuple1-714 : t1-712 -> Tuple1-711 t1-712
+in
+match_Tuple1-713
+  {integer}
+  (Tuple1-714 {integer} 3)
+  {Tuple1-711 integer}
+  (\(_t715-715 : integer) -> Tuple1-714 {integer} 4)
+------------
+
+------ anIntLit ------
+1
+------------
+
+------ aVal ------
+1
+------------
+
+------ aStringLit ------
+"woop"
+------------
+
+------ aPred ------
+letrec
+  data Boolean-710 | match_Boolean-711 where
+    False-712 : Boolean-710
+    True-713 : Boolean-710
+in
+\(v-686 : integer) -> True-713
+------------
+
+------ guardedCase ------
+letrec
+  data Boolean-717 | match_Boolean-718 where
+    False-719 : Boolean-717
+    True-720 : Boolean-717
+  data (Tuple1-721 :: * -> *) t1-722 | match_Tuple1-723 where
+    Tuple1-724 : t1-722 -> Tuple1-721 t1-722
+  data (Tuple2-725 :: * -> * -> *) t1-726 t2-727 | match_Tuple2-728 where
+    Tuple2-729 : t1-726 -> t2-727 -> Tuple2-725 t1-726 t2-727
+in
+\(w-688 : integer) (x-689 : integer) ->
+  match_Tuple2-728
+    {integer}
+    {integer}
+    (Tuple2-729 {integer} {integer} w-688 x-689)
+    {integer}
+    (\(y-693 : integer) (z-694 : integer) ->
+       (/\`$30`-692 -> \(v1-691 : `$30`-692) -> 0) {Boolean-717} True-720)
+------------
+
+------ aList2 ------
+letrec
+  data (List-710 :: * -> *) a-711 | match_List-712 where
+    Nil-713 : List-710 a-711
+    Cons-714 : a-711 -> List-710 a-711 -> List-710 a-711
+in
+Cons-714 {integer} 1 (Cons-714 {integer} 2 (Nil-713 {integer}))
+------------
+
+------ aList ------
+letrec
+  data (List-710 :: * -> *) a-711 | match_List-712 where
+    Nil-713 : List-710 a-711
+    Cons-714 : a-711 -> List-710 a-711 -> List-710 a-711
+in
+Cons-714
+  {integer}
+  1
+  (Cons-714
+     {integer}
+     2
+     (Cons-714
+        {integer}
+        3
+        (Cons-714 {integer} 4 (Cons-714 {integer} 5 (Nil-713 {integer})))))
+------------
+
+------ aFunction3 ------
+letrec
+  data Boolean-711 | match_Boolean-712 where
+    False-713 : Boolean-711
+    True-714 : Boolean-711
+  data (Tuple1-715 :: * -> *) t1-716 | match_Tuple1-717 where
+    Tuple1-718 : t1-716 -> Tuple1-715 t1-716
+in
+\(x-702 : integer) -> 1
+------------
+
+------ aFunction2 ------
+letrec
+  data (List-710 :: * -> *) a-711 | match_List-712 where
+    Nil-713 : List-710 a-711
+    Cons-714 : a-711 -> List-710 a-711 -> List-710 a-711
+in
+\(x-704 : integer) ->
+  Cons-714 {integer} x-704 (Cons-714 {integer} 1 (Nil-713 {integer}))
+------------
+
+------ aFunction ------
+/\x-708 ->
+  \(any-706 : x-708) (f-707 : all y-710. y-710 -> integer) ->
+    f-707 {x-708} any-706
+------------
+
+------ aBool ------
+letrec
+  data Boolean-710 | match_Boolean-711 where
+    False-712 : Boolean-710
+    True-713 : Boolean-710
+in
+True-713
+------------

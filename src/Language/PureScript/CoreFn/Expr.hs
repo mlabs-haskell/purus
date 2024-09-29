@@ -94,6 +94,11 @@ data Bind a
 instance (FromJSON a) => FromJSON (Bind a)
 instance (ToJSON a) => ToJSON (Bind a)
 
+cfnBindIdents :: Bind a -> [Ident]
+cfnBindIdents = \case
+  NonRec _ ident _ -> [ident]
+  Rec xs -> (\((_,ident),_) -> ident) <$> xs
+
 {- |
 A guard is just a boolean-valued expression that appears alongside a set of binders
 -}

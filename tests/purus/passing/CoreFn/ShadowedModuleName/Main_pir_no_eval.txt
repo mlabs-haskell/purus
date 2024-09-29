@@ -1,0 +1,9 @@
+
+------ main ------
+letrec
+  data Z-453 | match_Z-454 where
+    Z-455 : string -> Z-453
+in
+(\(v-450 : Z-453) -> match_Z-454 v-450 {string} (\(s-451 : string) -> s-451))
+  (Z-455 "Done")
+------------

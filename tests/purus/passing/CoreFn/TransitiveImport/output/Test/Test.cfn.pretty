@@ -1,0 +1,42 @@
+Test (tests/purus/passing/CoreFn/TransitiveImport/Test.purs)
+
+Imported Modules: 
+------------------------------
+  Builtin,
+  Prim,
+  Test
+
+Exports: 
+------------------------------
+  test,
+  Uneet,
+  testClsUneet
+
+Re-Exports: 
+------------------------------
+  
+
+Foreign: 
+------------------------------
+  
+
+Datatypes: 
+------------------------------
+data Uneet  = 
+  Uneet 
+
+
+Declarations: 
+------------------------------
+testClsUneet :: { test :: (Test.Uneet -> (Test.Uneet)) }
+testClsUneet = 
+  ({ test: \(v: Test.Uneet) -> (Uneet: Test.Uneet) }: {
+                                                        test :: (Test.Uneet ->
+                                                        (Test.Uneet))
+                                                      })
+
+test :: forall (@a :: Prim.Type). ({ test :: ((a :: Prim.Type) -> ((a :: Prim.Type))) } -> (((a :: Prim.Type) -> ((a :: Prim.Type)))))
+test = 
+  \(dict: {   test :: ((a :: Prim.Type) -> ((a :: Prim.Type))) }) -> 
+    (dict: {   test :: ((a :: Prim.Type) -> ((a :: Prim.Type))) })
+    .test

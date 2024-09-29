@@ -14,7 +14,9 @@ import Language.PureScript qualified as P
 import Language.PureScript.Docs qualified as D
 import Language.PureScript.Docs.Tags (dumpCtags, dumpEtags)
 import Options.Applicative qualified as Opts
-import Text.PrettyPrint.ANSI.Leijen qualified as PP
+import Prettyprinter (Doc)
+import Prettyprinter qualified as PP
+import Prettyprinter.Render.Terminal (AnsiStyle)
 import System.Directory (getCurrentDirectory, createDirectoryIfMissing, removeFile)
 import System.Exit (exitFailure)
 import System.FilePath ((</>))
@@ -140,10 +142,9 @@ infoModList :: Opts.InfoMod a
 infoModList = Opts.fullDesc <> footerInfo where
   footerInfo = Opts.footerDoc $ Just examples
 
-examples :: PP.Doc
-examples =
-  PP.vcat $ map PP.text
-    [ "Examples:"
+examples :: Doc AnsiStyle
+examples = PP.vcat [ 
+      "Examples:"
     , "  write documentation for all modules to ./generated-docs:"
     , "    purs docs \"src/**/*.purs\" \".psc-package/*/*/*/src/**/*.purs\""
     , ""

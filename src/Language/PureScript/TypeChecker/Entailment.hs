@@ -493,8 +493,8 @@ entails SolverOptions {..} constraint context hints =
 
         -- Turn a DictionaryValue into a Expr
         subclassDictionaryValue :: Expr -> Qualified (ProperName 'ClassName) -> Integer -> Expr
-        subclassDictionaryValue dict className index =
-          App (Accessor (mkString (superclassName className index)) dict) typedEmptyRecord -- valUndefined
+        subclassDictionaryValue dict className index = Accessor (mkString (superclassName className index)) dict
+          -- App (Accessor (mkString (superclassName className index)) dict) typedEmptyRecord -- valUndefined
     solveCoercible :: Environment -> InstanceContext -> [SourceType] -> [SourceType] -> m (Maybe [TypeClassDict])
     solveCoercible env ctx kinds [a, b] = do
       let coercibleDictsInScope = findDicts ctx C.Coercible ByNullSourcePos

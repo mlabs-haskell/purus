@@ -27,6 +27,7 @@ import Language.Purus.Utils (decodeModuleBS)
 import Control.Lens.Combinators (transform)
 import Data.FileEmbed ( embedFile )
 import Data.ByteString (ByteString)
+import Language.Purus.Prim.LedgerData (ledgerDatatypes)
 
 primifyModule :: ModuleName -> -- old module name
                              ModuleName -> -- new module name
@@ -151,14 +152,17 @@ mergeModules
 
 
 syntheticPrim :: Module (Bind Ann) PurusType PurusType Ann
-syntheticPrim = prim1 `mergeModules` prim2 `mergeModules` prim3
+syntheticPrim = merged {moduleDataTypes = oldDatatypes <> ledgerDatatypes}
   where
+    oldDatatypes = moduleDataTypes merged
+    merged = prim1 `mergeModules` prim2 `mergeModules` prim3
     prim1 = mkPrimModule prelude1
     prim2 = mkPrimModule prelude2
     prim3 = mkPrimModule prelude3
 
 syntheticPrimValueTypes :: Map (Qualified Ident) PurusType
 syntheticPrimValueTypes =  primValueTypes syntheticPrim
+
 
 {-
 [NOTE 1]

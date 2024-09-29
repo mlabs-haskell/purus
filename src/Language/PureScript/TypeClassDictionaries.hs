@@ -46,4 +46,4 @@ type NamedDict = TypeClassDictionaryInScope (Qualified Ident)
 generated code.
 -}
 superclassName :: Qualified (ProperName 'ClassName) -> Integer -> Text
-superclassName pn index = runProperName (disqualify pn) <> pack (show index)
+superclassName pn index = runProperName (disqualify pn) -- <> pack (show index)

@@ -82,7 +82,7 @@ import Language.PureScript.Pretty.Values (renderValue)
 import Language.Purus.Pretty.Types (prettyTypeStr)
 
 moduleTraces :: Bool
-moduleTraces = True
+moduleTraces = False
 
 goTrace :: forall x. String -> x -> x
 goTrace str x

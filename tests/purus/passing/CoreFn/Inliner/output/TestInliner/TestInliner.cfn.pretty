@@ -1,0 +1,283 @@
+TestInliner (tests/purus/passing/CoreFn/Inliner/TestInliner.purs)
+
+Imported Modules: 
+------------------------------
+  Builtin,
+  Prim,
+  TestInliner
+
+Exports: 
+------------------------------
+  or,
+  not,
+  and,
+  iff,
+  fakeLT,
+  plus,
+  testForLiftPoly,
+  testForLiftPolyApplied,
+  ghcInlinerPaperEx,
+  kozsTwoSCCEx,
+  testForLift,
+  testForLiftApplied,
+  testForLift',
+  testForLiftApplied'
+
+Re-Exports: 
+------------------------------
+  
+
+Foreign: 
+------------------------------
+  
+
+Datatypes: 
+------------------------------
+
+
+
+Declarations: 
+------------------------------
+testForLiftPoly :: forall (a :: Prim.Type). ((a :: Prim.Type) -> (Prim.Boolean))
+testForLiftPoly = 
+  \(x: (a :: Prim.Type)) -> 
+    let
+      q :: (a :: Prim.Type)
+      q = (x: (a :: Prim.Type))
+      g :: (a*0 -> (Prim.Boolean))
+      g = \(y: a*0) -> (True: Prim.Boolean)
+      j :: (a*0 -> ((Prim.Boolean -> (Prim.Boolean))))
+      j = 
+        \(c: a*0) -> 
+          \(d: Prim.Boolean) -> 
+            case (d: Prim.Boolean) of 
+               True -> (d: Prim.Boolean)
+               _ -> (g: (a*0 -> (Prim.Boolean))) (c: a*0)
+      h :: (a*0 -> ((Prim.Boolean -> (Prim.Boolean))))
+      h = 
+        \(a: a*0) -> 
+          \(b: Prim.Boolean) -> 
+            let
+              i :: forall (b :: Prim.Type). ((b :: Prim.Type) -> (Prim.Boolean))
+              i = \(z: (b :: Prim.Type)) -> (False: Prim.Boolean)
+            in case ((g: (a*0 -> (Prim.Boolean))) (a: a*0)) of 
+                  True -> 
+                    (i: forall (b :: Prim.Type). ((b :: Prim.Type) ->
+                    (Prim.Boolean)))
+                    (q: a*0)
+                  _ -> 
+                    (j: (a*0 -> ((Prim.Boolean -> (Prim.Boolean)))))
+                    (a: a*0)
+                    (b: Prim.Boolean)
+    in (h: (a*0 -> ((Prim.Boolean -> (Prim.Boolean)))))
+       (x: (a :: Prim.Type))
+       (True: Prim.Boolean)
+
+testForLiftPolyApplied :: Prim.Boolean
+testForLiftPolyApplied = 
+  (testForLiftPoly: forall (a :: Prim.Type). ((a :: Prim.Type) ->
+  (Prim.Boolean)))
+  ("hello": Prim.String)
+
+plus :: (Prim.Int -> ((Prim.Int -> (Prim.Int))))
+plus = 
+  \(a: Prim.Int) -> 
+    \(b: Prim.Int) -> 
+      (addInteger: (Prim.Int -> ((Prim.Int -> (Prim.Int)))))
+      (a: Prim.Int)
+      (b: Prim.Int)
+
+or :: (Prim.Boolean -> ((Prim.Boolean -> (Prim.Boolean))))
+or = 
+  \(b1: Prim.Boolean) -> 
+    \(b2: Prim.Boolean) -> 
+      case (b1: Prim.Boolean) of 
+         True -> (True: Prim.Boolean)
+         _ -> (b2: Prim.Boolean)
+
+not :: (Prim.Boolean -> (Prim.Boolean))
+not = 
+  \(b: Prim.Boolean) -> 
+    case (b: Prim.Boolean) of 
+       True -> (False: Prim.Boolean)
+       _ -> (True: Prim.Boolean)
+
+fakeLT :: (Prim.Int -> ((Prim.Int -> (Prim.Boolean))))
+fakeLT = \(v: Prim.Int) -> \(v1: Prim.Int) -> (True: Prim.Boolean)
+
+testForLift :: (Prim.Int -> (Prim.Boolean))
+testForLift = 
+  \(x: Prim.Int) -> 
+    let
+      j :: (Prim.Int -> ((Prim.Int -> (Prim.Int))))
+      j = 
+        \(c: Prim.Int) -> 
+          \(d: Prim.Int) -> 
+            (plus: (Prim.Int -> ((Prim.Int -> (Prim.Int)))))
+            (c: Prim.Int)
+            ((g: (Prim.Int -> (Prim.Int))) (d: Prim.Int))
+      h :: (Prim.Int -> ((Prim.Int -> (Prim.Boolean))))
+      h = 
+        \(a: Prim.Int) -> 
+          \(b: Prim.Int) -> 
+            (fakeLT: (Prim.Int -> ((Prim.Int -> (Prim.Boolean)))))
+            ((g: (Prim.Int -> (Prim.Int))) (a: Prim.Int))
+            ((j: (Prim.Int -> ((Prim.Int -> (Prim.Int)))))
+             (4: Prim.Int)
+             (b: Prim.Int))
+      g :: (Prim.Int -> (Prim.Int))
+      g = 
+        \(a: Prim.Int) -> 
+          case ((h: (Prim.Int -> ((Prim.Int -> (Prim.Boolean))))) (a: Prim.Int) (x: Prim.Int)) of 
+             True -> 
+               (j: (Prim.Int -> ((Prim.Int -> (Prim.Int)))))
+               (x: Prim.Int)
+               (1: Prim.Int)
+             _ -> 
+               (multiplyInteger: (Prim.Int -> ((Prim.Int -> (Prim.Int)))))
+               (x: Prim.Int)
+               (x: Prim.Int)
+    in (h: (Prim.Int -> ((Prim.Int -> (Prim.Boolean)))))
+       (x: Prim.Int)
+       (3: Prim.Int)
+
+testForLiftApplied :: Prim.Boolean
+testForLiftApplied = (testForLift: (Prim.Int -> (Prim.Boolean))) (2: Prim.Int)
+
+testForLift' :: (Prim.Int -> (Prim.Boolean))
+testForLift' = 
+  \(x: Prim.Int) -> 
+    let
+      h :: (Prim.Int -> ((Prim.Int -> (Prim.Boolean))))
+      h = 
+        \(a: Prim.Int) -> 
+          \(b: Prim.Int) -> 
+            (fakeLT: (Prim.Int -> ((Prim.Int -> (Prim.Boolean)))))
+            ((g: (Prim.Int -> (Prim.Int))) (a: Prim.Int))
+            (4: Prim.Int)
+      g :: (Prim.Int -> (Prim.Int))
+      g = 
+        \(a: Prim.Int) -> 
+          case ((h: (Prim.Int -> ((Prim.Int -> (Prim.Boolean))))) (a: Prim.Int) (x: Prim.Int)) of 
+             True -> 
+               (plus: (Prim.Int -> ((Prim.Int -> (Prim.Int)))))
+               (x: Prim.Int)
+               (x: Prim.Int)
+             _ -> 
+               (multiplyInteger: (Prim.Int -> ((Prim.Int -> (Prim.Int)))))
+               (x: Prim.Int)
+               (x: Prim.Int)
+    in (h: (Prim.Int -> ((Prim.Int -> (Prim.Boolean)))))
+       (x: Prim.Int)
+       (3: Prim.Int)
+
+testForLiftApplied' :: Prim.Boolean
+testForLiftApplied' = 
+  (testForLift': (Prim.Int -> (Prim.Boolean))) (101: Prim.Int)
+
+and :: (Prim.Boolean -> ((Prim.Boolean -> (Prim.Boolean))))
+and = 
+  \(p: Prim.Boolean) -> 
+    \(q: Prim.Boolean) -> 
+      (not: (Prim.Boolean -> (Prim.Boolean)))
+      ((or: (Prim.Boolean -> ((Prim.Boolean -> (Prim.Boolean)))))
+       ((not: (Prim.Boolean -> (Prim.Boolean))) (p: Prim.Boolean))
+       ((not: (Prim.Boolean -> (Prim.Boolean))) (q: Prim.Boolean)))
+
+iff :: (Prim.Boolean -> ((Prim.Boolean -> (Prim.Boolean))))
+iff = 
+  \(p: Prim.Boolean) -> 
+    \(q: Prim.Boolean) -> 
+      (or: (Prim.Boolean -> ((Prim.Boolean -> (Prim.Boolean)))))
+      ((and: (Prim.Boolean -> ((Prim.Boolean -> (Prim.Boolean)))))
+       (p: Prim.Boolean)
+       (q: Prim.Boolean))
+      ((and: (Prim.Boolean -> ((Prim.Boolean -> (Prim.Boolean)))))
+       ((not: (Prim.Boolean -> (Prim.Boolean))) (p: Prim.Boolean))
+       ((not: (Prim.Boolean -> (Prim.Boolean))) (q: Prim.Boolean)))
+
+ghcInlinerPaperEx :: Prim.Boolean
+ghcInlinerPaperEx = 
+  let
+    h :: (Prim.Boolean -> (Prim.Boolean))
+    h = 
+      \(x: Prim.Boolean) -> 
+        (and: (Prim.Boolean -> ((Prim.Boolean -> (Prim.Boolean)))))
+        ((f: (Prim.Boolean -> (Prim.Boolean))) (True: Prim.Boolean))
+        (x: Prim.Boolean)
+    g :: (Prim.Boolean -> (Prim.Boolean))
+    g = 
+      \(x: Prim.Boolean) -> 
+        (iff: (Prim.Boolean -> ((Prim.Boolean -> (Prim.Boolean)))))
+        ((h: (Prim.Boolean -> (Prim.Boolean))) (x: Prim.Boolean))
+        (False: Prim.Boolean)
+    f :: (Prim.Boolean -> (Prim.Boolean))
+    f = 
+      \(x: Prim.Boolean) -> 
+        (g: (Prim.Boolean -> (Prim.Boolean)))
+        ((not: (Prim.Boolean -> (Prim.Boolean))) (x: Prim.Boolean))
+    q :: (Prim.Boolean -> (Prim.Boolean))
+    q = 
+      \(x: Prim.Boolean) -> 
+        (g: (Prim.Boolean -> (Prim.Boolean)))
+        ((iff: (Prim.Boolean -> ((Prim.Boolean -> (Prim.Boolean)))))
+         (x: Prim.Boolean)
+         ((not: (Prim.Boolean -> (Prim.Boolean))) (x: Prim.Boolean)))
+    p :: Prim.Boolean
+    p = (q: (Prim.Boolean -> (Prim.Boolean))) (False: Prim.Boolean)
+  in (p: Prim.Boolean)
+
+kozsTwoSCCEx :: Prim.Boolean
+kozsTwoSCCEx = 
+  let
+    z :: Prim.Boolean
+    z = (True: Prim.Boolean)
+    h :: (Prim.Boolean -> (Prim.Boolean))
+    h = 
+      \(x: Prim.Boolean) -> 
+        (not: (Prim.Boolean -> (Prim.Boolean)))
+        ((f: (Prim.Boolean -> (Prim.Boolean))) (x: Prim.Boolean))
+    g :: (Prim.Boolean -> (Prim.Boolean))
+    g = 
+      \(x: Prim.Boolean) -> 
+        (and: (Prim.Boolean -> ((Prim.Boolean -> (Prim.Boolean)))))
+        ((not: (Prim.Boolean -> (Prim.Boolean)))
+         ((h: (Prim.Boolean -> (Prim.Boolean))) (x: Prim.Boolean)))
+        ((not: (Prim.Boolean -> (Prim.Boolean))) (x: Prim.Boolean))
+    f :: (Prim.Boolean -> (Prim.Boolean))
+    f = 
+      \(x: Prim.Boolean) -> 
+        (not: (Prim.Boolean -> (Prim.Boolean)))
+        ((g: (Prim.Boolean -> (Prim.Boolean))) (x: Prim.Boolean))
+    c :: (Prim.Boolean -> (Prim.Boolean))
+    c = 
+      \(x: Prim.Boolean) -> 
+        (not: (Prim.Boolean -> (Prim.Boolean)))
+        ((and: (Prim.Boolean -> ((Prim.Boolean -> (Prim.Boolean)))))
+         ((f: (Prim.Boolean -> (Prim.Boolean))) (x: Prim.Boolean))
+         ((b: (Prim.Boolean -> (Prim.Boolean))) (x: Prim.Boolean)))
+    b :: (Prim.Boolean -> (Prim.Boolean))
+    b = 
+      \(x: Prim.Boolean) -> 
+        (and: (Prim.Boolean -> ((Prim.Boolean -> (Prim.Boolean)))))
+        (x: Prim.Boolean)
+        ((and: (Prim.Boolean -> ((Prim.Boolean -> (Prim.Boolean)))))
+         ((c: (Prim.Boolean -> (Prim.Boolean))) (x: Prim.Boolean))
+         ((h: (Prim.Boolean -> (Prim.Boolean))) (x: Prim.Boolean)))
+    a :: (Prim.Boolean -> (Prim.Boolean))
+    a = 
+      \(x: Prim.Boolean) -> 
+        (and: (Prim.Boolean -> ((Prim.Boolean -> (Prim.Boolean)))))
+        ((b: (Prim.Boolean -> (Prim.Boolean))) (x: Prim.Boolean))
+        (x: Prim.Boolean)
+  in (and: (Prim.Boolean -> ((Prim.Boolean -> (Prim.Boolean)))))
+     ((a: (Prim.Boolean -> (Prim.Boolean))) (z: Prim.Boolean))
+     ((and: (Prim.Boolean -> ((Prim.Boolean -> (Prim.Boolean)))))
+      ((b: (Prim.Boolean -> (Prim.Boolean))) (z: Prim.Boolean))
+      ((and: (Prim.Boolean -> ((Prim.Boolean -> (Prim.Boolean)))))
+       ((c: (Prim.Boolean -> (Prim.Boolean))) (z: Prim.Boolean))
+       ((and: (Prim.Boolean -> ((Prim.Boolean -> (Prim.Boolean)))))
+        ((f: (Prim.Boolean -> (Prim.Boolean))) (z: Prim.Boolean))
+        ((and: (Prim.Boolean -> ((Prim.Boolean -> (Prim.Boolean)))))
+         ((g: (Prim.Boolean -> (Prim.Boolean))) (z: Prim.Boolean))
+         ((h: (Prim.Boolean -> (Prim.Boolean))) (z: Prim.Boolean))))))

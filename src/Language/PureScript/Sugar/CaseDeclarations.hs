@@ -461,4 +461,5 @@ makeCaseDeclaration ss ident alternatives = do
 
 unsafeExprType :: Expr -> SourceType
 unsafeExprType (TypedValue _ _ t) = t
+unsafeExprType (PositionedValue _ _ e) = unsafeExprType e
 unsafeExprType other = error $ "INTERNAL ERROR: Expected a TypedValue during case desugaring but got: " <> show other

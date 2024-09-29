@@ -151,14 +151,36 @@ builtinSubstitutions =
     , (PLC.EqualsData, pirEqualsData)
     , (PLC.IfThenElse, pirIfThenElse)
     , (PLC.NullList, pirNullList)
+    , (PLC.IntegerToByteString, pirI2BS)
+    , (PLC.ByteStringToInteger, pirBS2I)
+    , (PLC.Bls12_381_G1_equal, pirG1Eq)
+    , (PLC.Bls12_381_G2_equal, pirG2Eq)
+    , (PLC.Bls12_381_finalVerify, pirFinalVerify)
     ]
 
-tyInt, tyBool, tyByteString, tyData, tyString :: Ty
+tyInt :: Ty 
 tyInt = TyCon C.Int
+
+tyBool :: Ty
 tyBool = TyCon C.Boolean
+
+tyByteString :: Ty
 tyByteString = TyCon C.BuiltinByteString
+
+tyData :: Ty
 tyData = TyCon C.BuiltinData
+
+tyString :: Ty
 tyString = TyCon C.String
+
+tyG1Element :: Ty
+tyG1Element = TyCon C.BuiltinElementG1
+
+tyG2Element :: Ty
+tyG2Element = TyCon C.BuiltinElementG2
+
+tyMlResult :: Ty
+tyMlResult = TyCon C.BuiltinMlResult
 
 wrapBoolToBoolean2 :: Ty -> PLC.DefaultFun -> PlutusContext PIRTerm
 wrapBoolToBoolean2 t f = freshLam t $ \_ x1 -> freshLam t $ \_ x2 -> do
@@ -210,21 +232,12 @@ pirVerifyEcdsaSecp256k1Signature = wrapBoolToBoolean3 tyByteString PLC.VerifyEcd
 pirEqualsData :: PlutusContext PIRTerm
 pirEqualsData = wrapBoolToBoolean2 tyData PLC.EqualsData
 
--- N.B. This differs from the one above in that
---      this assumed that the condition
---      will be represented as an ADT Prim.Boolean
---      so we need to turn it into a con bool
---      (also we're not adding force/delay here)
 -- forall x. Bool -> x -> x -> x
 pirIfThenElse :: PlutusContext PIRTerm
-pirIfThenElse =
-  pirTyAbs $ \tv ->
-    freshLam tyBool $ \_ cond ->
-      freshLam' tv $ \_ trueVar ->
-        freshLam' tv $ \_ falseVar -> do
-          pirIfiedCond <- pirBooleanToBool cond
-          let pirIFTE = PIR.Builtin () PLC.IfThenElse
-          pure $ pirIFTE # pirIfiedCond # trueVar # falseVar
+pirIfThenElse = freshLam tyBool $ \_ cond -> do
+  let fun = PIR.Builtin () PLC.IfThenElse
+  cond' <- pirBooleanToBool cond
+  pure $ fun # cond'
 
 -- forall x. BuiltinList x -> Bool
 pirNullList :: PlutusContext PIRTerm
@@ -238,3 +251,31 @@ pirNullList =
     freshLam' listAppliedTy $ \_ arg -> do
       let nullListFun = PIR.Builtin () PLC.NullList
       pirBoolToBoolean (pirTyInst tv nullListFun # arg)
+
+-- Bool -> Int -> Int -> ByteString
+pirI2BS :: PlutusContext PIRTerm
+pirI2BS = 
+  freshLam tyBool $ \_ b -> do
+    b' <- pirBoolToBoolean b
+    let fun = PIR.Builtin () PLC.IntegerToByteString
+    pure $ fun # b'
+
+-- Bool -> ByteString -> Int
+pirBS2I :: PlutusContext PIRTerm
+pirBS2I = 
+  freshLam tyBool $ \_ b -> do
+    b' <- pirBoolToBoolean b
+    let fun = PIR.Builtin () PLC.ByteStringToInteger
+    pure $ fun # b'
+
+-- G1Element -> G1Element -> Bool
+pirG1Eq :: PlutusContext PIRTerm
+pirG1Eq = wrapBoolToBoolean2 tyG1Element PLC.Bls12_381_G1_equal
+
+-- G2Element -> G2Element -> Bool
+pirG2Eq :: PlutusContext PIRTerm
+pirG2Eq = wrapBoolToBoolean2 tyG2Element PLC.Bls12_381_G2_equal
+
+-- MlResult -> MlResult -> Bool
+pirFinalVerify :: PlutusContext PIRTerm
+pirFinalVerify = wrapBoolToBoolean2 tyMlResult PLC.Bls12_381_finalVerify

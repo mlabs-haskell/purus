@@ -1,0 +1,34 @@
+Test (tests/purus/passing/CoreFn/ShadowedModuleName/Test.purs)
+
+Imported Modules: 
+------------------------------
+  Builtin,
+  Prim,
+  Test
+
+Exports: 
+------------------------------
+  Z,
+  runZ
+
+Re-Exports: 
+------------------------------
+  
+
+Foreign: 
+------------------------------
+  
+
+Datatypes: 
+------------------------------
+data Z  = 
+  Z (Prim.String)
+
+
+Declarations: 
+------------------------------
+runZ :: (Test.Z -> (Prim.String))
+runZ = 
+  \(v: Test.Z) -> 
+    case (v: Test.Z) of 
+       Z s -> (s: Prim.String)

@@ -2,6 +2,7 @@ module Language.Purus.Pipeline.Lift.Types where
 
 import Prelude
 
+import Data.Map qualified as M
 import Data.Set (Set)
 import Data.Text (Text)
 
@@ -22,8 +23,11 @@ import Language.Purus.IR
 import Language.Purus.IR.Utils
 import Language.Purus.Pretty.Common
 
-import Bound (Scope, Var (F))
+import Bound (Scope, Var (..))
 import Prettyprinter
+import Data.Map (Map)
+import Control.Lens (cosmos, (^..))
+import Data.Maybe (mapMaybe)
 
 -- sorry Koz i really want to be able to fit type sigs on one line
 type MonoExp = Exp WithObjects PurusType (Vars PurusType)
@@ -100,6 +104,9 @@ toHole :: Exp x t (Vars t) -> Maybe (Hole t)
 toHole (LiftedHoleTerm nm indx ty) = Just $ Hole (Ident nm) (fromIntegral indx) ty
 toHole _ = Nothing
 
+toHoleTermBV :: BVar t -> Exp x t (Vars t)
+toHoleTermBV (BVar i t n) = V (F (LiftedHole (runIdent n) (fromIntegral i) t))
+
 fromHole :: Hole t -> Exp x t (Vars t)
 fromHole (Hole hId hIx hTy) = LiftedHoleTerm (runIdent hId) (fromIntegral hIx) hTy
 
@@ -111,6 +118,12 @@ fillsHole (BVar bvIx _ bvIdent) = \case
 
 unHole :: Hole t -> (Ident, Int)
 unHole (Hole hId hIx _) = (hId, hIx)
+
+containsHole :: forall x t. (Ident,Int) -> Exp x t (Vars t) -> Bool
+containsHole (idnt,indx) e = any matchesHole $ mapMaybe toHole (e ^.. cosmos)
+  where
+    matchesHole :: Hole t -> Bool
+    matchesHole (Hole idnt' indx' _) = idnt' == idnt && indx' == indx
 
 instance Pretty LiftResult where
   pretty (LiftResult decls expr) =
@@ -136,9 +149,10 @@ instance Pretty LiftResult where
    Without this scope information, lifting is impossible.
 -}
 data ToLift = ToLift
-  { varScopeAtDecl :: Set (BVar PurusType)
-  , tyVarScopeAtDecl :: Set (BVar (KindOf PurusType))
-  , declarations :: Set MonoBind
+  { liftedName :: (Ident,Int)
+  , liftedBody :: MonoScoped
+  , implicitArgs :: Set (BVar PurusType)
+  , peers :: Set (BVar PurusType)
   }
   deriving (Show, Eq, Ord)
 
@@ -146,9 +160,53 @@ instance Pretty ToLift where
   pretty ToLift {..} =
     pretty $
       prettify
-        [ "------ToLift-------"
-        , "Var Scope:\n" <> prettyStr (S.toList varScopeAtDecl)
-        , "Ty Var Scope:\n " <> prettyStr (S.toList tyVarScopeAtDecl)
-        , "Decls:\n" <> prettyStr (S.toList declarations)
-        , "-------------------"
+        [ "ToLift:"
+        , "  Name: " <> prettyStr liftedName
+        , "  Decl:\n" <> asExp liftedBody prettyStr
+        , "  Implicit args:\n" <> prettyStr (S.toList implicitArgs)
+        , "  Peers:\n" <> prettyStr (S.toList peers)
         ]
+
+oosInLiftResult :: LiftResult -> Map Ident (Set (BVar PurusType))
+oosInLiftResult (LiftResult lifted body) =
+  let liftedScope = foldBinds (\acc (nm,indx) e -> S.insert (BVar indx (expTy' id e) nm) acc) S.empty lifted
+      oosInLifted = foldBinds (\acc (nm,_) e -> M.insert nm (asExp e $ findOutOfScopeVars' liftedScope ) acc) M.empty lifted
+      oosInMain   = M.singleton (Ident "$MAIN") (findOutOfScopeVars' liftedScope body)
+  in oosInMain <> oosInLifted
+
+findOutOfScopeVars :: MonoExp -> S.Set (BVar PurusType)
+findOutOfScopeVars = findOutOfScopeVars' S.empty
+
+findOutOfScopeVars' :: S.Set (BVar PurusType) -> MonoExp -> S.Set (BVar PurusType)
+findOutOfScopeVars' inScopeVars = \case
+  V (B bv) | bv `S.notMember` inScopeVars -> S.singleton bv
+  V _ -> S.empty
+  LitE _ (ObjectL _ fs ) -> S.unions (findOutOfScopeVars' inScopeVars . snd <$> fs)
+  LitE _ _ -> S.empty
+  AppE e1 e2 -> findOutOfScopeVars' inScopeVars e1 <> findOutOfScopeVars' inScopeVars e2
+  LamE bv body -> asExp body $ findOutOfScopeVars' (S.insert bv inScopeVars)
+  LetE bs body ->
+    let newScope = foldBinds (\acc (nm,indx) e -> S.insert (BVar indx (expTy' id e) nm) acc) inScopeVars bs
+        oosInBs  = S.unions $ foldBinds (\acc _ e -> S.insert (asExp e (findOutOfScopeVars' newScope)) acc) S.empty bs
+    in oosInBs <> asExp body (findOutOfScopeVars' newScope)
+  AccessorE _ _ _ e -> findOutOfScopeVars' inScopeVars e
+  ObjectUpdateE _ _ e _ fs -> findOutOfScopeVars' inScopeVars e <> S.unions (findOutOfScopeVars' inScopeVars . snd <$> fs)
+  CaseE _ scrut alts -> findOutOfScopeVars' inScopeVars scrut <> S.unions (goAlt inScopeVars <$> alts)
+  TyInstE _ e -> findOutOfScopeVars' inScopeVars e
+  TyAbs _ e -> findOutOfScopeVars' inScopeVars e
+ where
+  goAlt :: S.Set (BVar PurusType)
+        -> Alt WithObjects PurusType (Exp WithObjects PurusType) (Vars PurusType)
+        -> S.Set (BVar PurusType)
+  goAlt inScope (UnguardedAlt pat body) =
+    let newScope = getPatBinders inScope pat <> inScope
+    in asExp body $ findOutOfScopeVars' newScope
+  getPatBinders :: S.Set (BVar PurusType)
+                -> Pat WithObjects PurusType (Exp WithObjects PurusType) (Vars PurusType)
+                -> S.Set (BVar PurusType)
+  getPatBinders scop = \case
+    VarP ident indx ty -> S.singleton (BVar indx ty ident)
+    LitP (ObjectL _ fs) -> S.unions (getPatBinders scop . snd <$> fs)
+    LitP _ -> S.empty
+    ConP _ _ ps -> S.unions (getPatBinders scop <$> ps)
+    WildP -> S.empty

@@ -113,7 +113,7 @@ import Control.Monad.Except (
   MonadError (throwError),
  )
 
-import PlutusCore.Name (Unique (Unique))
+import PlutusCore.Name.Unique (Unique (Unique))
 import PlutusIR (
   Name (Name),
  )
@@ -496,7 +496,7 @@ instantiateCtor ::
   Exp WithoutObjects Ty (Var (BVar Ty) (FVar Ty))
 instantiateCtor datatypes expr = case expr of
   AppE fe ae -> case unsafeAnalyzeApp (AppE fe ae) of
-    (V (F (FVar t n)), args)
+    (fvar@(V (F (FVar t n))), args)
       | isConstructor n ->
           let ctorNm :: Qualified (ProperName 'ConstructorName)
               ctorNm = ProperName . runIdent <$> n
@@ -508,7 +508,7 @@ instantiateCtor datatypes expr = case expr of
                       <> prettyQI n
                 Just tn -> tn
               monoFields = monoCtorInst tyNm ctorNm (funResultTy t) datatypes
-              fe' = foldr TyInstE fe monoFields
+              fe' = foldr TyInstE fvar monoFields
               result = foldl' AppE fe' args
               msg =
                 prettify
