@@ -409,7 +409,8 @@ library
 
     Language.Purus.Config
     Language.Purus.Debug
-    Language.Purus.Eval
+    Language.Purus.Docs
+    Language.Purus.Eval 
     Language.Purus.IR
     Language.Purus.IR.Utils
     Language.Purus.Make
