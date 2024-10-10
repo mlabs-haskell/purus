@@ -189,6 +189,7 @@ common defaults
     lens ==5.2.3,
     lifted-async >=0.10.2.2 && <0.11,
     lifted-base >=0.2.3.12 && <0.3,
+    matrix,
     memory >=0.17.0 && <0.18,
     monad-control >=1.0.3.1 && <1.1,
     monad-logger >=0.3.36 && <0.4,
@@ -419,6 +420,7 @@ library
     Language.Purus.Pipeline.DesugarCore
     Language.Purus.Pipeline.DesugarObjects
     Language.Purus.Pipeline.EliminateCases
+    Language.Purus.Pipeline.EliminateCases.Utils
     Language.Purus.Pipeline.GenerateDatatypes
     Language.Purus.Pipeline.GenerateDatatypes.Utils
     Language.Purus.Pipeline.Inline
