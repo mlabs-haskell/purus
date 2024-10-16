@@ -9,7 +9,7 @@ import Data.Text qualified as T
 
 import Data.Bifunctor (second)
 import Data.Foldable (foldl', foldrM)
-import Data.List (sortOn)
+import Data.List (sortOn, find)
 import Data.Maybe (fromJust)
 import Data.Traversable (for)
 
@@ -26,7 +26,7 @@ import Language.PureScript.CoreFn.Module (
   getConstructorIndexAndDecl,
   lookupCtorType,
   lookupDataDecl,
-  tyDict,
+  tyDict, properToIdent,
  )
 import Language.PureScript.CoreFn.TypeLike (
   TypeLike (
@@ -67,7 +67,7 @@ import Language.Purus.IR (
   expTy',
   getPat,
   unsafeAnalyzeApp,
-  pattern (:~>), analyzeApp,
+  pattern (:~>), analyzeApp, Kind,
  )
 import Language.Purus.IR qualified as IR
 import Language.Purus.IR.Utils (
@@ -115,11 +115,6 @@ import Control.Monad.Except (
   MonadError (throwError),
  )
 
-import PlutusCore.Name.Unique (Unique (Unique))
-import PlutusIR (
-  Name (Name),
- )
-
 import Data.Matrix
 import Text.Read (readMaybe)
 import Data.Map (Map)
@@ -133,6 +128,8 @@ import Data.Maybe (catMaybes)
 -- TODO: Delete this eventually, just want it now to sketch things
 type  Pattern = Pat WithoutObjects Ty (Exp WithoutObjects Ty) (Var (BVar Ty) (FVar Ty))
 type Expression = Exp WithoutObjects Ty (Vars Ty)
+-- If you look at the types, this can only represent "true literals", i.e., is un-nested 
+type Literal = Lit WithoutObjects Pattern 
 
 {- We need to handle things differently in a case where we have a tuple pattern
    vs where we just have singular patterns.
@@ -144,12 +141,66 @@ mkPatternMatrix alts = fromLists <$> pats
   where
     pats = traverse (crackTuplePat . getPat) alts
 
-mkResultDictionary :: [Alt WithoutObjects Ty (Exp WithoutObjects Ty) (Vars Ty)]
-                   ->    Map Int (Exp WithoutObjects Ty (Vars Ty))
-mkResultDictionary alts = M.fromList
-                        . zip [0..]
-                        . map (\(UnguardedAlt _ e) -> toExp e)
-                        $ alts
+
+mkResults :: Datatypes Kind Ty -> Matrix Pattern -> Results
+mkResults datatypes mtx = Results $ go (nrows mtx - 1)
+  where
+    go :: Int -> Map ResultRowIx [ResultConstraint]
+    go rowIx
+      | rowIx < 0 = M.empty
+      | otherwise = M.singleton (ResultRowIx rowIx) cpatRow <> go (rowIx - 1)
+      where
+        getCtorIx :: Qualified (ProperName 'TypeName)
+                  -> Qualified (ProperName 'ConstructorName)
+                  -> CtorIx
+        getCtorIx tn cn = fst
+                          . fromJust
+                          $ find (\x -> snd x == (properToIdent <$> cn))
+                                 (zip (CtorIx <$> [0..])
+                                      $ view cdCtorName <$> getAllConstructorDecls tn datatypes)
+
+        thisRow =  zip [0..] . V.toList $ getRow rowIx mtx
+        cpatRow = concatMap toConstraints thisRow
+        toConstraints :: (Int,Pattern)
+                      ->  [ResultConstraint]
+        toConstraints (col,pat) = case pat of
+          VarP nm indx ty -> [ResultConstraint mtxPos (VarC nm indx ty)]
+          WildP -> [ResultConstraint mtxPos WildC]
+          LitP lit -> [ResultConstraint mtxPos (LitC lit)]
+          ConP tn cn [] ->
+            let ctorIndex :: CtorIx
+                ctorIndex = getCtorIx tn cn -- todo: implement
+            in [ResultConstraint mtxPos (BareConstructorIndex tn ctorIndex)]
+          -- REVIEW: Maybe we should just generate a BareConstructorIndex constraint if all of the arguments are wildcards?
+          ConP tn cn ps ->
+            let ctorIndex :: CtorIx
+                ctorIndex = getCtorIx tn cn
+            in concatMap (goNested mtxPos ctorIndex) $ zip (CtorArgPos  <$> [0..]) ps
+         where
+           mtxPos = M (rowIx,col)
+        -- N.b. there's probably a better way to write this
+        goNested :: Position -- "outer" position in the matrix
+                 -> CtorIx  -- index of the constructor we're looking at
+                 -> (CtorArgPos, Pattern) -- position of the argument in the pattern list
+                 -> [ResultConstraint]
+        goNested mtxPos _ctorIx (argPos,pat) = case pat of
+          VarP nm indx ty -> [ResultConstraint here (VarC nm indx ty)]
+          WildP -> [ResultConstraint here WildC]
+          LitP lit -> [ResultConstraint here (LitC lit)]
+          ConP tn cn [] ->
+            let ctorIndex :: CtorIx
+                ctorIndex = getCtorIx tn cn
+            in [ResultConstraint here (BareConstructorIndex tn ctorIndex)]
+          ConP tn cn ps ->
+            let ctorIndex :: CtorIx
+                ctorIndex = getCtorIx tn cn
+            in concatMap (goNested here ctorIndex) $ zip (CtorArgPos <$> [0..]) ps
+
+         where
+           here = ConstructorArgPos mtxPos _ctorIx argPos
+
+
+      
 
 tupleNumber :: Qualified (ProperName 'TypeName) -> Maybe Int
 tupleNumber = \case
@@ -198,56 +249,74 @@ isBadNestedPat = \case
   ConP _ _ ps -> all isIrrefutablePat ps
   _           -> False
 
-data HoleConstraint =
-  (Ident,Int) :== Pattern deriving (Show, Eq)
 
-data Skeleton
-  = CaseOf (Ident,Int) [(Pattern,Skeleton)]
-  | Hole [HoleConstraint]
+{-
+
+A position is either:
+
+ - An explicit location in the matrix
+ - A constructor position (index & arg position) at a position 
+
+
+-}
+
+newtype CtorArgPos = CtorArgPos Int deriving (Show, Eq)
+newtype CtorIx     = CtorIx Int deriving (Show, Eq)
+-- The LHS of a constraint, uniquely identifies the position of a pattern in the pattern matrix
+data Position
+  = -- A top-level position in the matrix, (row,column)
+    M (Int,Int)
+    -- A constructor argument local-position (index, argument position) indexed to a position in the matrix
+    -- (can nest these but the structure of the type should ensure that we always end up with a matrix position root)
+  | ConstructorArgPos Position CtorIx CtorArgPos
   deriving (Show, Eq)
 
--- p1 `subsumesP` p2 iff p1 is more general than p2
-subsumesP :: Pattern -> Pattern -> Bool
-subsumesP p1 p2 = case (p1,p2) of
-  (WildP,_) -> True
-  (VarP{},_) -> True
-  (ConP tn1 cn1 ps1, ConP tn2 cn2 ps2)
-    | tn1 == tn2 && cn1 == cn2 -> and $ zipWith subsumesP ps1 ps2
-  _ -> False
 
--- the constraint says what a given path actually contains,
--- and we either need to check that the pattern arg subsumes that constraint pat
--- (if not a literal) or that it is == to the conPat (if a literal)
-satisfies :: HoleConstraint -> Pattern -> Bool
-satisfies (nm :== conPat) pat = case conPat of
-  lit@(LitP _) -> pat == lit
-  _            -> pat `subsumesP` conPat
-                    && not (conPat `subsumesP` pat)
+-- This gives us the location of the "cell" in the pattern matrix where a
+-- constraint applies. We need something like this because when we "collapse" the
+-- set of paths to a result into a tree, we need *all* of the constraints that pertain to a cell
+matrixPosition :: Position -> (Int,Int)
+matrixPosition = \case
+  M pos -> pos
+  ConstructorArgPos inner _ _ -> matrixPosition inner
+
+constraintMatrixPosition :: ResultConstraint -> (Int,Int)
+constraintMatrixPosition (ResultConstraint pos _) = matrixPosition pos
+
+getRelevantConstraintsWithResults :: (Int,Int) -> [[ResultConstraint]] -> [[ResultConstraint]]
+getRelevantConstraintsWithResults pos rows = filter (\x -> constraintMatrixPosition x == pos) <$> rows
 
 
-data Cxt
-  = Cxt {
-      {- It is *vastly* easier to work with this if we assume that the scrutinees are all variables.
 
-         They might not be! Which makes the constraints super annoying to handle. So we "pretend" we're
-         working with var scrutinees (at the end we can either let- bind them or replace w/ the corresponding expression
-         depending on what makes the most sense).
 
-         The vector should be constructed such that the index of an (Ident,Int) pair corresponds to the pattern(s)
-         in the column of our pattern matrix.
-      -}
-      _scrutineeDict :: Map (Ident,Int) Expression,
-      _scrutineeIndex :: Vector (Ident,Int),
-      -- the requirements for a result are determined by the structure of the matrix and do not need to be tracked separately (I think?)
-      _resultDict :: Map Int Expression, 
-      -- need to know "where we are" in the matrix
-      _pos :: (Int,Int),
-      _patMatrix :: Matrix Pattern,
-      -- a conjunction of constraints which have been satisfied along the current path through the skeleton
-      _path :: [HoleConstraint]
-    }
 
-makeLenses ''Cxt
+{- With the new indexing scheme, constructor patterns are superfluous on the RHS side of a constraint. The only things the RHS of a constraint can contain are:
+     1. A Variable Pattern
+     2. A wildcard pattern
+     3. A Literal pattern
+
+   The "constructor part" of a pattern constraint goes on the LHS because it tells us something about the position/location in the matrix
+   (which seems trivial but makes reasoning about this a LOT easier).
+
+   Well, mostly. That scheme doesn't work for bare constructors, e.g. `Nothing. For bare constructors, we
+   use a RHS constraint that indicates the constructor index, so really:
+     4. A bare constructor index 
+-}
+
+data ConstraintPattern
+  = VarC Ident Int Ty -- we'll ignore the type but will keep it around so that we can reconstruct the expression without having to re-deduce types 
+  | WildC
+  | LitC Literal
+  | BareConstructorIndex (Qualified (ProperName 'TypeName)) CtorIx
+  
+{- A constraint on a result. 
+-}
+data ResultConstraint = ResultConstraint Position ConstraintPattern
+
+newtype ResultRowIx = ResultRowIx {getResultRow :: Int} deriving (Show, Eq, Ord)
+newtype Results = Results {getResults :: Map ResultRowIx [ResultConstraint] }
+
+
 
 needsTransform :: Expression -> Bool
 needsTransform = \case
@@ -260,114 +329,65 @@ note str Nothing = throwError str
 note _ (Just x) = pure x
 
 
-expand :: Reader Cxt Skeleton
-expand = go
-  where
-    mkConstraint :: (Ident,Int) -> Pattern -> (HoleConstraint, Pattern)
-    mkConstraint nm pat = (nm :== pat, pat)
 
-    {-   NOTE TO KOZ: Because of the "lazy" way I'm trying to implement this, this isn't the same thing *you* mean by
-                      suitability. That is, this pertains to patterns, such that a pattern is "suitable" if we can insert in
-                      the column position of the skeleton corresponding to the current column in our state.
+{- General outline of procedure:
 
-                      For example
+We start with a [[ResultConstraint]], which represent the possible paths along a tree from the scrutinee expressions to
+each Result. We assume that these are ordered, i.e. that later lists in the list-of-lists represent subsequent alternatives & so on.
 
-                      case x, y of
-                        Just 2, whatever -> ...
-                        Just 3, whatever -> ...
-                        Just y, whatever  -> ...
-                        Nothing, whatever -> ...
+The general idea is that we need to "collapse" those lists into a forest (a list of trees) such that each branch in each tree
+represents a different path to a distinct result.
 
-                     should expand to
+We treat distinct variable constraints as non-overlapping, e.g. in `1, Just a -> ... /2, Just b -> ..`, `a` and `b` require their own
+branches.
 
-                     case x of
-                       Just 2  -> ...
-                       Just 3  -> ...
-                       Just y  -> ...
-                       Nothing -> ...
-
-               And the "suitability" stuff *here* refers to how we determine the LHS of the alternatives at our current
-               row/column depth.
-
-               We only ever pull from *subsequent* rows *in the same column*.
-
-    -} 
-    
-    -- assumes that "all the columns to the left of the one 'lower' came from are subsumed by the columns to the left of 'higher' in its row"
-    isSuitable :: Pattern -- 'higher'
-               -> Pattern -- 'lower'
-               -> Bool
-    isSuitable (LitP l) (LitP l') = l /= l'
-    isSuitable LitP{} other = isIrrefutablePat other
-    isSuitable higher lower = lower `subsumesP` higher
-                              && not (higher `subsumesP` lower) -- this just excludes unreachable patterns. if we have 'a -> ...' then '_ -> ...' is unreachable
-
-    {- FIXME: This is wrong. It ignores constructors which aren't the same constructor as the pattern we're passing in.
-              Maybe we really do need access to the datatype declarations?
-
-              Or, actually, I think that's not true.
-    -}
-    findSuitable :: Pattern -> Reader Cxt [Pattern]
-    findSuitable pat = do
-      s <- ask
-      let (r,c)  = s ^. pos
-          mtrx   = s ^. patMatrix
-          cPath  = V.fromList $ s ^. path
-          lr     = nrows mtrx - 1 -- row index of last row
-      res <- for [(r+1)..lr] $ \rIx -> do
-             let row = getRow rIx mtrx
-                 preconditions = V.slice 0 c row
-                 satisfiesPreconditions = V.and $ V.zipWith satisfies (V.slice 0 c cPath) preconditions
-                 candidate = row V.! c
-                 isSuitableCandidate = isSuitable pat candidate
-             if isSuitableCandidate && satisfiesPreconditions
-               then pure $ Just candidate
-               else pure Nothing
-      pure $ catMaybes res
+Wildcards require special handling. In the following example:
 
 
-    go :: Reader Cxt Skeleton
-    go = do
-      s <- ask
-      let (r,c)  = s ^. pos
-          mtrx   = s ^. patMatrix
-          scruts = s ^. scrutineeIndex
-          cPath  = s ^. path
-      case safeGet r c mtrx of
-        Nothing -> do
-          -- TODO: Instead of returning a hole here, we should *immediately* try to fill it
-          --       *OR* split the hole and recurse on the split.
-          --       (Eventually the notion of a Hole should drop out entirely and
-          --       this function will dynamically create the result in one go)
-          pure $ Hole cPath
-        Just pat -> do
-          let thisColScrut =  scruts V.! c -- FIXME: This isn't going to work unless we add additional scrutinees
-                                           --        which we have to do in the "Nothing" branch (which isn't really done yet)
-          thisColRaw <- (pat:) <$> findSuitable pat
-          let thisColConstrained = mkConstraint thisColScrut <$> thisColRaw
-          thisCol <- for thisColConstrained $ \(cstrnt,patrn) ->
-                       local (over path (<> [cstrnt]) . over (pos . _2) (+ 1)) $ (patrn,) <$> go
+A := [ M(0,0) ~ 1, M(0,1) @ C(0,0) ~ a]
+B := [ M(0,0) ~ _, M(0,1) @ C(0,0) ~ b]
+C := [ M(0,0) ~ c, M(0,1) ~ I(1)]
+
+The B branch has a wildcard constraint at (0,0) and the C branch has a `c` Variable constraint at the same position.
+
+If we consider only the sets of "covered inputs", `_` and `c` cover the same sets In the B branch, nothing is bound at (0,0),
+so we can justifiably collapse B & C into a tree where we only mention `c`:
+
+|- M(0,0) ~ c
+  |-? [M(0,1) @ C(0,0) ~ b]
+  |-? [M(0,1) ~ I(1)]
+
+The full expansion of this example prior to tree merging:
+
+M(0,0) ~ 1
+  |- M(0,1) @ C(0,0) ~ a
+    |- A
+M(0,0) ~ c
+  |- M(0,1) @ C(0,0) ~ b
+    |- B
+  | M(0,1) ~ I(1)
+    |- C
+
+The `c`/`_` overlap in this example is a special case of a general principle we can use for grouping and collapsing paths:
+
+I: Two constraints with *equivalent coverage* can be collapsed into a tree with a common root.
+  I.1: If there is exactly one variable constraint at the position we are examining (e.g. if all but one of the
+       constraints are wildcards), we choose the variable constraint.
+  I.2: If there are multiple variable constraints, we choose an arbitrary variable. During result insertion, we can keep track of
+       results which conform with the path *up to renaming* and re-bind the variables with a `let` expression outside of
+       the result.
+  I.3: All variables have equivalent coverage with each other (with respect to the same position.)
+  I.4: All wildcards have equivalent coverage with each other *and* with all variable constriants.
+  I.5: Two literals have equivalent coverage if the literal expression they contain are equivalent
+  I.6: Bare constructor constraints have equivalent coverage if they refer to the same constructor.
+  I.7: A set of positional constraints for a constructor's arguments has equivalent coverage with respect to
+       another constraint or set of constraints if:
+         I.7.a: (Single constraint): All of the positional constraints in the set are wildcards and the second constraint is a
+                bare constructor constraint with the same index.
+         I.7.b: (Constraint set): Every member of the second constraint set shares an index with the index of the first set
+                AND each member of the first constraint set has equivalent coverage to the corresponding member in the second
+                set (where members correspond if they occur in the same constructor argument position)
+                - N.B. this is just a generalization of I.1-I.7.a and is strictly redundant
 
 
-          pure $ CaseOf thisColScrut thisCol
-
-eliminateBadPatterns :: Expression -> PlutusContext Expression
-eliminateBadPatterns = \case
-  CaseE _resTy scrut alts
-    | isTupleExp scrut && any isBadNestedPat (getPat <$> alts) -> do
-          let altResults  = mkResultDictionary alts
-          scrutinees <- note "scrutinees not a literal tuple" $ crackTupleExp scrut
-          pmatrix   <- note "can't make a pattern matrix" $ mkPatternMatrix alts
-          scrutVars <- traverse (\_ -> next >>= \i -> pure (Ident $ "$V$" <> T.pack (show i),i)) scrutinees
-          let scrutDict = M.fromList $ zip scrutVars scrutinees
-          let cxt = Cxt scrutDict (V.fromList scrutVars) altResults (0,0) pmatrix []
-              skeleton = runReader expand cxt
-          {- TODO: If I'm right, then we won't really need "fillholes" - we'll be able to dynamically generate a
-                   skeleton which is isomorphic to the nested case expression we're trying to build, and then will
-                   just have to clean up the scrutinee variables & ensure that we insert all of the necessary
-                   type annotations for the case expresion we're constructing.
-          -}
-          pure $ fillHoles skeleton
-  other -> pure other
- where
-   fillHoles = undefined
+-}
