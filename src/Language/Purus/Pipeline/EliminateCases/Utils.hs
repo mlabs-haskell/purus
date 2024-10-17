@@ -9,7 +9,7 @@ import Data.Text qualified as T
 
 import Data.Bifunctor (second)
 import Data.Foldable (foldl', foldrM)
-import Data.List (sortOn, find)
+import Data.List (sortOn, find, partition)
 import Data.Maybe (fromJust)
 import Data.Traversable (for)
 
@@ -124,6 +124,7 @@ import Data.Vector (Vector)
 import Data.Vector qualified as V
 import Control.Monad.Reader
 import Data.Maybe (catMaybes)
+import Data.Tree
 
 -- TODO: Delete this eventually, just want it now to sketch things
 type  Pattern = Pat WithoutObjects Ty (Exp WithoutObjects Ty) (Var (BVar Ty) (FVar Ty))
@@ -313,6 +314,12 @@ data ConstraintPattern
 -}
 data ResultConstraint = ResultConstraint Position ConstraintPattern
 
+getResultConstraintPos :: ResultConstraint -> Position
+getResultConstraintPos (ResultConstraint pos _) = pos
+
+getResultConstraintPat :: ResultConstraint -> ConstraintPattern
+getResultConstraintPat (ResultConstraint _ pat) = pat
+
 newtype ResultRowIx = ResultRowIx {getResultRow :: Int} deriving (Show, Eq, Ord)
 newtype Results = Results {getResults :: Map ResultRowIx [ResultConstraint] }
 
@@ -328,6 +335,124 @@ note :: String -> Maybe a -> PlutusContext a
 note str Nothing = throwError str
 note _ (Just x) = pure x
 
+
+isIrrefutable :: ConstraintGroup -> Bool
+isIrrefutable (SimpleConstraint (ResultConstraint _ p))= case p of
+  WildC -> True
+  VarC{} -> True
+  _ -> False
+isIrrefutable _ = False
+{- Checks whether two constraints have equivalent coverage. This assumes that each constraint occurs in the same
+   *position*.
+
+-}
+equivalentCoverage :: ConstraintPattern -> ConstraintPattern -> Bool
+equivalentCoverage c1 c2 = case (c1,c2) of
+  (VarC _ _ _, VarC _ _ _) -> True
+  (VarC _ _ _, WildC)      -> True
+  (WildC, VarC _ _ _)      -> True
+  (WildC, WildC)           -> True
+  (VarC _ _ _, _)          -> False
+  (_, VarC _ _ _)          -> False
+  (WildC, _)               -> False
+  (_, WildC)               -> False 
+  (LitC l1, LitC l2)       -> l1 == l2
+  (_, LitC _)              -> False
+  (LitC _, _)              -> False
+  (BareConstructorIndex _ i1, BareConstructorIndex _ i2) -> i1 == i2
+
+equivalentCoverageGroup :: ConstraintGroup -> ConstraintGroup -> Bool
+equivalentCoverageGroup (SimpleConstraint rc1) (SimpleConstraint rc2)
+  = equivalentCoverage (getResultConstraintPat rc1) (getResultConstraintPat rc2)
+equivalentCoverageGroup (SimpleConstraint (ResultConstraint pos1 (BareConstructorIndex _ cix1))) (CtorConstraints pos2 _ cix2 args)
+  = pos1 == pos2 && cix1 == cix2 && all isIrrefutable (M.elems args)
+equivalentCoverageGroup (CtorConstraints pos2 _ cix2 args)  (SimpleConstraint (ResultConstraint pos1 (BareConstructorIndex _ cix1)))
+  = pos1 == pos2 && cix1 == cix2 && all isIrrefutable (M.elems args)
+equivalentCoverageGroup (CtorConstraints pos1 _ cix1 args1) (CtorConstraints pos2 _ cix2 args2)
+  = pos1 == pos2 && cix1 == cix2 && and (zipWith equivalentCoverageGroup (M.elems args1) (M.elems args2))
+equivalentCoverageGroup _ _ = False
+
+
+
+{- Description of "collapse" process:
+
+We start with a [[ResultConstraint]] input. The outer and inner lists are ordered such that:
+  - Outer List: Follows the order of alternatives
+  - Inner List: Left->Right order of scrutinees
+
+We can view this list as representing the set of possible paths to each result (i.e. the thing to the RHS of -> in a case alternative)
+
+Very generally, the process here involes two steps:
+
+Step 1) Grouping: The goal is to produce a forest by merging nodes with equivalent coverage in the same position. (See note
+                  below for an explanation of what "equivalent coverage" means here.)
+
+Step 2) Tree merging: The goal is to construct a single tree from the output of Step 1 by recursively inserting subsequent
+        (i.e. occurs "later") forests into positions in "prior" forests where they fit. (Where "fit" means: The path up to
+        the point where insertion occurs is consistent with constraint at the root of the insertion candidate)
+
+
+Step 2 is almost trivial and isn't worth explicating in detail here.
+
+For Step 1, grouping should proceed as follows:
+  i. We find all constraints at the current position.
+    - Technically the matrix doesn't matter anymore here so "position" just refers to the column
+    - We probably have to reconstruct positional constraints inside CTors for each row (it's possible to not do that but it makes the implementation much more annoying)
+  ii. We group the constraints by equivalence (w/r/t "sets of covered inputs"), keeping track of which
+      "remainder" belongs to each group (i.e. which Results' "rest of the path" belong to the group)
+  iii. We choose (or construct) a single representation of the equivalence group according to the criteria outlined below
+       and insert that as the root of a new subtree
+  iv. We recurse over the the "rest of the paths" indexed to each new subtree
+-}
+
+data ConstraintGroup
+  = SimpleConstraint ResultConstraint
+  | CtorConstraints Position (Qualified (ProperName 'TypeName)) CtorIx (Map CtorArgPos ConstraintGroup) -- I think?
+
+isVarC :: ConstraintPattern -> Bool
+isVarC = \case
+  VarC _ _ _ -> True
+  _ -> False
+
+collapse :: (Int,Int) -> [[ResultConstraint]] -> [Tree ConstraintGroup] -- 'Nothing' means 'Done' and is there mainly to keep the fn total
+collapse pos [] = []
+collapse pos@(r,c) paths = go <$> groups
+  where
+    groups :: [(ConstraintGroup,[[ResultConstraint]])]
+    groups = combine $ splitResults <$> paths
+      where
+        splitResults :: [ResultConstraint] -> (ConstraintGroup, [ResultConstraint])
+        splitResults path = undefined
+          where
+            (here, rest) = partition (\x -> constraintMatrixPosition x == pos) path
+            thisGroup [] = error "empty constraint group"
+            thisGroup [x] = case x of
+              ResultConstraint xPos innerC -> case innerC of
+                WildC -> SimpleConstraint x
+                VarC{} -> SimpleConstraint x
+                LitC{} -> SimpleConstraint x
+                BareConstructorIndex{} -> SimpleConstraint x
+            thisGroup xs = mkCtorConstraints xs -- this is annoying to implement but not conceptually hard, do it later
+
+            mkCtorConstraints :: [ResultConstraint] -> ConstraintGroup
+            mkCtorConstraints = undefined
+
+        -- super ugly  algorithm but should work
+        combine :: [(ConstraintGroup, [ResultConstraint])] -> [(ConstraintGroup, [[ResultConstraint]])]
+        combine rg = collapseGroups <$>  goCombine rg
+          where
+            goCombine :: [(ConstraintGroup, [ResultConstraint])]
+                      -> [([ConstraintGroup],[[ResultConstraint]])]
+            goCombine [] = []
+            goCombine ((cg,rs):rest) =
+              let (here,remainder) = partition (equivalentCoverageGroup cg . fst) rest
+                  (hereGroups, hereConstraints) = unzip here
+                  acc = (cg:hereGroups,rs : hereConstraints)
+              in acc : goCombine remainder
+
+
+    go :: (ConstraintGroup, [[ResultConstraint]]) -> Tree ConstraintGroup
+    go (cg,inner) = Node (mkGroupConstraint cg) $ collapse (r,c + 1) inner
 
 
 {- General outline of procedure:
