@@ -10,7 +10,7 @@ import Data.Text qualified as T
 import Data.Bifunctor (second)
 import Data.Foldable (foldl', foldrM)
 import Data.List (sortOn, find, partition)
-import Data.Maybe (fromJust)
+import Data.Maybe (fromJust, fromMaybe)
 import Data.Traversable (for)
 
 import Language.PureScript.Constants.Prim qualified as C
@@ -130,7 +130,7 @@ import Data.Tree
 type  Pattern = Pat WithoutObjects Ty (Exp WithoutObjects Ty) (Var (BVar Ty) (FVar Ty))
 type Expression = Exp WithoutObjects Ty (Vars Ty)
 -- If you look at the types, this can only represent "true literals", i.e., is un-nested 
-type Literal = Lit WithoutObjects Pattern 
+type Literal = Lit WithoutObjects Pattern
 
 {- We need to handle things differently in a case where we have a tuple pattern
    vs where we just have singular patterns.
@@ -199,9 +199,6 @@ mkResults datatypes mtx = Results $ go (nrows mtx - 1)
 
          where
            here = ConstructorArgPos mtxPos _ctorIx argPos
-
-
-      
 
 tupleNumber :: Qualified (ProperName 'TypeName) -> Maybe Int
 tupleNumber = \case
@@ -309,7 +306,7 @@ data ConstraintPattern
   | WildC
   | LitC Literal
   | BareConstructorIndex (Qualified (ProperName 'TypeName)) CtorIx
-  
+
 {- A constraint on a result. 
 -}
 data ResultConstraint = ResultConstraint Position ConstraintPattern
@@ -335,7 +332,6 @@ note :: String -> Maybe a -> PlutusContext a
 note str Nothing = throwError str
 note _ (Just x) = pure x
 
-
 isIrrefutable :: ConstraintGroup -> Bool
 isIrrefutable (SimpleConstraint (ResultConstraint _ p))= case p of
   WildC -> True
@@ -355,7 +351,7 @@ equivalentCoverage c1 c2 = case (c1,c2) of
   (VarC _ _ _, _)          -> False
   (_, VarC _ _ _)          -> False
   (WildC, _)               -> False
-  (_, WildC)               -> False 
+  (_, WildC)               -> False
   (LitC l1, LitC l2)       -> l1 == l2
   (_, LitC _)              -> False
   (LitC _, _)              -> False
@@ -405,16 +401,42 @@ For Step 1, grouping should proceed as follows:
   iv. We recurse over the the "rest of the paths" indexed to each new subtree
 -}
 
+-- utility datatype to avoid tuples, see note at end of this module
+data SortConstraint
+  = SortConstraint {
+      varCs  :: ([ConstraintGroup],[ResultConstraint]),
+      wildCs :: ([ConstraintGroup],[ResultConstraint]),
+      litCs  :: ([ConstraintGroup],[ResultConstraint]),
+      conCs  :: ([ConstraintGroup],[ResultConstraint]) -- we're shoving bare constraints here too
+    }
+
+
 data ConstraintGroup
   = SimpleConstraint ResultConstraint
   | CtorConstraints Position (Qualified (ProperName 'TypeName)) CtorIx (Map CtorArgPos ConstraintGroup) -- I think?
+
+
 
 isVarC :: ConstraintPattern -> Bool
 isVarC = \case
   VarC _ _ _ -> True
   _ -> False
 
-collapse :: (Int,Int) -> [[ResultConstraint]] -> [Tree ConstraintGroup] -- 'Nothing' means 'Done' and is there mainly to keep the fn total
+isVarCGroup :: ConstraintGroup -> Bool
+isVarCGroup (SimpleConstraint (ResultConstraint _ VarC{})) = True
+isVarCGroup _ = False
+
+atDepthCtorIndex :: Position -> CtorIx -> Position -> Bool
+atDepthCtorIndex outerPos cIx = \case
+  ConstructorArgPos outerPos' cIx' _ -> outerPos == outerPos' && cIx == cIx'
+  _ -> False
+
+atDepthArgPos :: Position -> CtorIx -> CtorArgPos -> Position -> Bool
+atDepthArgPos outerPos cIx argPos = \case
+  ConstructorArgPos outerPos' cIx' argPos' -> outerPos == outerPos' && cIx == cIx' && argPos == argPos'
+  _ -> False
+
+collapse :: (Int,Int) -> [[ResultConstraint]] -> [Tree ConstraintGroup]
 collapse pos [] = []
 collapse pos@(r,c) paths = go <$> groups
   where
@@ -425,21 +447,28 @@ collapse pos@(r,c) paths = go <$> groups
         splitResults path = undefined
           where
             (here, rest) = partition (\x -> constraintMatrixPosition x == pos) path
-            thisGroup [] = error "empty constraint group"
+            thisGroup [] = error "empty constraint group in thisGroup"
             thisGroup [x] = case x of
               ResultConstraint xPos innerC -> case innerC of
                 WildC -> SimpleConstraint x
                 VarC{} -> SimpleConstraint x
                 LitC{} -> SimpleConstraint x
                 BareConstructorIndex{} -> SimpleConstraint x
-            thisGroup xs = mkCtorConstraints xs -- this is annoying to implement but not conceptually hard, do it later
+            thisGroup xs = mkCtorConstraints xs
 
+            -- REVIEW: I am not 100% sure that the result constraints will always be ordered the way this function expects them to be.
+            --         May have to do some pre-sorting.
             mkCtorConstraints :: [ResultConstraint] -> ConstraintGroup
-            mkCtorConstraints = undefined
+            mkCtorConstraints (ResultConstraint cPos rc:rest) = case cPos of
+              ConstructorArgPos outerPos cix cArgPos ->
+                let (atSamePos,elsewhere) = partition (\rcX@(ResultConstraint iPos _) -> atDepthCtorIndex outerPos cix iPos) rest
+                in undefined -- TODO finish implementing (REVIEW: Or change this representation?)
+              _ -> error "got something that isn't a ctor constraint in mkCtorConstraints"
+
 
         -- super ugly  algorithm but should work
         combine :: [(ConstraintGroup, [ResultConstraint])] -> [(ConstraintGroup, [[ResultConstraint]])]
-        combine rg = collapseGroups <$>  goCombine rg
+        combine rg = collapseGroups $  goCombine rg
           where
             goCombine :: [(ConstraintGroup, [ResultConstraint])]
                       -> [([ConstraintGroup],[[ResultConstraint]])]
@@ -450,9 +479,48 @@ collapse pos@(r,c) paths = go <$> groups
                   acc = (cg:hereGroups,rs : hereConstraints)
               in acc : goCombine remainder
 
+            collapseGroups :: [([ConstraintGroup],[[ResultConstraint]])] -> [(ConstraintGroup,[[ResultConstraint]])]
+            collapseGroups [] = []
+            collapseGroups ((cgs,res):rest) =
+              let here = compressGroup cgs
+              in (here,res) : collapseGroups rest
+
+            -- Chooses the "representative pattern" for a constraint group
+            {- We expect that members of the group will all be equivalent in coverage here, which means
+               that the only combinations we can run into in the list are:
+                 - Mixtures of Vars and WildCards
+                 - Only *equal* literals
+                 - Only bare constructors
+
+               For vars and wildcards we choose an arbitrary variable (we'll have to rename).
+
+               For all wildcards we choose a wildcard.
+
+               For literals, previous steps should enforce the invariant that they're equal, so we just choose the first one.
+
+            -}
+            compressGroup :: [ConstraintGroup] -> ConstraintGroup
+            compressGroup [] = error "empty constraint set in compressGroup"
+            compressGroup [cg] = cg
+            compressGroup (sc@(SimpleConstraint (ResultConstraint _ VarC{})):_) = sc
+            compressGroup (sc@(SimpleConstraint (ResultConstraint _ WildC)):rest) = fromMaybe sc (find isVarCGroup rest)
+            compressGroup (sc@(SimpleConstraint (ResultConstraint _ LitC{})):_) = sc
+            compressGroup (sc@(SimpleConstraint (ResultConstraint _ BareConstructorIndex{})):_) = sc
+            compressGroup (CtorConstraints position qtn cix fields:rest) =
+              let theseFields :: Map CtorArgPos [ConstraintGroup]
+                  theseFields = pure <$> fields
+                  expandedFields :: Map CtorArgPos [ConstraintGroup]
+                  expandedFields = foldl' (\acc (CtorConstraints _ _ _ args) ->
+                                             foldl' (\allFields (argPos,field) -> M.alter (\case
+                                                            Nothing -> Just [field]
+                                                            Just fs -> Just $ field:fs
+                                                           ) argPos allFields) acc (M.toList args)
+                                             ) theseFields rest
+                  compressedFields = compressGroup <$> expandedFields
+              in CtorConstraints position qtn cix compressedFields
 
     go :: (ConstraintGroup, [[ResultConstraint]]) -> Tree ConstraintGroup
-    go (cg,inner) = Node (mkGroupConstraint cg) $ collapse (r,c + 1) inner
+    go (cg,inner) = Node cg $ collapse (r,c + 1) inner
 
 
 {- General outline of procedure:
@@ -513,6 +581,4 @@ I: Two constraints with *equivalent coverage* can be collapsed into a tree with 
                 AND each member of the first constraint set has equivalent coverage to the corresponding member in the second
                 set (where members correspond if they occur in the same constructor argument position)
                 - N.B. this is just a generalization of I.1-I.7.a and is strictly redundant
-
-
 -}
