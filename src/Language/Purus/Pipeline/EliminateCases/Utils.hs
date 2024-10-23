@@ -143,6 +143,7 @@ mkPatternMatrix alts = fromLists <$> pats
     pats = traverse (crackTuplePat . getPat) alts
 
 
+
 mkResults :: Datatypes Kind Ty -> Matrix Pattern -> Results
 mkResults datatypes mtx = Results $ go (nrows mtx - 1)
   where
@@ -170,7 +171,7 @@ mkResults datatypes mtx = Results $ go (nrows mtx - 1)
           LitP lit -> [ResultConstraint mtxPos (LitC lit)]
           ConP tn cn [] ->
             let ctorIndex :: CtorIx
-                ctorIndex = getCtorIx tn cn -- todo: implement
+                ctorIndex = getCtorIx tn cn
             in [ResultConstraint mtxPos (BareConstructorIndex tn ctorIndex)]
           -- REVIEW: Maybe we should just generate a BareConstructorIndex constraint if all of the arguments are wildcards?
           ConP tn cn ps ->
@@ -258,8 +259,8 @@ A position is either:
 
 -}
 
-newtype CtorArgPos = CtorArgPos Int deriving (Show, Eq)
-newtype CtorIx     = CtorIx Int deriving (Show, Eq)
+newtype CtorArgPos = CtorArgPos Int deriving (Show, Eq, Ord)
+newtype CtorIx     = CtorIx Int deriving (Show, Eq, Ord)
 -- The LHS of a constraint, uniquely identifies the position of a pattern in the pattern matrix
 data Position
   = -- A top-level position in the matrix, (row,column)
@@ -267,7 +268,7 @@ data Position
     -- A constructor argument local-position (index, argument position) indexed to a position in the matrix
     -- (can nest these but the structure of the type should ensure that we always end up with a matrix position root)
   | ConstructorArgPos Position CtorIx CtorArgPos
-  deriving (Show, Eq)
+  deriving (Show, Eq, Ord)
 
 
 -- This gives us the location of the "cell" in the pattern matrix where a
@@ -415,6 +416,77 @@ data ConstraintGroup
   = SimpleConstraint ResultConstraint
   | CtorConstraints Position (Qualified (ProperName 'TypeName)) CtorIx (Map CtorArgPos ConstraintGroup) -- I think?
 
+
+data MatrixOverflow
+  = RowOverflow
+  | ColumnOverflow
+
+safeGetElem :: forall (a :: *). (Int,Int) -> Matrix a -> Either MatrixOverflow a
+safeGetElem (r,c) mtx = case safeGetRow r mtx of
+  Nothing -> Left RowOverflow
+  Just row -> case row V.!? c of
+    Nothing -> Left ColumnOverflow
+    Just x  -> Right x
+
+foldMatrixWithIndex :: forall (a :: *) (b :: *)
+                     . ((Int,Int) -> a -> b -> b) -> b -> Matrix a -> b
+foldMatrixWithIndex f e mtx = go (0,0) e
+  where
+    go :: (Int,Int) -> b -> b
+    go (r,c) b = case safeGetElem (r,c) mtx of
+      Left ColumnOverflow -> go (r + 1,0) b
+      Left RowOverflow    -> b
+      Right x -> f (r,c) x $ go (r,c + 1) b 
+
+
+mkSimpleGroup :: Position -> ConstraintPattern -> ConstraintGroup
+mkSimpleGroup pos pat = SimpleConstraint (ResultConstraint pos pat)
+
+mkConstraintGroups :: Datatypes Kind Ty -> Matrix Pattern -> Map Position ConstraintGroup
+mkConstraintGroups datatypes = foldMatrixWithIndex go M.empty
+  where
+    getCtorIx :: Qualified (ProperName 'TypeName)
+                  -> Qualified (ProperName 'ConstructorName)
+                  -> CtorIx
+    getCtorIx tn cn = fst
+                          . fromJust
+                          $ find (\x -> snd x == (properToIdent <$> cn))
+                                 (zip (CtorIx <$> [0..])
+                                      $ view cdCtorName <$> getAllConstructorDecls tn datatypes)
+
+    go :: (Int, Int) -> Pattern -> Map Position ConstraintGroup -> Map Position ConstraintGroup
+    go pos pat acc = case pat of
+      VarP a b c -> M.insert (M pos) (mkSimpleGroup (M pos) (VarC a b c)) acc
+      WildP      -> M.insert (M pos) (mkSimpleGroup (M pos) WildC) acc
+      LitP lit   -> M.insert (M pos) (mkSimpleGroup (M pos) (LitC lit)) acc
+      ConP tn cn inner ->
+        let cix = getCtorIx tn cn
+            here = M pos
+            argsIndexed = zip (CtorArgPos <$> [0..]) inner
+            ctors :: [(CtorArgPos,ConstraintGroup)]
+            ctors = uncurry (goCtorArg cix here) <$> argsIndexed
+            acc'  = foldl' insertAllComponents acc (snd <$> ctors)
+            topLevel =   CtorConstraints here tn  cix $ M.fromList ctors
+        in M.insert here topLevel acc'
+
+    goCtorArg :: CtorIx -> Position -> CtorArgPos -> Pattern -> (CtorArgPos, ConstraintGroup)
+    goCtorArg cIx mPos argPos = \case
+      VarP a b c -> (argPos, mkSimpleGroup here (VarC a b c))
+      WildP      -> (argPos, mkSimpleGroup here WildC)
+      LitP lit   -> (argPos, mkSimpleGroup here (LitC lit))
+      ConP tn cn inner ->
+        let innerCix = getCtorIx tn cn
+            argsIndexed = zip (CtorArgPos <$> [0..]) inner
+            ctors = uncurry (goCtorArg innerCix here) <$> argsIndexed
+        in (argPos, CtorConstraints here tn innerCix $ M.fromList ctors)
+     where
+       here = ConstructorArgPos mPos cIx argPos
+
+    insertAllComponents :: Map Position ConstraintGroup -> ConstraintGroup -> Map Position ConstraintGroup
+    insertAllComponents acc = \case
+      sc@(SimpleConstraint (ResultConstraint pos _)) -> M.insert pos sc acc
+      cg@(CtorConstraints pos _ _  inner) -> M.insert pos cg
+                                             $  foldl' insertAllComponents acc (M.elems inner)
 
 
 isVarC :: ConstraintPattern -> Bool
