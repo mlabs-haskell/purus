@@ -1,129 +1,56 @@
 {-# LANGUAGE TypeApplications, TemplateHaskell #-}
-module Language.Purus.Pipeline.EliminateCases.Utils where
+module Language.Purus.Pipeline.EliminateCases.Utils (collapse, mkResults) where
 
 import Prelude
 
-import Data.Map qualified as M
 
 import Data.Text qualified as T
 
-import Data.Bifunctor (second)
-import Data.Foldable (foldl', foldrM)
-import Data.List (sortOn, find, partition)
+import Data.List (find, partition)
 import Data.Maybe (fromJust, fromMaybe)
 import Data.Traversable (for)
 
-import Language.PureScript.Constants.Prim qualified as C
-import Language.PureScript.Constants.Purus qualified as C
 import Language.PureScript.CoreFn.Module (
-  CtorDecl (..),
   Datatypes,
-  cdCtorFields,
   cdCtorName,
-  dDataArgs,
-  dDataCtors,
-  getAllConstructorDecls,
-  getConstructorIndexAndDecl,
-  lookupCtorType,
-  lookupDataDecl,
-  tyDict, properToIdent,
- )
-import Language.PureScript.CoreFn.TypeLike (
-  TypeLike (
-    applyType,
-    funTy,
-    instTy,
-    quantify,
-    replaceAllTypeVars,
-    splitFunTyParts
-  ),
-  getAllInstantiations,
-  getInstantiations,
-  safeFunArgTypes,
+  getAllConstructorDecls, properToIdent,
  )
 import Language.PureScript.Names (
   Ident (..),
   ProperName (..),
   ProperNameType (..),
-  Qualified (..),
-  runIdent,
-  showQualified, ModuleName (..), QualifiedBy (..),
- )
-import Language.PureScript.Types (
-  TypeVarVisibility (TypeVarVisible),
+  Qualified (..), ModuleName (..), QualifiedBy (..),
  )
 
-import Language.Purus.Debug (doTrace, doTraceM, prettify)
 import Language.Purus.IR (
   Alt (..),
-  BVar (BVar),
-  BindE (..),
   Exp (..),
   FVar (FVar),
   Lit (..),
   Pat (..),
   Ty (..),
-  expTy,
-  expTy',
   getPat,
-  unsafeAnalyzeApp,
-  pattern (:~>), analyzeApp, Kind,
+  pattern (:~>), analyzeApp, Kind, BVar,
  )
-import Language.Purus.IR qualified as IR
 import Language.Purus.IR.Utils (
   Vars,
   WithoutObjects,
-  fromExp,
-  isConstructor,
-  toExp,
- )
-import Language.Purus.Pipeline.DesugarCore (
-  matchVarLamAbs,
- )
-import Language.Purus.Pipeline.GenerateDatatypes.Utils (
-  analyzeTyApp,
-  foldr1Err,
-  freshName,
-  funResultTy,
-  getDestructorTy,
-  prettyQI,
-  prettyQPN,
  )
 import Language.Purus.Pipeline.Monad (
-  MonadCounter (next),
   PlutusContext,
  )
-import Language.Purus.Pretty.Common (prettyStr)
 
 import Bound (Var (..))
-import Bound.Scope (
-  Scope,
-  abstract,
-  instantiate,
-  mapBound,
-  toScope,
- )
 import Control.Lens (
-  at,
   view,
-  (^.),
-  _2,
  )
-import Control.Lens.Combinators (transform, over)
-import Control.Lens.TH (makeLenses)
 import Control.Monad.Except (
   MonadError (throwError),
  )
 
 import Data.Matrix
 import Text.Read (readMaybe)
-import Data.Map (Map)
-import Data.Void (Void)
-import Control.Monad.State
-import Data.Vector (Vector)
 import Data.Vector qualified as V
-import Control.Monad.Reader
-import Data.Maybe (catMaybes)
 import Data.Tree
 
 -- TODO: Delete this eventually, just want it now to sketch things
@@ -132,25 +59,71 @@ type Expression = Exp WithoutObjects Ty (Vars Ty)
 -- If you look at the types, this can only represent "true literals", i.e., is un-nested 
 type Literal = Lit WithoutObjects Pattern
 
-{- We need to handle things differently in a case where we have a tuple pattern
-   vs where we just have singular patterns.
+{-
 
+A position is either:
+ - An explicit location in the matrix
+ - A constructor position (index & arg position) at a position
 -}
+
+newtype CtorArgPos = CtorArgPos Int deriving (Show, Eq, Ord)
+newtype CtorIx     = CtorIx Int deriving (Show, Eq, Ord)
+-- The LHS of a constraint, uniquely identifies the position of a pattern in the pattern matrix
+data Position
+  = -- The index of the scrutinee in the list of scrutinees
+    ScrutineeRef Int
+    -- A constructor argument local-position (index, argument position) indexed to a position in the matrix
+    -- (can nest these but the structure of the type should ensure that we always end up with a matrix position root)
+  | ConstructorArgPos Position CtorIx CtorArgPos
+  deriving (Show, Eq)
+
+instance Ord Position where
+  compare (ScrutineeRef p1) (ScrutineeRef p2) = compare p1 p2
+  compare (ScrutineeRef _) _      = LT
+  compare (ConstructorArgPos p1 cix1 argpos1) (ConstructorArgPos p2 cix2 argpos2) = case compare p1 p2 of
+    EQ -> case compare cix1 cix2 of
+      EQ -> compare argpos1 argpos2
+      other -> other
+    other -> other
+  compare ConstructorArgPos{} ScrutineeRef{} = GT
+
+{- With the new indexing scheme, constructor patterns are superfluous on the RHS side of a constraint. The only things the RHS of a constraint can contain are:
+     1. A Variable Pattern
+     2. A wildcard pattern
+     3. A Literal pattern
+
+   The "constructor part" of a pattern constraint goes on the LHS because it tells us something about the position/location in the matrix
+   (which seems trivial but makes reasoning about this a LOT easier).
+
+   Well, mostly. That scheme doesn't work for bare constructors, e.g. `Nothing. For bare constructors, we
+   use a RHS constraint that indicates the constructor index, so really:
+     4. A bare constructor index
+-}
+
+data ConstraintPattern
+  = VarC Position Ident Int Ty
+  | WildC Position
+  | LitC Position Literal
+  | Constructor Position (Qualified (ProperName 'TypeName)) CtorIx [ConstraintPattern]
+
+newtype ResultRowIx = ResultRowIx {getResultRow :: Int} deriving (Show, Eq, Ord)
+
 mkPatternMatrix :: [Alt WithoutObjects Ty (Exp WithoutObjects Ty) (Vars Ty)]
                 -> Maybe (Matrix Pattern)
 mkPatternMatrix alts = fromLists <$> pats
   where
     pats = traverse (crackTuplePat . getPat) alts
 
+mapWithIndex :: (Int -> a -> b) -> [a] -> [b]
+mapWithIndex f xs = zipWith f [0..] xs
 
-
-mkResults :: Datatypes Kind Ty -> Matrix Pattern -> Results
-mkResults datatypes mtx = Results $ go (nrows mtx - 1)
+mkResults :: Datatypes Kind Ty -> Matrix Pattern -> [[ConstraintPattern]]
+mkResults datatypes mtx = map go [0..numRows]
   where
-    go :: Int -> Map ResultRowIx [ResultConstraint]
-    go rowIx
-      | rowIx < 0 = M.empty
-      | otherwise = M.singleton (ResultRowIx rowIx) cpatRow <> go (rowIx - 1)
+    numRows = nrows mtx - 1
+
+    go :: Int -> [ConstraintPattern]
+    go rowIx =  cpatRow
       where
         getCtorIx :: Qualified (ProperName 'TypeName)
                   -> Qualified (ProperName 'ConstructorName)
@@ -161,45 +134,25 @@ mkResults datatypes mtx = Results $ go (nrows mtx - 1)
                                  (zip (CtorIx <$> [0..])
                                       $ view cdCtorName <$> getAllConstructorDecls tn datatypes)
 
-        thisRow =  zip [0..] . V.toList $ getRow rowIx mtx
-        cpatRow = concatMap toConstraints thisRow
-        toConstraints :: (Int,Pattern)
-                      ->  [ResultConstraint]
-        toConstraints (col,pat) = case pat of
-          VarP nm indx ty -> [ResultConstraint mtxPos (VarC nm indx ty)]
-          WildP -> [ResultConstraint mtxPos WildC]
-          LitP lit -> [ResultConstraint mtxPos (LitC lit)]
-          ConP tn cn [] ->
-            let ctorIndex :: CtorIx
-                ctorIndex = getCtorIx tn cn
-            in [ResultConstraint mtxPos (BareConstructorIndex tn ctorIndex)]
-          -- REVIEW: Maybe we should just generate a BareConstructorIndex constraint if all of the arguments are wildcards?
-          ConP tn cn ps ->
-            let ctorIndex :: CtorIx
-                ctorIndex = getCtorIx tn cn
-            in concatMap (goNested mtxPos ctorIndex) $ zip (CtorArgPos  <$> [0..]) ps
-         where
-           mtxPos = M (rowIx,col)
-        -- N.b. there's probably a better way to write this
-        goNested :: Position -- "outer" position in the matrix
-                 -> CtorIx  -- index of the constructor we're looking at
-                 -> (CtorArgPos, Pattern) -- position of the argument in the pattern list
-                 -> [ResultConstraint]
-        goNested mtxPos _ctorIx (argPos,pat) = case pat of
-          VarP nm indx ty -> [ResultConstraint here (VarC nm indx ty)]
-          WildP -> [ResultConstraint here WildC]
-          LitP lit -> [ResultConstraint here (LitC lit)]
-          ConP tn cn [] ->
-            let ctorIndex :: CtorIx
-                ctorIndex = getCtorIx tn cn
-            in [ResultConstraint here (BareConstructorIndex tn ctorIndex)]
-          ConP tn cn ps ->
-            let ctorIndex :: CtorIx
-                ctorIndex = getCtorIx tn cn
-            in concatMap (goNested here ctorIndex) $ zip (CtorArgPos <$> [0..]) ps
+        thisRow =  V.toList $ getRow rowIx mtx
 
-         where
-           here = ConstructorArgPos mtxPos _ctorIx argPos
+        cpatRow = mapWithIndex (\i x -> toConstraint (ScrutineeRef i) x) thisRow
+
+        toConstraint :: Position
+                      -> Pattern
+                      -> ConstraintPattern
+        toConstraint pos pat = case pat of
+          VarP nm indx ty -> VarC pos nm indx ty
+          WildP ->  WildC pos
+          LitP lit -> LitC pos lit
+          ConP tn cn ps ->
+            let ctorIndex :: CtorIx
+                ctorIndex = getCtorIx tn cn
+                ps' = mapWithIndex (\i x ->
+                        let pos' = ConstructorArgPos pos ctorIndex (CtorArgPos i)
+                        in toConstraint pos' x
+                        ) ps
+            in Constructor pos tn ctorIndex ps'
 
 tupleNumber :: Qualified (ProperName 'TypeName) -> Maybe Int
 tupleNumber = \case
@@ -248,81 +201,6 @@ isBadNestedPat = \case
   ConP _ _ ps -> all isIrrefutablePat ps
   _           -> False
 
-
-{-
-
-A position is either:
-
- - An explicit location in the matrix
- - A constructor position (index & arg position) at a position 
-
-
--}
-
-newtype CtorArgPos = CtorArgPos Int deriving (Show, Eq, Ord)
-newtype CtorIx     = CtorIx Int deriving (Show, Eq, Ord)
--- The LHS of a constraint, uniquely identifies the position of a pattern in the pattern matrix
-data Position
-  = -- A top-level position in the matrix, (row,column)
-    M (Int,Int)
-    -- A constructor argument local-position (index, argument position) indexed to a position in the matrix
-    -- (can nest these but the structure of the type should ensure that we always end up with a matrix position root)
-  | ConstructorArgPos Position CtorIx CtorArgPos
-  deriving (Show, Eq, Ord)
-
-
--- This gives us the location of the "cell" in the pattern matrix where a
--- constraint applies. We need something like this because when we "collapse" the
--- set of paths to a result into a tree, we need *all* of the constraints that pertain to a cell
-matrixPosition :: Position -> (Int,Int)
-matrixPosition = \case
-  M pos -> pos
-  ConstructorArgPos inner _ _ -> matrixPosition inner
-
-constraintMatrixPosition :: ResultConstraint -> (Int,Int)
-constraintMatrixPosition (ResultConstraint pos _) = matrixPosition pos
-
-getRelevantConstraintsWithResults :: (Int,Int) -> [[ResultConstraint]] -> [[ResultConstraint]]
-getRelevantConstraintsWithResults pos rows = filter (\x -> constraintMatrixPosition x == pos) <$> rows
-
-
-
-
-
-{- With the new indexing scheme, constructor patterns are superfluous on the RHS side of a constraint. The only things the RHS of a constraint can contain are:
-     1. A Variable Pattern
-     2. A wildcard pattern
-     3. A Literal pattern
-
-   The "constructor part" of a pattern constraint goes on the LHS because it tells us something about the position/location in the matrix
-   (which seems trivial but makes reasoning about this a LOT easier).
-
-   Well, mostly. That scheme doesn't work for bare constructors, e.g. `Nothing. For bare constructors, we
-   use a RHS constraint that indicates the constructor index, so really:
-     4. A bare constructor index 
--}
-
-data ConstraintPattern
-  = VarC Ident Int Ty -- we'll ignore the type but will keep it around so that we can reconstruct the expression without having to re-deduce types 
-  | WildC
-  | LitC Literal
-  | BareConstructorIndex (Qualified (ProperName 'TypeName)) CtorIx
-
-{- A constraint on a result. 
--}
-data ResultConstraint = ResultConstraint Position ConstraintPattern
-
-getResultConstraintPos :: ResultConstraint -> Position
-getResultConstraintPos (ResultConstraint pos _) = pos
-
-getResultConstraintPat :: ResultConstraint -> ConstraintPattern
-getResultConstraintPat (ResultConstraint _ pat) = pat
-
-newtype ResultRowIx = ResultRowIx {getResultRow :: Int} deriving (Show, Eq, Ord)
-newtype Results = Results {getResults :: Map ResultRowIx [ResultConstraint] }
-
-
-
 needsTransform :: Expression -> Bool
 needsTransform = \case
   CaseE _resTy scrut alts -> isTupleExp scrut
@@ -333,41 +211,24 @@ note :: String -> Maybe a -> PlutusContext a
 note str Nothing = throwError str
 note _ (Just x) = pure x
 
-isIrrefutable :: ConstraintGroup -> Bool
-isIrrefutable (SimpleConstraint (ResultConstraint _ p))= case p of
-  WildC -> True
-  VarC{} -> True
-  _ -> False
-isIrrefutable _ = False
 {- Checks whether two constraints have equivalent coverage. This assumes that each constraint occurs in the same
-   *position*.
-
+   *position* and does not check positional equality.
 -}
 equivalentCoverage :: ConstraintPattern -> ConstraintPattern -> Bool
 equivalentCoverage c1 c2 = case (c1,c2) of
-  (VarC _ _ _, VarC _ _ _) -> True
-  (VarC _ _ _, WildC)      -> True
-  (WildC, VarC _ _ _)      -> True
-  (WildC, WildC)           -> True
-  (VarC _ _ _, _)          -> False
-  (_, VarC _ _ _)          -> False
-  (WildC, _)               -> False
-  (_, WildC)               -> False
-  (LitC l1, LitC l2)       -> l1 == l2
-  (_, LitC _)              -> False
-  (LitC _, _)              -> False
-  (BareConstructorIndex _ i1, BareConstructorIndex _ i2) -> i1 == i2
-
-equivalentCoverageGroup :: ConstraintGroup -> ConstraintGroup -> Bool
-equivalentCoverageGroup (SimpleConstraint rc1) (SimpleConstraint rc2)
-  = equivalentCoverage (getResultConstraintPat rc1) (getResultConstraintPat rc2)
-equivalentCoverageGroup (SimpleConstraint (ResultConstraint pos1 (BareConstructorIndex _ cix1))) (CtorConstraints pos2 _ cix2 args)
-  = pos1 == pos2 && cix1 == cix2 && all isIrrefutable (M.elems args)
-equivalentCoverageGroup (CtorConstraints pos2 _ cix2 args)  (SimpleConstraint (ResultConstraint pos1 (BareConstructorIndex _ cix1)))
-  = pos1 == pos2 && cix1 == cix2 && all isIrrefutable (M.elems args)
-equivalentCoverageGroup (CtorConstraints pos1 _ cix1 args1) (CtorConstraints pos2 _ cix2 args2)
-  = pos1 == pos2 && cix1 == cix2 && and (zipWith equivalentCoverageGroup (M.elems args1) (M.elems args2))
-equivalentCoverageGroup _ _ = False
+  (VarC{}, VarC{})       -> True
+  (VarC{}, WildC{})      -> True
+  (WildC{}, VarC{})      -> True
+  (WildC{}, WildC{})     -> True
+  (VarC{}, _)            -> False
+  (_, VarC{})            -> False
+  (WildC{}, _)           -> False
+  (_, WildC{})           -> False
+  (LitC _ l1, LitC _ l2) -> l1 == l2
+  (_, LitC _ _)          -> False
+  (LitC _ _, _)          -> False
+  (Constructor _ tn1 cix1 fs1, Constructor _ tn2 cix2 fs2) ->
+    tn1 == tn2 && cix1 == cix2 && and (zipWith equivalentCoverage fs1 fs2)
 
 
 
@@ -402,163 +263,48 @@ For Step 1, grouping should proceed as follows:
   iv. We recurse over the the "rest of the paths" indexed to each new subtree
 -}
 
--- utility datatype to avoid tuples, see note at end of this module
-data SortConstraint
-  = SortConstraint {
-      varCs  :: ([ConstraintGroup],[ResultConstraint]),
-      wildCs :: ([ConstraintGroup],[ResultConstraint]),
-      litCs  :: ([ConstraintGroup],[ResultConstraint]),
-      conCs  :: ([ConstraintGroup],[ResultConstraint]) -- we're shoving bare constraints here too
-    }
-
-
-data ConstraintGroup
-  = SimpleConstraint ResultConstraint
-  | CtorConstraints Position (Qualified (ProperName 'TypeName)) CtorIx (Map CtorArgPos ConstraintGroup) -- I think?
-
-
-data MatrixOverflow
-  = RowOverflow
-  | ColumnOverflow
-
-safeGetElem :: forall (a :: *). (Int,Int) -> Matrix a -> Either MatrixOverflow a
-safeGetElem (r,c) mtx = case safeGetRow r mtx of
-  Nothing -> Left RowOverflow
-  Just row -> case row V.!? c of
-    Nothing -> Left ColumnOverflow
-    Just x  -> Right x
-
-foldMatrixWithIndex :: forall (a :: *) (b :: *)
-                     . ((Int,Int) -> a -> b -> b) -> b -> Matrix a -> b
-foldMatrixWithIndex f e mtx = go (0,0) e
+peel :: forall (a :: *). [[a]] -> Maybe [(a,[a])]
+peel xs = sequence $ foldr go [] xs
   where
-    go :: (Int,Int) -> b -> b
-    go (r,c) b = case safeGetElem (r,c) mtx of
-      Left ColumnOverflow -> go (r + 1,0) b
-      Left RowOverflow    -> b
-      Right x -> f (r,c) x $ go (r,c + 1) b 
-
-
-mkSimpleGroup :: Position -> ConstraintPattern -> ConstraintGroup
-mkSimpleGroup pos pat = SimpleConstraint (ResultConstraint pos pat)
-
-mkConstraintGroups :: Datatypes Kind Ty -> Matrix Pattern -> Map Position ConstraintGroup
-mkConstraintGroups datatypes = foldMatrixWithIndex go M.empty
-  where
-    getCtorIx :: Qualified (ProperName 'TypeName)
-                  -> Qualified (ProperName 'ConstructorName)
-                  -> CtorIx
-    getCtorIx tn cn = fst
-                          . fromJust
-                          $ find (\x -> snd x == (properToIdent <$> cn))
-                                 (zip (CtorIx <$> [0..])
-                                      $ view cdCtorName <$> getAllConstructorDecls tn datatypes)
-
-    go :: (Int, Int) -> Pattern -> Map Position ConstraintGroup -> Map Position ConstraintGroup
-    go pos pat acc = case pat of
-      VarP a b c -> M.insert (M pos) (mkSimpleGroup (M pos) (VarC a b c)) acc
-      WildP      -> M.insert (M pos) (mkSimpleGroup (M pos) WildC) acc
-      LitP lit   -> M.insert (M pos) (mkSimpleGroup (M pos) (LitC lit)) acc
-      ConP tn cn inner ->
-        let cix = getCtorIx tn cn
-            here = M pos
-            argsIndexed = zip (CtorArgPos <$> [0..]) inner
-            ctors :: [(CtorArgPos,ConstraintGroup)]
-            ctors = uncurry (goCtorArg cix here) <$> argsIndexed
-            acc'  = foldl' insertAllComponents acc (snd <$> ctors)
-            topLevel =   CtorConstraints here tn  cix $ M.fromList ctors
-        in M.insert here topLevel acc'
-
-    goCtorArg :: CtorIx -> Position -> CtorArgPos -> Pattern -> (CtorArgPos, ConstraintGroup)
-    goCtorArg cIx mPos argPos = \case
-      VarP a b c -> (argPos, mkSimpleGroup here (VarC a b c))
-      WildP      -> (argPos, mkSimpleGroup here WildC)
-      LitP lit   -> (argPos, mkSimpleGroup here (LitC lit))
-      ConP tn cn inner ->
-        let innerCix = getCtorIx tn cn
-            argsIndexed = zip (CtorArgPos <$> [0..]) inner
-            ctors = uncurry (goCtorArg innerCix here) <$> argsIndexed
-        in (argPos, CtorConstraints here tn innerCix $ M.fromList ctors)
-     where
-       here = ConstructorArgPos mPos cIx argPos
-
-    insertAllComponents :: Map Position ConstraintGroup -> ConstraintGroup -> Map Position ConstraintGroup
-    insertAllComponents acc = \case
-      sc@(SimpleConstraint (ResultConstraint pos _)) -> M.insert pos sc acc
-      cg@(CtorConstraints pos _ _  inner) -> M.insert pos cg
-                                             $  foldl' insertAllComponents acc (M.elems inner)
-
+   go :: [a] -> [Maybe (a, [a])] -> [Maybe (a, [a])]
+   go [] acc = acc
+   go (y:ys) acc = Just (y,ys) : acc
 
 isVarC :: ConstraintPattern -> Bool
 isVarC = \case
-  VarC _ _ _ -> True
+  VarC{} -> True
   _ -> False
 
-isVarCGroup :: ConstraintGroup -> Bool
-isVarCGroup (SimpleConstraint (ResultConstraint _ VarC{})) = True
-isVarCGroup _ = False
-
-atDepthCtorIndex :: Position -> CtorIx -> Position -> Bool
-atDepthCtorIndex outerPos cIx = \case
-  ConstructorArgPos outerPos' cIx' _ -> outerPos == outerPos' && cIx == cIx'
-  _ -> False
-
-atDepthArgPos :: Position -> CtorIx -> CtorArgPos -> Position -> Bool
-atDepthArgPos outerPos cIx argPos = \case
-  ConstructorArgPos outerPos' cIx' argPos' -> outerPos == outerPos' && cIx == cIx' && argPos == argPos'
-  _ -> False
-
-collapse :: (Int,Int) -> [[ResultConstraint]] -> [Tree ConstraintGroup]
-collapse pos [] = []
-collapse pos@(r,c) paths = go <$> groups
+collapse ::  [[ConstraintPattern]] -> [Tree ConstraintPattern]
+collapse [] = []
+collapse paths = go <$> groups
   where
-    groups :: [(ConstraintGroup,[[ResultConstraint]])]
-    groups = combine $ splitResults <$> paths
+    groups :: [(ConstraintPattern,[[ConstraintPattern]])]
+    groups = maybe [] combine (peel paths)
       where
-        splitResults :: [ResultConstraint] -> (ConstraintGroup, [ResultConstraint])
-        splitResults path = undefined
-          where
-            (here, rest) = partition (\x -> constraintMatrixPosition x == pos) path
-            thisGroup [] = error "empty constraint group in thisGroup"
-            thisGroup [x] = case x of
-              ResultConstraint xPos innerC -> case innerC of
-                WildC -> SimpleConstraint x
-                VarC{} -> SimpleConstraint x
-                LitC{} -> SimpleConstraint x
-                BareConstructorIndex{} -> SimpleConstraint x
-            thisGroup xs = mkCtorConstraints xs
-
-            -- REVIEW: I am not 100% sure that the result constraints will always be ordered the way this function expects them to be.
-            --         May have to do some pre-sorting.
-            mkCtorConstraints :: [ResultConstraint] -> ConstraintGroup
-            mkCtorConstraints (ResultConstraint cPos rc:rest) = case cPos of
-              ConstructorArgPos outerPos cix cArgPos ->
-                let (atSamePos,elsewhere) = partition (\rcX@(ResultConstraint iPos _) -> atDepthCtorIndex outerPos cix iPos) rest
-                in undefined -- TODO finish implementing (REVIEW: Or change this representation?)
-              _ -> error "got something that isn't a ctor constraint in mkCtorConstraints"
-
-
         -- super ugly  algorithm but should work
-        combine :: [(ConstraintGroup, [ResultConstraint])] -> [(ConstraintGroup, [[ResultConstraint]])]
+        combine :: [(ConstraintPattern, [ConstraintPattern])] -> [(ConstraintPattern, [[ConstraintPattern]])]
         combine rg = collapseGroups $  goCombine rg
           where
-            goCombine :: [(ConstraintGroup, [ResultConstraint])]
-                      -> [([ConstraintGroup],[[ResultConstraint]])]
+            goCombine :: [(ConstraintPattern, [ConstraintPattern])]
+                      -> [([ConstraintPattern],[[ConstraintPattern]])]
             goCombine [] = []
             goCombine ((cg,rs):rest) =
-              let (here,remainder) = partition (equivalentCoverageGroup cg . fst) rest
+              let (here,remainder) = partition (equivalentCoverage cg . fst) rest
                   (hereGroups, hereConstraints) = unzip here
                   acc = (cg:hereGroups,rs : hereConstraints)
               in acc : goCombine remainder
 
-            collapseGroups :: [([ConstraintGroup],[[ResultConstraint]])] -> [(ConstraintGroup,[[ResultConstraint]])]
+            collapseGroups :: [([ConstraintPattern],[[ConstraintPattern]])] -> [(ConstraintPattern,[[ConstraintPattern]])]
             collapseGroups [] = []
             collapseGroups ((cgs,res):rest) =
               let here = compressGroup cgs
               in (here,res) : collapseGroups rest
 
             -- Chooses the "representative pattern" for a constraint group
-            {- We expect that members of the group will all be equivalent in coverage here, which means
+            {- TODO: Update this
+
+               We expect that members of the group will all be equivalent in coverage here, which means
                that the only combinations we can run into in the list are:
                  - Mixtures of Vars and WildCards
                  - Only *equal* literals
@@ -571,29 +317,30 @@ collapse pos@(r,c) paths = go <$> groups
                For literals, previous steps should enforce the invariant that they're equal, so we just choose the first one.
 
             -}
-            compressGroup :: [ConstraintGroup] -> ConstraintGroup
+            compressGroup :: [ConstraintPattern] -> ConstraintPattern
             compressGroup [] = error "empty constraint set in compressGroup"
             compressGroup [cg] = cg
-            compressGroup (sc@(SimpleConstraint (ResultConstraint _ VarC{})):_) = sc
-            compressGroup (sc@(SimpleConstraint (ResultConstraint _ WildC)):rest) = fromMaybe sc (find isVarCGroup rest)
-            compressGroup (sc@(SimpleConstraint (ResultConstraint _ LitC{})):_) = sc
-            compressGroup (sc@(SimpleConstraint (ResultConstraint _ BareConstructorIndex{})):_) = sc
-            compressGroup (CtorConstraints position qtn cix fields:rest) =
-              let theseFields :: Map CtorArgPos [ConstraintGroup]
-                  theseFields = pure <$> fields
-                  expandedFields :: Map CtorArgPos [ConstraintGroup]
-                  expandedFields = foldl' (\acc (CtorConstraints _ _ _ args) ->
-                                             foldl' (\allFields (argPos,field) -> M.alter (\case
-                                                            Nothing -> Just [field]
-                                                            Just fs -> Just $ field:fs
-                                                           ) argPos allFields) acc (M.toList args)
-                                             ) theseFields rest
-                  compressedFields = compressGroup <$> expandedFields
-              in CtorConstraints position qtn cix compressedFields
+            compressGroup (v@VarC{}:_) = v
+            compressGroup (w@WildC{}:rest) = fromMaybe w (find isVarC rest)
+            compressGroup (l@LitC{}:_) = l
+            compressGroup (Constructor position qtn cix fields:rest) =
+              let unsafeGetFields :: ConstraintPattern -> [ConstraintPattern]
+                  unsafeGetFields = \case
+                    Constructor _ _ _ fs -> fs
+                    _                    -> error "mixture of constructor and non-constructor constraints in compressGroup"
 
-    go :: (ConstraintGroup, [[ResultConstraint]]) -> Tree ConstraintGroup
-    go (cg,inner) = Node cg $ collapse (r,c + 1) inner
+                  allOrigArgFields = fromLists $ fields : (unsafeGetFields <$> rest)
 
+                  argFieldsGroupedByPos = V.toList $ for [0..(ncols allOrigArgFields - 1)] $ \i -> getCol i allOrigArgFields
+
+                  compressedArgFields = compressGroup <$> argFieldsGroupedByPos
+              in Constructor position qtn cix compressedArgFields
+
+    go :: (ConstraintPattern, [[ConstraintPattern]]) -> Tree ConstraintPattern
+    go (cg,inner) = Node cg $ collapse inner
+
+-- TODO: After collapsing, we need to expand literals and then collapse again.
+-- REVIEW: Or maybe we should expand before we do this? That is probably easier but might mess w/ the implicit ordering
 
 {- General outline of procedure:
 
