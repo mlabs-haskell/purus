@@ -7,6 +7,8 @@ import Prelude
 import Data.Text qualified as T
 
 import Data.List (find, partition)
+import Data.List.NonEmpty (NonEmpty(..))
+import Data.List.NonEmpty qualified as NE
 import Data.Maybe (fromJust, fromMaybe)
 import Data.Traversable (for)
 
@@ -52,6 +54,8 @@ import Data.Matrix
 import Text.Read (readMaybe)
 import Data.Vector qualified as V
 import Data.Tree
+import Control.Monad.State
+import Control.Lens.Operators ((+=))
 
 -- TODO: Delete this eventually, just want it now to sketch things
 type  Pattern = Pat WithoutObjects Ty (Exp WithoutObjects Ty) (Var (BVar Ty) (FVar Ty))
@@ -87,6 +91,18 @@ instance Ord Position where
     other -> other
   compare ConstructorArgPos{} ScrutineeRef{} = GT
 
+
+{- An Identifer is either a PureScript (Ident,Int) pair or a placeholder identifier that will be replaced with a
+   fresh variable name/index in the cleanup phase. This isn't *necessary* but it lets us keep the functions here
+   self-contains and "pure" (in the sense that we don't need to do all of this in one of the pipeline monads)
+
+   The Int in LocalIdentifiers does not have any particular significance (i.e. it's not a Unique index, but should be unique
+   relative to other identifiers generated in the transformations here)
+-}
+data Identifier
+  = PSIdentifier Ident Int
+  | LocalIdentifier Int
+
 {- With the new indexing scheme, constructor patterns are superfluous on the RHS side of a constraint. The only things the RHS of a constraint can contain are:
      1. A Variable Pattern
      2. A wildcard pattern
@@ -98,15 +114,28 @@ instance Ord Position where
    Well, mostly. That scheme doesn't work for bare constructors, e.g. `Nothing. For bare constructors, we
    use a RHS constraint that indicates the constructor index, so really:
      4. A bare constructor index
+
+   NOTE: Primarily for stylistic reasons (i.e. to keep this module as readable and self-contained as possible), we use a different data type
+         to represent variables that we generate in the course of these transformations. These will be replaced with "real" Idents when we rebuild the expression
 -}
 
+
+
 data ConstraintPattern
-  = VarC Position Ident Int Ty
+  = VarC Position Identifier
   | WildC Position
   | LitC Position Literal
   | Constructor Position (Qualified (ProperName 'TypeName)) CtorIx [ConstraintPattern]
 
 newtype ResultRowIx = ResultRowIx {getResultRow :: Int} deriving (Show, Eq, Ord)
+
+getPosition :: ConstraintPattern -> Position
+getPosition = \case
+  VarC pos _  -> pos
+  WildC pos -> pos
+  LitC pos _ -> pos
+  Constructor pos _ _ _ -> pos
+
 
 mkPatternMatrix :: [Alt WithoutObjects Ty (Exp WithoutObjects Ty) (Vars Ty)]
                 -> Maybe (Matrix Pattern)
@@ -142,7 +171,7 @@ mkResults datatypes mtx = map go [0..numRows]
                       -> Pattern
                       -> ConstraintPattern
         toConstraint pos pat = case pat of
-          VarP nm indx ty -> VarC pos nm indx ty
+          VarP nm indx _ -> VarC pos (PSIdentifier nm indx)
           WildP ->  WildC pos
           LitP lit -> LitC pos lit
           ConP tn cn ps ->
@@ -153,6 +182,91 @@ mkResults datatypes mtx = map go [0..numRows]
                         in toConstraint pos' x
                         ) ps
             in Constructor pos tn ctorIndex ps'
+
+{-
+
+data T = A Int | B Int String T | C
+
+case t of
+  A 1 -> R1
+  A _ -> R2
+  B 1 "hi" (A 2) -> R3
+  B 1 _ C -> R4
+  B 2 _ _ -> R5
+  B _ _ _ -> R6
+  other -> R7
+
+linearized expansion:
+
+case t of
+  A $v1 -> case $v1 of
+   1 -> R1
+  A $v2 -> case $v2 of
+   _ -> R2
+  B $v3 $v4 $v5 -> case $v3 of
+    1 -> case $v4 of
+      "hi" -> case $v5 of
+        A $v6 -> case $v6 of
+          2 -> R3
+  B $v7 $v8 $v9 -> case $v7 of
+    1 -> case $v8 of
+      _ -> case $V9 of
+        C -> R4
+  B $v10 $v11 $v12 -> case $v10 of
+    2 -> case $v11 of
+      _ -> case $v12 of
+        _ -> R5
+  B $v13 $v14 $v15 -> case $v13 of
+    _ -> case $v14 of
+      _ -> case $v15 of
+        _ -> r6
+  other -> R7
+
+in list form (partial):
+
+[A $v1, $v1, 1]
+[A $v2, $v2, 2]
+[t ~ B $v3 $v4 $v5, $v3 ~ 1, $v4 ~ "hi", $v5 ~ A $v6, $v6 ~ 2]
+-}
+
+expandNestedPatterns :: [[ConstraintPattern]] -> [Tree ConstraintPattern]
+expandNestedPatterns pats = mkTree <$> evalState (traverse go pats) 1
+  where
+    newIdent :: Position -> State Int ConstraintPattern
+    newIdent pos = do
+      s <- get
+      id += 1
+      pure $ VarC pos (LocalIdentifier s)
+
+    go :: [ConstraintPattern] -> State Int [ConstraintPattern]
+    go [] = pure []
+    go (x:xs) = do
+      x' <- expand x
+      xs' <- go xs
+      pure $ x' <> xs'
+
+    expand :: ConstraintPattern -> State Int [ConstraintPattern]
+    expand = \case
+      v@VarC{} -> pure [v]
+      w@WildC{} -> pure [w]
+      l@LitC{}  -> pure [l]
+      c@(Constructor _ _ _ []) -> pure [c]
+      Constructor pos tn cix ps -> do
+        {- We need to construct a set of fresh variables with the same positionality and type as the actual arguments-}
+        newVars <- traverse (newIdent . getPosition) ps
+        -- I think this is right?
+        pure $ [Constructor pos tn cix newVars] <> ps
+
+    mkTree :: forall (a :: *). [a] -> Tree a
+    mkTree xs = case NE.nonEmpty xs of
+      Nothing -> error "empty constraint path in expandNestedPatterns"
+      Just ne -> mkTreeNE ne
+     where
+       mkTreeNE :: NonEmpty a -> Tree a
+       mkTreeNE (c :| []) = Node c []
+       mkTreeNE (c :| cs) = Node c [mkTree cs]
+
+
 
 tupleNumber :: Qualified (ProperName 'TypeName) -> Maybe Int
 tupleNumber = \case
@@ -232,6 +346,7 @@ equivalentCoverage c1 c2 = case (c1,c2) of
 
 
 
+
 {- Description of "collapse" process:
 
 We start with a [[ResultConstraint]] input. The outer and inner lists are ordered such that:
@@ -263,39 +378,38 @@ For Step 1, grouping should proceed as follows:
   iv. We recurse over the the "rest of the paths" indexed to each new subtree
 -}
 
-peel :: forall (a :: *). [[a]] -> Maybe [(a,[a])]
-peel xs = sequence $ foldr go [] xs
+peel :: forall (a :: *). [Tree a] -> [(a,[Tree a])]
+peel xs = map unTree xs
   where
-   go :: [a] -> [Maybe (a, [a])] -> [Maybe (a, [a])]
-   go [] acc = acc
-   go (y:ys) acc = Just (y,ys) : acc
+    unTree :: Tree a -> (a,[Tree a])
+    unTree (Node x children) = (x,children)
 
 isVarC :: ConstraintPattern -> Bool
 isVarC = \case
   VarC{} -> True
   _ -> False
 
-collapse ::  [[ConstraintPattern]] -> [Tree ConstraintPattern]
+collapse ::  [Tree ConstraintPattern] -> [Tree ConstraintPattern]
 collapse [] = []
 collapse paths = go <$> groups
   where
-    groups :: [(ConstraintPattern,[[ConstraintPattern]])]
-    groups = maybe [] combine (peel paths)
+    groups :: [(ConstraintPattern,[Tree ConstraintPattern])]
+    groups =  combine (peel paths)
       where
         -- super ugly  algorithm but should work
-        combine :: [(ConstraintPattern, [ConstraintPattern])] -> [(ConstraintPattern, [[ConstraintPattern]])]
+        combine :: [(ConstraintPattern, [Tree ConstraintPattern])] -> [(ConstraintPattern, [Tree ConstraintPattern])]
         combine rg = collapseGroups $  goCombine rg
           where
-            goCombine :: [(ConstraintPattern, [ConstraintPattern])]
-                      -> [([ConstraintPattern],[[ConstraintPattern]])]
+            goCombine :: [(ConstraintPattern, [Tree ConstraintPattern])]
+                      -> [([ConstraintPattern],[Tree ConstraintPattern])]
             goCombine [] = []
             goCombine ((cg,rs):rest) =
               let (here,remainder) = partition (equivalentCoverage cg . fst) rest
-                  (hereGroups, hereConstraints) = unzip here
-                  acc = (cg:hereGroups,rs : hereConstraints)
+                  (hereGroups, hereConstraints) = concat <$> unzip here
+                  acc = (cg:hereGroups,rs <> hereConstraints)
               in acc : goCombine remainder
 
-            collapseGroups :: [([ConstraintPattern],[[ConstraintPattern]])] -> [(ConstraintPattern,[[ConstraintPattern]])]
+            collapseGroups :: [([ConstraintPattern],[Tree ConstraintPattern])] -> [(ConstraintPattern,[Tree ConstraintPattern])]
             collapseGroups [] = []
             collapseGroups ((cgs,res):rest) =
               let here = compressGroup cgs
@@ -336,11 +450,62 @@ collapse paths = go <$> groups
                   compressedArgFields = compressGroup <$> argFieldsGroupedByPos
               in Constructor position qtn cix compressedArgFields
 
-    go :: (ConstraintPattern, [[ConstraintPattern]]) -> Tree ConstraintPattern
+    go :: (ConstraintPattern, [Tree ConstraintPattern]) -> Tree ConstraintPattern
     go (cg,inner) = Node cg $ collapse inner
 
+{- Tree merging.
+
+   The point of this is that, after expanding literals and collapsing, we end up with an incomplete forest of case alternative trees.
+
+   For example:
+
+   ```
+     case x, y of
+       Just 1, "hi"  -> A
+       Just 2, "lol" -> B
+       Just 1, whatever -> C
+       Just _, whatever -> D
+       Nothing, _ -> E
+
+  ===> Ends up looking like
+
+   ```
+   1.   case x of
+   2.     Just $v1 -> case $v1 of
+   3.       1 -> case y of
+   4.         "hi" -> A
+   5.         whatever -> C
+   6.       2 -> case y of
+   7.         "lol" -> B
+   8.       _ -> case y of
+   9.         whatever -> D
+   10.    Nothing -> case y of
+   11.     _ -> E
+   ```
+
+   This result is incomplete because some of the branches do not cover inputs that would be covered in the original expression.
+
+   To ameliorate this defect, we need to ensure that every case which was covered in the original expression is covered in the
+   result expression.
+
+   The procedure for doing this is as follows:
+
+   1. We collect all of the branches "available" at the position we're attempting to insert into. Intuitively, a branch is "available" if it
+      occurs on a later line in the above representation. More technically, a branch is available for filling a hole if:
+        I. The branch is located at an equal or lesser depth to the insertion context in the present branch.
+           - E.g. if we are checking whether any branches are available to insert after the `"lol" -> B` alternative on line 7 of the example,
+             the `_ -> case y of` branch beginning on line 8 is available.
+        II. The branch occurs in a subsequent top-level branch.
+   2. We winnow the branches to those with constraints that are consistent with the current path to the insertion context we are examining.
+
+-}
+
+mergeTrees :: [ConstraintPattern] -> [Tree ConstraintPattern] -> [Tree ConstraintPattern]
+mergeTrees _ [] = []
+mergeTrees path (thisBranch:rest) = undefined
+
 -- TODO: After collapsing, we need to expand literals and then collapse again.
--- REVIEW: Or maybe we should expand before we do this? That is probably easier but might mess w/ the implicit ordering
+-- REVIEW: Or maybe we should expand before we do this? That is probably easier but might mess w/ the implicit ordering 
 
 {- General outline of procedure:
 
