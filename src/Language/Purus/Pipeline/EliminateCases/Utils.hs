@@ -1,4 +1,4 @@
-{-# LANGUAGE TypeApplications, TemplateHaskell #-}
+{-# LANGUAGE TypeApplications #-}
 module Language.Purus.Pipeline.EliminateCases.Utils  where
 
 import Prelude
@@ -7,9 +7,7 @@ import Prelude
 import Data.Text qualified as T
 
 import Data.List (find, partition, nub)
-import Data.List.NonEmpty (NonEmpty(..))
-import Data.List.NonEmpty qualified as NE
-import Data.Maybe (fromJust, fromMaybe, mapMaybe)
+import Data.Maybe (fromMaybe, mapMaybe)
 import Data.Traversable (for)
 
 import Language.PureScript.CoreFn.Module (
@@ -44,7 +42,7 @@ import Language.Purus.Pipeline.Monad (
 
 import Bound (Var (..))
 import Control.Lens (
-  view, FunctorWithIndex (..),
+  view,
  )
 import Control.Monad.Except (
   MonadError (throwError),
@@ -60,7 +58,6 @@ import Data.Map (Map)
 
 import Witherable (imapMaybe)
 import Data.Traversable.WithIndex
-import Data.Functor (($>))
 import Data.Foldable.WithIndex (ifind)
 
 -- TODO: Delete this eventually, just want it now to sketch things
@@ -139,10 +136,6 @@ getPosition (pos :@ _) = pos
 getContent :: PatternConstraint -> ConstraintContent
 getContent (_ :@ content) = content
 
--- just import Data.Functor.WithIndex
-mapWithIndex :: (Int -> a -> b) -> [a] -> [b]
-mapWithIndex f xs = zipWith f [0..] xs
-
 mkTree :: forall (a :: *). [a] -> Maybe (Tree a)
 mkTree = \case
   [] -> Nothing
@@ -152,7 +145,6 @@ mkTree = \case
    go y ys = Node y $ case ys of
      [] -> []
      (z:zs) -> [go z zs]
--- Skip the intermediate matrix
 
 mkForest :: Datatypes Kind Ty  -> [Alt WithoutObjects Ty (Exp WithoutObjects Ty) (Vars Ty)] -> [Tree PatternConstraint]
 mkForest datatypes  = mapMaybe go
@@ -188,47 +180,6 @@ mkForest datatypes  = mapMaybe go
       pats <- crackTuplePat $  getPat  alt
       constraints <- itraverse go2 pats
       mkTree constraints
-
-
-
-{-
-mkResults :: Datatypes Kind Ty -> Matrix Pattern -> [[PatternConstraint]]
-mkResults datatypes mtx = map go [0..numRows]
-  where
-    numRows = nrows mtx - 1
-
-    go :: Int -> [PatternConstraint]
-    go rowIx =  cpatRow
-      where
-        getCtorIx :: Qualified (ProperName 'TypeName)
-                  -> Qualified (ProperName 'ConstructorName)
-                  -> CtorIx
-        getCtorIx tn cn = fst
-                          . fromJust
-                          $ find (\x -> snd x == (properToIdent <$> cn))
-                                 (zip (CtorIx <$> [0..])
-                                      $ view cdCtorName <$> getAllConstructorDecls tn datatypes)
-
-        thisRow =  V.toList $ getRow rowIx mtx
-
-        cpatRow = mapWithIndex (\i x -> toConstraint (ScrutineeRef i) x) thisRow
-
-        toConstraint :: Position
-                      -> Pattern
-                      -> PatternConstraint
-        toConstraint pos pat = case pat of
-          VarP nm indx ty -> VarC pos (PSVarData nm indx ty)
-          WildP ->  WildC pos
-          LitP lit -> LitC pos lit
-          ConP tn cn ps ->
-            let ctorIndex :: CtorIx
-                ctorIndex = getCtorIx tn cn
-                ps' = mapWithIndex (\i x ->
-                        let pos' = ConstructorArgPos pos ctorIndex (CtorArgPos i)
-                        in toConstraint pos' x
-                        ) ps
-            in Constructor pos tn ctorIndex ps'
--}
 
 {-
 
@@ -324,7 +275,7 @@ expandNestedPatterns pats =   evalState (traverse go pats) 1
 tupleNumber :: Qualified (ProperName 'TypeName) -> Maybe Int
 tupleNumber = \case
   Qualified (ByModuleName (ModuleName "Prim")) (ProperName tNm)
-   | T.isPrefixOf "Tuple" tNm -> readMaybe @Int =<< T.unpack <$> (T.stripPrefix "Tuple" $ tNm)
+   | T.isPrefixOf "Tuple" tNm -> readMaybe @Int =<< T.unpack <$> T.stripPrefix "Tuple" tNm
   _ -> Nothing
 
 isTupleTyName :: Qualified (ProperName 'TypeName) -> Bool
@@ -345,14 +296,14 @@ crackTuplePat = \case
 -}
 crackTupleExp :: Expression -> Maybe [Expression]
 crackTupleExp e = case analyzeApp e of
-  Just (V (F (FVar a (Qualified (ByModuleName (ModuleName "Prim")) (Ident idnt)))),args)
+  Just (V (F (FVar _ (Qualified (ByModuleName (ModuleName "Prim")) (Ident idnt)))),args)
     | T.isPrefixOf "Tuple" idnt -> Just args
   _ -> Nothing
 
 -- Is it a *literal* tuple (i.e. not: Is it a var with a tuple type or the result of a function call or...)
 isTupleExp :: Expression -> Bool
 isTupleExp e = case analyzeApp e of
-  Just (V (F (FVar a (Qualified (ByModuleName (ModuleName "Prim")) (Ident idnt)))),args)
+  Just (V (F (FVar _ (Qualified (ByModuleName (ModuleName "Prim")) (Ident idnt)))),_)
     | T.isPrefixOf "Tuple" idnt -> True
   _ -> False
 
@@ -650,8 +601,6 @@ consistentPaths :: [PatternConstraint] -- The Path to the current hole context
                 -> [PatternConstraint] -- The full path of a candidate for insertion
                 -> Bool
 consistentPaths currentPath candidatePath = and $ consistentConstraints <$> currentPath <*> candidatePath
-
-
 
 {- General outline of procedure:
 
