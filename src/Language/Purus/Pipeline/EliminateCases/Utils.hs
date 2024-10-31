@@ -1,15 +1,15 @@
 {-# LANGUAGE TypeApplications, TemplateHaskell #-}
-module Language.Purus.Pipeline.EliminateCases.Utils (collapse, mkResults) where
+module Language.Purus.Pipeline.EliminateCases.Utils  where
 
 import Prelude
 
 
 import Data.Text qualified as T
 
-import Data.List (find, partition)
+import Data.List (find, partition, nub)
 import Data.List.NonEmpty (NonEmpty(..))
 import Data.List.NonEmpty qualified as NE
-import Data.Maybe (fromJust, fromMaybe)
+import Data.Maybe (fromJust, fromMaybe, mapMaybe)
 import Data.Traversable (for)
 
 import Language.PureScript.CoreFn.Module (
@@ -44,7 +44,7 @@ import Language.Purus.Pipeline.Monad (
 
 import Bound (Var (..))
 import Control.Lens (
-  view,
+  view, FunctorWithIndex (..),
  )
 import Control.Monad.Except (
   MonadError (throwError),
@@ -56,6 +56,12 @@ import Data.Vector qualified as V
 import Data.Tree
 import Control.Monad.State
 import Control.Lens.Operators ((+=))
+import Data.Map (Map)
+
+import Witherable (imapMaybe)
+import Data.Traversable.WithIndex
+import Data.Functor (($>))
+import Data.Foldable.WithIndex (ifind)
 
 -- TODO: Delete this eventually, just want it now to sketch things
 type  Pattern = Pat WithoutObjects Ty (Exp WithoutObjects Ty) (Var (BVar Ty) (FVar Ty))
@@ -100,58 +106,98 @@ instance Ord Position where
    relative to other identifiers generated in the transformations here)
 -}
 data Identifier
-  = PSIdentifier Ident Int
+  = PSVarData Ident Int Ty
   | LocalIdentifier Int
+  deriving (Show, Eq)
 
 {- With the new indexing scheme, constructor patterns are superfluous on the RHS side of a constraint. The only things the RHS of a constraint can contain are:
      1. A Variable Pattern
      2. A wildcard pattern
      3. A Literal pattern
-
-   The "constructor part" of a pattern constraint goes on the LHS because it tells us something about the position/location in the matrix
-   (which seems trivial but makes reasoning about this a LOT easier).
-
-   Well, mostly. That scheme doesn't work for bare constructors, e.g. `Nothing. For bare constructors, we
-   use a RHS constraint that indicates the constructor index, so really:
-     4. A bare constructor index
-
+     4. A Constructor pattern
    NOTE: Primarily for stylistic reasons (i.e. to keep this module as readable and self-contained as possible), we use a different data type
          to represent variables that we generate in the course of these transformations. These will be replaced with "real" Idents when we rebuild the expression
 -}
 
+data ConstraintContent
+  = VarC Identifier
+  | WildC
+  | LitC Literal
+  | Constructor (Qualified (ProperName 'TypeName)) CtorIx [PatternConstraint]
+  deriving (Show, Eq)
+-- x ~ Just 2
+data PatternConstraint = Position :@ ConstraintContent
+  deriving (Show, Eq)
 
-
-data ConstraintPattern
-  = VarC Position Identifier
-  | WildC Position
-  | LitC Position Literal
-  | Constructor Position (Qualified (ProperName 'TypeName)) CtorIx [ConstraintPattern]
+-- data ConstraintPattern = Position :~~~: ConstraintType
 
 newtype ResultRowIx = ResultRowIx {getResultRow :: Int} deriving (Show, Eq, Ord)
 
-getPosition :: ConstraintPattern -> Position
-getPosition = \case
-  VarC pos _  -> pos
-  WildC pos -> pos
-  LitC pos _ -> pos
-  Constructor pos _ _ _ -> pos
+getPosition :: PatternConstraint -> Position
+getPosition (pos :@ _) = pos
 
+getContent :: PatternConstraint -> ConstraintContent
+getContent (_ :@ content) = content
 
-mkPatternMatrix :: [Alt WithoutObjects Ty (Exp WithoutObjects Ty) (Vars Ty)]
-                -> Maybe (Matrix Pattern)
-mkPatternMatrix alts = fromLists <$> pats
-  where
-    pats = traverse (crackTuplePat . getPat) alts
-
+-- just import Data.Functor.WithIndex
 mapWithIndex :: (Int -> a -> b) -> [a] -> [b]
 mapWithIndex f xs = zipWith f [0..] xs
 
-mkResults :: Datatypes Kind Ty -> Matrix Pattern -> [[ConstraintPattern]]
+mkTree :: forall (a :: *). [a] -> Maybe (Tree a)
+mkTree = \case
+  [] -> Nothing
+  (x:xs) -> pure $ go x xs
+ where
+   go :: a -> [a] -> Tree a
+   go y ys = Node y $ case ys of
+     [] -> []
+     (z:zs) -> [go z zs]
+-- Skip the intermediate matrix
+
+mkForest :: Datatypes Kind Ty  -> [Alt WithoutObjects Ty (Exp WithoutObjects Ty) (Vars Ty)] -> [Tree PatternConstraint]
+mkForest datatypes  = mapMaybe go
+  where
+   getCtorIx :: Qualified (ProperName 'TypeName)
+             -> Qualified (ProperName 'ConstructorName)
+             -> Maybe CtorIx
+   getCtorIx tn cn = do
+     let xs = view cdCtorName <$> getAllConstructorDecls tn datatypes
+     (index,_) <- ifind (\_ x -> x == (properToIdent <$> cn)) xs
+     pure $ CtorIx index
+
+   toConstraint :: Position
+                 -> Pattern
+                 -> Maybe PatternConstraint
+   toConstraint pos pat = case pat of
+     VarP nm indx ty -> pure $ pos :@ VarC (PSVarData nm indx ty)
+     WildP ->  pure $ pos :@ WildC
+     LitP lit -> pure $ pos :@ LitC lit
+     ConP tn cn ps -> do
+       ctorIndex <-  getCtorIx tn cn
+       let ps' =  imapMaybe (\i x -> do
+                   let pos' = ConstructorArgPos pos ctorIndex (CtorArgPos i)
+                   toConstraint pos' x
+                   ) ps
+       pure $ pos :@ Constructor tn ctorIndex ps'
+
+   go2 :: Int -> Pattern -> Maybe PatternConstraint
+   go2 i p = toConstraint (ScrutineeRef i) p
+
+   go ::  Alt WithoutObjects Ty (Exp WithoutObjects Ty) (Vars Ty) -> Maybe (Tree PatternConstraint)
+   go alt = do
+      pats <- crackTuplePat $  getPat  alt
+      constraints <- itraverse go2 pats
+      mkTree constraints
+
+
+
+{-
+mkResults :: Datatypes Kind Ty -> Matrix Pattern -> [[PatternConstraint]]
 mkResults datatypes mtx = map go [0..numRows]
   where
     numRows = nrows mtx - 1
 
-    go :: Int -> [ConstraintPattern]
+    go :: Int -> [PatternConstraint]
     go rowIx =  cpatRow
       where
         getCtorIx :: Qualified (ProperName 'TypeName)
@@ -169,9 +215,9 @@ mkResults datatypes mtx = map go [0..numRows]
 
         toConstraint :: Position
                       -> Pattern
-                      -> ConstraintPattern
+                      -> PatternConstraint
         toConstraint pos pat = case pat of
-          VarP nm indx _ -> VarC pos (PSIdentifier nm indx)
+          VarP nm indx ty -> VarC pos (PSVarData nm indx ty)
           WildP ->  WildC pos
           LitP lit -> LitC pos lit
           ConP tn cn ps ->
@@ -182,6 +228,7 @@ mkResults datatypes mtx = map go [0..numRows]
                         in toConstraint pos' x
                         ) ps
             in Constructor pos tn ctorIndex ps'
+-}
 
 {-
 
@@ -226,47 +273,53 @@ in list form (partial):
 
 [A $v1, $v1, 1]
 [A $v2, $v2, 2]
+
+[t ~ B 1 "hi" A]
 [t ~ B $v3 $v4 $v5, $v3 ~ 1, $v4 ~ "hi", $v5 ~ A $v6, $v6 ~ 2]
 -}
 
-expandNestedPatterns :: [[ConstraintPattern]] -> [Tree ConstraintPattern]
-expandNestedPatterns pats = mkTree <$> evalState (traverse go pats) 1
+{- At the point of nested pattern expansion, all of out trees have a "list-like"
+   structure (i.e. they're guaranteed to be 'Unary Trees', which are isomorphic to nonempty lists).
+
+   We need a notion of `<> xs` to make this procedure work, and this is that
+-}
+treeSnoc :: Tree a -> Tree a -> Tree a
+treeSnoc (Node x []) new = Node x [new]
+treeSnoc (Node x xs) new = Node x $ (\y -> treeSnoc y new) <$> xs
+
+-- The second arg is interpreted as a *linear/unary* tree (which probably isn't how you'd expect this to work)
+treeConcat :: Tree a -> [a] -> Tree a
+treeConcat t [] = t
+treeConcat (Node x []) (y:ys) = treeConcat (Node x [pure y]) ys
+treeConcat (Node x xs) ys     = Node x $ (\z -> treeConcat z ys) <$> xs
+
+expandNestedPatterns :: [Tree PatternConstraint] -> [Tree PatternConstraint]
+expandNestedPatterns pats =   evalState (traverse go pats) 1
   where
-    newIdent :: Position -> State Int ConstraintPattern
+    newIdent :: Position -> State Int PatternConstraint
     newIdent pos = do
       s <- get
       id += 1
-      pure $ VarC pos (LocalIdentifier s)
+      pure $ pos :@ VarC (LocalIdentifier s)
 
-    go :: [ConstraintPattern] -> State Int [ConstraintPattern]
-    go [] = pure []
-    go (x:xs) = do
+    go :: Tree PatternConstraint -> State Int (Tree PatternConstraint)
+    go (Node x []) = pure (Node x [])
+    go (Node x [y])  = do
       x' <- expand x
-      xs' <- go xs
-      pure $ x' <> xs'
+      xs' <- go y
+      pure $ x' `treeSnoc` xs'
+    go _ = error "non-unary tree in expandNestedPatterns" -- We WANT an error here, if the tree isn't unary then something has gone horribly, irreparably wrong
 
-    expand :: ConstraintPattern -> State Int [ConstraintPattern]
-    expand = \case
-      v@VarC{} -> pure [v]
-      w@WildC{} -> pure [w]
-      l@LitC{}  -> pure [l]
-      c@(Constructor _ _ _ []) -> pure [c]
-      Constructor pos tn cix ps -> do
+    expand :: PatternConstraint -> State Int (Tree PatternConstraint)
+    expand (pos :@ body)= case body of
+      c@(Constructor  _ _ []) -> pure . pure $ (pos :@ c)
+      Constructor tn cix ps -> do
         {- We need to construct a set of fresh variables with the same positionality and type as the actual arguments-}
         newVars <- traverse (newIdent . getPosition) ps
         -- I think this is right?
-        pure $ [Constructor pos tn cix newVars] <> ps
-
-    mkTree :: forall (a :: *). [a] -> Tree a
-    mkTree xs = case NE.nonEmpty xs of
-      Nothing -> error "empty constraint path in expandNestedPatterns"
-      Just ne -> mkTreeNE ne
-     where
-       mkTreeNE :: NonEmpty a -> Tree a
-       mkTreeNE (c :| []) = Node c []
-       mkTreeNE (c :| cs) = Node c [mkTree cs]
-
-
+        -- x ~ B $v1 $v1 $v3,
+        pure $ pure (pos :@ Constructor tn cix newVars) `treeConcat` ps
+      other -> pure $ pure (pos :@ other)
 
 tupleNumber :: Qualified (ProperName 'TypeName) -> Maybe Int
 tupleNumber = \case
@@ -327,8 +380,10 @@ note _ (Just x) = pure x
 
 {- Checks whether two constraints have equivalent coverage. This assumes that each constraint occurs in the same
    *position* and does not check positional equality.
+
+   Partial order?
 -}
-equivalentCoverage :: ConstraintPattern -> ConstraintPattern -> Bool
+equivalentCoverage :: ConstraintContent -> ConstraintContent -> Bool
 equivalentCoverage c1 c2 = case (c1,c2) of
   (VarC{}, VarC{})       -> True
   (VarC{}, WildC{})      -> True
@@ -338,14 +393,11 @@ equivalentCoverage c1 c2 = case (c1,c2) of
   (_, VarC{})            -> False
   (WildC{}, _)           -> False
   (_, WildC{})           -> False
-  (LitC _ l1, LitC _ l2) -> l1 == l2
-  (_, LitC _ _)          -> False
-  (LitC _ _, _)          -> False
-  (Constructor _ tn1 cix1 fs1, Constructor _ tn2 cix2 fs2) ->
-    tn1 == tn2 && cix1 == cix2 && and (zipWith equivalentCoverage fs1 fs2)
-
-
-
+  (LitC l1, LitC l2) -> l1 == l2
+  (_, LitC _)          -> False
+  (LitC  _, _)          -> False
+  (Constructor tn1 cix1 fs1, Constructor tn2 cix2 fs2) ->
+    tn1 == tn2 && cix1 == cix2 && and (zipWith equivalentCoverage (getContent <$> fs1) (getContent <$> fs2))
 
 {- Description of "collapse" process:
 
@@ -384,32 +436,33 @@ peel xs = map unTree xs
     unTree :: Tree a -> (a,[Tree a])
     unTree (Node x children) = (x,children)
 
-isVarC :: ConstraintPattern -> Bool
-isVarC = \case
+isVarC :: PatternConstraint -> Bool
+isVarC (getContent -> c)= case c of 
   VarC{} -> True
   _ -> False
 
-collapse ::  [Tree ConstraintPattern] -> [Tree ConstraintPattern]
+collapse ::  [Tree PatternConstraint] -> [Tree PatternConstraint]
 collapse [] = []
 collapse paths = go <$> groups
   where
-    groups :: [(ConstraintPattern,[Tree ConstraintPattern])]
+    groups :: [(PatternConstraint,[Tree PatternConstraint])]
     groups =  combine (peel paths)
       where
         -- super ugly  algorithm but should work
-        combine :: [(ConstraintPattern, [Tree ConstraintPattern])] -> [(ConstraintPattern, [Tree ConstraintPattern])]
-        combine rg = collapseGroups $  goCombine rg
+        combine :: [(PatternConstraint, [Tree PatternConstraint])] -> [(PatternConstraint, [Tree PatternConstraint])]
+        combine rg = collapseGroups $ goCombine rg
           where
-            goCombine :: [(ConstraintPattern, [Tree ConstraintPattern])]
-                      -> [([ConstraintPattern],[Tree ConstraintPattern])]
+            goCombine :: [(PatternConstraint, [Tree PatternConstraint])]
+                      -> [([PatternConstraint],[Tree PatternConstraint])]
             goCombine [] = []
             goCombine ((cg,rs):rest) =
-              let (here,remainder) = partition (equivalentCoverage cg . fst) rest
+              let cgContent = getContent cg
+                  (here,remainder) = partition (equivalentCoverage cgContent . getContent . fst) rest
                   (hereGroups, hereConstraints) = concat <$> unzip here
                   acc = (cg:hereGroups,rs <> hereConstraints)
               in acc : goCombine remainder
 
-            collapseGroups :: [([ConstraintPattern],[Tree ConstraintPattern])] -> [(ConstraintPattern,[Tree ConstraintPattern])]
+            collapseGroups :: [([PatternConstraint],[Tree PatternConstraint])] -> [(PatternConstraint,[Tree PatternConstraint])]
             collapseGroups [] = []
             collapseGroups ((cgs,res):rest) =
               let here = compressGroup cgs
@@ -431,16 +484,16 @@ collapse paths = go <$> groups
                For literals, previous steps should enforce the invariant that they're equal, so we just choose the first one.
 
             -}
-            compressGroup :: [ConstraintPattern] -> ConstraintPattern
+            compressGroup :: [PatternConstraint] -> PatternConstraint
             compressGroup [] = error "empty constraint set in compressGroup"
             compressGroup [cg] = cg
-            compressGroup (v@VarC{}:_) = v
-            compressGroup (w@WildC{}:rest) = fromMaybe w (find isVarC rest)
-            compressGroup (l@LitC{}:_) = l
-            compressGroup (Constructor position qtn cix fields:rest) =
-              let unsafeGetFields :: ConstraintPattern -> [ConstraintPattern]
+            compressGroup (v@(_ :@ VarC{}):_) = v
+            compressGroup (w@(_ :@ WildC{}):rest) = fromMaybe w (find isVarC rest)
+            compressGroup (l@(_ :@ LitC{}):_) = l
+            compressGroup (pos :@ Constructor qtn cix fields:rest) =
+              let unsafeGetFields :: PatternConstraint -> [PatternConstraint]
                   unsafeGetFields = \case
-                    Constructor _ _ _ fs -> fs
+                    _ :@ Constructor _ _ fs -> fs
                     _                    -> error "mixture of constructor and non-constructor constraints in compressGroup"
 
                   allOrigArgFields = fromLists $ fields : (unsafeGetFields <$> rest)
@@ -448,9 +501,9 @@ collapse paths = go <$> groups
                   argFieldsGroupedByPos = V.toList $ for [0..(ncols allOrigArgFields - 1)] $ \i -> getCol i allOrigArgFields
 
                   compressedArgFields = compressGroup <$> argFieldsGroupedByPos
-              in Constructor position qtn cix compressedArgFields
+              in pos :@ Constructor  qtn cix compressedArgFields
 
-    go :: (ConstraintPattern, [Tree ConstraintPattern]) -> Tree ConstraintPattern
+    go :: (PatternConstraint, [Tree PatternConstraint]) -> Tree PatternConstraint
     go (cg,inner) = Node cg $ collapse inner
 
 {- Tree merging.
@@ -500,12 +553,105 @@ collapse paths = go <$> groups
 
 -}
 
-mergeTrees :: [ConstraintPattern] -> [Tree ConstraintPattern] -> [Tree ConstraintPattern]
-mergeTrees _ [] = []
-mergeTrees path (thisBranch:rest) = undefined
+mergeTrees ::  [Tree PatternConstraint] -> [Tree PatternConstraint]
+mergeTrees = fmap (fmap snd) . goMerge [] . fmap (makePathsExplicit [])
+  where
+    makePathsExplicit :: [PatternConstraint] -> Tree PatternConstraint -> Tree ([PatternConstraint],PatternConstraint)
+    makePathsExplicit path (Node root children) = Node (path,root) $ makePathsExplicit (path <> [root]) <$> children
 
--- TODO: After collapsing, we need to expand literals and then collapse again.
--- REVIEW: Or maybe we should expand before we do this? That is probably easier but might mess w/ the implicit ordering 
+    goMerge :: [Tree ([PatternConstraint],PatternConstraint)] -- outer dependencies
+            -> [Tree ([PatternConstraint],PatternConstraint)]
+            -> [Tree ([PatternConstraint],PatternConstraint)]
+    goMerge outer here =  bottomsUp mergeEm outer here
+
+bottomsUp :: ([Tree a] -> [Tree a] -> Tree a -> Tree a) -> [Tree a] -> [Tree a] -> [Tree a]
+bottomsUp _ _ [] = []
+bottomsUp f outer (here:rest) =
+   let rest' = bottomsUp f outer rest
+       here' = f outer rest' here
+   in here' : rest'
+
+mergeEm :: [Tree ([PatternConstraint],PatternConstraint)]
+        -> [Tree ([PatternConstraint],PatternConstraint)]
+        -> Tree ([PatternConstraint],PatternConstraint)
+        -> Tree ([PatternConstraint],PatternConstraint)
+mergeEm outer peers (Node (path,root) children) =
+  Node (path,root) children'
+ where
+   -- Make sure that this "chops" the "head" up to the current node
+   outerGroupCandidates = winnowPath path outer
+   peerCandidates       = winnowPath path peers
+   {- Every tree that is consistent with the current path -}
+   allCandidates        = nub $ outerGroupCandidates <> peerCandidates -- NOTE: Nub probably isn't exactly what we want, we probably want "path nubbing"
+   {- This should be all of the children (recursively) PLUS all of the other candidate branches that match up to this point -}
+   children' = bottomsUp mergeEm allCandidates children <> allCandidates -- REVIEW/NOTE: Double check whether this should be 'allCandidates'
+   -- TODO
+   winnowPath :: [PatternConstraint] -> [Tree ([PatternConstraint],PatternConstraint)] -> [Tree ([PatternConstraint],PatternConstraint)]
+   winnowPath herePath candidates = filter go candidates
+     where
+       go :: Tree ([PatternConstraint],PatternConstraint) -> Bool
+       go (Node (targetPath,_) _) = consistentPaths herePath targetPath
+
+{- Constraint Consistency:
+
+   In order to determine whether we can insert something in to a "hole" (that is, any forest in any of our trees)
+   we need a notion of *consistency* that pertains to constraints.
+
+   This is a bit tricky, because it seems quite close to "equivalent coverage", but isn't exactly that.
+
+   In *principle*, the consistency relation is commutative. In practice, it might be wise to regard the order as
+   significant, e.g. if the "on the current path" constraint is more general than (i.e. covers all the same inputs + others as)
+   the "insertion candidate" constraint, we can probably get away w/ discarding the less-specific insertion candidate
+   (since it will always be covered by the more general case). I'm not doing that now b/c it might interact strangely w/
+   wildcards in nested constructors and complicate variable binding, but it is probably useful to do some filtering at the end to
+   eliminate obviously unreachable cases.
+
+   The rules for consistency are:
+     1. Two constraints that each constrain a separate position are always consistent.
+     2. Variables and wildcards are consistent with everything.
+     3. Two literals are consistent only if they are equal.
+     4. Two constructor constraints are consistent if they pertain to the same type, have the same
+        constructor index, and all of their arguments are consistent with the corresponding arguments
+        of the other constraint.
+
+   REVIEW: This might be wrong? Particularly w/r/t wildcards in a way that might break things when we
+           try to reconstruct the expression. The reason for that is: If a *result* requires a variable to be
+           re-bound to something else, then there has to *be* a variable to rebind. This doesn't matter for
+           constraints that refer to direct scrutinee positions, but might be a problem w/ constructor positions.
+
+           That is, if we have (using variables instead of positions here, pretend the `x` refers to a specific scrutinee position):
+            a) `x ~ Constructor "Maybe" 0  _`
+            b) `x ~ Constructor "Maybe" 0 'y'`
+
+           Then whether the constraints are "consistent" (NOTE: rename this to "suitable") depends on whether `a` or `b`
+-}
+consistentConstraints :: PatternConstraint -> PatternConstraint -> Bool
+consistentConstraints (pos1 :@ cOther) (pos2 :@ cHere) = pos1 /= pos2 || case (cOther,cHere) of
+      (VarC{},_)  -> True -- everything is consistent w/ a variable pattern
+      (_,VarC{})  -> True
+      (WildC{},_) -> True -- everything is consistent w/ a wildcard pattern
+      (_,WildC{}) -> True
+      (LitC l1, LitC l2) -> l1 == l2 -- literals are consistent only if equal
+      (LitC{},_)  -> False
+      (_,LitC{})  -> False
+      (Constructor tn1 cix1 ps1, Constructor tn2 cix2 ps2) ->
+        tn1 == tn2
+        && cix1 == cix2
+        && and (zipWith consistentConstraints ps1 ps2)
+
+
+
+{- AFAICT the only way to implement this is to check whether *every* constraint in each path is
+   consistent with *every* constraint in the other path.
+
+   TODO? use Map Position Constraint instead of [PatternConstraint]
+-}
+consistentPaths :: [PatternConstraint] -- The Path to the current hole context
+                -> [PatternConstraint] -- The full path of a candidate for insertion
+                -> Bool
+consistentPaths currentPath candidatePath = and $ consistentConstraints <$> currentPath <*> candidatePath
+
+
 
 {- General outline of procedure:
 
@@ -566,3 +712,42 @@ I: Two constraints with *equivalent coverage* can be collapsed into a tree with 
                 set (where members correspond if they occur in the same constructor argument position)
                 - N.B. this is just a generalization of I.1-I.7.a and is strictly redundant
 -}
+
+{- Last thing left is to insert the appropriate results.
+
+   The basic idea is simple: We assume we have a list [([ConstraintPath], Expression)] where the LHS of the tuple
+   is the original constraint path associated w/ a result, and the RHS is the result expression.
+
+   The core of this is just `find (\x -> consistentPaths (fst x) <CURRENT PATH AT NODE W/O CHILDREN>) <That list>`
+
+   But there are two complications:
+     1. Our Trees do not have any room for expressions, so we'll need a new data type. We can't go
+        directly to a result expression, because we need to clean up placeholder variables by replacing them w/
+        "real" variables (which requires deducing their types).
+
+     2. We need to keep track of variable binding in patterns & also calculate which
+        variables need to be rebound (& what they need to be rebound *to*)
+        in order to avoid inserting a result which depends on bound variables w/ the wrong identifier.
+-}
+
+
+{- Data types for the case expression skeleton.
+
+   At this point it still makes more sense to work with an abstract notion of
+   position instead of explicit named variables. All of the variables which occur in the
+   outer scrutinee(s) can easily be replaced at the end, and all of the "new" variables
+   must have their types deduced - best to keep that task separate.
+
+   A skeleton is either a prototype case expression (with a Position and a list of (Constraint,Skeleton) pairs)
+   or a result. (I think? Hope I got this right)
+-}
+
+data Skeleton
+   = CaseSkeleton Position [(PatternConstraint,Skeleton)]
+   | ResultE (Exp WithoutObjects Ty (Vars Ty))
+
+{- Data type for binding context. Needs to track variables bound in each position.
+-}
+
+data BindingContext
+  = BindingContext {_bindings :: Map Position Identifier}
