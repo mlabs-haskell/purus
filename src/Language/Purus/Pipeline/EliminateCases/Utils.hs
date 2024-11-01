@@ -1,4 +1,4 @@
-{-# LANGUAGE TypeApplications #-}
+{-# LANGUAGE TypeApplications, TemplateHaskell #-}
 module Language.Purus.Pipeline.EliminateCases.Utils  where
 
 import Prelude
@@ -43,6 +43,7 @@ import Language.Purus.Pipeline.Monad (
 import Bound (Var (..))
 import Control.Lens (
   view,
+  makeLenses
  )
 import Control.Monad.Except (
   MonadError (throwError),
@@ -55,10 +56,12 @@ import Data.Tree
 import Control.Monad.State
 import Control.Lens.Operators ((+=))
 import Data.Map (Map)
+import Data.Map qualified as M
 
 import Witherable (imapMaybe)
 import Data.Traversable.WithIndex
 import Data.Foldable.WithIndex (ifind)
+import Control.Monad.Reader (Reader)
 
 -- TODO: Delete this eventually, just want it now to sketch things
 type  Pattern = Pat WithoutObjects Ty (Exp WithoutObjects Ty) (Var (BVar Ty) (FVar Ty))
@@ -177,7 +180,7 @@ mkForest datatypes  = mapMaybe go
 
    go ::  Alt WithoutObjects Ty (Exp WithoutObjects Ty) (Vars Ty) -> Maybe (Tree PatternConstraint)
    go alt = do
-      pats <- crackTuplePat $  getPat  alt
+      pats <- crackTuplePat $ getPat alt
       constraints <- itraverse go2 pats
       mkTree constraints
 
@@ -688,15 +691,72 @@ I: Two constraints with *equivalent coverage* can be collapsed into a tree with 
    must have their types deduced - best to keep that task separate.
 
    A skeleton is either a prototype case expression (with a Position and a list of (Constraint,Skeleton) pairs)
-   or a result. (I think? Hope I got this right)
+   or a result conjoined with the necessary variable re-bindings. (I think? Hope I got this right)
 -}
 
+-- FIXME: This isn't exactly right. Hm.
 data Skeleton
    = CaseSkeleton Position [(PatternConstraint,Skeleton)]
-   | ResultE (Exp WithoutObjects Ty (Vars Ty))
+   | ResultE (Exp WithoutObjects Ty (Vars Ty)) [(Identifier,Identifier)]
 
 {- Data type for binding context. Needs to track variables bound in each position.
 -}
 
 data BindingContext
-  = BindingContext {_bindings :: Map Position Identifier}
+  = BindingContext {
+    _bindings :: Map Position Identifier,
+    _currentPath :: [PatternConstraint]}
+
+makeLenses ''BindingContext
+
+pathBindings :: [PatternConstraint] -> Map Position Identifier
+pathBindings ps = go M.empty ps
+  where
+    go :: Map Position Identifier -> [PatternConstraint] -> Map Position Identifier
+    go acc [] = acc
+    go acc (pos :@ x:xs) = case x of
+      VarC i -> go (M.insert pos i acc) xs
+      Constructor _ _ pcs ->
+        let acc' = go acc pcs
+        in go acc' xs
+      _ -> go acc xs
+
+{- N.B. This checks whether a constraint path has compatible variable bindings for a
+        result. "Compatible" here is pretty weak, all it means is: "Does the path have
+        a variable pattern in all of the positions required by the result?".
+
+        This is a separate notion from "consistency" or "coverage equivalence". It's needed
+        b/c the above procedure does not guarantee that all of the original variable names
+        bound in the input patterns exist in the result - but that's OK, since we can rebind
+        them at our leisure. (For convenience we also do a consistency check here to avoid
+        having to traverse everything twice, but this is just an implementation detail)
+
+        If the path is compatible with a result, this returns a data type containing
+        a list associating the old identifiers with the new identifiers and the expression.
+        If it is not compatible, it returns Nothing.
+-}
+compatibleBindings :: [PatternConstraint]
+                   -> [([PatternConstraint], Expression)]
+                   -> Maybe (Expression,[(Identifier,Identifier)])
+compatibleBindings _ [] = Nothing
+compatibleBindings branchPath ((resultPath,result):rest)
+  | consistentPaths branchPath resultPath = do
+      let branchPathBindings = pathBindings branchPath
+          resultPathBindings = pathBindings resultPath
+          relevantBranchBindings = M.intersection branchPathBindings resultPathBindings
+      case getRebound relevantBranchBindings resultPathBindings of
+        Nothing -> compatibleBindings branchPath rest
+        Just rebinds -> pure (result,rebinds)
+  | otherwise = compatibleBindings branchPath rest
+ where
+   getRebound :: Map Position Identifier -> Map Position Identifier -> Maybe [(Identifier,Identifier)]
+   getRebound branchIdents resultIdents
+     = M.foldlWithKey' (\acc pos rhs ->
+                          case M.lookup pos branchIdents of
+                                 Nothing -> Nothing
+                                 Just lhs -> ((lhs,rhs):) <$> acc )
+                       (Just [])
+                       resultIdents
+
+mkSkeleton :: [([PatternConstraint],Expression)] -> Tree PatternConstraint -> Reader BindingContext Skeleton
+mkSkeleton results (Node pc children) = undefined
