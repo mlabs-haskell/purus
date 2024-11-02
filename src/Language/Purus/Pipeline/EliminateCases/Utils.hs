@@ -34,7 +34,7 @@ import Language.Purus.IR (
  )
 import Language.Purus.IR.Utils (
   Vars,
-  WithoutObjects,
+  WithoutObjects, toExp,
  )
 import Language.Purus.Pipeline.Monad (
   PlutusContext,
@@ -43,7 +43,7 @@ import Language.Purus.Pipeline.Monad (
 import Bound (Var (..))
 import Control.Lens (
   view,
-  makeLenses
+  makeLenses, over
  )
 import Control.Monad.Except (
   MonadError (throwError),
@@ -61,7 +61,8 @@ import Data.Map qualified as M
 import Witherable (imapMaybe)
 import Data.Traversable.WithIndex
 import Data.Foldable.WithIndex (ifind)
-import Control.Monad.Reader (Reader)
+import Control.Monad.Reader (Reader, MonadReader (..), runReader)
+import Data.Bifunctor (Bifunctor(first))
 
 -- TODO: Delete this eventually, just want it now to sketch things
 type  Pattern = Pat WithoutObjects Ty (Exp WithoutObjects Ty) (Var (BVar Ty) (FVar Ty))
@@ -149,7 +150,7 @@ mkTree = \case
      [] -> []
      (z:zs) -> [go z zs]
 
-mkForest :: Datatypes Kind Ty  -> [Alt WithoutObjects Ty (Exp WithoutObjects Ty) (Vars Ty)] -> [Tree PatternConstraint]
+mkForest :: Datatypes Kind Ty  -> [Alt WithoutObjects Ty (Exp WithoutObjects Ty) (Vars Ty)] -> [(Tree PatternConstraint, Expression)]
 mkForest datatypes  = mapMaybe go
   where
    getCtorIx :: Qualified (ProperName 'TypeName)
@@ -178,11 +179,18 @@ mkForest datatypes  = mapMaybe go
    go2 :: Int -> Pattern -> Maybe PatternConstraint
    go2 i p = toConstraint (ScrutineeRef i) p
 
-   go ::  Alt WithoutObjects Ty (Exp WithoutObjects Ty) (Vars Ty) -> Maybe (Tree PatternConstraint)
-   go alt = do
-      pats <- crackTuplePat $ getPat alt
+   go ::  Alt WithoutObjects Ty (Exp WithoutObjects Ty) (Vars Ty) -> Maybe (Tree PatternConstraint, Expression)
+   go (UnguardedAlt pat result) = do
+      pats <- crackTuplePat pat
       constraints <- itraverse go2 pats
-      mkTree constraints
+      (,toExp result) <$> mkTree constraints
+
+-- NOTE: Have to call this on linear (listlike) trees, e.g. the output for mkForest
+--       or it will give you something grotesquely incorrect
+
+unTreePatterns :: Tree PatternConstraint -> [PatternConstraint]
+unTreePatterns (Node x []) = [x]
+unTreePatterns (Node x xs) = x : concatMap unTreePatterns xs -- N.B. there will only ever be one element of xs if we use this in the right place
 
 {-
 
@@ -694,17 +702,16 @@ I: Two constraints with *equivalent coverage* can be collapsed into a tree with 
    or a result conjoined with the necessary variable re-bindings. (I think? Hope I got this right)
 -}
 
--- FIXME: This isn't exactly right. Hm.
+data Result = Result Expression [(Identifier,Identifier)]
+
 data Skeleton
-   = CaseSkeleton Position [(PatternConstraint,Skeleton)]
-   | ResultE (Exp WithoutObjects Ty (Vars Ty)) [(Identifier,Identifier)]
+   = CaseSkeleton PatternConstraint (Either [Skeleton] Result)
 
 {- Data type for binding context. Needs to track variables bound in each position.
 -}
 
 data BindingContext
   = BindingContext {
-    _bindings :: Map Position Identifier,
     _currentPath :: [PatternConstraint]}
 
 makeLenses ''BindingContext
@@ -758,5 +765,38 @@ compatibleBindings branchPath ((resultPath,result):rest)
                        (Just [])
                        resultIdents
 
+bindAndUpdatePath :: PatternConstraint -> Reader BindingContext a -> Reader BindingContext a
+bindAndUpdatePath pc act = local (over currentPath (<> [pc])) $ act
+
 mkSkeleton :: [([PatternConstraint],Expression)] -> Tree PatternConstraint -> Reader BindingContext Skeleton
-mkSkeleton results (Node pc children) = undefined
+mkSkeleton results (Node pc []) = bindAndUpdatePath pc $ do
+  thisPath <- view currentPath
+  case compatibleBindings thisPath results of
+    Nothing -> error "no compatible result found in mkSkeleton"
+    Just (res,rebindDict) -> pure $ CaseSkeleton pc (Right (Result res rebindDict))
+mkSkeleton results (Node pc children) = bindAndUpdatePath pc $ do
+  children' <- traverse (mkSkeleton results) children
+  pure $ CaseSkeleton pc (Left children')
+
+
+{- In order to write this, we have to have:
+     - Machinery which
+-}
+rebuildFromSkeleton :: [Expression] -> [Skeleton] -> PlutusContext Expression
+rebuildFromSkeleton scrutinees skeleton = undefined
+
+eliminateNestedCases :: Datatypes Kind Ty -> Expression -> PlutusContext Expression
+eliminateNestedCases datatypes = \case
+  caseE@(CaseE resTy scrut alts) -> case crackTupleExp scrut of
+    Nothing -> pure caseE
+    Just scrutinees -> case traverse crackTuplePat (getPat <$> alts) of
+      Nothing -> pure caseE
+      Just pats ->
+        let forest = mkForest datatypes alts
+            expanded = expandNestedPatterns $ fst <$> forest
+            collapsed = collapse expanded
+            merged    = mergeTrees collapsed
+            results = first unTreePatterns <$> forest
+            skeleton = (\x -> runReader (mkSkeleton results x) (BindingContext []))  <$> merged
+        in rebuildFromSkeleton scrutinees skeleton
+  other -> pure other
