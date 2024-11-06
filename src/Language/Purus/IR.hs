@@ -254,6 +254,9 @@ getPat :: Alt x ty f a -> Pat x ty f a
 getPat = \case
   UnguardedAlt ps _ -> ps
 
+getResult :: Alt x t (Exp x t) (Var (BVar t) (FVar t)) -> Exp x t (Var (BVar t) (FVar t))
+getResult (UnguardedAlt _ res) =  join <$> fromScope res
+
 -- idk if we really need the identifiers?
 data BindE ty (f :: GHC.Type -> GHC.Type) a
   = NonRecursive Ident Int (Scope (BVar ty) f a)

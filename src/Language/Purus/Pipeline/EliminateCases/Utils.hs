@@ -1,73 +1,93 @@
-{-# LANGUAGE TypeApplications, TemplateHaskell #-}
-module Language.Purus.Pipeline.EliminateCases.Utils  where
+{-# LANGUAGE TemplateHaskell #-}
+{-# LANGUAGE TypeApplications #-}
+
+module Language.Purus.Pipeline.EliminateCases.Utils where
 
 import Prelude
 
-
 import Data.Text qualified as T
 
-import Data.List (find, partition, nub)
-import Data.Maybe (fromMaybe, mapMaybe)
+import Data.List (find, nub, partition)
+import Data.List.NonEmpty (NonEmpty (..))
+import Data.List.NonEmpty qualified as NE
+import Data.Maybe (fromJust, fromMaybe, mapMaybe)
 import Data.Traversable (for)
 
 import Language.PureScript.CoreFn.Module (
-  Datatypes,
-  cdCtorName,
-  getAllConstructorDecls, properToIdent,
+    Datatypes,
+    cdCtorName,
+    getAllConstructorDecls,
+    properToIdent,
  )
 import Language.PureScript.Names (
-  Ident (..),
-  ProperName (..),
-  ProperNameType (..),
-  Qualified (..), ModuleName (..), QualifiedBy (..),
+    Ident (..),
+    ModuleName (..),
+    ProperName (..),
+    ProperNameType (..),
+    Qualified (..),
+    QualifiedBy (..),
+    pattern ByNullSourcePos,
  )
 
 import Language.Purus.IR (
-  Alt (..),
-  Exp (..),
-  FVar (FVar),
-  Lit (..),
-  Pat (..),
-  Ty (..),
-  getPat,
-  pattern (:~>), analyzeApp, Kind, BVar,
+    Alt (..),
+    BVar (..),
+    BindE,
+    Exp (..),
+    FVar (FVar),
+    Kind,
+    Lit (..),
+    Pat (..),
+    Ty (..),
+    analyzeApp,
+    expTy,
+    getPat,
+    getResult,
+    pattern (:~>),
  )
 import Language.Purus.IR.Utils (
-  Vars,
-  WithoutObjects, toExp,
+    Vars,
+    WithoutObjects,
+    fromExp,
+    toExp,
  )
 import Language.Purus.Pipeline.Monad (
-  PlutusContext,
+    MonadCounter (..),
+    PlutusContext,
  )
 
 import Bound (Var (..))
 import Control.Lens (
-  view,
-  makeLenses, over
+    makeLenses,
+    over,
+    view,
  )
 import Control.Monad.Except (
-  MonadError (throwError),
+    MonadError (throwError),
  )
 
-import Data.Matrix
-import Text.Read (readMaybe)
-import Data.Vector qualified as V
-import Data.Tree
+import Control.Lens.Operators ((%=), (+=))
 import Control.Monad.State
-import Control.Lens.Operators ((+=))
 import Data.Map (Map)
 import Data.Map qualified as M
+import Data.Matrix
+import Data.Tree
+import Data.Vector qualified as V
+import Text.Read (readMaybe)
 
-import Witherable (imapMaybe)
-import Data.Traversable.WithIndex
+import Control.Monad.Reader (MonadReader (..), Reader, runReader)
+import Data.Bifunctor (Bifunctor (first))
+import Data.Foldable (traverse_)
 import Data.Foldable.WithIndex (ifind)
-import Control.Monad.Reader (Reader, MonadReader (..), runReader)
-import Data.Bifunctor (Bifunctor(first))
+import Data.Traversable.WithIndex
+import Language.Purus.Pipeline.GenerateDatatypes.Utils (freshName)
+import Witherable (imapMaybe)
 
 -- TODO: Delete this eventually, just want it now to sketch things
-type  Pattern = Pat WithoutObjects Ty (Exp WithoutObjects Ty) (Var (BVar Ty) (FVar Ty))
+type Pattern = Pat WithoutObjects Ty (Exp WithoutObjects Ty) (Var (BVar Ty) (FVar Ty))
 type Expression = Exp WithoutObjects Ty (Vars Ty)
--- If you look at the types, this can only represent "true literals", i.e., is un-nested 
+
+-- If you look at the types, this can only represent "true literals", i.e., is un-nested
 type Literal = Lit WithoutObjects Pattern
 
 {-
@@ -78,26 +98,26 @@ A position is either:
 -}
 
 newtype CtorArgPos = CtorArgPos Int deriving (Show, Eq, Ord)
-newtype CtorIx     = CtorIx Int deriving (Show, Eq, Ord)
+newtype CtorIx = CtorIx Int deriving (Show, Eq, Ord)
+
 -- The LHS of a constraint, uniquely identifies the position of a pattern in the pattern matrix
 data Position
-  = -- The index of the scrutinee in the list of scrutinees
-    ScrutineeRef Int
-    -- A constructor argument local-position (index, argument position) indexed to a position in the matrix
-    -- (can nest these but the structure of the type should ensure that we always end up with a matrix position root)
-  | ConstructorArgPos Position CtorIx CtorArgPos
-  deriving (Show, Eq)
+    = -- The index of the scrutinee in the list of scrutinees
+      ScrutineeRef Int
+    | -- A constructor argument local-position (index, argument position) indexed to a position in the matrix
+      -- (can nest these but the structure of the type should ensure that we always end up with a matrix position root)
+      ConstructorArgPos Position CtorIx CtorArgPos
+    deriving (Show, Eq)
 
 instance Ord Position where
-  compare (ScrutineeRef p1) (ScrutineeRef p2) = compare p1 p2
-  compare (ScrutineeRef _) _      = LT
-  compare (ConstructorArgPos p1 cix1 argpos1) (ConstructorArgPos p2 cix2 argpos2) = case compare p1 p2 of
-    EQ -> case compare cix1 cix2 of
-      EQ -> compare argpos1 argpos2
-      other -> other
-    other -> other
-  compare ConstructorArgPos{} ScrutineeRef{} = GT
-
+    compare (ScrutineeRef p1) (ScrutineeRef p2) = compare p1 p2
+    compare (ScrutineeRef _) _ = LT
+    compare (ConstructorArgPos p1 cix1 argpos1) (ConstructorArgPos p2 cix2 argpos2) = case compare p1 p2 of
+        EQ -> case compare cix1 cix2 of
+            EQ -> compare argpos1 argpos2
+            other -> other
+        other -> other
+    compare ConstructorArgPos {} ScrutineeRef {} = GT
 
 {- An Identifer is either a PureScript (Ident,Int) pair or a placeholder identifier that will be replaced with a
    fresh variable name/index in the cleanup phase. This isn't *necessary* but it lets us keep the functions here
@@ -107,9 +127,9 @@ instance Ord Position where
    relative to other identifiers generated in the transformations here)
 -}
 data Identifier
-  = PSVarData Ident Int Ty
-  | LocalIdentifier Int
-  deriving (Show, Eq)
+    = PSVarData Ident Int Ty
+    | LocalIdentifier Int
+    deriving (Show, Eq)
 
 {- With the new indexing scheme, constructor patterns are superfluous on the RHS side of a constraint. The only things the RHS of a constraint can contain are:
      1. A Variable Pattern
@@ -121,14 +141,15 @@ data Identifier
 -}
 
 data ConstraintContent
-  = VarC Identifier
-  | WildC
-  | LitC Literal
-  | Constructor (Qualified (ProperName 'TypeName)) CtorIx [PatternConstraint]
-  deriving (Show, Eq)
+    = VarC Identifier
+    | WildC
+    | LitC Literal
+    | Constructor (Qualified (ProperName 'TypeName)) CtorIx [PatternConstraint]
+    deriving (Show, Eq)
+
 -- x ~ Just 2
 data PatternConstraint = Position :@ ConstraintContent
-  deriving (Show, Eq)
+    deriving (Show, Eq)
 
 -- data ConstraintPattern = Position :~~~: ConstraintType
 
@@ -142,48 +163,53 @@ getContent (_ :@ content) = content
 
 mkTree :: forall (a :: *). [a] -> Maybe (Tree a)
 mkTree = \case
-  [] -> Nothing
-  (x:xs) -> pure $ go x xs
- where
-   go :: a -> [a] -> Tree a
-   go y ys = Node y $ case ys of
-     [] -> []
-     (z:zs) -> [go z zs]
+    [] -> Nothing
+    (x : xs) -> pure $ go x xs
+    where
+        go :: a -> [a] -> Tree a
+        go y ys = Node y $ case ys of
+            [] -> []
+            (z : zs) -> [go z zs]
 
-mkForest :: Datatypes Kind Ty  -> [Alt WithoutObjects Ty (Exp WithoutObjects Ty) (Vars Ty)] -> [(Tree PatternConstraint, Expression)]
-mkForest datatypes  = mapMaybe go
-  where
-   getCtorIx :: Qualified (ProperName 'TypeName)
-             -> Qualified (ProperName 'ConstructorName)
-             -> Maybe CtorIx
-   getCtorIx tn cn = do
-     let xs = view cdCtorName <$> getAllConstructorDecls tn datatypes
-     (index,_) <- ifind (\_ x -> x == (properToIdent <$> cn)) xs
-     pure $ CtorIx index
+mkForest :: Datatypes Kind Ty -> [Alt WithoutObjects Ty (Exp WithoutObjects Ty) (Vars Ty)] -> [(Tree PatternConstraint, Expression)]
+mkForest datatypes = mapMaybe go
+    where
+        getCtorIx ::
+            Qualified (ProperName 'TypeName) ->
+            Qualified (ProperName 'ConstructorName) ->
+            Maybe CtorIx
+        getCtorIx tn cn = do
+            let xs = view cdCtorName <$> getAllConstructorDecls tn datatypes
+            (index, _) <- ifind (\_ x -> x == (properToIdent <$> cn)) xs
+            pure $ CtorIx index
 
-   toConstraint :: Position
-                 -> Pattern
-                 -> Maybe PatternConstraint
-   toConstraint pos pat = case pat of
-     VarP nm indx ty -> pure $ pos :@ VarC (PSVarData nm indx ty)
-     WildP ->  pure $ pos :@ WildC
-     LitP lit -> pure $ pos :@ LitC lit
-     ConP tn cn ps -> do
-       ctorIndex <-  getCtorIx tn cn
-       let ps' =  imapMaybe (\i x -> do
-                   let pos' = ConstructorArgPos pos ctorIndex (CtorArgPos i)
-                   toConstraint pos' x
-                   ) ps
-       pure $ pos :@ Constructor tn ctorIndex ps'
+        toConstraint ::
+            Position ->
+            Pattern ->
+            Maybe PatternConstraint
+        toConstraint pos pat = case pat of
+            VarP nm indx ty -> pure $ pos :@ VarC (PSVarData nm indx ty)
+            WildP -> pure $ pos :@ WildC
+            LitP lit -> pure $ pos :@ LitC lit
+            ConP tn cn ps -> do
+                ctorIndex <- getCtorIx tn cn
+                let ps' =
+                        imapMaybe
+                            ( \i x -> do
+                                let pos' = ConstructorArgPos pos ctorIndex (CtorArgPos i)
+                                toConstraint pos' x
+                            )
+                            ps
+                pure $ pos :@ Constructor tn ctorIndex ps'
 
-   go2 :: Int -> Pattern -> Maybe PatternConstraint
-   go2 i p = toConstraint (ScrutineeRef i) p
+        go2 :: Int -> Pattern -> Maybe PatternConstraint
+        go2 i p = toConstraint (ScrutineeRef i) p
 
-   go ::  Alt WithoutObjects Ty (Exp WithoutObjects Ty) (Vars Ty) -> Maybe (Tree PatternConstraint, Expression)
-   go (UnguardedAlt pat result) = do
-      pats <- crackTuplePat pat
-      constraints <- itraverse go2 pats
-      (,toExp result) <$> mkTree constraints
+        go :: Alt WithoutObjects Ty (Exp WithoutObjects Ty) (Vars Ty) -> Maybe (Tree PatternConstraint, Expression)
+        go (UnguardedAlt pat result) = do
+            pats <- crackTuplePat pat
+            constraints <- itraverse go2 pats
+            (,toExp result) <$> mkTree constraints
 
 -- NOTE: Have to call this on linear (listlike) trees, e.g. the output for mkForest
 --       or it will give you something grotesquely incorrect
@@ -252,52 +278,106 @@ treeSnoc (Node x xs) new = Node x $ (\y -> treeSnoc y new) <$> xs
 -- The second arg is interpreted as a *linear/unary* tree (which probably isn't how you'd expect this to work)
 treeConcat :: Tree a -> [a] -> Tree a
 treeConcat t [] = t
-treeConcat (Node x []) (y:ys) = treeConcat (Node x [pure y]) ys
-treeConcat (Node x xs) ys     = Node x $ (\z -> treeConcat z ys) <$> xs
+treeConcat (Node x []) (y : ys) = treeConcat (Node x [pure y]) ys
+treeConcat (Node x xs) ys = Node x $ (\z -> treeConcat z ys) <$> xs
 
-expandNestedPatterns :: [Tree PatternConstraint] -> [Tree PatternConstraint]
-expandNestedPatterns pats =   evalState (traverse go pats) 1
-  where
-    newIdent :: Position -> State Int PatternConstraint
-    newIdent pos = do
-      s <- get
-      id += 1
-      pure $ pos :@ VarC (LocalIdentifier s)
+expandNestedPatterns :: [Expression] -> [Tree PatternConstraint] -> Tree PatternConstraint
+expandNestedPatterns scrutinees pats = evalState (prependScrutineeBinders =<< traverse go pats) 1
+    where
+        {- NOTE: This is a little strange and I need to explain what's going on for my own benefit if nothing else.
 
-    go :: Tree PatternConstraint -> State Int (Tree PatternConstraint)
-    go (Node x []) = pure (Node x [])
-    go (Node x [y])  = do
-      x' <- expand x
-      xs' <- go y
-      pure $ x' `treeSnoc` xs'
-    go _ = error "non-unary tree in expandNestedPatterns" -- We WANT an error here, if the tree isn't unary then something has gone horribly, irreparably wrong
+                 Our "mkForest" machinery that constructs the initial list of trees ignores the scrutinees. There isn't a
+                 compelling conceptual reason for this - it just makes the function easier to write & allows us to defer
+                 assigning identifiers to scrutinees so that they appear bound in the constraint paths.
 
-    expand :: PatternConstraint -> State Int (Tree PatternConstraint)
-    expand (pos :@ body)= case body of
-      c@(Constructor  _ _ []) -> pure . pure $ (pos :@ c)
-      Constructor tn cix ps -> do
-        {- We need to construct a set of fresh variables with the same positionality and type as the actual arguments-}
-        newVars <- traverse (newIdent . getPosition) ps
-        -- I think this is right?
-        -- x ~ B $v1 $v1 $v3,
-        pure $ pure (pos :@ Constructor tn cix newVars) `treeConcat` ps
-      other -> pure $ pure (pos :@ other)
+                 We need to "restore" the scrutinees at some point before we convert from the trees back into real
+                 Purus expressions. The effect of this is that our `[Tree]` must becomes a single Tree, because
+                 otherwise we're left only with a set of top-level case alternatives, which isn't what we want.
+
+                 The following function takes a list of "top level" alternatives and wraps them in enclosing infallible matches that
+                 serve only to assign variables to each scrutinee, which allows us to resolve `Position`s to Expressions
+                 when rebuilding the case expression at the end.
+
+                 An example might be useful here. Assume we have a list of trees representing the top-level alternatives after expansion:
+
+                 [ ScrutineeRef 0 ~ Just $X (...)
+                 , ScrutineeRef 0 ~ Nothing (...)
+                 ]
+
+                 And assume we have two scrutinee expressions, [Maybe Int, Boolean]
+
+                 Now, for the purpose of transformations internal to THIS MODULE, the first representation is fine. But
+                 when we rebuild the case expression, we assume that every position corresponds to a variable that occurs
+                 higher up in the decision tree that represents nested case expressions and alternatives. (This is both for practical reasons,
+                 i.e. to avoid re-computing complex scrutinee values repeatedly, and also for regularity.)
+
+                 Here, however, the top level scrutinees are not (necessarily) bound to an identifier. E.g. `case Just (1 + 1 / 2 * 5) of`.
+
+                 So we need to create bindings for the scrutinees higher up in the tree. There *is not* a "higher up in the tree", so we have to make it.
+
+                 Assume that there are two scrutinees. We create a placeholder variable for each scrutinee and end up with this for the above list of trees:
+
+                 |- ScrutineeRef 0 ~ $V1
+                   |- ScrutineeRef 1 ~ $V2
+                      |- ScrutineeRef 0 ~ Just $X
+                        |- ...
+                      |- ScrutineeRef 0 ~ Nothing
+                        |- ...
+
+                 In subsequent steps, we interpret constraints like `ScrutineeRef 0 ~ $V1` as *binders* when the RHS is a variable, and
+                 therefore now have all of scrutinees in scope, which allows us to resolve Positions that refer to them.
+        -}
+        prependScrutineeBinders :: [Tree PatternConstraint] -> State Int (Tree PatternConstraint)
+        prependScrutineeBinders branches = do
+            scrutineeBinders' <- itraverse (\i _ -> newIdent (ScrutineeRef i)) scrutinees
+            let scrutineeBinders = fromJust $ NE.nonEmpty scrutineeBinders'
+            pure $ goPrepend scrutineeBinders branches
+            where
+                goPrepend :: NonEmpty PatternConstraint -> [Tree PatternConstraint] -> Tree PatternConstraint
+                goPrepend (x :| []) bs = Node x bs
+                goPrepend (x :| xs) bs =
+                    let rest = fromJust $ NE.nonEmpty xs
+                     in Node x [goPrepend rest bs]
+
+        newIdent :: Position -> State Int PatternConstraint
+        newIdent pos = do
+            s <- get
+            id += 1
+            pure $ pos :@ VarC (LocalIdentifier s)
+
+        go :: Tree PatternConstraint -> State Int (Tree PatternConstraint)
+        go (Node x []) = pure (Node x [])
+        go (Node x [y]) = do
+            x' <- expand x
+            xs' <- go y
+            pure $ x' `treeSnoc` xs'
+        go _ = error "non-unary tree in expandNestedPatterns" -- We WANT an error here, if the tree isn't unary then something has gone horribly, irreparably wrong
+        expand :: PatternConstraint -> State Int (Tree PatternConstraint)
+        expand (pos :@ body) = case body of
+            c@(Constructor _ _ []) -> pure . pure $ (pos :@ c)
+            Constructor tn cix ps -> do
+                {- We need to construct a set of fresh variables with the same positionality and type as the actual arguments-}
+                newVars <- traverse (newIdent . getPosition) ps
+                -- I think this is right?
+                -- x ~ B $v1 $v1 $v3,
+                pure $ pure (pos :@ Constructor tn cix newVars) `treeConcat` ps
+            other -> pure $ pure (pos :@ other)
 
 tupleNumber :: Qualified (ProperName 'TypeName) -> Maybe Int
 tupleNumber = \case
-  Qualified (ByModuleName (ModuleName "Prim")) (ProperName tNm)
-   | T.isPrefixOf "Tuple" tNm -> readMaybe @Int =<< T.unpack <$> T.stripPrefix "Tuple" tNm
-  _ -> Nothing
+    Qualified (ByModuleName (ModuleName "Prim")) (ProperName tNm)
+        | T.isPrefixOf "Tuple" tNm -> readMaybe @Int =<< T.unpack <$> T.stripPrefix "Tuple" tNm
+    _ -> Nothing
 
 isTupleTyName :: Qualified (ProperName 'TypeName) -> Bool
 isTupleTyName = \case
-  Qualified (ByModuleName (ModuleName "Prim")) (ProperName tNm) -> T.isPrefixOf "Tuple" tNm
-  _ -> False
+    Qualified (ByModuleName (ModuleName "Prim")) (ProperName tNm) -> T.isPrefixOf "Tuple" tNm
+    _ -> False
 
 crackTuplePat :: Pattern -> Maybe [Pattern]
 crackTuplePat = \case
-  ConP qTn _ inner | isTupleTyName qTn -> Just inner
-  _ -> Nothing
+    ConP qTn _ inner | isTupleTyName qTn -> Just inner
+    _ -> Nothing
 
 {- In the case we care about, i.e. where a tuple pattern originated in a
    multi-scrutinee case expression, the scrutinee must be a "literal"
@@ -307,34 +387,35 @@ crackTuplePat = \case
 -}
 crackTupleExp :: Expression -> Maybe [Expression]
 crackTupleExp e = case analyzeApp e of
-  Just (V (F (FVar _ (Qualified (ByModuleName (ModuleName "Prim")) (Ident idnt)))),args)
-    | T.isPrefixOf "Tuple" idnt -> Just args
-  _ -> Nothing
+    Just (V (F (FVar _ (Qualified (ByModuleName (ModuleName "Prim")) (Ident idnt)))), args)
+        | T.isPrefixOf "Tuple" idnt -> Just args
+    _ -> Nothing
 
 -- Is it a *literal* tuple (i.e. not: Is it a var with a tuple type or the result of a function call or...)
 isTupleExp :: Expression -> Bool
 isTupleExp e = case analyzeApp e of
-  Just (V (F (FVar _ (Qualified (ByModuleName (ModuleName "Prim")) (Ident idnt)))),_)
-    | T.isPrefixOf "Tuple" idnt -> True
-  _ -> False
+    Just (V (F (FVar _ (Qualified (ByModuleName (ModuleName "Prim")) (Ident idnt)))), _)
+        | T.isPrefixOf "Tuple" idnt -> True
+    _ -> False
 
 isIrrefutablePat :: Pattern -> Bool
 isIrrefutablePat = \case
-  WildP -> True
-  VarP{} -> True
-  _ -> False
+    WildP -> True
+    VarP {} -> True
+    _ -> False
 
 -- We don't have objects here so we can ignore them
 isBadNestedPat :: Pattern -> Bool
 isBadNestedPat = \case
-  ConP _ _ ps -> all isIrrefutablePat ps
-  _           -> False
+    ConP _ _ ps -> all isIrrefutablePat ps
+    _ -> False
 
 needsTransform :: Expression -> Bool
 needsTransform = \case
-  CaseE _resTy scrut alts -> isTupleExp scrut
-      && any isBadNestedPat (getPat <$> alts)
-  _ -> False
+    CaseE _resTy scrut alts ->
+        isTupleExp scrut
+            && any isBadNestedPat (getPat <$> alts)
+    _ -> False
 
 note :: String -> Maybe a -> PlutusContext a
 note str Nothing = throwError str
@@ -346,20 +427,20 @@ note _ (Just x) = pure x
    Partial order?
 -}
 equivalentCoverage :: ConstraintContent -> ConstraintContent -> Bool
-equivalentCoverage c1 c2 = case (c1,c2) of
-  (VarC{}, VarC{})       -> True
-  (VarC{}, WildC{})      -> True
-  (WildC{}, VarC{})      -> True
-  (WildC{}, WildC{})     -> True
-  (VarC{}, _)            -> False
-  (_, VarC{})            -> False
-  (WildC{}, _)           -> False
-  (_, WildC{})           -> False
-  (LitC l1, LitC l2) -> l1 == l2
-  (_, LitC _)          -> False
-  (LitC  _, _)          -> False
-  (Constructor tn1 cix1 fs1, Constructor tn2 cix2 fs2) ->
-    tn1 == tn2 && cix1 == cix2 && and (zipWith equivalentCoverage (getContent <$> fs1) (getContent <$> fs2))
+equivalentCoverage c1 c2 = case (c1, c2) of
+    (VarC {}, VarC {}) -> True
+    (VarC {}, WildC {}) -> True
+    (WildC {}, VarC {}) -> True
+    (WildC {}, WildC {}) -> True
+    (VarC {}, _) -> False
+    (_, VarC {}) -> False
+    (WildC {}, _) -> False
+    (_, WildC {}) -> False
+    (LitC l1, LitC l2) -> l1 == l2
+    (_, LitC _) -> False
+    (LitC _, _) -> False
+    (Constructor tn1 cix1 fs1, Constructor tn2 cix2 fs2) ->
+        tn1 == tn2 && cix1 == cix2 && and (zipWith equivalentCoverage (getContent <$> fs1) (getContent <$> fs2))
 
 {- Description of "collapse" process:
 
@@ -378,7 +459,6 @@ Step 2) Tree merging: The goal is to construct a single tree from the output of 
         (i.e. occurs "later") forests into positions in "prior" forests where they fit. (Where "fit" means: The path up to
         the point where insertion occurs is consistent with constraint at the root of the insertion candidate)
 
-
 Step 2 is almost trivial and isn't worth explicating in detail here.
 
 For Step 1, grouping should proceed as follows:
@@ -392,81 +472,85 @@ For Step 1, grouping should proceed as follows:
   iv. We recurse over the the "rest of the paths" indexed to each new subtree
 -}
 
-peel :: forall (a :: *). [Tree a] -> [(a,[Tree a])]
+peel :: forall (a :: *). [Tree a] -> [(a, [Tree a])]
 peel xs = map unTree xs
-  where
-    unTree :: Tree a -> (a,[Tree a])
-    unTree (Node x children) = (x,children)
+    where
+        unTree :: Tree a -> (a, [Tree a])
+        unTree (Node x children) = (x, children)
 
 isVarC :: PatternConstraint -> Bool
-isVarC (getContent -> c)= case c of 
-  VarC{} -> True
-  _ -> False
+isVarC (getContent -> c) = case c of
+    VarC {} -> True
+    _ -> False
 
-collapse ::  [Tree PatternConstraint] -> [Tree PatternConstraint]
-collapse [] = []
-collapse paths = go <$> groups
-  where
-    groups :: [(PatternConstraint,[Tree PatternConstraint])]
-    groups =  combine (peel paths)
-      where
-        -- super ugly  algorithm but should work
-        combine :: [(PatternConstraint, [Tree PatternConstraint])] -> [(PatternConstraint, [Tree PatternConstraint])]
-        combine rg = collapseGroups $ goCombine rg
-          where
-            goCombine :: [(PatternConstraint, [Tree PatternConstraint])]
-                      -> [([PatternConstraint],[Tree PatternConstraint])]
-            goCombine [] = []
-            goCombine ((cg,rs):rest) =
-              let cgContent = getContent cg
-                  (here,remainder) = partition (equivalentCoverage cgContent . getContent . fst) rest
-                  (hereGroups, hereConstraints) = concat <$> unzip here
-                  acc = (cg:hereGroups,rs <> hereConstraints)
-              in acc : goCombine remainder
+collapse :: Tree PatternConstraint -> Tree PatternConstraint
+collapse (Node x xs) = Node x (collapseForest xs)
 
-            collapseGroups :: [([PatternConstraint],[Tree PatternConstraint])] -> [(PatternConstraint,[Tree PatternConstraint])]
-            collapseGroups [] = []
-            collapseGroups ((cgs,res):rest) =
-              let here = compressGroup cgs
-              in (here,res) : collapseGroups rest
+collapseForest :: [Tree PatternConstraint] -> [Tree PatternConstraint]
+collapseForest [] = []
+collapseForest paths = go <$> groups
+    where
+        groups :: [(PatternConstraint, [Tree PatternConstraint])]
+        groups = combine (peel paths)
+            where
+                -- super ugly  algorithm but should work
+                combine :: [(PatternConstraint, [Tree PatternConstraint])] -> [(PatternConstraint, [Tree PatternConstraint])]
+                combine rg = collapseGroups $ goCombine rg
+                    where
+                        goCombine ::
+                            [(PatternConstraint, [Tree PatternConstraint])] ->
+                            [([PatternConstraint], [Tree PatternConstraint])]
+                        goCombine [] = []
+                        goCombine ((cg, rs) : rest) =
+                            let cgContent = getContent cg
+                                (here, remainder) = partition (equivalentCoverage cgContent . getContent . fst) rest
+                                (hereGroups, hereConstraints) = concat <$> unzip here
+                                acc = (cg : hereGroups, rs <> hereConstraints)
+                             in acc : goCombine remainder
 
-            -- Chooses the "representative pattern" for a constraint group
-            {- TODO: Update this
+                        collapseGroups :: [([PatternConstraint], [Tree PatternConstraint])] -> [(PatternConstraint, [Tree PatternConstraint])]
+                        collapseGroups [] = []
+                        collapseGroups ((cgs, res) : rest) =
+                            let here = compressGroup cgs
+                             in (here, res) : collapseGroups rest
 
-               We expect that members of the group will all be equivalent in coverage here, which means
-               that the only combinations we can run into in the list are:
-                 - Mixtures of Vars and WildCards
-                 - Only *equal* literals
-                 - Only bare constructors
+                        -- Chooses the "representative pattern" for a constraint group
+                        {- TODO: Update this
 
-               For vars and wildcards we choose an arbitrary variable (we'll have to rename).
+                           We expect that members of the group will all be equivalent in coverage here, which means
+                           that the only combinations we can run into in the list are:
+                             - Mixtures of Vars and WildCards
+                             - Only *equal* literals
+                             - Only bare constructors
 
-               For all wildcards we choose a wildcard.
+                           For vars and wildcards we choose an arbitrary variable (we'll have to rename).
 
-               For literals, previous steps should enforce the invariant that they're equal, so we just choose the first one.
+                           For all wildcards we choose a wildcard.
 
-            -}
-            compressGroup :: [PatternConstraint] -> PatternConstraint
-            compressGroup [] = error "empty constraint set in compressGroup"
-            compressGroup [cg] = cg
-            compressGroup (v@(_ :@ VarC{}):_) = v
-            compressGroup (w@(_ :@ WildC{}):rest) = fromMaybe w (find isVarC rest)
-            compressGroup (l@(_ :@ LitC{}):_) = l
-            compressGroup (pos :@ Constructor qtn cix fields:rest) =
-              let unsafeGetFields :: PatternConstraint -> [PatternConstraint]
-                  unsafeGetFields = \case
-                    _ :@ Constructor _ _ fs -> fs
-                    _                    -> error "mixture of constructor and non-constructor constraints in compressGroup"
+                           For literals, previous steps should enforce the invariant that they're equal, so we just choose the first one.
 
-                  allOrigArgFields = fromLists $ fields : (unsafeGetFields <$> rest)
+                        -}
+                        compressGroup :: [PatternConstraint] -> PatternConstraint
+                        compressGroup [] = error "empty constraint set in compressGroup"
+                        compressGroup [cg] = cg
+                        compressGroup (v@(_ :@ VarC {}) : _) = v
+                        compressGroup (w@(_ :@ WildC {}) : rest) = fromMaybe w (find isVarC rest)
+                        compressGroup (l@(_ :@ LitC {}) : _) = l
+                        compressGroup (pos :@ Constructor qtn cix fields : rest) =
+                            let unsafeGetFields :: PatternConstraint -> [PatternConstraint]
+                                unsafeGetFields = \case
+                                    _ :@ Constructor _ _ fs -> fs
+                                    _ -> error "mixture of constructor and non-constructor constraints in compressGroup"
 
-                  argFieldsGroupedByPos = V.toList $ for [0..(ncols allOrigArgFields - 1)] $ \i -> getCol i allOrigArgFields
+                                allOrigArgFields = fromLists $ fields : (unsafeGetFields <$> rest)
 
-                  compressedArgFields = compressGroup <$> argFieldsGroupedByPos
-              in pos :@ Constructor  qtn cix compressedArgFields
+                                argFieldsGroupedByPos = V.toList $ for [0 .. (ncols allOrigArgFields - 1)] $ \i -> getCol i allOrigArgFields
 
-    go :: (PatternConstraint, [Tree PatternConstraint]) -> Tree PatternConstraint
-    go (cg,inner) = Node cg $ collapse inner
+                                compressedArgFields = compressGroup <$> argFieldsGroupedByPos
+                             in pos :@ Constructor qtn cix compressedArgFields
+
+        go :: (PatternConstraint, [Tree PatternConstraint]) -> Tree PatternConstraint
+        go (cg, inner) = Node cg $ collapseForest inner
 
 {- Tree merging.
 
@@ -515,44 +599,49 @@ collapse paths = go <$> groups
 
 -}
 
-mergeTrees ::  [Tree PatternConstraint] -> [Tree PatternConstraint]
-mergeTrees = fmap (fmap snd) . goMerge [] . fmap (makePathsExplicit [])
-  where
-    makePathsExplicit :: [PatternConstraint] -> Tree PatternConstraint -> Tree ([PatternConstraint],PatternConstraint)
-    makePathsExplicit path (Node root children) = Node (path,root) $ makePathsExplicit (path <> [root]) <$> children
+mergeTrees :: Tree PatternConstraint -> Tree PatternConstraint
+mergeTrees (Node x xs) = Node x $ mergeForests xs
 
-    goMerge :: [Tree ([PatternConstraint],PatternConstraint)] -- outer dependencies
-            -> [Tree ([PatternConstraint],PatternConstraint)]
-            -> [Tree ([PatternConstraint],PatternConstraint)]
-    goMerge outer here =  bottomsUp mergeEm outer here
+mergeForests :: [Tree PatternConstraint] -> [Tree PatternConstraint]
+mergeForests = fmap (fmap snd) . goMerge [] . fmap (makePathsExplicit [])
+    where
+        makePathsExplicit :: [PatternConstraint] -> Tree PatternConstraint -> Tree ([PatternConstraint], PatternConstraint)
+        makePathsExplicit path (Node root children) = Node (path, root) $ makePathsExplicit (path <> [root]) <$> children
+
+        goMerge ::
+            [Tree ([PatternConstraint], PatternConstraint)] -> -- outer dependencies
+            [Tree ([PatternConstraint], PatternConstraint)] ->
+            [Tree ([PatternConstraint], PatternConstraint)]
+        goMerge outer here = bottomsUp mergeEm outer here
 
 bottomsUp :: ([Tree a] -> [Tree a] -> Tree a -> Tree a) -> [Tree a] -> [Tree a] -> [Tree a]
 bottomsUp _ _ [] = []
-bottomsUp f outer (here:rest) =
-   let rest' = bottomsUp f outer rest
-       here' = f outer rest' here
-   in here' : rest'
+bottomsUp f outer (here : rest) =
+    let rest' = bottomsUp f outer rest
+        here' = f outer rest' here
+     in here' : rest'
 
-mergeEm :: [Tree ([PatternConstraint],PatternConstraint)]
-        -> [Tree ([PatternConstraint],PatternConstraint)]
-        -> Tree ([PatternConstraint],PatternConstraint)
-        -> Tree ([PatternConstraint],PatternConstraint)
-mergeEm outer peers (Node (path,root) children) =
-  Node (path,root) children'
- where
-   -- Make sure that this "chops" the "head" up to the current node
-   outerGroupCandidates = winnowPath path outer
-   peerCandidates       = winnowPath path peers
-   {- Every tree that is consistent with the current path -}
-   allCandidates        = nub $ outerGroupCandidates <> peerCandidates -- NOTE: Nub probably isn't exactly what we want, we probably want "path nubbing"
-   {- This should be all of the children (recursively) PLUS all of the other candidate branches that match up to this point -}
-   children' = bottomsUp mergeEm allCandidates children <> allCandidates -- REVIEW/NOTE: Double check whether this should be 'allCandidates'
-   -- TODO
-   winnowPath :: [PatternConstraint] -> [Tree ([PatternConstraint],PatternConstraint)] -> [Tree ([PatternConstraint],PatternConstraint)]
-   winnowPath herePath candidates = filter go candidates
-     where
-       go :: Tree ([PatternConstraint],PatternConstraint) -> Bool
-       go (Node (targetPath,_) _) = consistentPaths herePath targetPath
+mergeEm ::
+    [Tree ([PatternConstraint], PatternConstraint)] ->
+    [Tree ([PatternConstraint], PatternConstraint)] ->
+    Tree ([PatternConstraint], PatternConstraint) ->
+    Tree ([PatternConstraint], PatternConstraint)
+mergeEm outer peers (Node (path, root) children) =
+    Node (path, root) children'
+    where
+        -- Make sure that this "chops" the "head" up to the current node
+        outerGroupCandidates = winnowPath path outer
+        peerCandidates = winnowPath path peers
+        {- Every tree that is consistent with the current path -}
+        allCandidates = nub $ outerGroupCandidates <> peerCandidates -- NOTE: Nub probably isn't exactly what we want, we probably want "path nubbing"
+        {- This should be all of the children (recursively) PLUS all of the other candidate branches that match up to this point -}
+        children' = bottomsUp mergeEm allCandidates children <> allCandidates -- REVIEW/NOTE: Double check whether this should be 'allCandidates'
+        -- TODO
+        winnowPath :: [PatternConstraint] -> [Tree ([PatternConstraint], PatternConstraint)] -> [Tree ([PatternConstraint], PatternConstraint)]
+        winnowPath herePath candidates = filter go candidates
+            where
+                go :: Tree ([PatternConstraint], PatternConstraint) -> Bool
+                go (Node (targetPath, _) _) = consistentPaths herePath targetPath
 
 {- Constraint Consistency:
 
@@ -588,29 +677,29 @@ mergeEm outer peers (Node (path,root) children) =
            Then whether the constraints are "consistent" (NOTE: rename this to "suitable") depends on whether `a` or `b`
 -}
 consistentConstraints :: PatternConstraint -> PatternConstraint -> Bool
-consistentConstraints (pos1 :@ cOther) (pos2 :@ cHere) = pos1 /= pos2 || case (cOther,cHere) of
-      (VarC{},_)  -> True -- everything is consistent w/ a variable pattern
-      (_,VarC{})  -> True
-      (WildC{},_) -> True -- everything is consistent w/ a wildcard pattern
-      (_,WildC{}) -> True
-      (LitC l1, LitC l2) -> l1 == l2 -- literals are consistent only if equal
-      (LitC{},_)  -> False
-      (_,LitC{})  -> False
-      (Constructor tn1 cix1 ps1, Constructor tn2 cix2 ps2) ->
-        tn1 == tn2
-        && cix1 == cix2
-        && and (zipWith consistentConstraints ps1 ps2)
-
-
+consistentConstraints (pos1 :@ cOther) (pos2 :@ cHere) =
+    pos1 /= pos2 || case (cOther, cHere) of
+        (VarC {}, _) -> True -- everything is consistent w/ a variable pattern
+        (_, VarC {}) -> True
+        (WildC {}, _) -> True -- everything is consistent w/ a wildcard pattern
+        (_, WildC {}) -> True
+        (LitC l1, LitC l2) -> l1 == l2 -- literals are consistent only if equal
+        (LitC {}, _) -> False
+        (_, LitC {}) -> False
+        (Constructor tn1 cix1 ps1, Constructor tn2 cix2 ps2) ->
+            tn1 == tn2
+                && cix1 == cix2
+                && and (zipWith consistentConstraints ps1 ps2)
 
 {- AFAICT the only way to implement this is to check whether *every* constraint in each path is
    consistent with *every* constraint in the other path.
 
    TODO? use Map Position Constraint instead of [PatternConstraint]
 -}
-consistentPaths :: [PatternConstraint] -- The Path to the current hole context
-                -> [PatternConstraint] -- The full path of a candidate for insertion
-                -> Bool
+consistentPaths ::
+    [PatternConstraint] -> -- The Path to the current hole context
+    [PatternConstraint] -> -- The full path of a candidate for insertion
+    Bool
 consistentPaths currentPath candidatePath = and $ consistentConstraints <$> currentPath <*> candidatePath
 
 {- General outline of procedure:
@@ -626,7 +715,6 @@ branches.
 
 Wildcards require special handling. In the following example:
 
-
 A := [ M(0,0) ~ 1, M(0,1) @ C(0,0) ~ a]
 B := [ M(0,0) ~ _, M(0,1) @ C(0,0) ~ b]
 C := [ M(0,0) ~ c, M(0,1) ~ I(1)]
@@ -636,7 +724,7 @@ The B branch has a wildcard constraint at (0,0) and the C branch has a `c` Varia
 If we consider only the sets of "covered inputs", `_` and `c` cover the same sets In the B branch, nothing is bound at (0,0),
 so we can justifiably collapse B & C into a tree where we only mention `c`:
 
-|- M(0,0) ~ c
+\|- M(0,0) ~ c
   |-? [M(0,1) @ C(0,0) ~ b]
   |-? [M(0,1) ~ I(1)]
 
@@ -690,7 +778,6 @@ I: Two constraints with *equivalent coverage* can be collapsed into a tree with 
         in order to avoid inserting a result which depends on bound variables w/ the wrong identifier.
 -}
 
-
 {- Data types for the case expression skeleton.
 
    At this point it still makes more sense to work with an abstract notion of
@@ -702,31 +789,55 @@ I: Two constraints with *equivalent coverage* can be collapsed into a tree with 
    or a result conjoined with the necessary variable re-bindings. (I think? Hope I got this right)
 -}
 
-data Result = Result Expression [(Identifier,Identifier)]
+data Result = Result Expression [(Identifier, Identifier)]
 
 data Skeleton
-   = CaseSkeleton PatternConstraint (Either [Skeleton] Result)
+    = CaseSkeleton PatternConstraint (Either [Skeleton] Result)
+
+data CaseOf = CaseOf Position [(ConstraintContent, Either CaseOf Result)]
 
 {- Data type for binding context. Needs to track variables bound in each position.
 -}
 
-data BindingContext
-  = BindingContext {
-    _currentPath :: [PatternConstraint]}
+data BindingContext = BindingContext
+    { _currentPath :: [PatternConstraint]
+    }
 
 makeLenses ''BindingContext
 
 pathBindings :: [PatternConstraint] -> Map Position Identifier
 pathBindings ps = go M.empty ps
-  where
-    go :: Map Position Identifier -> [PatternConstraint] -> Map Position Identifier
-    go acc [] = acc
-    go acc (pos :@ x:xs) = case x of
-      VarC i -> go (M.insert pos i acc) xs
-      Constructor _ _ pcs ->
-        let acc' = go acc pcs
-        in go acc' xs
-      _ -> go acc xs
+    where
+        go :: Map Position Identifier -> [PatternConstraint] -> Map Position Identifier
+        go acc [] = acc
+        go acc (pos :@ x : xs) = case x of
+            VarC i -> go (M.insert pos i acc) xs
+            Constructor _ _ pcs ->
+                let acc' = go acc pcs
+                 in go acc' xs
+            _ -> go acc xs
+
+mkCaseOf :: [([PatternConstraint], Expression)] -> Tree PatternConstraint -> Reader BindingContext CaseOf
+mkCaseOf results (Node pc@(pos :@ pat) []) = bindAndUpdatePath pc $ do
+    thisPath <- view currentPath
+    case compatibleBindings thisPath results of
+        Nothing -> error "no compatible result found"
+        Just (res, rebindDict) -> pure $ CaseOf pos [(pat, Right $ Result res rebindDict)]
+mkCaseOf results (Node pc@(pos :@ pat) children) = bindAndUpdatePath pc $ do
+    let (commonRoot :@ _) = fst $ head (peel children)
+    protoAlts <- traverse (local id . mkAlt) children
+    pure $ CaseOf pos [(pat, Left $ CaseOf commonRoot protoAlts)]
+    where
+        mkAlt :: Tree PatternConstraint -> Reader BindingContext (ConstraintContent, Either CaseOf Result)
+        mkAlt = \case
+            Node altPC@(_ :@ altLHS) [] -> bindAndUpdatePath altPC $ do
+                thisPath <- view currentPath
+                case compatibleBindings thisPath results of
+                    Nothing -> error "no compatible result found"
+                    Just (res, rebindDict) -> pure (altLHS, Right $ Result res rebindDict)
+            other@(Node (_ :@ altLHS) _) -> do
+                rhs <- mkCaseOf results other
+                pure (altLHS, Left rhs)
 
 {- N.B. This checks whether a constraint path has compatible variable bindings for a
         result. "Compatible" here is pretty weak, all it means is: "Does the path have
@@ -742,61 +853,144 @@ pathBindings ps = go M.empty ps
         a list associating the old identifiers with the new identifiers and the expression.
         If it is not compatible, it returns Nothing.
 -}
-compatibleBindings :: [PatternConstraint]
-                   -> [([PatternConstraint], Expression)]
-                   -> Maybe (Expression,[(Identifier,Identifier)])
+compatibleBindings ::
+    [PatternConstraint] ->
+    [([PatternConstraint], Expression)] ->
+    Maybe (Expression, [(Identifier, Identifier)])
 compatibleBindings _ [] = Nothing
-compatibleBindings branchPath ((resultPath,result):rest)
-  | consistentPaths branchPath resultPath = do
-      let branchPathBindings = pathBindings branchPath
-          resultPathBindings = pathBindings resultPath
-          relevantBranchBindings = M.intersection branchPathBindings resultPathBindings
-      case getRebound relevantBranchBindings resultPathBindings of
-        Nothing -> compatibleBindings branchPath rest
-        Just rebinds -> pure (result,rebinds)
-  | otherwise = compatibleBindings branchPath rest
- where
-   getRebound :: Map Position Identifier -> Map Position Identifier -> Maybe [(Identifier,Identifier)]
-   getRebound branchIdents resultIdents
-     = M.foldlWithKey' (\acc pos rhs ->
-                          case M.lookup pos branchIdents of
-                                 Nothing -> Nothing
-                                 Just lhs -> ((lhs,rhs):) <$> acc )
-                       (Just [])
-                       resultIdents
+compatibleBindings branchPath ((resultPath, result) : rest)
+    | consistentPaths branchPath resultPath = do
+        let branchPathBindings = pathBindings branchPath
+            resultPathBindings = pathBindings resultPath
+            relevantBranchBindings = M.intersection branchPathBindings resultPathBindings
+        case getRebound relevantBranchBindings resultPathBindings of
+            Nothing -> compatibleBindings branchPath rest
+            Just rebinds -> pure (result, rebinds)
+    | otherwise = compatibleBindings branchPath rest
+    where
+        getRebound :: Map Position Identifier -> Map Position Identifier -> Maybe [(Identifier, Identifier)]
+        getRebound branchIdents resultIdents =
+            M.foldlWithKey'
+                ( \acc pos rhs ->
+                    case M.lookup pos branchIdents of
+                        Nothing -> Nothing
+                        Just lhs -> ((lhs, rhs) :) <$> acc
+                )
+                (Just [])
+                resultIdents
 
 bindAndUpdatePath :: PatternConstraint -> Reader BindingContext a -> Reader BindingContext a
 bindAndUpdatePath pc act = local (over currentPath (<> [pc])) $ act
 
-mkSkeleton :: [([PatternConstraint],Expression)] -> Tree PatternConstraint -> Reader BindingContext Skeleton
+mkSkeleton :: [([PatternConstraint], Expression)] -> Tree PatternConstraint -> Reader BindingContext Skeleton
 mkSkeleton results (Node pc []) = bindAndUpdatePath pc $ do
-  thisPath <- view currentPath
-  case compatibleBindings thisPath results of
-    Nothing -> error "no compatible result found in mkSkeleton"
-    Just (res,rebindDict) -> pure $ CaseSkeleton pc (Right (Result res rebindDict))
+    thisPath <- view currentPath
+    case compatibleBindings thisPath results of
+        Nothing -> error "no compatible result found in mkSkeleton"
+        Just (res, rebindDict) -> pure $ CaseSkeleton pc (Right (Result res rebindDict))
 mkSkeleton results (Node pc children) = bindAndUpdatePath pc $ do
-  children' <- traverse (mkSkeleton results) children
-  pure $ CaseSkeleton pc (Left children')
+    children' <- traverse (mkSkeleton results) children
+    pure $ CaseSkeleton pc (Left children')
+
+-- REVIEW: Is this right?
+locally :: (Monad m) => StateT s m a -> StateT s m a
+locally act = do
+    s <- get
+    let result = evalStateT act s
+    lift result
+
+rebuildFromSkeleton :: [Expression] -> CaseOf  -> StateT (Map Position Expression) PlutusContext Expression
+rebuildFromSkeleton scrutinees branch = do
+    void $ itraverse mkScrutineeIdentifier scrutinees
+    goCase branch
+    where
+        goCase :: CaseOf -> StateT (Map Position Expression) PlutusContext Expression
+        goCase (CaseOf pos children) = do
+          s <- get
+          case M.lookup pos s of
+            Nothing -> error $ "No expression found for position " <> show pos
+            Just scrut -> do
+              alts <- traverse (goAlt pos) children
+              let resTy = expTy id (getResult . head $ alts)
+              pure $ CaseE resTy scrut alts
+
+        goAlt :: Position
+              -> (ConstraintContent,Either CaseOf Result)
+              -> StateT (Map Position Expression) PlutusContext (Alt WithoutObjects Ty (Exp WithoutObjects Ty) (Vars Ty))
+        goAlt pos (constraint,rhs) = bindPatternVariables pos constraint >> do
+          case rhs of
+            Right (Result resultE rebindDict) -> do
+              resultRebound <- rebindWithDictionary rebindDict resultE
+              purusPattern <- lift $ convertPat constraint
+              pure $ UnguardedAlt purusPattern (fromExp resultRebound)
+
+        rebindWithDictionary :: [(Identifier,Identifier)]
+                             -> Expression
+                             -> StateT (Map Position Expression) PlutusContext Expression
+        rebindWithDictionary = undefined
+
+        convertPat :: ConstraintContent -> PlutusContext Pattern
+        convertPat = undefined
 
 
-{- In order to write this, we have to have:
-     - Machinery which
--}
-rebuildFromSkeleton :: [Expression] -> [Skeleton] -> PlutusContext Expression
-rebuildFromSkeleton scrutinees skeleton = undefined
+        bindPatternVariables :: Position -> ConstraintContent -> StateT (Map Position Expression) PlutusContext ()
+        bindPatternVariables pos = \case
+            VarC i -> void (resolveIdentifier pos i)
+            Constructor _ _ inner -> traverse_ (\(pos' :@ pat') -> bindPatternVariables pos' pat') inner
+            _ -> pure ()
+
+        -- hm. might have to do this earlier? or disable variable requirement checks on top level scrutinees.
+        -- I *think* the latter thing should work.
+        mkScrutineeIdentifier :: Int -> Expression -> StateT (Map Position Expression) PlutusContext ()
+        mkScrutineeIdentifier scrutPos e = do
+            u <- lift next
+            let pos = ScrutineeRef scrutPos
+                ty = expTy id e
+                utxt = "$X" <> T.pack (show u)
+                uIdent = Ident utxt
+                v = V . B $ BVar u ty uIdent
+            id %= M.insert pos v
+
+        positionMap = M.fromList $ zip [0 ..] scrutinees
+
+        -- saves us from having to keep track of two maps, should be safe the way we use it
+        unsafeExpressionToPattern :: Expression -> Pattern
+        unsafeExpressionToPattern = \case
+            V (B (BVar bvIx bvTy bvIdent)) -> VarP bvIdent bvIx bvTy
+            other -> error "malformed expression in unsafeExpressionToPattern"
+
+        resolveIdentifier :: Position -> Identifier -> StateT (Map Position Expression) PlutusContext Expression
+        resolveIdentifier p i = case i of
+            PSVarData idnt indx ty -> do
+                let v = V . B $ BVar indx ty idnt
+                id %= M.insert p v
+                pure v
+            LocalIdentifier _ -> do
+                s <- get
+                case M.lookup p s of
+                    Nothing -> do
+                        u <- lift next
+                        let utxt = "$X" <> T.pack (show u)
+                            uIdent = Ident utxt
+                            dummyTy = TyCon (Qualified ByNullSourcePos (ProperName utxt))
+                            res = V . B $ BVar u dummyTy uIdent
+                        id %= M.insert p res
+                        pure res
+                    Just res -> pure res
 
 eliminateNestedCases :: Datatypes Kind Ty -> Expression -> PlutusContext Expression
 eliminateNestedCases datatypes = \case
-  caseE@(CaseE resTy scrut alts) -> case crackTupleExp scrut of
-    Nothing -> pure caseE
-    Just scrutinees -> case traverse crackTuplePat (getPat <$> alts) of
-      Nothing -> pure caseE
-      Just pats ->
-        let forest = mkForest datatypes alts
-            expanded = expandNestedPatterns $ fst <$> forest
-            collapsed = collapse expanded
-            merged    = mergeTrees collapsed
-            results = first unTreePatterns <$> forest
-            skeleton = (\x -> runReader (mkSkeleton results x) (BindingContext []))  <$> merged
-        in rebuildFromSkeleton scrutinees skeleton
-  other -> pure other
+    caseE@(CaseE resTy scrut alts) -> case crackTupleExp scrut of
+        Nothing -> pure caseE
+        Just scrutinees -> case traverse (crackTuplePat . getPat) alts of
+            Nothing -> pure caseE
+            Just _ ->
+                -- this case match is used solely as a guard so as to avoid writing new functions when the existing ones will do
+                let forest = mkForest datatypes alts
+                    expanded = expandNestedPatterns scrutinees $ fst <$> forest
+                    collapsed = collapse expanded
+                    merged = mergeTrees collapsed
+                    results = first unTreePatterns <$> forest
+                    cases = mkCaseOf results merged
+                 in undefined -- rebuildFromSkeleton scrutinees skeleton
+    other -> pure other
