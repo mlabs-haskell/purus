@@ -28,11 +28,10 @@ import Language.PureScript.Names (
     QualifiedBy (..),
     pattern ByNullSourcePos,
  )
-
 import Language.Purus.IR (
     Alt (..),
     BVar (..),
-    BindE,
+    BindE (NonRecursive),
     Exp (..),
     FVar (FVar),
     Kind,
@@ -91,7 +90,6 @@ type Expression = Exp WithoutObjects Ty (Vars Ty)
 type Literal = Lit WithoutObjects Pattern
 
 {-
-
 A position is either:
  - An explicit location in the matrix
  - A constructor position (index & arg position) at a position
@@ -789,7 +787,7 @@ I: Two constraints with *equivalent coverage* can be collapsed into a tree with 
    or a result conjoined with the necessary variable re-bindings. (I think? Hope I got this right)
 -}
 
-data Result = Result Expression [(Identifier, Identifier)]
+data Result = Result Expression [(Position, Identifier, Identifier)]
 
 data Skeleton
     = CaseSkeleton PatternConstraint (Either [Skeleton] Result)
@@ -856,7 +854,7 @@ mkCaseOf results (Node pc@(pos :@ pat) children) = bindAndUpdatePath pc $ do
 compatibleBindings ::
     [PatternConstraint] ->
     [([PatternConstraint], Expression)] ->
-    Maybe (Expression, [(Identifier, Identifier)])
+    Maybe (Expression, [(Position, Identifier, Identifier)]) -- (shared position, result identifier (needed), branch identifier (actual))
 compatibleBindings _ [] = Nothing
 compatibleBindings branchPath ((resultPath, result) : rest)
     | consistentPaths branchPath resultPath = do
@@ -868,13 +866,13 @@ compatibleBindings branchPath ((resultPath, result) : rest)
             Just rebinds -> pure (result, rebinds)
     | otherwise = compatibleBindings branchPath rest
     where
-        getRebound :: Map Position Identifier -> Map Position Identifier -> Maybe [(Identifier, Identifier)]
+        getRebound :: Map Position Identifier -> Map Position Identifier -> Maybe [(Position, Identifier, Identifier)]
         getRebound branchIdents resultIdents =
             M.foldlWithKey'
-                ( \acc pos rhs ->
+                ( \acc pos resultIdent ->
                     case M.lookup pos branchIdents of
                         Nothing -> Nothing
-                        Just lhs -> ((lhs, rhs) :) <$> acc
+                        Just branchIdent -> ((pos,resultIdent, branchIdent) :) <$> acc
                 )
                 (Just [])
                 resultIdents
@@ -899,8 +897,11 @@ locally act = do
     let result = evalStateT act s
     lift result
 
-rebuildFromSkeleton :: [Expression] -> CaseOf  -> StateT (Map Position Expression) PlutusContext Expression
-rebuildFromSkeleton scrutinees branch = do
+rebuildFromCaseOf :: [Expression] -> CaseOf -> PlutusContext Expression
+rebuildFromCaseOf scrutinees branch = evalStateT (rebuildFromCaseOf' scrutinees branch) M.empty
+
+rebuildFromCaseOf' :: [Expression] -> CaseOf  -> StateT (Map Position Expression) PlutusContext Expression
+rebuildFromCaseOf' scrutinees branch = do
     void $ itraverse mkScrutineeIdentifier scrutinees
     goCase branch
     where
@@ -921,16 +922,30 @@ rebuildFromSkeleton scrutinees branch = do
           case rhs of
             Right (Result resultE rebindDict) -> do
               resultRebound <- rebindWithDictionary rebindDict resultE
-              purusPattern <- lift $ convertPat constraint
+              purusPattern <- convertPat pos constraint
               pure $ UnguardedAlt purusPattern (fromExp resultRebound)
 
-        rebindWithDictionary :: [(Identifier,Identifier)]
+        rebindWithDictionary :: [(Position,Identifier,Identifier)]
                              -> Expression
                              -> StateT (Map Position Expression) PlutusContext Expression
-        rebindWithDictionary = undefined
+        rebindWithDictionary dict e = do
+          bindings <- traverse mkBinding dict
+          pure $ LetE bindings (fromExp e)
+         where
+           mkBinding :: (Position,Identifier,Identifier)
+                     -> StateT (Map Position Expression) PlutusContext (BindE Ty (Exp WithoutObjects Ty) (Vars Ty))
+           mkBinding (pos, PSVarData nm indx _, branchIdentifier) = do
+             resolvedBranch <- resolveIdentifier pos branchIdentifier
+             pure $ NonRecursive nm indx (fromExp resolvedBranch)
+           mkBinding _ = error "result branch required a non-PSVarData variable (this should be totally impossible - where could it come from?)"
 
-        convertPat :: ConstraintContent -> PlutusContext Pattern
-        convertPat = undefined
+        convertPat :: Position -> ConstraintContent -> StateT (Map Position Expression) PlutusContext Pattern
+        convertPat pos = \case
+          VarC (PSVarData nm indx ty) -> pure $ VarP nm indx ty
+          VarC identifier -> unsafeExpressionToPattern <$> resolveIdentifier pos identifier
+          WildC -> pure WildP
+          LitC lit -> pure $ LitP lit
+          Constructor qtn ctorix inner -> undefined -- TODO: Need to pass in the datatypes and remember where I put the fn to resolve indices to ctor names
 
 
         bindPatternVariables :: Position -> ConstraintContent -> StateT (Map Position Expression) PlutusContext ()
@@ -951,13 +966,11 @@ rebuildFromSkeleton scrutinees branch = do
                 v = V . B $ BVar u ty uIdent
             id %= M.insert pos v
 
-        positionMap = M.fromList $ zip [0 ..] scrutinees
-
         -- saves us from having to keep track of two maps, should be safe the way we use it
         unsafeExpressionToPattern :: Expression -> Pattern
         unsafeExpressionToPattern = \case
             V (B (BVar bvIx bvTy bvIdent)) -> VarP bvIdent bvIx bvTy
-            other -> error "malformed expression in unsafeExpressionToPattern"
+            _other -> error "malformed expression in unsafeExpressionToPattern"
 
         resolveIdentifier :: Position -> Identifier -> StateT (Map Position Expression) PlutusContext Expression
         resolveIdentifier p i = case i of
@@ -991,6 +1004,6 @@ eliminateNestedCases datatypes = \case
                     collapsed = collapse expanded
                     merged = mergeTrees collapsed
                     results = first unTreePatterns <$> forest
-                    cases = mkCaseOf results merged
-                 in undefined -- rebuildFromSkeleton scrutinees skeleton
+                    cases = runReader (mkCaseOf results merged) (BindingContext [])
+                 in rebuildFromCaseOf scrutinees cases
     other -> pure other
