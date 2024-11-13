@@ -480,7 +480,7 @@ lift mainNm _e = do
         collectAlts :: ScopeSummary
                     -> [Alt WithObjects PurusType (Exp WithObjects PurusType) (Vars PurusType)]
                     -> (Set ToLift, [Alt WithObjects PurusType (Exp WithObjects PurusType) (Vars PurusType)])
-        collectAlts scopSum = foldl' (\(accLift,accAlts) (UnguardedAlt pat body) ->
+        collectAlts scopSum = foldr (\(UnguardedAlt pat body) (accLift,accAlts) ->
                                           let patBinders = stripSkolemsBV <$> extractPatVarBinders pat
                                               newScope = bindLambdaVars patBinders scopSum
                                               (lifted,body') = asExp body $ collect newScope
