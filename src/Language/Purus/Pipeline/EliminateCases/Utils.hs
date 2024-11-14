@@ -10,7 +10,7 @@ import Data.Text qualified as T
 import Data.List (find, nub, partition)
 import Data.List.NonEmpty (NonEmpty (..))
 import Data.List.NonEmpty qualified as NE
-import Data.Maybe (fromJust, fromMaybe, mapMaybe)
+import Data.Maybe (fromJust, fromMaybe, mapMaybe, catMaybes)
 import Data.Traversable (for)
 
 import Language.PureScript.CoreFn.Module (
@@ -179,6 +179,12 @@ data PatternConstraint = Position :@ ConstraintContent
 
 instance Pretty PatternConstraint where
   pretty (pos :@ c) = pretty pos <+> ":=" <+> pretty c
+
+irrefutable :: ConstraintContent -> Bool
+irrefutable = \case
+  VarC _ -> True
+  WildC -> True
+  _ -> False
 
 ppTree :: Pretty a => Tree a -> String
 ppTree = drawTree . fmap prettyStr
@@ -547,6 +553,7 @@ isVarC (getContent -> c) = case c of
 collapse :: Tree PatternConstraint -> Tree PatternConstraint
 collapse (Node x xs) = Node x (collapseForest xs)
 
+
 collapseForest :: [Tree PatternConstraint] -> [Tree PatternConstraint]
 collapseForest [] = []
 collapseForest paths = go <$> groups
@@ -687,22 +694,31 @@ mergeEm ::
     [Tree ([PatternConstraint], PatternConstraint)] ->
     Tree ([PatternConstraint], PatternConstraint) ->
     Tree ([PatternConstraint], PatternConstraint)
-mergeEm outer peers (Node (path, root) children) =
+mergeEm outer peers (Node (path, root) children) = Debug.trace msg $ 
     Node (path, root) children'
     where
+        msg :: String
+        msg = let spacer = "\n" <> replicate 20 '-' <> "\n"
+              in  spacer <> "mergEm:\n\n"
+                  <> "outer:\n" <> ppForest outer
+                  <> "\n\npeers:\n" <> ppForest peers
+                  <> "\n\ninput:\n" <> ppTree (Node (path,root) children)
+                  <> "\nresult:\n" <> ppTree (Node (path,root) children')
+                  <> spacer 
         -- Make sure that this "chops" the "head" up to the current node
         outerGroupCandidates = winnowPath path outer
         peerCandidates = winnowPath path peers
         {- Every tree that is consistent with the current path -}
-        allCandidates = nub $ outerGroupCandidates <> peerCandidates -- NOTE: Nub probably isn't exactly what we want, we probably want "path nubbing"
+        allCandidates =  nub $ outerGroupCandidates <> peerCandidates -- NOTE: Nub probably isn't exactly what we want, we probably want "path nubbing"
         {- This should be all of the children (recursively) PLUS all of the other candidate branches that match up to this point -}
-        children' = bottomsUp mergeEm allCandidates children <> allCandidates -- REVIEW/NOTE: Double check whether this should be 'allCandidates'
+        children' =  bottomsUp mergeEm allCandidates children <> winnowPath (path <> [root]) allCandidates -- REVIEW/NOTE: Double check whether this should be 'allCandidates'
         -- TODO
         winnowPath :: [PatternConstraint] -> [Tree ([PatternConstraint], PatternConstraint)] -> [Tree ([PatternConstraint], PatternConstraint)]
         winnowPath herePath candidates = filter go candidates
             where
                 go :: Tree ([PatternConstraint], PatternConstraint) -> Bool
                 go (Node (targetPath, _) _) = consistentPaths herePath targetPath
+
 
 {- Constraint Consistency:
 
@@ -757,11 +773,23 @@ consistentConstraints (pos1 :@ cOther) (pos2 :@ cHere) =
 
    TODO? use Map Position Constraint instead of [PatternConstraint]
 -}
+-- N.B. Use this one for insertion/merging, use the other one for result matching
 consistentPaths ::
     [PatternConstraint] -> -- The Path to the current hole context
     [PatternConstraint] -> -- The full path of a candidate for insertion
     Bool
-consistentPaths currentPath candidatePath = and $ consistentConstraints <$> currentPath <*> candidatePath
+consistentPaths (zip [0..] -> currentPath) (zip [0..] -> candidatePath) = and (go <$> currentPath <*> candidatePath)
+  where
+    go :: (Int,PatternConstraint) -> (Int,PatternConstraint) -> Bool
+    go (i1,p1@(_ :@ c1)) (i2,p2@(_ :@ c2))
+      | i1 < i2 && not (irrefutable c1) && irrefutable c2 = consistentConstraints p1 p2
+      | otherwise = False
+
+consistentResult ::
+  [PatternConstraint] ->
+  [PatternConstraint] ->
+  Bool
+consistentResult currentPath candidateRes = and (consistentConstraints <$> currentPath <*> candidateRes)
 
 {- General outline of procedure:
 
@@ -882,6 +910,13 @@ pathBindings ps = go M.empty ps
                  in go acc' xs
             _ -> go acc xs
 
+mkCases :: [([PatternConstraint], Expression)] -> [Tree PatternConstraint] -> Reader BindingContext CaseOf
+mkCases results initialForest = do
+  let peeled = peel initialForest
+      firstPos = getPosition . fst . head $ peeled
+  protoAlts <- traverse (local id . mkAlt results) initialForest
+  pure $ CaseOf firstPos protoAlts 
+
 mkCaseOf :: [([PatternConstraint], Expression)] -> Tree PatternConstraint -> Reader BindingContext CaseOf
 mkCaseOf results (Node pc@(pos :@ pat) []) = bindAndUpdatePath pc $ do
     thisPath <- view currentPath
@@ -890,19 +925,19 @@ mkCaseOf results (Node pc@(pos :@ pat) []) = bindAndUpdatePath pc $ do
         Just (res, rebindDict) -> pure $ CaseOf pos [(pat, Right $ Result res rebindDict)]
 mkCaseOf results (Node pc@(pos :@ pat) children) = bindAndUpdatePath pc $ do
     let (commonRoot :@ _) = fst $ head (peel children)
-    protoAlts <- traverse (local id . mkAlt) children
+    protoAlts <- traverse (local id . mkAlt results) children
     pure $ CaseOf pos [(pat, Left $ CaseOf commonRoot protoAlts)]
-    where
-        mkAlt :: Tree PatternConstraint -> Reader BindingContext (ConstraintContent, Either CaseOf Result)
-        mkAlt = \case
-            Node altPC@(_ :@ altLHS) [] -> bindAndUpdatePath altPC $ do
-                thisPath <- view currentPath
-                case compatibleBindings thisPath results of
-                    Nothing -> error "no compatible result found"
-                    Just (res, rebindDict) -> pure (altLHS, Right $ Result res rebindDict)
-            other@(Node (_ :@ altLHS) _) -> do
-                rhs <- mkCaseOf results other
-                pure (altLHS, Left rhs)
+
+mkAlt :: [([PatternConstraint], Expression)] -> Tree PatternConstraint -> Reader BindingContext (ConstraintContent, Either CaseOf Result)
+mkAlt results = \case
+    Node altPC@(_ :@ altLHS) [] -> bindAndUpdatePath altPC $ do
+        thisPath <- view currentPath
+        case compatibleBindings thisPath results of
+            Nothing -> error "no compatible result found"
+            Just (res, rebindDict) -> pure (altLHS, Right $ Result res rebindDict)
+    other@(Node (_ :@ altLHS) _) -> do
+        rhs <- mkCaseOf results other
+        pure (altLHS, Left rhs)
 
 {- N.B. This checks whether a constraint path has compatible variable bindings for a
         result. "Compatible" here is pretty weak, all it means is: "Does the path have
@@ -924,7 +959,7 @@ compatibleBindings ::
     Maybe (Expression, [(Position, Identifier, Identifier)]) -- (shared position, result identifier (needed), branch identifier (actual))
 compatibleBindings _ [] = Nothing
 compatibleBindings branchPath ((resultPath, result) : rest)
-    | consistentPaths branchPath resultPath = do
+    | consistentResult branchPath resultPath = do
         let branchPathBindings = pathBindings branchPath
             resultPathBindings = pathBindings resultPath
             relevantBranchBindings = M.intersection branchPathBindings resultPathBindings
@@ -1105,7 +1140,7 @@ eliminateNestedCases' datatypes = \case
                       collapsed = collapseForest expanded
                       merged = mergeForests collapsed
                       results = first unTreePatterns <$> forest
-                      cases = runReader (mkCaseOf results $ head merged) (BindingContext [])
+                      cases = runReader (mkCases results merged) (BindingContext [])
                   Debug.traceM $ "ORIGINAL EXPRESSION:\n" <> prettyStr caseE 
                   Debug.traceM $ "INITIAL FOREST:\n" <> ppForest (fst <$> forest)
                   Debug.traceM $ "\nEXPANDED FOREST:\n" <> ppForest expanded
