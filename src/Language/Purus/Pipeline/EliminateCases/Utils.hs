@@ -1,5 +1,6 @@
 {-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE TypeApplications #-}
+{-# LANGUAGE MultiWayIf #-}
 
 module Language.Purus.Pipeline.EliminateCases.Utils where
 
@@ -671,7 +672,7 @@ mergeTrees :: Tree PatternConstraint -> Tree PatternConstraint
 mergeTrees (Node x xs) = Node x $ mergeForests xs
 
 mergeForests :: [Tree PatternConstraint] -> [Tree PatternConstraint]
-mergeForests = fmap (fmap snd) . goMerge [] . fmap (makePathsExplicit [])
+mergeForests = mapMaybe (cleanup . fmap snd) . goMerge [] . fmap (makePathsExplicit [])
     where
         makePathsExplicit :: [PatternConstraint] -> Tree PatternConstraint -> Tree ([PatternConstraint], PatternConstraint)
         makePathsExplicit path (Node root children) = Node (path, root) $ makePathsExplicit (path <> [root]) <$> children
@@ -681,6 +682,82 @@ mergeForests = fmap (fmap snd) . goMerge [] . fmap (makePathsExplicit [])
             [Tree ([PatternConstraint], PatternConstraint)] ->
             [Tree ([PatternConstraint], PatternConstraint)]
         goMerge outer here = bottomsUp mergeEm outer here
+
+        cleanup :: Tree PatternConstraint -> Maybe (Tree PatternConstraint)
+        cleanup t = catMaybeTree $ runReader (goCleanup t) M.empty
+          where
+            catMaybeTree :: Tree (Maybe PatternConstraint) -> Maybe (Tree PatternConstraint)
+            catMaybeTree (Node Nothing _) = Nothing
+            catMaybeTree (Node (Just x) xs) = Just $ Node x (mapMaybe catMaybeTree xs)
+
+            contradicts :: ConstraintContent -> ConstraintContent -> Bool
+            contradicts prior present = case (prior,present) of
+              (VarC _, _) -> False
+              (WildC, _)  -> False
+              (_, WildC)  -> False
+              (LitC l1, LitC l2) -> l1 /= l2
+              (Constructor qtn cix fs, Constructor qtn' cix' fs') ->
+                qtn /= qtn'
+                || cix /= cix'
+                || or (zipWith (\f f' -> contradicts (getContent f) (getContent f') ) fs fs')
+
+
+            moreGeneralThan :: ConstraintContent -> ConstraintContent -> Bool
+            moreGeneralThan prior present = not (irrefutable prior) && irrefutable present
+
+            goCleanup :: Tree PatternConstraint -> Reader (Map Position ConstraintContent) (Tree (Maybe PatternConstraint))
+            goCleanup (Node root@(pos :@ presentPat) children) = do
+              r <- ask
+              case M.lookup pos r of
+                Nothing -> local (M.insert pos presentPat) $ do
+                  children' <- traverse (local id goCleanup) children
+                  pure $ Node (Just root) children'
+                Just priorPat -> do
+                  {- Need to branch here:
+                      1. If the priorPat straightforwardly conflicts with the presentPat, we want to return Nothing.
+                         This handles cases where (e.g.) M0 ~ "hello" is prior and M(0) ~ "goodbyte" is present.
+
+                      2. If the priorPat is more specific than the presentPat (or presentPat is more general than priorPat),
+                         we want to "skip this level" and look at the children if any exist. NOTE: I think we have to assume
+                         that there is only one child at this point. That *appears* to be a safe assumption based on our
+                         examples but I don't have a good first-principles argument for it.
+
+                         The idea is that if we encounter something like
+
+                           ```
+                           M(0) := Prim.Boolean IX#0 []
+                           |
+                           +- M(1) := Prim.Boolean IX#0 []
+                           |  |
+                           |  `- M(0) := _ -- (A)
+                           |     |
+                           |     `- M(1) := _
+                           |
+                           `- M(0) := _ -- (B)
+                              |
+                              `- M(1) := _
+                           ```
+
+                        We don't know yet whether we need to discard the whole branch until we inspect the children. At (A),
+                        we will end up discarding the branch, because `M(0) := _` and `M(1) := _` are both more general than
+                        the prior bindings. At (B), we will *not* end up discarding the branch, because while `M(0) := _` is
+                        more general than `M(0) := Prim.Boolean IX#0 []`, the M(1) binding in the branch occurs at a place where
+                        there are no prior bindings for M(1). We have to "chop the tree" to remove the useless pattern constraint.
+
+                      3. Otherwise, we add the current position-pattern binding to the context, recurse to the children, and
+                         return a `Just` node.
+                  -}
+                  if | contradicts priorPat presentPat -> pure $ Node Nothing []
+                     | moreGeneralThan priorPat presentPat -> case children of
+                         []          -> pure $ Node Nothing []
+                         [onlyChild] -> goCleanup onlyChild
+                         other          -> error
+                                            $ "mergeForests: I was wrong, apparently we do need to figure out how to 'chop' a tree w/ multiple children:\n"
+                                              <> ppForest other 
+                     | otherwise -> local (M.insert pos presentPat) $ do
+                         children' <- traverse (local id goCleanup) children
+                         pure $ Node (Just root) children' 
+
 
 bottomsUp :: ([Tree a] -> [Tree a] -> Tree a -> Tree a) -> [Tree a] -> [Tree a] -> [Tree a]
 bottomsUp _ _ [] = []
@@ -694,7 +771,7 @@ mergeEm ::
     [Tree ([PatternConstraint], PatternConstraint)] ->
     Tree ([PatternConstraint], PatternConstraint) ->
     Tree ([PatternConstraint], PatternConstraint)
-mergeEm outer peers (Node (path, root) children) = Debug.trace msg $ 
+mergeEm outer peers (Node (path, root) children) = Debug.trace msg $
     Node (path, root) children'
     where
         msg :: String
@@ -704,14 +781,14 @@ mergeEm outer peers (Node (path, root) children) = Debug.trace msg $
                   <> "\n\npeers:\n" <> ppForest peers
                   <> "\n\ninput:\n" <> ppTree (Node (path,root) children)
                   <> "\nresult:\n" <> ppTree (Node (path,root) children')
-                  <> spacer 
+                  <> spacer
         -- Make sure that this "chops" the "head" up to the current node
         outerGroupCandidates = winnowPath path outer
         peerCandidates = winnowPath path peers
         {- Every tree that is consistent with the current path -}
         allCandidates =  nub $ outerGroupCandidates <> peerCandidates -- NOTE: Nub probably isn't exactly what we want, we probably want "path nubbing"
         {- This should be all of the children (recursively) PLUS all of the other candidate branches that match up to this point -}
-        children' =  bottomsUp mergeEm allCandidates children <> winnowPath (path <> [root]) allCandidates -- REVIEW/NOTE: Double check whether this should be 'allCandidates'
+        children' =  bottomsUp mergeEm allCandidates children <> allCandidates -- REVIEW/NOTE: Double check whether this should be 'allCandidates'
         -- TODO
         winnowPath :: [PatternConstraint] -> [Tree ([PatternConstraint], PatternConstraint)] -> [Tree ([PatternConstraint], PatternConstraint)]
         winnowPath herePath candidates = filter go candidates
@@ -1039,7 +1116,7 @@ rebuildFromCaseOf' scrutVarDict datatypes scrutinees branch = do
         rebindWithDictionary :: [(Position,Identifier,Identifier)]
                              -> Expression
                              -> StateT (Map Position Expression) PlutusContext Expression
-        rebindWithDictionary [] e = pure e 
+        rebindWithDictionary [] e = pure e
         rebindWithDictionary dict e = do
           bindings <- traverse mkBinding dict
           pure $ LetE bindings (fromExp e)
@@ -1141,7 +1218,7 @@ eliminateNestedCases' datatypes = \case
                       merged = mergeForests collapsed
                       results = first unTreePatterns <$> forest
                       cases = runReader (mkCases results merged) (BindingContext [])
-                  Debug.traceM $ "ORIGINAL EXPRESSION:\n" <> prettyStr caseE 
+                  Debug.traceM $ "ORIGINAL EXPRESSION:\n" <> prettyStr caseE
                   Debug.traceM $ "INITIAL FOREST:\n" <> ppForest (fst <$> forest)
                   Debug.traceM $ "\nEXPANDED FOREST:\n" <> ppForest expanded
                   Debug.traceM $ "\nCOLLAPSED:\n" <> ppForest collapsed
