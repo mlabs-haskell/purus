@@ -705,12 +705,33 @@ mergeForests = mapMaybe (cleanup . fmap snd) . goMerge [] . fmap (makePathsExpli
             moreGeneralThan :: ConstraintContent -> ConstraintContent -> Bool
             moreGeneralThan prior present = not (irrefutable prior) && irrefutable present
 
+            {- If we want to "chop" a tree (because it has redundant constraint or less-specific constraint than a prior binding,
+               we need to return a forest [Tree (Maybe PatternConstraint)] instead of a single tree. This is stupid but I dunno how you get around
+               having to write this function when working w/ trees.
+            -}
+            goCleanupForest :: Tree PatternConstraint -> Reader (Map Position ConstraintContent) [Tree (Maybe PatternConstraint)]
+            goCleanupForest (Node root@(pos :@ presentPat) children) = do
+              r <- ask
+              case M.lookup pos r of
+                Nothing -> local (M.insert pos presentPat) $ do
+                  children' <- concat <$> traverse (local id goCleanupForest) children
+                  pure [Node (Just root) children']
+                Just priorPat -> do
+                  if | priorPat == presentPat ->  concat <$> traverse (local id goCleanupForest) children
+                     | contradicts priorPat presentPat -> pure $ []
+                     | moreGeneralThan priorPat presentPat -> case children of
+                         []          -> pure []
+                         xs -> concat <$> traverse (local id goCleanupForest) xs
+                     | otherwise -> local (M.insert pos presentPat) $ do
+                         children' <- concat <$> traverse (local id goCleanupForest) children
+                         pure [Node (Just root) children']
+
             goCleanup :: Tree PatternConstraint -> Reader (Map Position ConstraintContent) (Tree (Maybe PatternConstraint))
             goCleanup (Node root@(pos :@ presentPat) children) = do
               r <- ask
               case M.lookup pos r of
                 Nothing -> local (M.insert pos presentPat) $ do
-                  children' <- traverse (local id goCleanup) children
+                  children' <- concat <$> traverse (local id goCleanupForest) children
                   pure $ Node (Just root) children'
                 Just priorPat -> do
                   {- Need to branch here:
@@ -866,7 +887,24 @@ consistentResult ::
   [PatternConstraint] ->
   [PatternConstraint] ->
   Bool
-consistentResult currentPath candidateRes = and (consistentConstraints <$> currentPath <*> candidateRes)
+consistentResult currentPath candidateRes = and (consistentConstraintsResult <$> currentPath <*> candidateRes)
+  where
+    {- Need a stronger criterion than the one in `consistentConstraints`. Here, directionality matters:
+       If a result has wildcard constraints in its path, those can only be satisfied by wildcards in the current
+       path. (Else we'll always choose the first result for a catchall case)
+    -}
+    consistentConstraintsResult :: PatternConstraint -> PatternConstraint -> Bool
+    consistentConstraintsResult (pos1 :@ branch) (pos2 :@ res) =
+      pos1 /= pos2 || case (branch, res) of
+        (VarC _, VarC _) -> True
+        (WildC, WildC)  -> True
+        (_, WildC)      -> True -- this is the important difference, we're not "unifying" here, we're matching unidirectionally
+        (LitC l1, LitC l2) -> l1 == l2
+        (Constructor tn1 cix1 ps1, Constructor tn2 cix2 ps2) ->
+          tn1 == tn2
+            && cix1 == cix2
+            && and (zipWith consistentConstraintsResult ps1 ps2)
+        _ -> False 
 
 {- General outline of procedure:
 
@@ -998,7 +1036,7 @@ mkCaseOf :: [([PatternConstraint], Expression)] -> Tree PatternConstraint -> Rea
 mkCaseOf results (Node pc@(pos :@ pat) []) = bindAndUpdatePath pc $ do
     thisPath <- view currentPath
     case compatibleBindings thisPath results of
-        Nothing -> error "no compatible result found"
+        Nothing -> error $ "no compatible result found for " <> prettyStr thisPath 
         Just (res, rebindDict) -> pure $ CaseOf pos [(pat, Right $ Result res rebindDict)]
 mkCaseOf results (Node pc@(pos :@ pat) children) = bindAndUpdatePath pc $ do
     let (commonRoot :@ _) = fst $ head (peel children)
@@ -1010,7 +1048,7 @@ mkAlt results = \case
     Node altPC@(_ :@ altLHS) [] -> bindAndUpdatePath altPC $ do
         thisPath <- view currentPath
         case compatibleBindings thisPath results of
-            Nothing -> error "no compatible result found"
+            Nothing -> error $ "no compatible result found for " <> prettyStr thisPath 
             Just (res, rebindDict) -> pure (altLHS, Right $ Result res rebindDict)
     other@(Node (_ :@ altLHS) _) -> do
         rhs <- mkCaseOf results other
@@ -1223,6 +1261,7 @@ eliminateNestedCases' datatypes = \case
                   Debug.traceM $ "\nEXPANDED FOREST:\n" <> ppForest expanded
                   Debug.traceM $ "\nCOLLAPSED:\n" <> ppForest collapsed
                   Debug.traceM $ "\nMERGED:\n" <> ppForest merged
+                  Debug.traceM $ "\nRESULTS:\n" <> prettyStr results 
                   Debug.traceM $ "\nCASEOF:\n" <> prettyStr cases
                   rebuildFromCaseOf scrutIdDict datatypes scrutinees cases
     other -> pure other
