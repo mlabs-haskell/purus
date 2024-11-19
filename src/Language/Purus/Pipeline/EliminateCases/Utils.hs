@@ -405,20 +405,22 @@ expandNestedPatterns scrutinees pats = evalState (prependScrutineeBinders =<< tr
           Node x xs -> p x && all fullyExpanded xs
          where
            p :: PatternConstraint -> Bool
-           p (_ :@ pat) = case pat of
-             VarC{} -> True
-             WildC -> True
-             LitC{} -> True
-             Constructor _ _ [] -> True
-             Constructor _ _ xs -> all p xs
+           p (_ :@ pat) = result -- if result then result else Debug.trace msg result
+            where
+              result = case pat of
+               VarC{} -> True
+               WildC -> True
+               LitC{} -> True
+               Constructor _ _ args -> all irrefutable (getContent <$> args)
+              msg = prettify ["fullyExpanded FAIL", "non-expanded:\n" <> prettyStr pat]
 
         go :: Tree PatternConstraint -> State Int (Tree PatternConstraint)
-        go (Node x []) = pure (Node x [])
+        go (Node x []) = expand x 
         go (Node x [y]) = do
             x' <- expand x
             xs' <- go y
             let tempRes = x' `treeSnoc` xs'
-            if fullyExpanded tempRes
+            if fullyExpanded tempRes -- TODO: Remove this check, we really shouldn't need it
               then pure tempRes
               else go tempRes
         go _ = error "non-unary tree in expandNestedPatterns" -- We WANT an error here, if the tree isn't unary then something has gone horribly, irreparably wrong
@@ -426,6 +428,7 @@ expandNestedPatterns scrutinees pats = evalState (prependScrutineeBinders =<< tr
         expand :: PatternConstraint -> State Int (Tree PatternConstraint)
         expand (pos :@ body) = case body of
             c@(Constructor _ _ []) -> pure . pure $ (pos :@ c)
+            ct@(Constructor tn cix ps) | all irrefutable (getContent <$> ps) -> pure . pure $ pos :@ ct
             Constructor tn cix ps -> do
                 (newArguments, deeper) <- foldM mkNewArgsAndDeep ([],[]) ps
                 pure $ pure (pos :@ Constructor tn cix newArguments) `treeConcat` deeper
@@ -633,9 +636,7 @@ collapseForest paths = go <$> groups
                                 allOrigArgFields = fromLists $ fields : (unsafeGetFields <$> rest)
 
                                 compressedArgFields = squishColumnsWith allOrigArgFields compressGroup
-                                msg = prettify ["compressGroup","matrix:\n" <> (prettyMatrix $ prettyStr <$> allOrigArgFields), "result:\n" <> prettyStr compressedArgFields]
-                             in Debug.trace msg $
-                                pos :@ Constructor qtn cix compressedArgFields
+                             in pos :@ Constructor qtn cix compressedArgFields
 
         go :: (PatternConstraint, [Tree PatternConstraint]) -> Tree PatternConstraint
         go (cg, inner) = Node cg $ collapseForest inner
