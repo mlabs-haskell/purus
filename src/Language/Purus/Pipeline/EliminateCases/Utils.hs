@@ -14,12 +14,7 @@ import Data.List.NonEmpty qualified as NE
 import Data.Maybe (fromJust, fromMaybe, mapMaybe, catMaybes)
 import Data.Traversable (for)
 
-import Language.PureScript.CoreFn.Module (
-    Datatypes,
-    cdCtorName,
-    getAllConstructorDecls,
-    properToIdent, lookupDataDecl, CtorDecl (..), dDataCtors,
- )
+import Language.PureScript.CoreFn.Module
 import Language.PureScript.Names (
     Ident (..),
     ModuleName (..),
@@ -58,15 +53,17 @@ import Language.Purus.Pipeline.Monad (
 
 import Bound (Var (..))
 import Control.Lens (
+    ix,
+    _2,
     makeLenses,
     over,
-    view, transformM,
+    view, transformM, At (..), folded,
  )
 import Control.Monad.Except (
     MonadError (throwError),
  )
 
-import Control.Lens.Operators ((%=), (+=), (^.))
+import Control.Lens.Operators ((%=), (+=), (^.), (^?), (.~))
 import Control.Monad.State
 import Data.Map (Map)
 import Data.Map qualified as M
@@ -77,17 +74,19 @@ import Data.Vector qualified as V
 import Text.Read (readMaybe)
 
 import Control.Monad.Reader (MonadReader (..), Reader, runReader)
-import Data.Bifunctor (Bifunctor (first))
+import Data.Bifunctor (Bifunctor (first), second)
 import Data.Foldable (traverse_)
 import Data.Foldable.WithIndex (ifind)
 import Data.Traversable.WithIndex
-import Language.Purus.Pipeline.GenerateDatatypes.Utils (freshName)
+import Language.Purus.Pipeline.GenerateDatatypes.Utils (freshName, analyzeTyApp)
 import Witherable (imapMaybe)
 import Debug.Trace qualified as Debug
 import Language.Purus.Pretty.Common (prettyStr)
 
 import Prettyprinter
 import Language.Purus.Debug (prettify)
+import Control.Lens.Operators ((&))
+import Language.PureScript.CoreFn.TypeLike (TypeLike(replaceAllTypeVars))
 
 -- TODO: Delete this eventually, just want it now to sketch things
 type Pattern = Pat WithoutObjects Ty (Exp WithoutObjects Ty) (Var (BVar Ty) (FVar Ty))
@@ -109,6 +108,12 @@ instance Pretty CtorArgPos where
 
 newtype CtorIx = CtorIx Int deriving (Show, Eq, Ord)
 
+getCix :: CtorIx -> Int
+getCix (CtorIx i) = i
+
+getArgPos :: CtorArgPos -> Int
+getArgPos (CtorArgPos i) = i
+
 instance Pretty CtorIx where
   pretty (CtorIx i) = "IX#" <> pretty i
 
@@ -118,22 +123,24 @@ data Position
       ScrutineeRef Int
     | -- A constructor argument local-position (index, argument position) indexed to a position in the matrix
       -- (can nest these but the structure of the type should ensure that we always end up with a matrix position root)
-      ConstructorArgPos Position CtorIx CtorArgPos
+      ConstructorArgPos (Qualified (ProperName 'TypeName)) Position CtorIx CtorArgPos
     deriving (Show, Eq)
 
 instance Pretty Position where
   pretty = \case
     ScrutineeRef i -> "M" <> parens (pretty i)
-    ConstructorArgPos pos ix argpos -> "CTORARG" <> brackets (hsep [pretty pos, pretty ix, pretty argpos])
+    ConstructorArgPos _ pos ix argpos -> "CTORARG" <> brackets (hsep [pretty pos, pretty ix, pretty argpos])
 
 instance Ord Position where
     compare (ScrutineeRef p1) (ScrutineeRef p2) = compare p1 p2
     compare (ScrutineeRef _) _ = LT
-    compare (ConstructorArgPos p1 cix1 argpos1) (ConstructorArgPos p2 cix2 argpos2) = case compare p1 p2 of
-        EQ -> case compare cix1 cix2 of
-            EQ -> compare argpos1 argpos2
-            other -> other
-        other -> other
+    compare (ConstructorArgPos tn1 p1 cix1 argpos1) (ConstructorArgPos tn2 p2 cix2 argpos2)
+      = case compare tn1 tn2 of
+        EQ -> case compare p1 p2 of
+         EQ -> case compare cix1 cix2 of
+             EQ -> compare argpos1 argpos2
+             other -> other
+         other -> other
     compare ConstructorArgPos {} ScrutineeRef {} = GT
 
 {- An Identifer is either a PureScript (Ident,Int) pair or a placeholder identifier that will be replaced with a
@@ -241,7 +248,7 @@ mkForest datatypes = mapMaybe go
                 let ps' =
                         imapMaybe
                             ( \i x -> do
-                                let pos' = ConstructorArgPos pos ctorIndex (CtorArgPos i)
+                                let pos' = ConstructorArgPos tn pos ctorIndex (CtorArgPos i)
                                 toConstraint pos' x
                             )
                             ps
@@ -420,7 +427,7 @@ expandNestedPatterns scrutinees pats = evalState (prependScrutineeBinders =<< tr
             x' <- expand x
             xs' <- go y
             let tempRes = x' `treeSnoc` xs'
-            if fullyExpanded tempRes -- TODO: Remove this check, we really shouldn't need it
+            if fullyExpanded tempRes -- TODO: Remove this check, we really shouldn't need it 
               then pure tempRes
               else go tempRes
         go _ = error "non-unary tree in expandNestedPatterns" -- We WANT an error here, if the tree isn't unary then something has gone horribly, irreparably wrong
@@ -1291,3 +1298,27 @@ eliminateNestedCases' datatypes = \case
 
 eliminateNestedCases :: Datatypes Kind Ty -> Expression -> PlutusContext Expression
 eliminateNestedCases datatypes = transformM (eliminateNestedCases' datatypes)
+
+unsafeDeduceTypeFromPos :: Datatypes Kind Ty -> [Ty] -> Position ->  Ty
+unsafeDeduceTypeFromPos dt scrutTys pos = fromJust $ deduceTypeFromPos dt scrutTys pos
+
+deduceTypeFromPos :: Datatypes Kind Ty -> [Ty] -> Position ->  Maybe Ty
+deduceTypeFromPos datatypes scrutTys = \case
+  ScrutineeRef i -> Just $ scrutTys !! i
+  ConstructorArgPos tn outerPos cix argpos -> case deduceTypeFromPos datatypes scrutTys outerPos of
+    Nothing -> Nothing
+    Just outerPosCtorTy -> findArgumentType tn outerPosCtorTy cix argpos
+ where
+   findArgumentType ::  Qualified (ProperName 'TypeName) -> Ty -> CtorIx -> CtorArgPos -> Maybe Ty
+   findArgumentType qtn parentTy cix argpos = do
+     ddecl <- unifyDeclWith parentTy =<< lookupDataDecl qtn datatypes
+     ddecl ^? dDataCtors . ix (getCix cix) . cdCtorFields . ix (getArgPos argpos) . _2
+
+   -- This really just instantiates the args w/ the types in the ctors, maybe there's a cleaner way to write this?
+   unifyDeclWith :: Ty -> DataDecl Kind Ty -> Maybe (DataDecl Kind Ty)
+   unifyDeclWith targTy ddecl = do
+     (_,targs) <- analyzeTyApp targTy -- NOTE: Not checking whether the outermost tycon matches, don't see how it couldn't
+     let toInst = zipWith (\(var,_) instTy -> (var,instTy)) (ddecl ^. dDataArgs) targs
+         ctors = ddecl ^. dDataCtors
+         newCtors = map (\ctor -> over cdCtorFields (map (second (replaceAllTypeVars toInst))) ctor) ctors
+     pure $ ddecl & dDataCtors .~ newCtors
