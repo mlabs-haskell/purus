@@ -108,6 +108,14 @@ instance Pretty CtorArgPos where
 
 newtype CtorIx = CtorIx Int deriving (Show, Eq, Ord)
 
+newtype ResultRowIx = ResultRowIx {getResultRow :: Int} deriving (Show, Eq, Ord)
+
+getPosition :: PatternConstraint -> Position
+getPosition (pos :@ _) = pos
+
+getContent :: PatternConstraint -> ConstraintContent
+getContent (_ :@ content) = content
+
 getCix :: CtorIx -> Int
 getCix (CtorIx i) = i
 
@@ -141,6 +149,7 @@ instance Ord Position where
              EQ -> compare argpos1 argpos2
              other -> other
          other -> other
+        other -> other
     compare ConstructorArgPos {} ScrutineeRef {} = GT
 
 {- An Identifer is either a PureScript (Ident,Int) pair or a placeholder identifier that will be replaced with a
@@ -152,13 +161,13 @@ instance Ord Position where
 -}
 data Identifier
     = PSVarData Ident Int Ty
-    | LocalIdentifier Int
+    | LocalIdentifier Int Ty
     deriving (Show, Eq, Ord)
 
 instance Pretty Identifier where
   pretty = \case
-    PSVarData idnt indx ty -> pretty idnt <> "#" <> pretty indx -- (BVar indx ty idnt)
-    LocalIdentifier i -> "LOCAL#" <> pretty i
+    PSVarData idnt indx ty -> parens $ pretty idnt <> "#" <> pretty indx <+> "::" <+> pretty ty -- (BVar indx ty idnt)
+    LocalIdentifier i ty -> parens $ "LOCAL#" <> pretty i <+> "::" <+> pretty ty
 
 {- With the new indexing scheme, constructor patterns are superfluous on the RHS side of a constraint. The only things the RHS of a constraint can contain are:
      1. A Variable Pattern
@@ -190,6 +199,37 @@ data PatternConstraint = Position :@ ConstraintContent
 instance Pretty PatternConstraint where
   pretty (pos :@ c) = pretty pos <+> ":=" <+> pretty c
 
+{- Data types for the case expression skeleton.
+
+   At this point it still makes more sense to work with an abstract notion of
+   position instead of explicit named variables. All of the variables which occur in the
+   outer scrutinee(s) can easily be replaced at the end, and all of the "new" variables
+   must have their types deduced - best to keep that task separate.
+
+   A skeleton is either a prototype case expression (with a Position and a list of (Constraint,Skeleton) pairs)
+   or a result conjoined with the necessary variable re-bindings. (I think? Hope I got this right)
+-}
+
+data Result = Result Expression [(Position, Identifier, Identifier)]
+
+data CaseOf = CaseOf Position [(ConstraintContent, Either CaseOf Result)]
+
+instance Pretty CaseOf where
+  pretty (CaseOf pos inner) = "case" <+> pretty pos <+> "of" <> hardline <> indent 2 (align . group $ vcat $ (goInner <$> inner))
+   where
+     goInner :: forall a. (ConstraintContent, Either CaseOf Result) -> Doc a
+     goInner (ccontent, rest) = pretty ccontent <+> "->" <+> case rest of
+       Left caseOf -> pretty caseOf
+       Right (Result e rebinds) -> pretty e <+> pretty rebinds
+{- Data type for binding context. Needs to track variables bound in each position.
+-}
+
+data BindingContext = BindingContext
+    { _currentPath :: [PatternConstraint]
+    }
+
+makeLenses ''BindingContext
+
 irrefutable :: ConstraintContent -> Bool
 irrefutable = \case
   VarC _ -> True
@@ -203,13 +243,7 @@ ppForest :: Pretty a => [Tree a] -> String
 ppForest = drawForest . fmap (fmap prettyStr)
 -- data ConstraintPattern = Position :~~~: ConstraintType
 
-newtype ResultRowIx = ResultRowIx {getResultRow :: Int} deriving (Show, Eq, Ord)
 
-getPosition :: PatternConstraint -> Position
-getPosition (pos :@ _) = pos
-
-getContent :: PatternConstraint -> ConstraintContent
-getContent (_ :@ content) = content
 
 mkTree :: forall (a :: *). [a] -> Maybe (Tree a)
 mkTree = \case
@@ -332,9 +366,14 @@ treeConcat t [] = t
 treeConcat (Node x []) (y : ys) = treeConcat (Node x [pure y]) ys
 treeConcat (Node x xs) ys = Node x $ (\z -> treeConcat z ys) <$> xs
 
-expandNestedPatterns :: [Expression] -> [Tree PatternConstraint] -> (Map (Position,Identifier) Expression, [Tree PatternConstraint])
-expandNestedPatterns scrutinees pats = evalState (prependScrutineeBinders =<< traverse go pats) 1
+expandNestedPatterns :: Datatypes Kind Ty
+                     -> [Expression]
+                     -> [Tree PatternConstraint]
+                     -> (Map (Position,Identifier) Expression, [Tree PatternConstraint])
+expandNestedPatterns datatypes scrutinees pats = evalState (prependScrutineeBinders =<< traverse go pats) 1
     where
+        scrutineeTypes = expTy id <$> scrutinees
+
         {- NOTE: This is a little strange and I need to explain what's going on for my own benefit if nothing else.
 
                  Our "mkForest" machinery that constructs the initial list of trees ignores the scrutinees. There isn't a
@@ -394,17 +433,20 @@ expandNestedPatterns scrutinees pats = evalState (prependScrutineeBinders =<< tr
 
         newVarC :: Expression -> Position -> State Int (((Position,Identifier),Expression),PatternConstraint)
         newVarC e pos = do
+            let ty = expTy id e
             s <- get
             id += 1
-            let pc =  pos :@ VarC (LocalIdentifier s)
-                iemapPart = ((pos,LocalIdentifier s),e)
+            let local = LocalIdentifier s ty
+                pc =  pos :@ VarC local
+                iemapPart = ((pos,local),e)
             pure $ (iemapPart,pc)
 
         newIdent :: Position -> State Int PatternConstraint
         newIdent pos = do
           s <- get
           id += 1
-          pure $ pos :@ VarC (LocalIdentifier s)
+          let deducedTy = unsafeDeduceTypeFromPos datatypes scrutineeTypes pos
+          pure $ pos :@ VarC (LocalIdentifier s deducedTy)
 
         fullyExpanded :: Tree PatternConstraint -> Bool
         fullyExpanded = \case
@@ -1012,36 +1054,7 @@ I: Two constraints with *equivalent coverage* can be collapsed into a tree with 
         in order to avoid inserting a result which depends on bound variables w/ the wrong identifier.
 -}
 
-{- Data types for the case expression skeleton.
 
-   At this point it still makes more sense to work with an abstract notion of
-   position instead of explicit named variables. All of the variables which occur in the
-   outer scrutinee(s) can easily be replaced at the end, and all of the "new" variables
-   must have their types deduced - best to keep that task separate.
-
-   A skeleton is either a prototype case expression (with a Position and a list of (Constraint,Skeleton) pairs)
-   or a result conjoined with the necessary variable re-bindings. (I think? Hope I got this right)
--}
-
-data Result = Result Expression [(Position, Identifier, Identifier)]
-
-data CaseOf = CaseOf Position [(ConstraintContent, Either CaseOf Result)]
-
-instance Pretty CaseOf where
-  pretty (CaseOf pos inner) = "case" <+> pretty pos <+> "of" <> hardline <> indent 2 (align . group $ vcat $ (goInner <$> inner))
-   where
-     goInner :: forall a. (ConstraintContent, Either CaseOf Result) -> Doc a
-     goInner (ccontent, rest) = pretty ccontent <+> "->" <+> case rest of
-       Left caseOf -> pretty caseOf
-       Right (Result e rebinds) -> pretty e <+> pretty rebinds
-{- Data type for binding context. Needs to track variables bound in each position.
--}
-
-data BindingContext = BindingContext
-    { _currentPath :: [PatternConstraint]
-    }
-
-makeLenses ''BindingContext
 
 pathBindings :: [PatternConstraint] -> Map Position Identifier
 pathBindings ps = go M.empty ps
@@ -1240,7 +1253,7 @@ rebuildFromCaseOf' scrutVarDict datatypes scrutinees branch = do
                 let v = V . B $ BVar indx ty idnt
                 id %= M.insert p v
                 pure v
-            li@(LocalIdentifier _) -> do
+            li@(LocalIdentifier _ ty) -> do
               case M.lookup li scrutIdDict of
                 Just res -> pure res
                 Nothing -> do
@@ -1250,8 +1263,7 @@ rebuildFromCaseOf' scrutVarDict datatypes scrutinees branch = do
                           u <- lift next
                           let utxt = "$X" <> T.pack (show u)
                               uIdent = Ident utxt
-                              dummyTy = TyCon (Qualified ByNullSourcePos (ProperName utxt))
-                              res = V . B $ BVar u dummyTy uIdent
+                              res = V . B $ BVar u ty uIdent
                           id %= M.insert p res
                           pure res
                       Just res -> pure res
@@ -1281,7 +1293,7 @@ eliminateNestedCases' datatypes = \case
                 then pure caseE
                 else do
                   let forest = mkForest datatypes alts
-                      (scrutIdDict,expanded) = expandNestedPatterns scrutinees $ fst <$> forest
+                      (scrutIdDict,expanded) = expandNestedPatterns datatypes scrutinees $ fst <$> forest
                       collapsed = collapseForest expanded
                       merged = mergeForests collapsed
                       results = first unTreePatterns <$> forest
@@ -1300,7 +1312,7 @@ eliminateNestedCases :: Datatypes Kind Ty -> Expression -> PlutusContext Express
 eliminateNestedCases datatypes = transformM (eliminateNestedCases' datatypes)
 
 unsafeDeduceTypeFromPos :: Datatypes Kind Ty -> [Ty] -> Position ->  Ty
-unsafeDeduceTypeFromPos dt scrutTys pos = fromJust $ deduceTypeFromPos dt scrutTys pos
+unsafeDeduceTypeFromPos dt scrutTys pos = fromJust $ deduceTypeFromPos dt scrutTys pos 
 
 deduceTypeFromPos :: Datatypes Kind Ty -> [Ty] -> Position ->  Maybe Ty
 deduceTypeFromPos datatypes scrutTys = \case

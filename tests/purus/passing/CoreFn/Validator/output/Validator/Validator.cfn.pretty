@@ -8,8 +8,10 @@ Imported Modules:
 
 Exports: 
 ------------------------------
-  equalsPKH,
-  validateIfSignedBy
+  C,
+  and,
+  eqBool,
+  equalsC
 
 Re-Exports: 
 ------------------------------
@@ -21,64 +23,54 @@ Foreign:
 
 Datatypes: 
 ------------------------------
-
+data C (a :: Prim.Type) (b :: Prim.Type) (c :: Prim.Type) = 
+  C ((a :: Prim.Type)) ((b :: Prim.Type)) ((c :: Prim.Type))
 
 
 Declarations: 
 ------------------------------
-equalsPKH :: (Prim.PubKeyHash -> ((Prim.PubKeyHash -> (Prim.Boolean))))
-equalsPKH = 
-  \(v: Prim.PubKeyHash) -> 
-    \(v1: Prim.PubKeyHash) -> 
-      case (v: Prim.PubKeyHash) (v1: Prim.PubKeyHash) of 
-         PubKeyHash bs1 PubKeyHash bs2 -> 
-           (equalsByteString: (Builtin.BuiltinByteString ->
-           ((Builtin.BuiltinByteString -> (Prim.Boolean)))))
-           (bs1: Builtin.BuiltinByteString)
-           (bs2: Builtin.BuiltinByteString)
+eqBool :: (Prim.Boolean -> ((Prim.Boolean -> (Prim.Boolean))))
+eqBool = 
+  \(v: Prim.Boolean) -> 
+    \(v1: Prim.Boolean) -> 
+      case (v: Prim.Boolean) (v1: Prim.Boolean) of 
+         True True -> (True: Prim.Boolean)
+         False False -> (True: Prim.Boolean)
+         _ _ -> (False: Prim.Boolean)
 
-validateIfSignedBy :: forall (a :: Prim.Type) (b :: Prim.Type). (Prim.PubKeyHash -> (((a :: Prim.Type) -> (((b :: Prim.Type) -> ((Builtin.BuiltinData -> (Prim.Boolean))))))))
-validateIfSignedBy = 
-  \(pkh: Prim.PubKeyHash) -> 
-    \(v: (a :: Prim.Type)) -> 
-      \(v1: (b :: Prim.Type)) -> 
-        \(cxtData: Builtin.BuiltinData) -> 
-          let
-            scxt :: Prim.ScriptContext
-            scxt = 
-              (deserializeScriptContext: (Builtin.BuiltinData ->
-              (Prim.ScriptContext)))
-              (cxtData: Builtin.BuiltinData)
-          in case (scxt: Prim.ScriptContext) of 
-                ScriptContext cxt -> 
-                  case ((cxt: { txInfo :: Prim.TxInfo, purpose :: Prim.ScriptPurpose }).txInfo) of 
-                     TxInfo info -> 
-                       let
-                         signatories :: List (Prim.PubKeyHash)
-                         signatories = 
-                           (info: {
-                                    inputs :: List (Prim.TxInInfo),
-                                    referenceInputs :: List (Prim.TxInInfo),
-                                    outputs :: List (Prim.TxOut),
-                                    fee :: Prim.Value,
-                                    mint :: Prim.Value,
-                                    dCert :: List (Prim.DCert),
-                                    wdrl :: ((Prim.AssocMap
-                                    (Prim.StakingCredential)) (Prim.Int)),
-                                    validRange :: (Prim.Interval
-                                    (Prim.POSIXTime)),
-                                    signatories :: List (Prim.PubKeyHash),
-                                    redeemers :: ((Prim.AssocMap
-                                    (Prim.ScriptPurpose)) (Prim.Redeemer)),
-                                    data :: ((Prim.AssocMap
-                                    (Prim.DatumHash)) (Prim.Datum)),
-                                    id :: Prim.TxId
-                                  })
-                           .signatories
-                       in (anyList: forall (a :: Prim.Type). (((a :: Prim.Type) ->
-                          (Prim.Boolean)) ->
-                          ((List ((a :: Prim.Type)) -> (Prim.Boolean)))))
-                          ((equalsPKH: (Prim.PubKeyHash ->
-                           ((Prim.PubKeyHash -> (Prim.Boolean)))))
-                           (pkh: Prim.PubKeyHash))
-                          (signatories: List (Prim.PubKeyHash))
+and :: (Prim.Boolean -> ((Prim.Boolean -> (Prim.Boolean))))
+and = 
+  \(v: Prim.Boolean) -> 
+    \(v1: Prim.Boolean) -> 
+      case (v: Prim.Boolean) (v1: Prim.Boolean) of 
+         True True -> (True: Prim.Boolean)
+         _ _ -> (False: Prim.Boolean)
+
+equalsC :: ((((Validator.C (Prim.Int)) (Prim.String)) ((Prim.Maybe (Prim.Boolean)))) -> (((((Validator.C (Prim.Int)) (Prim.String)) ((Prim.Maybe (Prim.Boolean)))) -> (Prim.Boolean))))
+equalsC = 
+  \(v: (((Validator.C
+    (Prim.Int)) (Prim.String)) ((Prim.Maybe (Prim.Boolean))))) -> 
+    \(v1: (((Validator.C
+      (Prim.Int)) (Prim.String)) ((Prim.Maybe (Prim.Boolean))))) -> 
+      case (v: (((Validator.C (Prim.Int)) (Prim.String)) ((Prim.Maybe (Prim.Boolean))))) (v1: (((Validator.C (Prim.Int)) (Prim.String)) ((Prim.Maybe (Prim.Boolean))))) of 
+         C i1 s1 Just b1 C i2 s2 Just b2 -> 
+           (and: (Prim.Boolean -> ((Prim.Boolean -> (Prim.Boolean)))))
+           ((equalsInteger: (Prim.Int -> ((Prim.Int -> (Prim.Boolean)))))
+            (i1: Prim.Int)
+            (i2: Prim.Int))
+           ((and: (Prim.Boolean -> ((Prim.Boolean -> (Prim.Boolean)))))
+            ((equalsString: (Prim.String -> ((Prim.String -> (Prim.Boolean)))))
+             (s1: Prim.String)
+             (s2: Prim.String))
+            ((eqBool: (Prim.Boolean -> ((Prim.Boolean -> (Prim.Boolean)))))
+             (b1: Prim.Boolean)
+             (b2: Prim.Boolean)))
+         C i1 s1 Nothing C i2 s2 Nothing -> 
+           (and: (Prim.Boolean -> ((Prim.Boolean -> (Prim.Boolean)))))
+           ((equalsInteger: (Prim.Int -> ((Prim.Int -> (Prim.Boolean)))))
+            (i1: Prim.Int)
+            (i2: Prim.Int))
+           ((equalsString: (Prim.String -> ((Prim.String -> (Prim.Boolean)))))
+            (s1: Prim.String)
+            (s2: Prim.String))
+         _ _ -> (False: Prim.Boolean)
