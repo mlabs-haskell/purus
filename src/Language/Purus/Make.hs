@@ -158,11 +158,12 @@ compile primModule orderedModules mainModuleName mainFunctionName =
       datatypes <- runCounter $ desugarObjectsInDatatypes (moduleDataTypes summedModule)
       --traceM "Desugared datatypes"
       runPlutusContext initDatatypeDict $ do
-        noNestedCases <- prettyStr <$> eliminateNestedCases datatypes withoutObjects
-        error $ "NESTED CASE ELIMINATION RESULT:\n\n"  <> noNestedCases -- TODO: Remove later
-        generateDatatypes withoutObjects datatypes
+        noNestedCases <- eliminateNestedCases datatypes withoutObjects
+        when (noNestedCases /= withoutObjects)  $ do
+          traceM $ "NESTED CASE ELIMINATION RESULT:\n\n"  <> prettyStr noNestedCases -- TODO: Remove later
+        generateDatatypes noNestedCases datatypes
         -- traceM "Generated PIR datatypes"
-        withoutCases <- eliminateCases datatypes withoutObjects
+        withoutCases <- eliminateCases datatypes noNestedCases
         -- traceBracket "Eliminated Cases. Result:" $  prettyStr withoutCases
         pir <- compileToPIR datatypes withoutCases
         -- traceBracket "Compiled to PIR. Result: " $ docString (prettyPirReadable pir)

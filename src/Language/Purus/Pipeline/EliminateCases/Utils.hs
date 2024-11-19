@@ -71,6 +71,7 @@ import Control.Monad.State
 import Data.Map (Map)
 import Data.Map qualified as M
 import Data.Matrix
+    ( fromLists, getCol, prettyMatrix, Matrix(ncols), nrows, getElem )
 import Data.Tree
 import Data.Vector qualified as V
 import Text.Read (readMaybe)
@@ -86,6 +87,7 @@ import Debug.Trace qualified as Debug
 import Language.Purus.Pretty.Common (prettyStr)
 
 import Prettyprinter
+import Language.Purus.Debug (prettify)
 
 -- TODO: Delete this eventually, just want it now to sketch things
 type Pattern = Pat WithoutObjects Ty (Exp WithoutObjects Ty) (Var (BVar Ty) (FVar Ty))
@@ -148,7 +150,7 @@ data Identifier
 
 instance Pretty Identifier where
   pretty = \case
-    PSVarData idnt indx ty -> pretty (BVar indx ty idnt)
+    PSVarData idnt indx ty -> pretty idnt <> "#" <> pretty indx -- (BVar indx ty idnt)
     LocalIdentifier i -> "LOCAL#" <> pretty i
 
 {- With the new indexing scheme, constructor patterns are superfluous on the RHS side of a constraint. The only things the RHS of a constraint can contain are:
@@ -172,7 +174,7 @@ instance Pretty ConstraintContent where
     VarC i -> pretty i
     WildC  -> "_"
     LitC lit -> pretty lit
-    Constructor qtn ctorIx inner -> pretty qtn <+> pretty ctorIx <+> brackets (hsep (pretty <$> inner))
+    Constructor qtn ctorIx inner -> parens $ pretty qtn <+> pretty ctorIx <+> brackets (hsep . punctuate "," $ (pretty . getContent <$> inner))
 
 -- x ~ Just 2
 data PatternConstraint = Position :@ ConstraintContent
@@ -397,12 +399,28 @@ expandNestedPatterns scrutinees pats = evalState (prependScrutineeBinders =<< tr
           id += 1
           pure $ pos :@ VarC (LocalIdentifier s)
 
+        fullyExpanded :: Tree PatternConstraint -> Bool
+        fullyExpanded = \case
+          Node x [] -> p x
+          Node x xs -> p x && all fullyExpanded xs
+         where
+           p :: PatternConstraint -> Bool
+           p (_ :@ pat) = case pat of
+             VarC{} -> True
+             WildC -> True
+             LitC{} -> True
+             Constructor _ _ [] -> True
+             Constructor _ _ xs -> all p xs
+
         go :: Tree PatternConstraint -> State Int (Tree PatternConstraint)
         go (Node x []) = pure (Node x [])
         go (Node x [y]) = do
             x' <- expand x
             xs' <- go y
-            pure $ x' `treeSnoc` xs'
+            let tempRes = x' `treeSnoc` xs'
+            if fullyExpanded tempRes
+              then pure tempRes
+              else go tempRes
         go _ = error "non-unary tree in expandNestedPatterns" -- We WANT an error here, if the tree isn't unary then something has gone horribly, irreparably wrong
 
         expand :: PatternConstraint -> State Int (Tree PatternConstraint)
@@ -614,13 +632,17 @@ collapseForest paths = go <$> groups
 
                                 allOrigArgFields = fromLists $ fields : (unsafeGetFields <$> rest)
 
-                                argFieldsGroupedByPos = V.toList $ for [0 .. (ncols allOrigArgFields - 1)] $ \i -> getCol i allOrigArgFields
-
-                                compressedArgFields = compressGroup <$> argFieldsGroupedByPos
-                             in pos :@ Constructor qtn cix compressedArgFields
+                                compressedArgFields = squishColumnsWith allOrigArgFields compressGroup
+                                msg = prettify ["compressGroup","matrix:\n" <> (prettyMatrix $ prettyStr <$> allOrigArgFields), "result:\n" <> prettyStr compressedArgFields]
+                             in Debug.trace msg $
+                                pos :@ Constructor qtn cix compressedArgFields
 
         go :: (PatternConstraint, [Tree PatternConstraint]) -> Tree PatternConstraint
         go (cg, inner) = Node cg $ collapseForest inner
+
+
+squishColumnsWith :: forall a. Matrix a -> ([a] -> a) -> [a]
+squishColumnsWith mtx f = map (\cx -> f (V.toList $ getCol cx mtx)) [1..(ncols mtx)]
 
 {- Tree merging.
 
@@ -792,7 +814,7 @@ mergeEm ::
     [Tree ([PatternConstraint], PatternConstraint)] ->
     Tree ([PatternConstraint], PatternConstraint) ->
     Tree ([PatternConstraint], PatternConstraint)
-mergeEm outer peers (Node (path, root) children) = Debug.trace msg $
+mergeEm outer peers (Node (path, root) children) = -- Debug.trace msg $
     Node (path, root) children'
     where
         msg :: String
