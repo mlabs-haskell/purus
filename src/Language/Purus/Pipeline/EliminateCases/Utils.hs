@@ -11,18 +11,26 @@ import Data.Text qualified as T
 import Data.List (find, nub, partition)
 import Data.List.NonEmpty (NonEmpty (..))
 import Data.List.NonEmpty qualified as NE
-import Data.Maybe (fromJust, fromMaybe, mapMaybe, catMaybes)
-import Data.Traversable (for)
+import Data.Maybe (fromJust, fromMaybe, mapMaybe)
 
 import Language.PureScript.CoreFn.Module
+    ( getAllConstructorDecls,
+      lookupDataDecl,
+      cdCtorFields,
+      cdCtorName,
+      dDataArgs,
+      dDataCtors,
+      properToIdent,
+      CtorDecl(CtorDecl),
+      DataDecl,
+      Datatypes )
 import Language.PureScript.Names (
     Ident (..),
     ModuleName (..),
     ProperName (..),
     ProperNameType (..),
     Qualified (..),
-    QualifiedBy (..),
-    pattern ByNullSourcePos, runIdent,
+    QualifiedBy (..), runIdent,
  )
 import Language.Purus.IR (
     Alt (..),
@@ -37,8 +45,7 @@ import Language.Purus.IR (
     analyzeApp,
     expTy,
     getPat,
-    getResult,
-    pattern (:~>),
+    getResult
  )
 import Language.Purus.IR.Utils (
     Vars,
@@ -57,7 +64,7 @@ import Control.Lens (
     _2,
     makeLenses,
     over,
-    view, transformM, At (..), folded,
+    view, transformM,
  )
 import Control.Monad.Except (
     MonadError (throwError),
@@ -65,11 +72,19 @@ import Control.Monad.Except (
 
 import Control.Lens.Operators ((%=), (+=), (^.), (^?), (.~))
 import Control.Monad.State
+    ( foldM,
+      void,
+      StateT,
+      MonadState(get),
+      MonadTrans(lift),
+      evalState,
+      evalStateT,
+      State )
 import Data.Map (Map)
 import Data.Map qualified as M
 import Data.Matrix
-    ( fromLists, getCol, prettyMatrix, Matrix(ncols), nrows, getElem )
-import Data.Tree
+    ( fromLists, getCol, Matrix(ncols) )
+import Data.Tree ( Tree(Node), drawForest, drawTree )
 import Data.Vector qualified as V
 import Text.Read (readMaybe)
 
@@ -78,12 +93,25 @@ import Data.Bifunctor (Bifunctor (first), second)
 import Data.Foldable (traverse_)
 import Data.Foldable.WithIndex (ifind)
 import Data.Traversable.WithIndex
-import Language.Purus.Pipeline.GenerateDatatypes.Utils (freshName, analyzeTyApp)
+    ( TraversableWithIndex(itraverse) )
+import Language.Purus.Pipeline.GenerateDatatypes.Utils (analyzeTyApp)
 import Witherable (imapMaybe)
 import Debug.Trace qualified as Debug
 import Language.Purus.Pretty.Common (prettyStr)
 
 import Prettyprinter
+    ( Doc,
+      Pretty(pretty),
+      (<+>),
+      align,
+      group,
+      hardline,
+      hsep,
+      indent,
+      punctuate,
+      vcat,
+      brackets,
+      parens )
 import Language.Purus.Debug (prettify)
 import Control.Lens.Operators ((&))
 import Language.PureScript.CoreFn.TypeLike (TypeLike(replaceAllTypeVars))
@@ -149,7 +177,7 @@ instance Ord Position where
              EQ -> compare argpos1 argpos2
              other -> other
          other -> other
-        other -> other
+        other -> other 
     compare ConstructorArgPos {} ScrutineeRef {} = GT
 
 {- An Identifer is either a PureScript (Ident,Int) pair or a placeholder identifier that will be replaced with a
@@ -1280,7 +1308,7 @@ rebuildFromCaseOf' scrutVarDict datatypes scrutinees branch = do
 eliminateNestedCases' :: Datatypes Kind Ty -> Expression -> PlutusContext Expression
 eliminateNestedCases' datatypes = \case
     caseE@(CaseE resTy scrut alts) -> case  crackTupleExp scrut of -- *COMPILER GENERATED* multi-cases will always have a literal tuple as the scrutinee
-        Nothing -> Debug.trace ("SCRUTINEE:\n\n" <> show scrut) $ pure caseE
+        Nothing -> pure caseE
         Just scrutinees -> case traverse (crackTuplePat . getPat) alts of -- *COMPILER GENERATED* multi cases will always have only tuple constructor patterns
             Nothing -> Debug.trace "TRANSFORMATION NOT NEEDED" $ pure caseE
             Just ps -> {- At this point we know we have something that was originally a multi-case, but we don't know if we actually *need*
@@ -1298,6 +1326,7 @@ eliminateNestedCases' datatypes = \case
                       merged = mergeForests collapsed
                       results = first unTreePatterns <$> forest
                       cases = runReader (mkCases results merged) (BindingContext [])
+                  {-
                   Debug.traceM $ "ORIGINAL EXPRESSION:\n" <> prettyStr caseE
                   Debug.traceM $ "INITIAL FOREST:\n" <> ppForest (fst <$> forest)
                   Debug.traceM $ "\nEXPANDED FOREST:\n" <> ppForest expanded
@@ -1305,6 +1334,7 @@ eliminateNestedCases' datatypes = \case
                   Debug.traceM $ "\nMERGED:\n" <> ppForest merged
                   Debug.traceM $ "\nRESULTS:\n" <> prettyStr results 
                   Debug.traceM $ "\nCASEOF:\n" <> prettyStr cases
+                  -}
                   rebuildFromCaseOf scrutIdDict datatypes scrutinees cases
     other -> pure other
 

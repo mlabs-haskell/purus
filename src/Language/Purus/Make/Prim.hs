@@ -21,7 +21,7 @@ import Language.PureScript.Names (
   ModuleName (..), Qualified (..), QualifiedBy (..), Ident
  )
 import Language.PureScript.Types (Type(TypeConstructor))
-import Language.Purus.Prim.Data (primDataPS)
+import Language.Purus.Prim.Data (primDataPS, primData)
 import Language.Purus.Utils (decodeModuleBS)
 
 import Control.Lens.Combinators (transform)
@@ -29,6 +29,7 @@ import Data.FileEmbed ( embedFile )
 import Data.ByteString (ByteString)
 import Language.Purus.Prim.LedgerData (ledgerDatatypes)
 
+-- TODO: Remoe the modulename args, using them is wrong, forcing everything to "Prim" is right
 primifyModule :: ModuleName -> -- old module name
                              ModuleName -> -- new module name
                              Module (Bind Ann) PurusType PurusType Ann ->
@@ -50,9 +51,10 @@ primifyModule oldMn newMn (Module srcSpan comments _oldName path imports exports
    isPrimModule (ModuleName x) = x == "Prim" || x == "Builtin"
 
    f :: ModuleName -> ModuleName
-   f mn | mn == oldMn = newMn
+   f mn = ModuleName "Prim" {-
+        | mn == oldMn = newMn
         | otherwise   = mn
-
+        -}
    goQualified :: forall (a :: *). Qualified a -> Qualified a
    goQualified = \case
      Qualified (ByModuleName mn) x -> Qualified (ByModuleName (f mn)) x

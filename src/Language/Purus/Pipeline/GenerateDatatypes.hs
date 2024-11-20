@@ -43,7 +43,7 @@ import Language.PureScript.Names (
   ProperNameType (..),
   Qualified (..),
   showQualified,
-  pattern ByThisModuleName,
+  pattern ByThisModuleName, ModuleName, Ident,
  )
 import Language.PureScript.Types (
   SourceType,
@@ -91,6 +91,8 @@ import Control.Monad.Except (
   MonadError (throwError),
  )
 import Language.Purus.IR.Utils (WithoutObjects, Vars)
+import Debug.Trace
+import Language.Purus.Pretty (prettyDatatypes, docString)
 
 {-  Generates PIR datatypes declarations for all of the datatypes in scope
     in the Main module we are compiling and adds them to the monadic context for use
@@ -109,10 +111,15 @@ import Language.Purus.IR.Utils (WithoutObjects, Vars)
 
 -}
 generateDatatypes ::
+  ModuleName ->
+  Ident ->
   Exp WithoutObjects Ty (Vars Ty) ->
   Datatypes IR.Kind Ty -> 
   PlutusContext ()
-generateDatatypes e datatypes  = mkPIRDatatypes datatypes' allTypeConstructors
+generateDatatypes mdl mainNm  e datatypes  = do
+   let !msg = (prettyStr mdl <> ", " <> prettyStr mainNm <> ": " <> prettyStr (S.toList allTypeConstructors))
+   -- traceM msg
+   mkPIRDatatypes datatypes' allTypeConstructors
   where
     datatypes' :: Datatypes IR.Kind Ty
     datatypes' = determineDatatypeDependencies e datatypes 
@@ -180,7 +187,6 @@ mkPIRDatatypes datatypes tyConsInExp =
       xs -> foldr1Err "mkDeclKind" (PIR.KindArrow ()) (xs <> [PIR.Type ()])
 
     -- the arguments to the *type*, i.e., they're all tyvars
-    -- NOTE: We should really make changes such that `Maybe SourceType` is `SourceType`
     mkArgDecl :: (Text, IR.Kind) -> PlutusContext (PIR.TyVarDecl PIR.TyName ())
     mkArgDecl (varNm, ki) = do
       tyVarNm <- mkNewTyVar varNm

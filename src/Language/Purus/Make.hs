@@ -63,7 +63,7 @@ import Language.Purus.Pipeline.Monad (
   runPlutusContext,
  )
 import Language.Purus.Pretty.Common (prettyStr, docString)
-import Language.Purus.Prim.Data (primDataPS)
+import Language.Purus.Prim.Data (primDataPS, primData)
 import Language.Purus.Types (PIRTerm, PLCTerm, initDatatypeDict)
 import Language.Purus.Utils (
   decodeModuleIO,
@@ -142,31 +142,32 @@ compile primModule orderedModules mainModuleName mainFunctionName =
       mainFunctionIx <- note (couldn'tFindMain 1) $ dsCxt ^? globalScope . at mainModuleName . folded . at mainFunctionName . folded
       -- traceM $ "Found main function Index: " <> show mainFunctionIx
       mainFunctionBody <- note (couldn'tFindMain 2) $ findDeclBodyWithIndex mainFunctionName mainFunctionIx decls
-      traceBracket ("Found main function body for " <> prettyStr mainFunctionName <> ":") (prettyStr mainFunctionBody)
+      --traceBracket ("Found main function body for " <> prettyStr mainFunctionName <> ":") (prettyStr mainFunctionBody)
       inlined <- runInline summedModule $ do
         liftResult <- lift (mainFunctionName, mainFunctionIx) mainFunctionBody
-        --traceBracket "lift result" (prettyStr liftResult) --"free variables in lift result" (prettyStr . M.toList . fmap S.toList $ oosInLiftResult liftResult)
+        traceBracket "lift result" (prettyStr liftResult) --"free variables in lift result" (prettyStr . M.toList . fmap S.toList $ oosInLiftResult liftResult)
         inlineResult <- inline liftResult
-        -- traceBracket "free variables in inline result" (prettyStr .  S.toList $ findOutOfScopeVars inlineResult)
+        traceBracket "free variables in inline result" (prettyStr .  S.toList $ findOutOfScopeVars inlineResult)
         pure inlineResult
-      traceBracket "Done inlining. Result:" $ prettyStr inlined
+      --traceBracket "Done inlining. Result:" $ prettyStr inlined
       let !instantiated = applyPolyRowArgs $ instantiateTypes inlined
-      traceBracket "Done instantiating types. Result:" $ prettyStr instantiated
+      --traceBracket "Done instantiating types. Result:" $ prettyStr instantiated
       withoutObjects <- instantiateTypes <$> runCounter (desugarObjects instantiated)
 
       traceBracket  "Desugared objects. Result:\n" $ prettyStr withoutObjects
-      datatypes <- runCounter $ desugarObjectsInDatatypes (moduleDataTypes summedModule)
+      datatypes <- runCounter $ desugarObjectsInDatatypes (primDataPS <> moduleDataTypes summedModule)
       --traceM "Desugared datatypes"
       runPlutusContext initDatatypeDict $ do
         noNestedCases <- eliminateNestedCases datatypes withoutObjects
         when (noNestedCases /= withoutObjects)  $ do
           traceM $ "NESTED CASE ELIMINATION RESULT:\n\n"  <> prettyStr noNestedCases -- TODO: Remove later
-        generateDatatypes noNestedCases datatypes
+
+        generateDatatypes (moduleName summedModule) mainFunctionName noNestedCases datatypes
         -- traceM "Generated PIR datatypes"
-        withoutCases <- eliminateCases datatypes noNestedCases
-        -- traceBracket "Eliminated Cases. Result:" $  prettyStr withoutCases
+        withoutCases <- eliminateCases datatypes noNestedCases 
+        traceBracket "Eliminated Cases. Result:" $  prettyStr withoutCases
         pir <- compileToPIR datatypes withoutCases
-        -- traceBracket "Compiled to PIR. Result: " $ docString (prettyPirReadable pir)
+        traceBracket "Compiled to PIR. Result: " $ docString (prettyPirReadable pir)
         -- traceBracket "PIR Raw:" $ LT.unpack (pShowNoColor pir)
         pure pir 
 
@@ -297,7 +298,7 @@ sanityCheck = evalTestModule "tests/purus/passing/CoreFn/Misc/output/Lib/Lib.cfn
 -- takes a path to a project dir, returns (ModuleName,Decl Identifier)
 allValueDeclarations :: FilePath -> IO [(ModuleName,Text)]
 allValueDeclarations path = do
-  allModules <- getFilesToCompile path >>= modulesInDependencyOrder
+  allModules <- getFilesToCompile path >>= \files -> print files >> modulesInDependencyOrder files 
   let allDecls = map (\mdl -> (moduleName mdl, moduleDecls mdl)) allModules
       go mn  = \case
         NonRec _ ident _ -> [(mn,runIdent ident)]

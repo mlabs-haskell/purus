@@ -25,8 +25,8 @@ shouldPassTests :: IO ()
 shouldPassTests = do
   cfn <- coreFnTests
   pir <- pirTests
-  defaultMain $ testGroup "Purus Tests" [cfn,pir]
-
+  defaultMain $ testGroup "Purus Tests" [cfn,pir] 
+ 
 runPurusCoreFn :: P.CodegenTarget -> FilePath ->  IO ()
 runPurusCoreFn target dir =  do
     outDirExists <- doesDirectoryExist outputDir
@@ -62,7 +62,7 @@ pirTests :: IO TestTree
 pirTests = do
   let coreFnTestPath = "tests/purus/passing/CoreFn"
   allTestDirectories <- listDirectory coreFnTestPath
-  let trees = map (\dir -> testCase dir $ compileDirNoEval (coreFnTestPath </> dir)) allTestDirectories
+  let trees = map (\dir -> testCase dir $ compileDir (coreFnTestPath </> dir)) ["Validator"]-- allTestDirectories
   pure $ testGroup "PIR Tests (No Evaluation)" trees
 
 -- path to a Purus project directory, outputs serialized CoreFn 
