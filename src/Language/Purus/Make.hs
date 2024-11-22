@@ -39,7 +39,7 @@ import Language.PureScript.Names (
  )
 
 import Language.Purus.Eval
-import Language.Purus.IR.Utils (IR_Decl, foldBinds)
+import Language.Purus.IR.Utils (IR_Decl, foldBinds, stripSkolemsFromExpr)
 import Language.Purus.Pipeline.CompileToPIR (compileToPIR)
 import Language.Purus.Pipeline.DesugarCore (desugarCoreModule)
 import Language.Purus.Pipeline.DesugarObjects (
@@ -93,6 +93,7 @@ import System.Directory
 
 
 import Debug.Trace (traceM)
+import Language.Purus.IR (expTy)
 -- import PlutusIR.Core.Instance.Pretty.Readable (prettyPirReadable)
 
 {-  Compiles a main function to PIR, given its module name, dependencies, and a
@@ -142,16 +143,18 @@ compile primModule orderedModules mainModuleName mainFunctionName =
       mainFunctionIx <- note (couldn'tFindMain 1) $ dsCxt ^? globalScope . at mainModuleName . folded . at mainFunctionName . folded
       -- traceM $ "Found main function Index: " <> show mainFunctionIx
       mainFunctionBody <- note (couldn'tFindMain 2) $ findDeclBodyWithIndex mainFunctionName mainFunctionIx decls
-      --traceBracket ("Found main function body for " <> prettyStr mainFunctionName <> ":") (prettyStr mainFunctionBody)
+      traceBracket ("Found main function body for " <> prettyStr mainFunctionName <> ":") (prettyStr mainFunctionBody)
+      traceBracket ("main function type  ") $ prettyStr (expTy id  mainFunctionBody)
+
       inlined <- runInline summedModule $ do
         liftResult <- lift (mainFunctionName, mainFunctionIx) mainFunctionBody
-        traceBracket "lift result" (prettyStr liftResult) --"free variables in lift result" (prettyStr . M.toList . fmap S.toList $ oosInLiftResult liftResult)
+        --traceBracket "lift result" (prettyStr liftResult) --"free variables in lift result" (prettyStr . M.toList . fmap S.toList $ oosInLiftResult liftResult)
         inlineResult <- inline liftResult
         traceBracket "free variables in inline result" (prettyStr .  S.toList $ findOutOfScopeVars inlineResult)
         pure inlineResult
-      --traceBracket "Done inlining. Result:" $ prettyStr inlined
+      traceBracket "Done inlining. Result:" $  prettyStr inlined
       let !instantiated = applyPolyRowArgs $ instantiateTypes inlined
-      --traceBracket "Done instantiating types. Result:" $ prettyStr instantiated
+      traceBracket "Done instantiating types. Result:" $ prettyStr instantiated
       withoutObjects <- instantiateTypes <$> runCounter (desugarObjects instantiated)
 
       traceBracket  "Desugared objects. Result:\n" $ prettyStr withoutObjects
@@ -326,6 +329,8 @@ compileDirNoEval path = do
       -- putStrLn msg
       hPutStr h msg
       hClose h 
+
+
 
 compileModuleNoEval :: FilePath -> IO ()
 compileModuleNoEval path = do

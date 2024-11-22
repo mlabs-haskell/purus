@@ -62,7 +62,7 @@ pirTests :: IO TestTree
 pirTests = do
   let coreFnTestPath = "tests/purus/passing/CoreFn"
   allTestDirectories <- listDirectory coreFnTestPath
-  let trees = map (\dir -> testCase dir $ compileDir (coreFnTestPath </> dir)) ["Validator"]-- allTestDirectories
+  let trees = map (\dir -> testCase dir $ compileDirNoEval (coreFnTestPath </> dir)) ["Validator"]-- allTestDirectories
   pure $ testGroup "PIR Tests (No Evaluation)" trees
 
 -- path to a Purus project directory, outputs serialized CoreFn 

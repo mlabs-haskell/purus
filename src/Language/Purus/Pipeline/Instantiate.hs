@@ -51,7 +51,7 @@ applyPolyRowArgs = transform $ \case
 
 {- Instantiates every type abstraction wherever it is possible to deduce the instantiation.
 -}
-instantiateTypes :: forall x (t :: *). (TypeLike t, Pretty t, Pretty (KindOf t)) => Exp x t (Vars t) -> Exp x t (Vars t)
+instantiateTypes :: forall x (t :: *). (TypeLike t, Pretty t, Eq (KindOf t), Pretty (KindOf t)) => Exp x t (Vars t) -> Exp x t (Vars t)
 instantiateTypes = \case
   V v -> V v
   LitE t lit -> LitE t $ instantiateTypes <$> lit
@@ -67,7 +67,7 @@ instantiateTypes = \case
   TyAbs t inner -> TyAbs t (instantiateTypes inner)
   TyInstE t inner -> TyInstE t (instantiateTypes inner)
 
-instantiateApp :: forall x (t :: *). (Pretty t, TypeLike t, Pretty (KindOf t)) => Exp x t (Vars t) -> Exp x t (Vars t)
+instantiateApp :: forall x (t :: *). (Pretty t, TypeLike t, Eq (KindOf t), Pretty (KindOf t)) => Exp x t (Vars t) -> Exp x t (Vars t)
 instantiateApp e = case analyzeApp e of
   Nothing -> e
   Just (f, args) ->

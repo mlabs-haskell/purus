@@ -32,6 +32,7 @@ import Language.PureScript.Constants.Prim qualified as C
 import Language.PureScript.CoreFn.TypeLike (
   TypeLike (..),
   instantiateWithArgs,
+  underQuantifiers
  )
 import Language.PureScript.Names (Ident (..), ProperName (..), ProperNameType (..), Qualified (..), QualifiedBy (..), disqualify, runIdent, runModuleName, showIdent, showQualified)
 import Language.PureScript.PSString (PSString, decodeStringWithReplacement, prettyPrintString)
@@ -767,7 +768,7 @@ analyzeApp e = (,appArgs e) <$> appFun e
         go other = Just other
     appFun _ = Nothing
 
-expTy :: forall x t a. (Pretty a, Pretty (KindOf t), TypeLike t, Pretty t) => (a -> Var (BVar t) (FVar t)) -> Exp x t a -> t
+expTy :: forall x t a. (Pretty a, Pretty (KindOf t), Eq (KindOf t), TypeLike t, Pretty t) => (a -> Var (BVar t) (FVar t)) -> Exp x t a -> t
 expTy f = \case
   V x -> case f x of
     B (BVar _ t _) -> t
@@ -782,7 +783,7 @@ expTy f = \case
   TyInstE t e -> instTy t $ expTy f e
   TyAbs (BVar _ k idnt) inner -> quantify1 (runIdent idnt) k (expTy f inner)
 
-expTy' :: forall x t a. (TypeLike t, Pretty t, Pretty (KindOf t), Pretty a) => (a -> Var (BVar t) (FVar t)) -> Scope (BVar t) (Exp x t) a -> t
+expTy' :: forall x t a. (TypeLike t, Pretty t, Eq (KindOf t), Pretty (KindOf t), Pretty a) => (a -> Var (BVar t) (FVar t)) -> Scope (BVar t) (Exp x t) a -> t
 expTy' f scoped = case instantiateEither (either (V . B) (V . F)) scoped of
   V x -> case x >>= f of
     B (BVar _ t _) -> t
@@ -807,7 +808,7 @@ expTy' f scoped = case instantiateEither (either (V . B) (V . F)) scoped of
 {- | Gets the type of an application expression.
   (Name might be a bit confusing, does not apply types)
 -}
-appType :: forall x t a. (TypeLike t, Pretty t, Pretty (KindOf t), Pretty a) => (a -> Var (BVar t) (FVar t)) -> Exp x t a -> Exp x t a -> t
+appType :: forall x t a. (TypeLike t, Pretty t, Pretty (KindOf t), Eq (KindOf t), Pretty a) => (a -> Var (BVar t) (FVar t)) -> Exp x t a -> Exp x t a -> t
 appType h fe ae = doTrace "appType" msg result
   where
     errmsg = prettify [
@@ -825,13 +826,13 @@ appType h fe ae = doTrace "appType" msg result
 
     result = case unsafeAnalyzeApp (AppE fe ae) of
       (fe', ae') ->
-        quantify
-          . foldr1Trace funTy
-          . drop (length ae')
-          . splitFunTyParts
-          . snd
-          . stripQuantifiers
-          $ instantiateWithArgs (expTy h fe') (expTy h <$> ae')
+        let instantiatedWithArgs = instantiateWithArgs (expTy h fe') (expTy h <$> ae')
+        in underQuantifiers instantiatedWithArgs
+            (foldr1Trace funTy
+             . drop (length ae')
+             . splitFunTyParts
+             . snd
+             . stripQuantifiers)
 
 $(deriveShow1 ''BindE)
 

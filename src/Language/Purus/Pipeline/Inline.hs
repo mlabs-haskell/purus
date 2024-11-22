@@ -54,7 +54,7 @@ import Language.Purus.IR (
   Exp (..),
   expTy,
   expTy',
-  unsafeAnalyzeApp,
+  unsafeAnalyzeApp, bvType,
  )
 import Language.Purus.IR.Utils (
   Vars,
@@ -174,36 +174,47 @@ inline (LiftResult decls bodyE) = do
     cleanup [] body = pure $ toExp body
     cleanup breakers body = do
       abstracted <- addTypeAbstractions breakers
+      absBody    <- addTypeAbstraction body
       let newTypeDict = foldBinds (\acc nm b -> M.insert nm (expTy' id b) acc) M.empty abstracted
-          updateTypes = deepMapMaybeBound $ \(unBVar -> bv) -> case M.lookup bv newTypeDict of
-            Nothing -> Nothing
-            Just t -> Just $ uncurry mkBVar bv t
-          finalDecls = mapBind (const $ viaExp updateTypes) <$> abstracted
-          finalBody = viaExp updateTypes body
-      case finalDecls of
-        [] -> pure . toExp $ finalBody
+          updateTypes idnt inExp = result
+           where
+             result = deepMapMaybeBound (\bv@(BVar bvi bvt bvn) -> case M.lookup (bvn,bvi) newTypeDict of
+               Nothing -> Nothing
+               Just t ->
+                 let msg = prettify [ "name: " <> prettyStr idnt
+                            , "input type:\n" <> prettyStr (expTy id inExp)
+                            , "old bv: " <> prettyStr bv
+                            , "new bv: " <> prettyStr t
+                            --, "output expression:\n" <> prettyStr result
+                            , "output expression type:\n" <> prettyStr (expTy id result)]
+                 in doTrace "updateTypes" msg $ Just $ uncurry mkBVar (bvn,bvi) t) inExp
+
+          finalDecls = mapBind (\(i,_) inExp -> viaExp (updateTypes i) inExp) <$> abstracted
+          finalBody = viaExp (updateTypes (Ident "body")) body
+      case abstracted  of
+        [] -> pure . toExp $  finalBody
         _ -> pure $ LetE finalDecls finalBody
 
     addTypeAbstractions :: [MonoBind] -> Inline [MonoBind]
-    addTypeAbstractions = traverse (traverseBind (const go))
-      where
-        go :: MonoScoped -> Inline MonoScoped
-        go = viaExpM $ \e -> do
-          let e' = transformTypesInExp stripSkolems e
-              t = expTy id e'
-              free = freeTypeVariables t
-          bvars <- traverse (\(nm, ki) -> next >>= \u -> pure $ BVar u ki (Ident nm)) free
-          let result = foldr TyAbs e' bvars
-              msg =
-                prettify
-                  [ "INPUT EXPR:\n" <> prettyStr e
-                  , "INPUT EXPR TY:\n" <> prettyStr t <> "\n\n" <> show (void t)
-                  , "FREE TY VARS IN INPUT:\n" <> prettyStr free
-                  , "RESULT:\n" <> prettyStr result
-                  , "RESULT TY:\n" <> prettyStr (expTy id result)
-                  ]
-          doTraceM "addTypeAbstractions" msg
-          pure result
+    addTypeAbstractions = traverse (traverseBind (const addTypeAbstraction))
+
+    addTypeAbstraction :: MonoScoped -> Inline MonoScoped
+    addTypeAbstraction = viaExpM $ \e -> do
+      let e' = transformTypesInExp stripSkolems e
+          t = expTy id e'
+          free = reverse $ freeTypeVariables t
+      bvars <- traverse (\(nm, ki) -> next >>= \u -> pure $ BVar u ki (Ident nm)) free
+      let result = foldr TyAbs e' bvars
+          msg =
+            prettify
+              [ "INPUT EXPR:\n" <> prettyStr e
+              , "INPUT EXPR TY:\n" <> prettyStr t <> "\n\n" <> show (void t)
+              , "FREE TY VARS IN INPUT:\n" <> prettyStr free
+              , "RESULT:\n" <> prettyStr result
+              , "RESULT TY:\n" <> prettyStr (expTy id result)
+              ]
+      doTraceM "addTypeAbstraction" msg
+      pure result
 
 -- sorry koz. in my heart i know you're right about type synonyms, but...
 type InlineState a = StateT (Map (Ident, Int) InlineBodyData) Inline a
