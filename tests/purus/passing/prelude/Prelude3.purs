@@ -11,8 +11,7 @@ serializeScriptContext (ScriptContext rec) =
 
 deserializeScriptContext :: Builtin.BuiltinData -> ScriptContext
 deserializeScriptContext dat =
-  let dat' = Builtin.sndPair (Builtin.unConstrData dat)
-      unlisted = Builtin.unListData dat'
+  let unlisted = Builtin.sndPair (Builtin.unConstrData dat)
       txInfo = deserializeTxInfo (Builtin.headList unlisted)
       unlisted' = Builtin.tailList unlisted
       purpose = deserializeScriptPurpose (Builtin.headList unlisted')
@@ -33,7 +32,7 @@ deserializeScriptPurpose :: Builtin.BuiltinData -> ScriptPurpose
 deserializeScriptPurpose dat =
   let p = Builtin.unConstrData dat
       tag = Builtin.fstPair p
-      x = Builtin.headList (Builtin.unListData (Builtin.sndPair p))
+      x = Builtin.headList (Builtin.sndPair p)
     in if Builtin.equalsInteger 0 tag
        then Minting (deserializeCurrencySymbol x)
        else if Builtin.equalsInteger 1 tag
@@ -60,7 +59,7 @@ serializeTxInfo (TxInfo rec) =
 
 deserializeTxInfo :: Builtin.BuiltinData -> TxInfo
 deserializeTxInfo dat =
-  let unlisted = Builtin.unListData (Builtin.sndPair (Builtin.unConstrData dat))
+  let unlisted = Builtin.sndPair (Builtin.unConstrData dat)
       inputs =  deserializeList deserializeTxInInfo (Builtin.headList unlisted)
       unlisted1 = Builtin.tailList unlisted
       referenceInputs = deserializeList deserializeTxInInfo (Builtin.headList unlisted1)
@@ -132,7 +131,7 @@ deserializeDCert :: Builtin.BuiltinData -> DCert
 deserializeDCert dat =
   let p = Builtin.unConstrData dat
       tag = Builtin.fstPair p
-      unlisted = Builtin.unListData (Builtin.sndPair p)
+      unlisted = Builtin.sndPair p
     in if Builtin.equalsInteger tag 0
        then DCertDelegRegKey (deserializeStakingCredential (Builtin.headList unlisted))
        else if Builtin.equalsInteger tag 1
