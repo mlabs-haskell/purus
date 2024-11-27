@@ -1,7 +1,5 @@
 module Prelude where
 
-
-
 serializeScriptHash :: ScriptHash -> Builtin.BuiltinData
 serializeScriptHash (ScriptHash dat) = serializeByteString dat
 
@@ -82,8 +80,7 @@ deserializeTuple2 ::
   Builtin.BuiltinData -> 
   Tuple2 a b
 deserializeTuple2 fA fB dat = 
-    let dat' = Builtin.sndPair (Builtin.unConstrData dat)
-        unlisted = Builtin.unListData dat'
+    let unlisted = Builtin.sndPair (Builtin.unConstrData dat)
         x = fA (Builtin.headList unlisted)
         unlisted' = Builtin.tailList unlisted
         y = fB (Builtin.headList unlisted') 
@@ -108,7 +105,7 @@ deserializeMaybe f dat =
       tag = Builtin.fstPair p
     in if Builtin.equalsInteger tag 0
        then Nothing
-       else let unlisted = Builtin.unListData (Builtin.sndPair p)
+       else let unlisted = Builtin.sndPair p
               in Just (f (Builtin.headList unlisted))
 
 maybe :: 

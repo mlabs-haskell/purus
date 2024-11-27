@@ -2,7 +2,6 @@ module Prelude2 where
 
 import Prelude 
 
-
 serializeStakingCredential :: StakingCredential -> Builtin.BuiltinData
 serializeStakingCredential sc = case sc of
   StakingHash c ->
@@ -17,7 +16,7 @@ deserializeStakingCredential :: Builtin.BuiltinData -> StakingCredential
 deserializeStakingCredential dat =
   let p = Builtin.unConstrData dat
       tag = Builtin.fstPair p
-      unlisted = Builtin.unListData (Builtin.sndPair p)
+      unlisted = Builtin.sndPair p
     in if Builtin.equalsInteger tag 0
        then StakingHash (deserializeCredential (Builtin.headList unlisted))
        else let i1 = deserializeInt (Builtin.headList unlisted)
@@ -36,7 +35,7 @@ deserializeCredential :: Builtin.BuiltinData -> Credential
 deserializeCredential dat =
   let p = Builtin.unConstrData dat
       tag = Builtin.fstPair p
-      unlisted = Builtin.unListData (Builtin.sndPair p)
+      unlisted = Builtin.sndPair p
     in if Builtin.equalsInteger tag 0
        then PubKeyCredential (deserializePubKeyHash (Builtin.headList unlisted))
        else ScriptCredential (deserializeScriptHash (Builtin.headList unlisted))
@@ -82,8 +81,7 @@ serializeAddress (Address rec) =
 
 deserializeAddress :: Builtin.BuiltinData -> Address
 deserializeAddress dat =
-  let dat' = Builtin.sndPair (Builtin.unConstrData dat)
-      unlisted = Builtin.unListData dat'
+  let unlisted = Builtin.sndPair (Builtin.unConstrData dat)
       credential = deserializeCredential (Builtin.headList unlisted)
       unlisted' = Builtin.tailList unlisted
       stakingCredential = deserializeMaybe deserializeStakingCredential (Builtin.headList unlisted')
@@ -103,8 +101,7 @@ serializeTxId (TxId bs) =
 
 deserializeTxId :: Builtin.BuiltinData -> TxId
 deserializeTxId dat =
-  let dat' = Builtin.sndPair (Builtin.unConstrData dat)
-      unlisted = Builtin.unListData dat'
+  let unlisted = Builtin.sndPair (Builtin.unConstrData dat)
     in TxId (deserializeByteString (Builtin.headList unlisted))
 
 serializeTxOut :: TxOut -> Builtin.BuiltinData
@@ -117,7 +114,7 @@ serializeTxOut (TxOut rec) =
 
 deserializeTxOut :: Builtin.BuiltinData -> TxOut
 deserializeTxOut dat =
-  let unlisted = Builtin.unListData (Builtin.sndPair (Builtin.unConstrData dat))
+  let unlisted = Builtin.sndPair (Builtin.unConstrData dat)
       address = deserializeAddress (Builtin.headList unlisted)
       unlisted1 = Builtin.tailList unlisted
       value = deserializeValue (Builtin.headList unlisted1)
@@ -139,7 +136,7 @@ serializeTxOutRef (TxOutRef rec) =
 
 deserializeTxOutRef :: Builtin.BuiltinData -> TxOutRef
 deserializeTxOutRef dat =
-  let unlisted = Builtin.unListData (Builtin.sndPair (Builtin.unConstrData dat))
+  let unlisted = Builtin.sndPair (Builtin.unConstrData dat)
       id1 = deserializeTxId (Builtin.headList unlisted)
       unlisted' = Builtin.tailList unlisted
       idx = deserializeInt (Builtin.headList unlisted')
@@ -153,7 +150,7 @@ serializeTxInInfo (TxInInfo rec) =
 
 deserializeTxInInfo :: Builtin.BuiltinData -> TxInInfo
 deserializeTxInInfo dat =
-  let unlisted = Builtin.unListData (Builtin.sndPair (Builtin.unConstrData dat))
+  let unlisted = Builtin.sndPair (Builtin.unConstrData dat)
       outRef = deserializeTxOutRef (Builtin.headList unlisted)
       unlisted' = Builtin.tailList unlisted
       resolved = deserializeTxOut (Builtin.headList unlisted')
@@ -171,7 +168,7 @@ deserializeOutputDatum dat =
       tag = Builtin.fstPair p
     in if Builtin.equalsInteger tag 0
        then NoOutputDatum
-       else let unlisted = Builtin.unListData (Builtin.sndPair p)
+       else let unlisted = Builtin.sndPair p
                 x = Builtin.headList unlisted
               in if Builtin.equalsInteger tag 1
                  then OutputDatumHash (deserializeDatumHash x)
@@ -187,8 +184,7 @@ serializeInterval f (Interval rec) =
 deserializeInterval ::
   forall (a :: Type) . (Builtin.BuiltinData -> a) -> Builtin.BuiltinData -> Interval a
 deserializeInterval f dat =
-  let dat' = Builtin.sndPair (Builtin.unConstrData dat)
-      unlisted = Builtin.unListData dat'
+  let unlisted = Builtin.sndPair (Builtin.unConstrData dat)
       from = deserializeLowerBound f (Builtin.headList unlisted)
       unlisted' = Builtin.tailList unlisted
       to = deserializeUpperBound f (Builtin.headList unlisted')
@@ -209,7 +205,7 @@ deserializeExtended f dat =
     in if Builtin.equalsInteger tag 0
        then NegInf
        else if Builtin.equalsInteger tag 1
-            then let unlisted = Builtin.unListData (Builtin.sndPair p)
+            then let unlisted = Builtin.sndPair p
                   in Finite (f (Builtin.headList unlisted))
             else PosInf
 
@@ -221,8 +217,7 @@ serializeLowerBound f (LowerBound e) =
 deserializeLowerBound ::
   forall (a :: Type) . (Builtin.BuiltinData -> a) -> Builtin.BuiltinData -> LowerBound a
 deserializeLowerBound f dat =
-  let dat' = Builtin.sndPair (Builtin.unConstrData dat)
-      unlisted = Builtin.unListData dat'
+  let unlisted = Builtin.sndPair (Builtin.unConstrData dat)
       e = deserializeExtended f (Builtin.headList unlisted)
     in LowerBound e
 
@@ -234,8 +229,7 @@ serializeUpperBound f (UpperBound e) =
 deserializeUpperBound ::
   forall (a :: Type) . (Builtin.BuiltinData -> a) -> Builtin.BuiltinData -> UpperBound a
 deserializeUpperBound f dat =
-  let dat' = Builtin.sndPair (Builtin.unConstrData dat)
-      unlisted = Builtin.unListData dat'
+  let unlisted = Builtin.sndPair (Builtin.unConstrData dat)
       e = deserializeExtended f (Builtin.headList unlisted)
     in UpperBound e
 
