@@ -2,8 +2,7 @@ module Validator where
 
 import Prim
 
-
-beep = serializeAssocMap
+bop = deserializeTuple2
 
 --not :: Boolean -> Boolean
 --not True = False

@@ -128,7 +128,7 @@ compile primModule orderedModules mainModuleName mainFunctionName =
     go = do
       (summedModule, dsCxt) <- runDesugarCore $ desugarCoreModules primModule orderedModules
       let
-        traceBracket lbl msg = traceM ("\n" <> lbl <> "\n\n" <> msg <> "\n\n")
+        traceBracket lbl msg =  traceM ("\n" <> lbl <> "\n\n" <> msg <> "\n\n")
         decls = moduleDecls summedModule
         declIdentsSet = foldBinds (\acc nm _ -> S.insert nm acc) S.empty decls
         couldn'tFindMain n =
@@ -143,21 +143,21 @@ compile primModule orderedModules mainModuleName mainFunctionName =
       mainFunctionIx <- note (couldn'tFindMain 1) $ dsCxt ^? globalScope . at mainModuleName . folded . at mainFunctionName . folded
       -- traceM $ "Found main function Index: " <> show mainFunctionIx
       mainFunctionBody <- note (couldn'tFindMain 2) $ findDeclBodyWithIndex mainFunctionName mainFunctionIx decls
-      traceBracket ("Found main function body for " <> prettyStr mainFunctionName <> ":") (prettyStr mainFunctionBody)
-      traceBracket ("main function type  ") $ prettyStr (expTy id  mainFunctionBody)
+      --traceBracket ("Found main function body for " <> prettyStr mainFunctionName <> ":") (prettyStr mainFunctionBody)
+      --traceBracket ("main function type  ") $ prettyStr (expTy id  mainFunctionBody)
 
       inlined <- runInline summedModule $ do
         liftResult <- lift (mainFunctionName, mainFunctionIx) mainFunctionBody
-        --traceBracket "lift result" (prettyStr liftResult) --"free variables in lift result" (prettyStr . M.toList . fmap S.toList $ oosInLiftResult liftResult)
+        traceBracket "lift result" (prettyStr liftResult) --"free variables in lift result" (prettyStr . M.toList . fmap S.toList $ oosInLiftResult liftResult)
         inlineResult <- inline liftResult
-        traceBracket "free variables in inline result" (prettyStr .  S.toList $ findOutOfScopeVars inlineResult)
+        --traceBracket "free variables in inline result" (prettyStr .  S.toList $ findOutOfScopeVars inlineResult)
         pure inlineResult
       traceBracket "Done inlining. Result:" $  prettyStr inlined
       let !instantiated = applyPolyRowArgs $ instantiateTypes inlined
-      traceBracket "Done instantiating types. Result:" $ prettyStr instantiated
+      --traceBracket "Done instantiating types. Result:" $ prettyStr instantiated
       withoutObjects <- instantiateTypes <$> runCounter (desugarObjects instantiated)
 
-      traceBracket  "Desugared objects. Result:\n" $ prettyStr withoutObjects
+      --traceBracket  "Desugared objects. Result:\n" $ prettyStr withoutObjects
       datatypes <- runCounter $ desugarObjectsInDatatypes (primDataPS <> moduleDataTypes summedModule)
       --traceM "Desugared datatypes"
       runPlutusContext initDatatypeDict $ do
@@ -170,7 +170,7 @@ compile primModule orderedModules mainModuleName mainFunctionName =
         withoutCases <- eliminateCases datatypes noNestedCases 
         traceBracket "Eliminated Cases. Result:" $  prettyStr withoutCases
         pir <- compileToPIR datatypes withoutCases
-        traceBracket "Compiled to PIR. Result: " $ docString (prettyPirReadable pir)
+        traceM $  "Compiled to PIR. Result:\n" <> docString (prettyPirReadable pir)
         -- traceBracket "PIR Raw:" $ LT.unpack (pShowNoColor pir)
         pure pir 
 

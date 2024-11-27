@@ -359,11 +359,11 @@ desugarConstructorPattern datatypes altBodyTy _e =
                   -}
                   irrefutable = case head irrefutables of
                     UnguardedAlt WildP irrRHS -> toExp irrRHS
-                    UnguardedAlt (VarP bvId bvIx _) irrRHS -> flip instantiate irrRHS $ \case
+                    UnguardedAlt (VarP bvId bvIx _) irrRHS -> LetE [NonRecursive bvId bvIx (fromExp scrut)] irrRHS  {- -flip instantiate irrRHS $ \case
                       bv@(BVar bvIx' _ bvId') ->
                         if bvIx == bvIx' && bvId == bvId'
                           then scrut
-                          else V . B $ bv
+                          else V . B $ bv-}
                     other -> error $ "Expected an irrefutable alt but got: " <> prettyStr other
               result <- assemblePartialCtorCase (CtorCase irrefutable (M.fromList indexedBranches) destructor scrutTy) allCtors
               let msg =
@@ -712,11 +712,7 @@ desugarLiteralPattern = \case
   -- catchall stuff we do in the ctor
   -- case eliminator
   -- NOTE (8/28): I'm not sure if the previous FIXME still matters?
-  CaseE _ scrut (UnguardedAlt (VarP bvId bvIx _) rhs : _) -> flip instantiate rhs $ \case
-    bv@(BVar bvIx' _ bvId') ->
-      if bvIx == bvIx' && bvId == bvId'
-        then scrut
-        else V . B $ bv
+  CaseE _ scrut (UnguardedAlt (VarP bvId bvIx _) rhs : _) -> LetE [NonRecursive bvId bvIx (fromExp scrut)] rhs
   other -> other
   where
     eqInt =
@@ -748,11 +744,13 @@ desugarIrrefutables ::
   Exp WithoutObjects Ty (Var (BVar Ty) (FVar Ty))
 desugarIrrefutables = transform $ \case
   CaseE _ _ (UnguardedAlt WildP rhs : _) -> toExp rhs
-  CaseE _ scrut (UnguardedAlt (VarP bvId bvIx _) rhs : _) -> flip instantiate rhs $ \case
+  CaseE _ scrut (UnguardedAlt (VarP bvId bvIx _) rhs : _) ->
+    LetE [NonRecursive bvId bvIx (fromExp scrut)] rhs 
+    {- -flip instantiate rhs $ \case
     bv@(BVar bvIx' _ bvId') ->
       if bvIx == bvIx' && bvId == bvId'
         then scrut
-        else V . B $ bv
+        else V . B $ bv -}
   other -> other
 
 data CtorCase = CtorCase

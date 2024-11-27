@@ -1,80 +1,40 @@
 
------- beep ------
+------ bop ------
 letrec
-  data (AssocMap_455 :: * -> * -> *) k_456 v_457 | match_AssocMap_458 where
-    AssocMap_459 : List_460 (Tuple2_461 k_456 v_457) -> AssocMap_455 k_456 v_457
-  data (List_460 :: * -> *) a_462 | match_List_463 where
-    Nil_464 : List_460 a_462
-    Cons_465 : a_462 -> List_460 a_462 -> List_460 a_462
-  data (Tuple2_461 :: * -> * -> *) t1_466 t2_467 | match_Tuple2_468 where
-    Tuple2_469 : t1_466 -> t2_467 -> Tuple2_461 t1_466 t2_467
+  data (Tuple2_457 :: * -> * -> *) t1_458 t2_459 | match_Tuple2_460 where
+    Tuple2_461 : t1_458 -> t2_459 -> Tuple2_457 t1_458 t2_459
 in
-letrec
-  !`go$B452_452` :
-     all v_475 k_476.
-       (v_475 -> data) ->
-       (k_476 -> data) ->
-       List_460 (Tuple2_461 k_476 v_475) ->
-       list (pair data data)
-    = /\v_453 k_454 ->
-        \(fV1_451 : v_453 -> data)
-         (fK1_450 : k_454 -> data)
-         (v1_248 : List_460 (Tuple2_461 k_454 v_453)) ->
-          match_List_463
-            {Tuple2_461 k_454 v_453}
-            v1_248
-            {list (pair data data)}
-            (mkNilPairData ())
-            (\(p_249 : Tuple2_461 k_454 v_453)
-              (xs_250 : List_460 (Tuple2_461 k_454 v_453)) ->
-               match_Tuple2_468
-                 {k_454}
-                 {v_453}
-                 p_249
-                 {list (pair data data)}
-                 (\(x_251 : k_454) (y_252 : v_453) ->
-                    mkCons
-                      {pair data data}
-                      (mkPairData (fK1_450 x_251) (fV1_451 y_252))
-                      (`go$B452_452` {k_454} {v_453} fK1_450 fV1_451 xs_250)))
-in
-/\k_254 v_253 ->
-  \(fK_241 : k_254 -> data)
-   (fV_242 : v_253 -> data)
-   (v_243 : AssocMap_455 k_254 v_253) ->
-    match_AssocMap_458
-      {k_254}
-      {v_253}
-      v_243
-      {data}
-      (\(ell_246 : List_460 (Tuple2_461 k_254 v_253)) ->
-         mapData
-           ((\(fV1_451 : v_253 -> data)
-              (fK1_450 : k_254 -> data)
-              (v1_248 : List_460 (Tuple2_461 k_254 v_253)) ->
-               match_List_463
-                 {Tuple2_461 k_254 v_253}
-                 v1_248
-                 {list (pair data data)}
-                 (mkNilPairData ())
-                 (\(p_249 : Tuple2_461 k_254 v_253)
-                   (xs_250 : List_460 (Tuple2_461 k_254 v_253)) ->
-                    match_Tuple2_468
-                      {k_254}
-                      {v_253}
-                      p_249
-                      {list (pair data data)}
-                      (\(x_251 : k_254) (y_252 : v_253) ->
-                         mkCons
-                           {pair data data}
-                           (mkPairData (fK1_450 x_251) (fV1_451 y_252))
-                           (`go$B452_452`
-                              {k_254}
-                              {v_253}
-                              fK1_450
-                              fV1_451
-                              xs_250))))
-              fK1_244
-              fV1_245
-              ell_246))
+/\a_125 b_124 ->
+  \(fA_116 : data -> a_125) (fB_117 : data -> b_124) (dat_118 : data) ->
+    Tuple2_461
+      {a_125}
+      {b_124}
+      ((\(fA_453 : data -> a_125) (dat_454 : data) ->
+          fA_453
+            (headList
+               {data}
+               ((\(dat_451 : data) ->
+                   unListData
+                     ((\(dat_450 : data) ->
+                         sndPair {data} {integer} (unConstrData dat_450))
+                        dat_451))
+                  dat_454)))
+         fA_116
+         dat_118)
+      ((\(fB_455 : data -> b_124) (dat_456 : data) ->
+          fB_455
+            (headList
+               {data}
+               ((\(dat_452 : data) ->
+                   tailList
+                     {data}
+                     ((\(dat_451 : data) ->
+                         unListData
+                           ((\(dat_450 : data) ->
+                               sndPair {data} {integer} (unConstrData dat_450))
+                              dat_451))
+                        dat_452))
+                  dat_456)))
+         fB_117
+         dat_118)
 ------------

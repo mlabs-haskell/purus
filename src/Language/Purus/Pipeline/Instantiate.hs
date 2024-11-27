@@ -94,7 +94,7 @@ instantiateApp e = case analyzeApp e of
     go _ [] ex = ex
     go dict (v : vs) ex = case M.lookup v dict of
       Nothing -> ex
-      Just t -> go dict vs (TyInstE t ex)
+      Just t ->  go dict vs (TyInstE t $ ex)
 
 {- Takes a list of variables, the split function types, and split arguments types,
    and returns a Map of type variable substitutions.

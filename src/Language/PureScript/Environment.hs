@@ -1058,7 +1058,7 @@ builtinCxt =
     , PLC.I_iData #@ tyInt -:> tyBuiltinData
     , PLC.I_bData #@ tyByteString -:> tyBuiltinData
     , -- Destruction
-      PLC.I_unConstrData #@ tyBuiltinData -:> tyBuiltinPair tyInt tyBuiltinData
+      PLC.I_unConstrData #@ tyBuiltinData -:> tyBuiltinPair tyInt (tyBuiltinList tyBuiltinData)
     , PLC.I_unMapData #@ tyBuiltinData -:> tyBuiltinList (tyBuiltinPair tyBuiltinData tyBuiltinData)
     , PLC.I_unListData #@ tyBuiltinData -:> tyBuiltinList tyBuiltinData
     , PLC.I_unIData #@ tyBuiltinData -:> tyInt

@@ -7,7 +7,7 @@ Imported Modules:
 
 Exports: 
 ------------------------------
-  beep
+  bop
 
 Re-Exports: 
 ------------------------------
@@ -24,10 +24,10 @@ Datatypes:
 
 Declarations: 
 ------------------------------
-beep :: forall (k :: Prim.Type) (v :: Prim.Type). (((k :: Prim.Type) -> (Builtin.BuiltinData)) -> ((((v :: Prim.Type) -> (Builtin.BuiltinData)) -> ((((Prim.AssocMap ((k :: Prim.Type))) ((v :: Prim.Type))) -> (Builtin.BuiltinData))))))
-beep = 
-  (serializeAssocMap: forall (k :: Prim.Type)
-  (v :: Prim.Type). (((k :: Prim.Type) -> (Builtin.BuiltinData)) ->
-  ((((v :: Prim.Type) -> (Builtin.BuiltinData)) ->
-  ((((Prim.AssocMap ((k :: Prim.Type))) ((v :: Prim.Type))) ->
-  (Builtin.BuiltinData)))))))
+bop :: forall (a :: Prim.Type) (b :: Prim.Type). ((Builtin.BuiltinData -> ((a :: Prim.Type))) -> (((Builtin.BuiltinData -> ((b :: Prim.Type))) -> ((Builtin.BuiltinData -> (((Prim.Tuple2 ((a :: Prim.Type))) ((b :: Prim.Type)))))))))
+bop = 
+  (deserializeTuple2: forall (a :: Prim.Type)
+  (b :: Prim.Type). ((Builtin.BuiltinData -> ((a :: Prim.Type))) ->
+  (((Builtin.BuiltinData -> ((b :: Prim.Type))) ->
+  ((Builtin.BuiltinData ->
+  (((Prim.Tuple2 ((a :: Prim.Type))) ((b :: Prim.Type))))))))))

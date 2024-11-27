@@ -102,7 +102,7 @@ underQuantifiers t f =
       inner'         = f inner
       freeInInner    = freeTypeVariables inner'
       needsQuantified = filter (`elem` freeInInner) $ (\(_,nm,ki) -> (nm,ki)) <$> tyVars
-  in foldr (uncurry quantify1) inner' needsQuantified
+  in foldr (uncurry quantify1) inner' (reverse needsQuantified)
 
 getInstantiations :: forall t. (TypeLike t) => t -> t -> [(Text, t)]
 getInstantiations mono poly = catMaybes mInstantiations

@@ -202,9 +202,9 @@ inline (LiftResult decls bodyE) = do
     addTypeAbstraction = viaExpM $ \e -> do
       let e' = transformTypesInExp stripSkolems e
           t = expTy id e'
-          free = reverse $ freeTypeVariables t
+          free =  freeTypeVariables t
       bvars <- traverse (\(nm, ki) -> next >>= \u -> pure $ BVar u ki (Ident nm)) free
-      let result = foldr TyAbs e' bvars
+      let result = foldr TyAbs e' (  bvars)
           msg =
             prettify
               [ "INPUT EXPR:\n" <> prettyStr e
@@ -226,7 +226,7 @@ handleSelfRecursive :: (Ident, Int) -> InlineBodyData -> Inline (Map (Ident, Int
 handleSelfRecursive nm lb@(IsALoopBreaker _) = pure $ M.singleton nm lb
 handleSelfRecursive (nm, indx) (NotALoopBreaker body)
   | not (containsHole (nm,indx) $ toExp body) = pure $ M.singleton (nm, indx) (NotALoopBreaker body)
-  | otherwise = do
+  | otherwise = pure $ M.singleton (nm,indx) (IsALoopBreaker body) {- -do
       u <- next
       let uTxt = T.pack (show u)
           newNm = case nm of
@@ -247,7 +247,7 @@ handleSelfRecursive (nm, indx) (NotALoopBreaker body)
           msg = prettify ["handleSelfRecursive", "INPUT:\n" <> prettyStr (toExp body), "OUTPUT:\n" <> prettyStr pretendLet]
       doTraceM "handleSelfRecursive" msg 
       pure $ M.fromList [NotALoopBreaker <$> updatedOriginalDecl, IsALoopBreaker <$> newBreakerDecl]
-
+-}
 inlineWithData :: MonoExp -> InlineState MonoExp
 inlineWithData = transformM go''
   where
