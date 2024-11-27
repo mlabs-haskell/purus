@@ -24,8 +24,9 @@ import Test.Tasty.HUnit
 shouldPassTests :: IO ()
 shouldPassTests = do
   cfn <- coreFnTests
-  pir <- pirTests
-  defaultMain $ testGroup "Purus Tests" [cfn,pir] 
+  pirNoEval <- pirTestsNoEval
+  pirEval <- pirTestsEval
+  defaultMain $ sequentialTestGroup "Purus Tests" AllFinish [cfn,pirNoEval,pirEval]
  
 runPurusCoreFn :: P.CodegenTarget -> FilePath ->  IO ()
 runPurusCoreFn target dir =  do
@@ -58,13 +59,19 @@ runPurusCoreFn target dir =  do
     }
 
 -- TODO: Move modules into a directory specifically for PIR non-eval tests (for now this should be OK)
-pirTests :: IO TestTree
-pirTests = do
+pirTestsNoEval :: IO TestTree
+pirTestsNoEval = do
   let coreFnTestPath = "tests/purus/passing/CoreFn"
   allTestDirectories <- listDirectory coreFnTestPath
-  let trees = map (\dir -> testCase dir $ compileDirNoEval (coreFnTestPath </> dir)) ["Validator"]-- allTestDirectories
-  pure $ testGroup "PIR Tests (No Evaluation)" trees
+  trees <- mapM (\dir -> compileDirNoEvalTest (coreFnTestPath </> dir)) allTestDirectories-- allTestDirectories
+  pure $ sequentialTestGroup  "PIR Tests (No Evaluation)" AllFinish trees
 
+pirTestsEval :: IO TestTree
+pirTestsEval = do
+  let coreFnTestPath = "tests/purus/passing/CoreFn"
+  allTestDirectories <- listDirectory coreFnTestPath
+  trees <- mapM (\dir -> compileDirEvalTest (coreFnTestPath </> dir)) allTestDirectories-- allTestDirectories
+  pure $ sequentialTestGroup "PIR Tests (Evaluation)" AllFinish trees
 -- path to a Purus project directory, outputs serialized CoreFn 
 compileToCoreFnTest :: FilePath -> TestTree
 compileToCoreFnTest path = testCase (path) $ runPurusCoreFnDefault path
@@ -73,8 +80,8 @@ coreFnTests :: IO TestTree
 coreFnTests = do
   let coreFnTestPath = "tests/purus/passing/CoreFn"
   allTestDirectories <- listDirectory coreFnTestPath
-  let trees = map (\dir -> compileToCoreFnTest (coreFnTestPath </> dir)) allTestDirectories
-  pure $ testGroup "CoreFn Tests" trees
+  let trees = map (\dir -> compileToCoreFnTest (coreFnTestPath </> dir)) ["Misc"]
+  pure $ sequentialTestGroup "CoreFn Tests" AllFinish trees
 
 
 runPurusCoreFnDefault :: FilePath -> IO ()

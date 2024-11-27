@@ -44,6 +44,10 @@ import Control.Lens (over, set)
 
 type PLCProgram uni fun a = PLC.Program PLC.TyName PLC.Name uni fun (Provenance a)
 
+-- TODO: Add a cpu budget so we can evaluate non-terminating functions in tests.
+--       See plutarch: https://github.com/Plutonomicon/plutarch-plutus/blob/staging/Plutarch/Internal/Evaluate.hs#L28-L54
+--       Thanks for the link Tomasz!
+
 {- Evaluates a UPLC Program -}
 runPLCProgram :: PLCProgram DefaultUni DefaultFun () -> (EvaluationResult PLCTerm, [Text])
 runPLCProgram (PLC.Program _ _ c) = case evaluateCk PLC.defaultBuiltinsRuntimeForTesting . void $ c of 

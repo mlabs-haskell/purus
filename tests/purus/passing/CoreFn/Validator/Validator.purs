@@ -2,7 +2,6 @@ module Validator where
 
 import Prim
 
-bop = deserializeTuple2
 
 --not :: Boolean -> Boolean
 --not True = False
@@ -36,7 +35,7 @@ go fK fV ell = if not (Builtin.nullList ell)
                       y = Builtin.sndPair p
                   in Cons (Tuple2 (fK x) (fV y)) (go fK fV t)
              else Nil 
-
+-}
 equalsPKH :: PubKeyHash -> PubKeyHash -> Boolean
 equalsPKH (PubKeyHash bs1) (PubKeyHash bs2) = Builtin.equalsByteString bs1 bs2
 
@@ -47,4 +46,3 @@ validateIfSignedBy pkh _ _ cxtData = anyList (equalsPKH pkh) signatories
     ScriptContext cxt = scxt
     TxInfo info = cxt.txInfo
     signatories = info.signatories
--}

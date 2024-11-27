@@ -32,7 +32,7 @@ import Language.PureScript.AST (ErrorMessageHint (..), Module (..), SourceSpan (
 import Language.PureScript.CST qualified as CST
 import Language.PureScript.CoreFn qualified as CF
 import Language.PureScript.CoreFn qualified as CFT
-import Language.PureScript.CoreFn.Desugar qualified as CFT
+import Language.PureScript.CoreFn.Desugar as CFT
 import Language.PureScript.Crash (internalError)
 import Language.PureScript.Docs.Convert qualified as Docs
 import Language.PureScript.Environment (Environment (..), initEnvironment, NameKind(..), NameVisibility(..))

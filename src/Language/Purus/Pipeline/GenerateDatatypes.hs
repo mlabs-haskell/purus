@@ -93,6 +93,7 @@ import Control.Monad.Except (
 import Language.Purus.IR.Utils (WithoutObjects, Vars)
 import Debug.Trace
 import Language.Purus.Pretty (prettyDatatypes, docString)
+import Language.Purus.Prim.Data (primData)
 
 {-  Generates PIR datatypes declarations for all of the datatypes in scope
     in the Main module we are compiling and adds them to the monadic context for use
@@ -122,7 +123,7 @@ generateDatatypes mdl mainNm  e datatypes  = do
    mkPIRDatatypes datatypes' allTypeConstructors
   where
     datatypes' :: Datatypes IR.Kind Ty
-    datatypes' = determineDatatypeDependencies e datatypes 
+    datatypes' = determineDatatypeDependencies e datatypes <> primData 
 
     allTypeConstructors :: S.Set (Qualified (ProperName 'TypeName))
     allTypeConstructors = datatypes' ^. tyDict . to M.keys . to S.fromList

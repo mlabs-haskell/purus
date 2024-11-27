@@ -211,6 +211,8 @@ common defaults
     random ==1.2.1.2,
     stm >=2.5.0.2 && <2.6,
     stringsearch >=0.3.6.6 && <0.4,
+    tasty ==1.5,
+    tasty-hunit,
     template-haskell >=2.18.0.0 && <2.19,
     text >=1.2.5.0 && <2.3,
     th-abstraction,

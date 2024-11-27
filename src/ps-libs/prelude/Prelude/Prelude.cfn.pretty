@@ -392,20 +392,16 @@ deserializeTuple2 =
     \(fB: (Builtin.BuiltinData -> ((b :: Prim.Type)))) -> 
       \(dat: Builtin.BuiltinData) -> 
         let
-          dat' :: Builtin.BuiltinData
-          dat' = 
+          unlisted :: (Builtin.BuiltinList (Builtin.BuiltinData))
+          unlisted = 
             (sndPair: forall (a :: Prim.Type)
             (b :: Prim.Type). (((Builtin.BuiltinPair
             ((a :: Prim.Type))) ((b :: Prim.Type))) ->
             ((b :: Prim.Type))))
             ((unConstrData: (Builtin.BuiltinData ->
-             (((Builtin.BuiltinPair (Prim.Int)) (Builtin.BuiltinData)))))
+             (((Builtin.BuiltinPair
+             (Prim.Int)) ((Builtin.BuiltinList (Builtin.BuiltinData)))))))
              (dat: Builtin.BuiltinData))
-          unlisted :: (Builtin.BuiltinList (Builtin.BuiltinData))
-          unlisted = 
-            (unListData: (Builtin.BuiltinData ->
-            ((Builtin.BuiltinList (Builtin.BuiltinData)))))
-            (dat': Builtin.BuiltinData)
           unlisted' :: (Builtin.BuiltinList (Builtin.BuiltinData))
           unlisted' = 
             (tailList: forall (a :: Prim.Type). ((Builtin.BuiltinList
@@ -441,10 +437,11 @@ deserializeMaybe =
   \(f: (Builtin.BuiltinData -> ((a :: Prim.Type)))) -> 
     \(dat: Builtin.BuiltinData) -> 
       let
-        p :: ((Builtin.BuiltinPair (Prim.Int)) (Builtin.BuiltinData))
+        p :: ((Builtin.BuiltinPair (Prim.Int)) ((Builtin.BuiltinList (Builtin.BuiltinData))))
         p = 
           (unConstrData: (Builtin.BuiltinData ->
-          (((Builtin.BuiltinPair (Prim.Int)) (Builtin.BuiltinData)))))
+          (((Builtin.BuiltinPair
+          (Prim.Int)) ((Builtin.BuiltinList (Builtin.BuiltinData)))))))
           (dat: Builtin.BuiltinData)
         tag :: Prim.Int
         tag = 
@@ -452,21 +449,20 @@ deserializeMaybe =
           (b :: Prim.Type). (((Builtin.BuiltinPair
           ((a :: Prim.Type))) ((b :: Prim.Type))) ->
           ((a :: Prim.Type))))
-          (p: ((Builtin.BuiltinPair (Prim.Int)) (Builtin.BuiltinData)))
+          (p: ((Builtin.BuiltinPair
+          (Prim.Int)) ((Builtin.BuiltinList (Builtin.BuiltinData)))))
       in case ((equalsInteger: (Prim.Int -> ((Prim.Int -> (Prim.Boolean))))) (tag: Prim.Int) (0: Prim.Int)) of 
             True -> (Nothing: (Prim.Maybe (a*22)))
             _ -> 
               let
                 unlisted :: (Builtin.BuiltinList (Builtin.BuiltinData))
                 unlisted = 
-                  (unListData: (Builtin.BuiltinData ->
-                  ((Builtin.BuiltinList (Builtin.BuiltinData)))))
-                  ((sndPair: forall (a :: Prim.Type)
-                   (b :: Prim.Type). (((Builtin.BuiltinPair
-                   ((a :: Prim.Type))) ((b :: Prim.Type))) ->
-                   ((b :: Prim.Type))))
-                   (p: ((Builtin.BuiltinPair
-                   (Prim.Int)) (Builtin.BuiltinData))))
+                  (sndPair: forall (a :: Prim.Type)
+                  (b :: Prim.Type). (((Builtin.BuiltinPair
+                  ((a :: Prim.Type))) ((b :: Prim.Type))) ->
+                  ((b :: Prim.Type))))
+                  (p: ((Builtin.BuiltinPair
+                  (Prim.Int)) ((Builtin.BuiltinList (Builtin.BuiltinData)))))
               in (Just: forall (a :: Prim.Type). ((a :: Prim.Type) ->
                  ((Prim.Maybe ((a :: Prim.Type))))))
                  ((f: (Builtin.BuiltinData -> ((a :: Prim.Type))))

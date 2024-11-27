@@ -1,0 +1,4258 @@
+
+------ serializeTxId ------
+letrec
+  data TxId_898 | match_TxId_899 where
+    TxId_900 : bytestring -> TxId_898
+in
+\(v_632 : TxId_898) ->
+  match_TxId_899
+    v_632
+    {data}
+    (\(bs_633 : bytestring) ->
+       constrData 0 (mkCons {data} (bData bs_633) (mkNilData ())))
+------------
+
+------ serializeTxOutRef ------
+letrec
+  data (Tuple2_900 :: * -> * -> *) t1_901 t2_902 | match_Tuple2_903 where
+    Tuple2_904 : t1_901 -> t2_902 -> Tuple2_900 t1_901 t2_902
+  data TxId_905 | match_TxId_906 where
+    TxId_907 : bytestring -> TxId_905
+  data TxOutRef_908 | match_TxOutRef_909 where
+    TxOutRef_910 : Tuple2_900 TxId_905 integer -> TxOutRef_908
+in
+\(v_635 : TxOutRef_908) ->
+  match_TxOutRef_909
+    v_635
+    {data}
+    (\(rec_636 : Tuple2_900 TxId_905 integer) ->
+       constrData
+         0
+         (mkCons
+            {data}
+            ((\(v_632 : TxId_905) ->
+                match_TxId_906
+                  v_632
+                  {data}
+                  (\(bs_633 : bytestring) ->
+                     constrData
+                       0
+                       (mkCons {data} (bData bs_633) (mkNilData ()))))
+               (match_Tuple2_903
+                  {TxId_905}
+                  {integer}
+                  rec_636
+                  {TxId_905}
+                  (\(`<ACCESSOR>_899` : TxId_905) (_t912_912 : integer) ->
+                     `<ACCESSOR>_899`)))
+            (mkCons
+               {data}
+               (iData
+                  (match_Tuple2_903
+                     {TxId_905}
+                     {integer}
+                     rec_636
+                     {integer}
+                     (\(_t914_914 : TxId_905) (`<ACCESSOR>_898` : integer) ->
+                        `<ACCESSOR>_898`)))
+               (mkNilData ()))))
+------------
+
+------ serializeTokenName ------
+letrec
+  data TokenName_898 | match_TokenName_899 where
+    TokenName_900 : bytestring -> TokenName_898
+in
+\(v_638 : TokenName_898) ->
+  match_TokenName_899 v_638 {data} (\(bs_639 : bytestring) -> bData bs_639)
+------------
+
+------ serializePubKeyHash ------
+letrec
+  data PubKeyHash_898 | match_PubKeyHash_899 where
+    PubKeyHash_900 : bytestring -> PubKeyHash_898
+in
+\(v_641 : PubKeyHash_898) ->
+  match_PubKeyHash_899 v_641 {data} (\(bs_642 : bytestring) -> bData bs_642)
+------------
+
+------ serializePOSIXTime ------
+letrec
+  data POSIXTime_898 | match_POSIXTime_899 where
+    POSIXTime_900 : integer -> POSIXTime_898
+in
+\(v_644 : POSIXTime_898) ->
+  match_POSIXTime_899 v_644 {data} (\(t_645 : integer) -> iData t_645)
+------------
+
+------ serializeOutputDatum ------
+letrec
+  data Datum_898 | match_Datum_899 where
+    Datum_900 : data -> Datum_898
+  data DatumHash_901 | match_DatumHash_902 where
+    DatumHash_903 : bytestring -> DatumHash_901
+  data OutputDatum_904 | match_OutputDatum_905 where
+    NoOutputDatum_906 : OutputDatum_904
+    OutputDatumHash_907 : DatumHash_901 -> OutputDatum_904
+    OutputDatum_908 : Datum_898 -> OutputDatum_904
+in
+\(od_647 : OutputDatum_904) ->
+  match_OutputDatum_905
+    od_647
+    {data}
+    (constrData 0 (mkNilData ()))
+    (\(h_648 : DatumHash_901) ->
+       constrData
+         1
+         (mkCons
+            {data}
+            ((\(v_502 : DatumHash_901) ->
+                match_DatumHash_902
+                  v_502
+                  {data}
+                  (\(bs_503 : bytestring) -> bData bs_503))
+               h_648)
+            (mkNilData ())))
+    (\(d_649 : Datum_898) ->
+       constrData
+         2
+         (mkCons
+            {data}
+            ((\(v_498 : Datum_898) ->
+                match_Datum_899 v_498 {data} (\(dat_499 : data) -> dat_499))
+               d_649)
+            (mkNilData ())))
+------------
+
+------ serializeLovelace ------
+letrec
+  data Lovelace_898 | match_Lovelace_899 where
+    Lovelace_900 : integer -> Lovelace_898
+in
+\(v_651 : Lovelace_898) ->
+  match_Lovelace_899 v_651 {data} (\(i_652 : integer) -> iData i_652)
+------------
+
+------ serializeExtended ------
+letrec
+  data (Extended_898 :: * -> *) a_899 | match_Extended_900 where
+    NegInf_901 : Extended_898 a_899
+    Finite_902 : a_899 -> Extended_898 a_899
+    PosInf_903 : Extended_898 a_899
+in
+/\a_657 ->
+  \(f_654 : a_657 -> data) (e_655 : Extended_898 a_657) ->
+    match_Extended_900
+      {a_657}
+      e_655
+      {data}
+      (constrData 0 (mkNilData ()))
+      (\(x_656 : a_657) ->
+         constrData 1 (mkCons {data} (f_654 x_656) (mkNilData ())))
+      (constrData 2 (mkNilData ()))
+------------
+
+------ serializeLowerBound ------
+letrec
+  data (Extended_898 :: * -> *) a_899 | match_Extended_900 where
+    NegInf_901 : Extended_898 a_899
+    Finite_902 : a_899 -> Extended_898 a_899
+    PosInf_903 : Extended_898 a_899
+  data (LowerBound_904 :: * -> *) a_905 | match_LowerBound_906 where
+    LowerBound_907 : Extended_898 a_905 -> LowerBound_904 a_905
+in
+/\a_663 ->
+  \(f_659 : a_663 -> data) (v_660 : LowerBound_904 a_663) ->
+    letrec
+      !f1_661 : a_663 -> data = f_659
+    in
+    letrec
+      !f1_661 : a_663 -> data = f1_661
+    in
+    match_LowerBound_906
+      {a_663}
+      v_660
+      {data}
+      (\(e_662 : Extended_898 a_663) ->
+         constrData
+           0
+           (mkCons
+              {data}
+              ((/\a_657 ->
+                  \(f_654 : a_657 -> data) (e_655 : Extended_898 a_657) ->
+                    match_Extended_900
+                      {a_657}
+                      e_655
+                      {data}
+                      (constrData 0 (mkNilData ()))
+                      (\(x_656 : a_657) ->
+                         constrData
+                           1
+                           (mkCons {data} (f_654 x_656) (mkNilData ())))
+                      (constrData 2 (mkNilData ())))
+                 {a_663}
+                 f1_661
+                 e_662)
+              (mkNilData ())))
+------------
+
+------ serializeUpperBound ------
+letrec
+  data (Extended_898 :: * -> *) a_899 | match_Extended_900 where
+    NegInf_901 : Extended_898 a_899
+    Finite_902 : a_899 -> Extended_898 a_899
+    PosInf_903 : Extended_898 a_899
+  data (UpperBound_904 :: * -> *) a_905 | match_UpperBound_906 where
+    UpperBound_907 : Extended_898 a_905 -> UpperBound_904 a_905
+in
+/\a_669 ->
+  \(f_665 : a_669 -> data) (v_666 : UpperBound_904 a_669) ->
+    letrec
+      !f1_667 : a_669 -> data = f_665
+    in
+    letrec
+      !f1_667 : a_669 -> data = f1_667
+    in
+    match_UpperBound_906
+      {a_669}
+      v_666
+      {data}
+      (\(e_668 : Extended_898 a_669) ->
+         constrData
+           0
+           (mkCons
+              {data}
+              ((/\a_657 ->
+                  \(f_654 : a_657 -> data) (e_655 : Extended_898 a_657) ->
+                    match_Extended_900
+                      {a_657}
+                      e_655
+                      {data}
+                      (constrData 0 (mkNilData ()))
+                      (\(x_656 : a_657) ->
+                         constrData
+                           1
+                           (mkCons {data} (f_654 x_656) (mkNilData ())))
+                      (constrData 2 (mkNilData ())))
+                 {a_669}
+                 f1_667
+                 e_668)
+              (mkNilData ())))
+------------
+
+------ serializeInterval ------
+letrec
+  data (Extended_900 :: * -> *) a_901 | match_Extended_902 where
+    NegInf_903 : Extended_900 a_901
+    Finite_904 : a_901 -> Extended_900 a_901
+    PosInf_905 : Extended_900 a_901
+  data (Interval_906 :: * -> *) a_907 | match_Interval_908 where
+    Interval_909 :
+      Tuple2_910 (LowerBound_911 a_907) (UpperBound_912 a_907) ->
+      Interval_906 a_907
+  data (LowerBound_911 :: * -> *) a_913 | match_LowerBound_914 where
+    LowerBound_915 : Extended_900 a_913 -> LowerBound_911 a_913
+  data (Tuple2_910 :: * -> * -> *) t1_916 t2_917 | match_Tuple2_918 where
+    Tuple2_919 : t1_916 -> t2_917 -> Tuple2_910 t1_916 t2_917
+  data (UpperBound_912 :: * -> *) a_920 | match_UpperBound_921 where
+    UpperBound_922 : Extended_900 a_920 -> UpperBound_912 a_920
+in
+/\a_675 ->
+  \(f_671 : a_675 -> data) (v_672 : Interval_906 a_675) ->
+    letrec
+      !f1_673 : a_675 -> data = f_671
+    in
+    letrec
+      !f1_673 : a_675 -> data = f1_673
+    in
+    match_Interval_908
+      {a_675}
+      v_672
+      {data}
+      (\(rec_674 : Tuple2_910 (LowerBound_911 a_675) (UpperBound_912 a_675)) ->
+         constrData
+           0
+           (mkCons
+              {data}
+              ((/\a_663 ->
+                  \(f_659 : a_663 -> data) (v_660 : LowerBound_911 a_663) ->
+                    letrec
+                      !f1_661 : a_663 -> data = f_659
+                    in
+                    letrec
+                      !f1_661 : a_663 -> data = f1_661
+                    in
+                    match_LowerBound_914
+                      {a_663}
+                      v_660
+                      {data}
+                      (\(e_662 : Extended_900 a_663) ->
+                         constrData
+                           0
+                           (mkCons
+                              {data}
+                              ((/\a_657 ->
+                                  \(f_654 : a_657 -> data)
+                                   (e_655 : Extended_900 a_657) ->
+                                    match_Extended_902
+                                      {a_657}
+                                      e_655
+                                      {data}
+                                      (constrData 0 (mkNilData ()))
+                                      (\(x_656 : a_657) ->
+                                         constrData
+                                           1
+                                           (mkCons
+                                              {data}
+                                              (f_654 x_656)
+                                              (mkNilData ())))
+                                      (constrData 2 (mkNilData ())))
+                                 {a_663}
+                                 f1_661
+                                 e_662)
+                              (mkNilData ()))))
+                 {a_675}
+                 f1_673
+                 (match_Tuple2_918
+                    {LowerBound_911 a_675}
+                    {UpperBound_912 a_675}
+                    rec_674
+                    {LowerBound_911 a_675}
+                    (\(`<ACCESSOR>_899` : LowerBound_911 a_675)
+                      (_t925_925 : UpperBound_912 a_675) ->
+                       `<ACCESSOR>_899`)))
+              (mkCons
+                 {data}
+                 ((/\a_669 ->
+                     \(f_665 : a_669 -> data) (v_666 : UpperBound_912 a_669) ->
+                       letrec
+                         !f1_667 : a_669 -> data = f_665
+                       in
+                       letrec
+                         !f1_667 : a_669 -> data = f1_667
+                       in
+                       match_UpperBound_921
+                         {a_669}
+                         v_666
+                         {data}
+                         (\(e_668 : Extended_900 a_669) ->
+                            constrData
+                              0
+                              (mkCons
+                                 {data}
+                                 ((/\a_657 ->
+                                     \(f_654 : a_657 -> data)
+                                      (e_655 : Extended_900 a_657) ->
+                                       match_Extended_902
+                                         {a_657}
+                                         e_655
+                                         {data}
+                                         (constrData 0 (mkNilData ()))
+                                         (\(x_656 : a_657) ->
+                                            constrData
+                                              1
+                                              (mkCons
+                                                 {data}
+                                                 (f_654 x_656)
+                                                 (mkNilData ())))
+                                         (constrData 2 (mkNilData ())))
+                                    {a_669}
+                                    f1_667
+                                    e_668)
+                                 (mkNilData ()))))
+                    {a_675}
+                    f1_673
+                    (match_Tuple2_918
+                       {LowerBound_911 a_675}
+                       {UpperBound_912 a_675}
+                       rec_674
+                       {UpperBound_912 a_675}
+                       (\(_t929_929 : LowerBound_911 a_675)
+                         (`<ACCESSOR>_898` : UpperBound_912 a_675) ->
+                          `<ACCESSOR>_898`)))
+                 (mkNilData ()))))
+------------
+
+------ serializeCurrencySymbol ------
+letrec
+  data CurrencySymbol_898 | match_CurrencySymbol_899 where
+    CurrencySymbol_900 : bytestring -> CurrencySymbol_898
+in
+\(v_677 : CurrencySymbol_898) ->
+  match_CurrencySymbol_899 v_677 {data} (\(bs_678 : bytestring) -> bData bs_678)
+------------
+
+------ serializeCredential ------
+letrec
+  data Credential_898 | match_Credential_899 where
+    PubKeyCredential_900 : PubKeyHash_901 -> Credential_898
+    ScriptCredential_902 : ScriptHash_903 -> Credential_898
+  data PubKeyHash_901 | match_PubKeyHash_904 where
+    PubKeyHash_905 : bytestring -> PubKeyHash_901
+  data ScriptHash_903 | match_ScriptHash_906 where
+    ScriptHash_907 : bytestring -> ScriptHash_903
+in
+\(c_680 : Credential_898) ->
+  match_Credential_899
+    c_680
+    {data}
+    (\(pkh_681 : PubKeyHash_901) ->
+       constrData
+         0
+         (mkCons
+            {data}
+            ((\(v_641 : PubKeyHash_901) ->
+                match_PubKeyHash_904
+                  v_641
+                  {data}
+                  (\(bs_642 : bytestring) -> bData bs_642))
+               pkh_681)
+            (mkNilData ())))
+    (\(sh_682 : ScriptHash_903) ->
+       constrData
+         1
+         (mkCons
+            {data}
+            ((\(v_508 : ScriptHash_903) ->
+                match_ScriptHash_906
+                  v_508
+                  {data}
+                  (\(dat_509 : bytestring) -> bData dat_509))
+               sh_682)
+            (mkNilData ())))
+------------
+
+------ serializeStakingCredential ------
+letrec
+  data Credential_898 | match_Credential_899 where
+    PubKeyCredential_900 : PubKeyHash_901 -> Credential_898
+    ScriptCredential_902 : ScriptHash_903 -> Credential_898
+  data PubKeyHash_901 | match_PubKeyHash_904 where
+    PubKeyHash_905 : bytestring -> PubKeyHash_901
+  data ScriptHash_903 | match_ScriptHash_906 where
+    ScriptHash_907 : bytestring -> ScriptHash_903
+  data StakingCredential_908 | match_StakingCredential_909 where
+    StakingHash_910 : Credential_898 -> StakingCredential_908
+    StakingPtr_911 : integer -> integer -> integer -> StakingCredential_908
+in
+\(sc_684 : StakingCredential_908) ->
+  match_StakingCredential_909
+    sc_684
+    {data}
+    (\(c_685 : Credential_898) ->
+       constrData
+         0
+         (mkCons
+            {data}
+            ((\(c_680 : Credential_898) ->
+                match_Credential_899
+                  c_680
+                  {data}
+                  (\(pkh_681 : PubKeyHash_901) ->
+                     constrData
+                       0
+                       (mkCons
+                          {data}
+                          ((\(v_641 : PubKeyHash_901) ->
+                              match_PubKeyHash_904
+                                v_641
+                                {data}
+                                (\(bs_642 : bytestring) -> bData bs_642))
+                             pkh_681)
+                          (mkNilData ())))
+                  (\(sh_682 : ScriptHash_903) ->
+                     constrData
+                       1
+                       (mkCons
+                          {data}
+                          ((\(v_508 : ScriptHash_903) ->
+                              match_ScriptHash_906
+                                v_508
+                                {data}
+                                (\(dat_509 : bytestring) -> bData dat_509))
+                             sh_682)
+                          (mkNilData ()))))
+               c_685)
+            (mkNilData ())))
+    (\(i1_686 : integer) (i2_687 : integer) (i3_688 : integer) ->
+       constrData
+         1
+         (mkCons
+            {data}
+            (iData i1_686)
+            (mkCons
+               {data}
+               (iData i2_687)
+               (mkCons {data} (iData i3_688) (mkNilData ())))))
+------------
+
+------ serializeAssocMap ------
+letrec
+  data (AssocMap_902 :: * -> * -> *) k_903 v_904 | match_AssocMap_905 where
+    AssocMap_906 : List_907 (Tuple2_908 k_903 v_904) -> AssocMap_902 k_903 v_904
+  data (List_907 :: * -> *) a_909 | match_List_910 where
+    Nil_911 : List_907 a_909
+    Cons_912 : a_909 -> List_907 a_909 -> List_907 a_909
+  data (Tuple2_908 :: * -> * -> *) t1_913 t2_914 | match_Tuple2_915 where
+    Tuple2_916 : t1_913 -> t2_914 -> Tuple2_908 t1_913 t2_914
+in
+letrec
+  !go_696 :
+     all k_920 v_921.
+       (k_920 -> data) ->
+       (v_921 -> data) ->
+       List_907 (Tuple2_908 k_920 v_921) ->
+       list (pair data data)
+    = /\k_900 v_901 ->
+        \(fK1_898 : k_900 -> data)
+         (fV1_899 : v_901 -> data)
+         (v1_697 : List_907 (Tuple2_908 k_900 v_901)) ->
+          match_List_910
+            {Tuple2_908 k_900 v_901}
+            v1_697
+            {list (pair data data)}
+            (mkNilPairData ())
+            (\(p_698 : Tuple2_908 k_900 v_901)
+              (xs_699 : List_907 (Tuple2_908 k_900 v_901)) ->
+               match_Tuple2_915
+                 {k_900}
+                 {v_901}
+                 p_698
+                 {list (pair data data)}
+                 (\(x_700 : k_900) (y_701 : v_901) ->
+                    mkCons
+                      {pair data data}
+                      (mkPairData (fK1_898 x_700) (fV1_899 y_701))
+                      (go_696 {k_900} {v_901} fK1_898 fV1_899 xs_699)))
+in
+/\k_703 v_702 ->
+  \(fK_690 : k_703 -> data)
+   (fV_691 : v_702 -> data)
+   (v_692 : AssocMap_902 k_703 v_702) ->
+    letrec
+      !fK1_693 : k_703 -> data = fK_690
+    in
+    letrec
+      !fK1_693 : k_703 -> data = fK1_693
+    in
+    letrec
+      !fV1_694 : v_702 -> data = fV_691
+    in
+    letrec
+      !fV1_694 : v_702 -> data = fV1_694
+    in
+    match_AssocMap_905
+      {k_703}
+      {v_702}
+      v_692
+      {data}
+      (\(ell_695 : List_907 (Tuple2_908 k_703 v_702)) ->
+         mapData (go_696 {v_702} {k_703} fV1_694 fK1_693 ell_695))
+------------
+
+------ serializeValue ------
+letrec
+  data (AssocMap_902 :: * -> * -> *) k_903 v_904 | match_AssocMap_905 where
+    AssocMap_906 : List_907 (Tuple2_908 k_903 v_904) -> AssocMap_902 k_903 v_904
+  data CurrencySymbol_909 | match_CurrencySymbol_910 where
+    CurrencySymbol_911 : bytestring -> CurrencySymbol_909
+  data (List_907 :: * -> *) a_912 | match_List_913 where
+    Nil_914 : List_907 a_912
+    Cons_915 : a_912 -> List_907 a_912 -> List_907 a_912
+  data TokenName_916 | match_TokenName_917 where
+    TokenName_918 : bytestring -> TokenName_916
+  data (Tuple2_908 :: * -> * -> *) t1_919 t2_920 | match_Tuple2_921 where
+    Tuple2_922 : t1_919 -> t2_920 -> Tuple2_908 t1_919 t2_920
+  data Value_923 | match_Value_924 where
+    Value_925 :
+      AssocMap_902 CurrencySymbol_909 (AssocMap_902 TokenName_916 integer) ->
+      Value_923
+in
+letrec
+  !go_696 :
+     all k_933 v_934.
+       (k_933 -> data) ->
+       (v_934 -> data) ->
+       List_907 (Tuple2_908 k_933 v_934) ->
+       list (pair data data)
+    = /\k_900 v_901 ->
+        \(fK1_898 : k_900 -> data)
+         (fV1_899 : v_901 -> data)
+         (v1_697 : List_907 (Tuple2_908 k_900 v_901)) ->
+          match_List_913
+            {Tuple2_908 k_900 v_901}
+            v1_697
+            {list (pair data data)}
+            (mkNilPairData ())
+            (\(p_698 : Tuple2_908 k_900 v_901)
+              (xs_699 : List_907 (Tuple2_908 k_900 v_901)) ->
+               match_Tuple2_921
+                 {k_900}
+                 {v_901}
+                 p_698
+                 {list (pair data data)}
+                 (\(x_700 : k_900) (y_701 : v_901) ->
+                    mkCons
+                      {pair data data}
+                      (mkPairData (fK1_898 x_700) (fV1_899 y_701))
+                      (go_696 {k_900} {v_901} fK1_898 fV1_899 xs_699)))
+in
+\(v_705 : Value_923) ->
+  match_Value_924
+    v_705
+    {data}
+    (\(v1_706 :
+         AssocMap_902
+           CurrencySymbol_909
+           (AssocMap_902 TokenName_916 integer)) ->
+       (/\k_703 v_702 ->
+          \(fK_690 : k_703 -> data)
+           (fV_691 : v_702 -> data)
+           (v_692 : AssocMap_902 k_703 v_702) ->
+            letrec
+              !fK1_693 : k_703 -> data = fK_690
+            in
+            letrec
+              !fK1_693 : k_703 -> data = fK1_693
+            in
+            letrec
+              !fV1_694 : v_702 -> data = fV_691
+            in
+            letrec
+              !fV1_694 : v_702 -> data = fV1_694
+            in
+            match_AssocMap_905
+              {k_703}
+              {v_702}
+              v_692
+              {data}
+              (\(ell_695 : List_907 (Tuple2_908 k_703 v_702)) ->
+                 mapData (go_696 {k_703} {v_702} fK1_693 fV1_694 ell_695)))
+         {CurrencySymbol_909}
+         {AssocMap_902 TokenName_916 integer}
+         (\(v_677 : CurrencySymbol_909) ->
+            match_CurrencySymbol_910
+              v_677
+              {data}
+              (\(bs_678 : bytestring) -> bData bs_678))
+         ((/\k_703 v_702 ->
+             \(fK_690 : k_703 -> data)
+              (fV_691 : v_702 -> data)
+              (v_692 : AssocMap_902 k_703 v_702) ->
+               letrec
+                 !fK1_693 : k_703 -> data = fK_690
+               in
+               letrec
+                 !fK1_693 : k_703 -> data = fK1_693
+               in
+               letrec
+                 !fV1_694 : v_702 -> data = fV_691
+               in
+               letrec
+                 !fV1_694 : v_702 -> data = fV1_694
+               in
+               match_AssocMap_905
+                 {k_703}
+                 {v_702}
+                 v_692
+                 {data}
+                 (\(ell_695 : List_907 (Tuple2_908 k_703 v_702)) ->
+                    mapData (go_696 {k_703} {v_702} fK1_693 fV1_694 ell_695)))
+            {TokenName_916}
+            {integer}
+            (\(v_638 : TokenName_916) ->
+               match_TokenName_917
+                 v_638
+                 {data}
+                 (\(bs_639 : bytestring) -> bData bs_639))
+            iData)
+         v1_706)
+------------
+
+------ serializeAddress ------
+letrec
+  data Address_900 | match_Address_901 where
+    Address_902 :
+      Tuple2_903 Credential_904 (Maybe_905 StakingCredential_906) -> Address_900
+  data Credential_904 | match_Credential_907 where
+    PubKeyCredential_908 : PubKeyHash_909 -> Credential_904
+    ScriptCredential_910 : ScriptHash_911 -> Credential_904
+  data (Maybe_905 :: * -> *) a_912 | match_Maybe_913 where
+    Nothing_914 : Maybe_905 a_912
+    Just_915 : a_912 -> Maybe_905 a_912
+  data PubKeyHash_909 | match_PubKeyHash_916 where
+    PubKeyHash_917 : bytestring -> PubKeyHash_909
+  data ScriptHash_911 | match_ScriptHash_918 where
+    ScriptHash_919 : bytestring -> ScriptHash_911
+  data StakingCredential_906 | match_StakingCredential_920 where
+    StakingHash_921 : Credential_904 -> StakingCredential_906
+    StakingPtr_922 : integer -> integer -> integer -> StakingCredential_906
+  data (Tuple2_903 :: * -> * -> *) t1_923 t2_924 | match_Tuple2_925 where
+    Tuple2_926 : t1_923 -> t2_924 -> Tuple2_903 t1_923 t2_924
+in
+\(v_708 : Address_900) ->
+  match_Address_901
+    v_708
+    {data}
+    (\(rec_709 : Tuple2_903 Credential_904 (Maybe_905 StakingCredential_906)) ->
+       constrData
+         0
+         (mkCons
+            {data}
+            ((\(c_680 : Credential_904) ->
+                match_Credential_907
+                  c_680
+                  {data}
+                  (\(pkh_681 : PubKeyHash_909) ->
+                     constrData
+                       0
+                       (mkCons
+                          {data}
+                          ((\(v_641 : PubKeyHash_909) ->
+                              match_PubKeyHash_916
+                                v_641
+                                {data}
+                                (\(bs_642 : bytestring) -> bData bs_642))
+                             pkh_681)
+                          (mkNilData ())))
+                  (\(sh_682 : ScriptHash_911) ->
+                     constrData
+                       1
+                       (mkCons
+                          {data}
+                          ((\(v_508 : ScriptHash_911) ->
+                              match_ScriptHash_918
+                                v_508
+                                {data}
+                                (\(dat_509 : bytestring) -> bData dat_509))
+                             sh_682)
+                          (mkNilData ()))))
+               (match_Tuple2_925
+                  {Credential_904}
+                  {Maybe_905 StakingCredential_906}
+                  rec_709
+                  {Credential_904}
+                  (\(`<ACCESSOR>_899` : Credential_904)
+                    (_t930_930 : Maybe_905 StakingCredential_906) ->
+                     `<ACCESSOR>_899`)))
+            (mkCons
+               {data}
+               ((/\a_487 ->
+                   \(f_484 : a_487 -> data) (m_485 : Maybe_905 a_487) ->
+                     match_Maybe_913
+                       {a_487}
+                       m_485
+                       {data}
+                       (constrData 0 (mkNilData ()))
+                       (\(x_486 : a_487) ->
+                          constrData
+                            1
+                            (mkCons {data} (f_484 x_486) (mkNilData ()))))
+                  {StakingCredential_906}
+                  (\(sc_684 : StakingCredential_906) ->
+                     match_StakingCredential_920
+                       sc_684
+                       {data}
+                       (\(c_685 : Credential_904) ->
+                          constrData
+                            0
+                            (mkCons
+                               {data}
+                               ((\(c_680 : Credential_904) ->
+                                   match_Credential_907
+                                     c_680
+                                     {data}
+                                     (\(pkh_681 : PubKeyHash_909) ->
+                                        constrData
+                                          0
+                                          (mkCons
+                                             {data}
+                                             ((\(v_641 : PubKeyHash_909) ->
+                                                 match_PubKeyHash_916
+                                                   v_641
+                                                   {data}
+                                                   (\(bs_642 : bytestring) ->
+                                                      bData bs_642))
+                                                pkh_681)
+                                             (mkNilData ())))
+                                     (\(sh_682 : ScriptHash_911) ->
+                                        constrData
+                                          1
+                                          (mkCons
+                                             {data}
+                                             ((\(v_508 : ScriptHash_911) ->
+                                                 match_ScriptHash_918
+                                                   v_508
+                                                   {data}
+                                                   (\(dat_509 : bytestring) ->
+                                                      bData dat_509))
+                                                sh_682)
+                                             (mkNilData ()))))
+                                  c_685)
+                               (mkNilData ())))
+                       (\(i1_686 : integer)
+                         (i2_687 : integer)
+                         (i3_688 : integer) ->
+                          constrData
+                            1
+                            (mkCons
+                               {data}
+                               (iData i1_686)
+                               (mkCons
+                                  {data}
+                                  (iData i2_687)
+                                  (mkCons
+                                     {data}
+                                     (iData i3_688)
+                                     (mkNilData ()))))))
+                  (match_Tuple2_925
+                     {Credential_904}
+                     {Maybe_905 StakingCredential_906}
+                     rec_709
+                     {Maybe_905 StakingCredential_906}
+                     (\(_t937_937 : Credential_904)
+                       (`<ACCESSOR>_898` : Maybe_905 StakingCredential_906) ->
+                        `<ACCESSOR>_898`)))
+               (mkNilData ()))))
+------------
+
+------ serializeTxOut ------
+letrec
+  data Address_908 | match_Address_909 where
+    Address_910 :
+      Tuple2_911 Credential_912 (Maybe_913 StakingCredential_914) -> Address_908
+  data (AssocMap_915 :: * -> * -> *) k_916 v_917 | match_AssocMap_918 where
+    AssocMap_919 : List_920 (Tuple2_911 k_916 v_917) -> AssocMap_915 k_916 v_917
+  data Credential_912 | match_Credential_921 where
+    PubKeyCredential_922 : PubKeyHash_923 -> Credential_912
+    ScriptCredential_924 : ScriptHash_925 -> Credential_912
+  data CurrencySymbol_926 | match_CurrencySymbol_927 where
+    CurrencySymbol_928 : bytestring -> CurrencySymbol_926
+  data Datum_929 | match_Datum_930 where
+    Datum_931 : data -> Datum_929
+  data DatumHash_932 | match_DatumHash_933 where
+    DatumHash_934 : bytestring -> DatumHash_932
+  data (List_920 :: * -> *) a_935 | match_List_936 where
+    Nil_937 : List_920 a_935
+    Cons_938 : a_935 -> List_920 a_935 -> List_920 a_935
+  data (Maybe_913 :: * -> *) a_939 | match_Maybe_940 where
+    Nothing_941 : Maybe_913 a_939
+    Just_942 : a_939 -> Maybe_913 a_939
+  data OutputDatum_943 | match_OutputDatum_944 where
+    NoOutputDatum_945 : OutputDatum_943
+    OutputDatumHash_946 : DatumHash_932 -> OutputDatum_943
+    OutputDatum_947 : Datum_929 -> OutputDatum_943
+  data PubKeyHash_923 | match_PubKeyHash_948 where
+    PubKeyHash_949 : bytestring -> PubKeyHash_923
+  data ScriptHash_925 | match_ScriptHash_950 where
+    ScriptHash_951 : bytestring -> ScriptHash_925
+  data StakingCredential_914 | match_StakingCredential_952 where
+    StakingHash_953 : Credential_912 -> StakingCredential_914
+    StakingPtr_954 : integer -> integer -> integer -> StakingCredential_914
+  data TokenName_955 | match_TokenName_956 where
+    TokenName_957 : bytestring -> TokenName_955
+  data (Tuple2_911 :: * -> * -> *) t1_958 t2_959 | match_Tuple2_960 where
+    Tuple2_961 : t1_958 -> t2_959 -> Tuple2_911 t1_958 t2_959
+  data (Tuple4_962 :: * -> * -> * -> * -> *) t1_963 t2_964 t3_965
+  t4_966 | match_Tuple4_967 where
+    Tuple4_968 :
+      t1_963 ->
+      t2_964 ->
+      t3_965 ->
+      t4_966 ->
+      Tuple4_962 t1_963 t2_964 t3_965 t4_966
+  data TxOut_969 | match_TxOut_970 where
+    TxOut_971 :
+      Tuple4_962
+        Address_908
+        OutputDatum_943
+        (Maybe_913 ScriptHash_925)
+        Value_972 ->
+      TxOut_969
+  data Value_972 | match_Value_973 where
+    Value_974 :
+      AssocMap_915 CurrencySymbol_926 (AssocMap_915 TokenName_955 integer) ->
+      Value_972
+in
+letrec
+  !go_696 :
+     all k_1017 v_1018.
+       (k_1017 -> data) ->
+       (v_1018 -> data) ->
+       List_920 (Tuple2_911 k_1017 v_1018) ->
+       list (pair data data)
+    = /\k_900 v_901 ->
+        \(fK1_898 : k_900 -> data)
+         (fV1_899 : v_901 -> data)
+         (v1_697 : List_920 (Tuple2_911 k_900 v_901)) ->
+          match_List_936
+            {Tuple2_911 k_900 v_901}
+            v1_697
+            {list (pair data data)}
+            (mkNilPairData ())
+            (\(p_698 : Tuple2_911 k_900 v_901)
+              (xs_699 : List_920 (Tuple2_911 k_900 v_901)) ->
+               match_Tuple2_960
+                 {k_900}
+                 {v_901}
+                 p_698
+                 {list (pair data data)}
+                 (\(x_700 : k_900) (y_701 : v_901) ->
+                    mkCons
+                      {pair data data}
+                      (mkPairData (fK1_898 x_700) (fV1_899 y_701))
+                      (go_696 {k_900} {v_901} fK1_898 fV1_899 xs_699)))
+in
+\(v_711 : TxOut_969) ->
+  match_TxOut_970
+    v_711
+    {data}
+    (\(rec_712 :
+         Tuple4_962
+           Address_908
+           OutputDatum_943
+           (Maybe_913 ScriptHash_925)
+           Value_972) ->
+       constrData
+         0
+         (mkCons
+            {data}
+            ((\(v_708 : Address_908) ->
+                match_Address_909
+                  v_708
+                  {data}
+                  (\(rec_709 :
+                       Tuple2_911
+                         Credential_912
+                         (Maybe_913 StakingCredential_914)) ->
+                     constrData
+                       0
+                       (mkCons
+                          {data}
+                          ((\(c_680 : Credential_912) ->
+                              match_Credential_921
+                                c_680
+                                {data}
+                                (\(pkh_681 : PubKeyHash_923) ->
+                                   constrData
+                                     0
+                                     (mkCons
+                                        {data}
+                                        ((\(v_641 : PubKeyHash_923) ->
+                                            match_PubKeyHash_948
+                                              v_641
+                                              {data}
+                                              (\(bs_642 : bytestring) ->
+                                                 bData bs_642))
+                                           pkh_681)
+                                        (mkNilData ())))
+                                (\(sh_682 : ScriptHash_925) ->
+                                   constrData
+                                     1
+                                     (mkCons
+                                        {data}
+                                        ((\(v_508 : ScriptHash_925) ->
+                                            match_ScriptHash_950
+                                              v_508
+                                              {data}
+                                              (\(dat_509 : bytestring) ->
+                                                 bData dat_509))
+                                           sh_682)
+                                        (mkNilData ()))))
+                             (match_Tuple2_960
+                                {Credential_912}
+                                {Maybe_913 StakingCredential_914}
+                                rec_709
+                                {Credential_912}
+                                (\(`<ACCESSOR>_907` : Credential_912)
+                                  (_t978_978 :
+                                     Maybe_913 StakingCredential_914) ->
+                                   `<ACCESSOR>_907`)))
+                          (mkCons
+                             {data}
+                             ((/\a_487 ->
+                                 \(f_484 : a_487 -> data)
+                                  (m_485 : Maybe_913 a_487) ->
+                                   match_Maybe_940
+                                     {a_487}
+                                     m_485
+                                     {data}
+                                     (constrData 0 (mkNilData ()))
+                                     (\(x_486 : a_487) ->
+                                        constrData
+                                          1
+                                          (mkCons
+                                             {data}
+                                             (f_484 x_486)
+                                             (mkNilData ()))))
+                                {StakingCredential_914}
+                                (\(sc_684 : StakingCredential_914) ->
+                                   match_StakingCredential_952
+                                     sc_684
+                                     {data}
+                                     (\(c_685 : Credential_912) ->
+                                        constrData
+                                          0
+                                          (mkCons
+                                             {data}
+                                             ((\(c_680 : Credential_912) ->
+                                                 match_Credential_921
+                                                   c_680
+                                                   {data}
+                                                   (\(pkh_681 :
+                                                        PubKeyHash_923) ->
+                                                      constrData
+                                                        0
+                                                        (mkCons
+                                                           {data}
+                                                           ((\(v_641 :
+                                                                 PubKeyHash_923) ->
+                                                               match_PubKeyHash_948
+                                                                 v_641
+                                                                 {data}
+                                                                 (\(bs_642 :
+                                                                      bytestring) ->
+                                                                    bData
+                                                                      bs_642))
+                                                              pkh_681)
+                                                           (mkNilData ())))
+                                                   (\(sh_682 :
+                                                        ScriptHash_925) ->
+                                                      constrData
+                                                        1
+                                                        (mkCons
+                                                           {data}
+                                                           ((\(v_508 :
+                                                                 ScriptHash_925) ->
+                                                               match_ScriptHash_950
+                                                                 v_508
+                                                                 {data}
+                                                                 (\(dat_509 :
+                                                                      bytestring) ->
+                                                                    bData
+                                                                      dat_509))
+                                                              sh_682)
+                                                           (mkNilData ()))))
+                                                c_685)
+                                             (mkNilData ())))
+                                     (\(i1_686 : integer)
+                                       (i2_687 : integer)
+                                       (i3_688 : integer) ->
+                                        constrData
+                                          1
+                                          (mkCons
+                                             {data}
+                                             (iData i1_686)
+                                             (mkCons
+                                                {data}
+                                                (iData i2_687)
+                                                (mkCons
+                                                   {data}
+                                                   (iData i3_688)
+                                                   (mkNilData ()))))))
+                                (match_Tuple2_960
+                                   {Credential_912}
+                                   {Maybe_913 StakingCredential_914}
+                                   rec_709
+                                   {Maybe_913 StakingCredential_914}
+                                   (\(_t985_985 : Credential_912)
+                                     (`<ACCESSOR>_906` :
+                                        Maybe_913 StakingCredential_914) ->
+                                      `<ACCESSOR>_906`)))
+                             (mkNilData ())))))
+               (match_Tuple4_967
+                  {Address_908}
+                  {OutputDatum_943}
+                  {Maybe_913 ScriptHash_925}
+                  {Value_972}
+                  rec_712
+                  {Address_908}
+                  (\(`<ACCESSOR>_905` : Address_908)
+                    (_t990_990 : OutputDatum_943)
+                    (_t989_989 : Maybe_913 ScriptHash_925)
+                    (_t988_988 : Value_972) ->
+                     `<ACCESSOR>_905`)))
+            (mkCons
+               {data}
+               ((\(v_705 : Value_972) ->
+                   match_Value_973
+                     v_705
+                     {data}
+                     (\(v1_706 :
+                          AssocMap_915
+                            CurrencySymbol_926
+                            (AssocMap_915 TokenName_955 integer)) ->
+                        (/\k_703 v_702 ->
+                           \(fK_690 : k_703 -> data)
+                            (fV_691 : v_702 -> data)
+                            (v_692 : AssocMap_915 k_703 v_702) ->
+                             letrec
+                               !fK1_693 : k_703 -> data = fK_690
+                             in
+                             letrec
+                               !fK1_693 : k_703 -> data = fK1_693
+                             in
+                             letrec
+                               !fV1_694 : v_702 -> data = fV_691
+                             in
+                             letrec
+                               !fV1_694 : v_702 -> data = fV1_694
+                             in
+                             match_AssocMap_918
+                               {k_703}
+                               {v_702}
+                               v_692
+                               {data}
+                               (\(ell_695 :
+                                    List_920 (Tuple2_911 k_703 v_702)) ->
+                                  mapData
+                                    (go_696
+                                       {k_703}
+                                       {v_702}
+                                       fK1_693
+                                       fV1_694
+                                       ell_695)))
+                          {CurrencySymbol_926}
+                          {AssocMap_915 TokenName_955 integer}
+                          (\(v_677 : CurrencySymbol_926) ->
+                             match_CurrencySymbol_927
+                               v_677
+                               {data}
+                               (\(bs_678 : bytestring) -> bData bs_678))
+                          ((/\k_703 v_702 ->
+                              \(fK_690 : k_703 -> data)
+                               (fV_691 : v_702 -> data)
+                               (v_692 : AssocMap_915 k_703 v_702) ->
+                                letrec
+                                  !fK1_693 : k_703 -> data = fK_690
+                                in
+                                letrec
+                                  !fK1_693 : k_703 -> data = fK1_693
+                                in
+                                letrec
+                                  !fV1_694 : v_702 -> data = fV_691
+                                in
+                                letrec
+                                  !fV1_694 : v_702 -> data = fV1_694
+                                in
+                                match_AssocMap_918
+                                  {k_703}
+                                  {v_702}
+                                  v_692
+                                  {data}
+                                  (\(ell_695 :
+                                       List_920 (Tuple2_911 k_703 v_702)) ->
+                                     mapData
+                                       (go_696
+                                          {k_703}
+                                          {v_702}
+                                          fK1_693
+                                          fV1_694
+                                          ell_695)))
+                             {TokenName_955}
+                             {integer}
+                             (\(v_638 : TokenName_955) ->
+                                match_TokenName_956
+                                  v_638
+                                  {data}
+                                  (\(bs_639 : bytestring) -> bData bs_639))
+                             iData)
+                          v1_706))
+                  (match_Tuple4_967
+                     {Address_908}
+                     {OutputDatum_943}
+                     {Maybe_913 ScriptHash_925}
+                     {Value_972}
+                     rec_712
+                     {Value_972}
+                     (\(_t999_999 : Address_908)
+                       (_t998_998 : OutputDatum_943)
+                       (_t997_997 : Maybe_913 ScriptHash_925)
+                       (`<ACCESSOR>_904` : Value_972) ->
+                        `<ACCESSOR>_904`)))
+               (mkCons
+                  {data}
+                  ((\(od_647 : OutputDatum_943) ->
+                      match_OutputDatum_944
+                        od_647
+                        {data}
+                        (constrData 0 (mkNilData ()))
+                        (\(h_648 : DatumHash_932) ->
+                           constrData
+                             1
+                             (mkCons
+                                {data}
+                                ((\(v_502 : DatumHash_932) ->
+                                    match_DatumHash_933
+                                      v_502
+                                      {data}
+                                      (\(bs_503 : bytestring) -> bData bs_503))
+                                   h_648)
+                                (mkNilData ())))
+                        (\(d_649 : Datum_929) ->
+                           constrData
+                             2
+                             (mkCons
+                                {data}
+                                ((\(v_498 : Datum_929) ->
+                                    match_Datum_930
+                                      v_498
+                                      {data}
+                                      (\(dat_499 : data) -> dat_499))
+                                   d_649)
+                                (mkNilData ()))))
+                     (match_Tuple4_967
+                        {Address_908}
+                        {OutputDatum_943}
+                        {Maybe_913 ScriptHash_925}
+                        {Value_972}
+                        rec_712
+                        {OutputDatum_943}
+                        (\(_t1006_1006 : Address_908)
+                          (`<ACCESSOR>_903` : OutputDatum_943)
+                          (_t1005_1005 : Maybe_913 ScriptHash_925)
+                          (_t1004_1004 : Value_972) ->
+                           `<ACCESSOR>_903`)))
+                  (mkCons
+                     {data}
+                     ((/\a_487 ->
+                         \(f_484 : a_487 -> data) (m_485 : Maybe_913 a_487) ->
+                           match_Maybe_940
+                             {a_487}
+                             m_485
+                             {data}
+                             (constrData 0 (mkNilData ()))
+                             (\(x_486 : a_487) ->
+                                constrData
+                                  1
+                                  (mkCons {data} (f_484 x_486) (mkNilData ()))))
+                        {ScriptHash_925}
+                        (\(v_508 : ScriptHash_925) ->
+                           match_ScriptHash_950
+                             v_508
+                             {data}
+                             (\(dat_509 : bytestring) -> bData dat_509))
+                        (match_Tuple4_967
+                           {Address_908}
+                           {OutputDatum_943}
+                           {Maybe_913 ScriptHash_925}
+                           {Value_972}
+                           rec_712
+                           {Maybe_913 ScriptHash_925}
+                           (\(_t1012_1012 : Address_908)
+                             (_t1011_1011 : OutputDatum_943)
+                             (`<ACCESSOR>_902` : Maybe_913 ScriptHash_925)
+                             (_t1010_1010 : Value_972) ->
+                              `<ACCESSOR>_902`)))
+                     (mkNilData ()))))))
+------------
+
+------ serializeTxInInfo ------
+letrec
+  data Address_912 | match_Address_913 where
+    Address_914 :
+      Tuple2_915 Credential_916 (Maybe_917 StakingCredential_918) -> Address_912
+  data (AssocMap_919 :: * -> * -> *) k_920 v_921 | match_AssocMap_922 where
+    AssocMap_923 : List_924 (Tuple2_915 k_920 v_921) -> AssocMap_919 k_920 v_921
+  data Credential_916 | match_Credential_925 where
+    PubKeyCredential_926 : PubKeyHash_927 -> Credential_916
+    ScriptCredential_928 : ScriptHash_929 -> Credential_916
+  data CurrencySymbol_930 | match_CurrencySymbol_931 where
+    CurrencySymbol_932 : bytestring -> CurrencySymbol_930
+  data Datum_933 | match_Datum_934 where
+    Datum_935 : data -> Datum_933
+  data DatumHash_936 | match_DatumHash_937 where
+    DatumHash_938 : bytestring -> DatumHash_936
+  data (List_924 :: * -> *) a_939 | match_List_940 where
+    Nil_941 : List_924 a_939
+    Cons_942 : a_939 -> List_924 a_939 -> List_924 a_939
+  data (Maybe_917 :: * -> *) a_943 | match_Maybe_944 where
+    Nothing_945 : Maybe_917 a_943
+    Just_946 : a_943 -> Maybe_917 a_943
+  data OutputDatum_947 | match_OutputDatum_948 where
+    NoOutputDatum_949 : OutputDatum_947
+    OutputDatumHash_950 : DatumHash_936 -> OutputDatum_947
+    OutputDatum_951 : Datum_933 -> OutputDatum_947
+  data PubKeyHash_927 | match_PubKeyHash_952 where
+    PubKeyHash_953 : bytestring -> PubKeyHash_927
+  data ScriptHash_929 | match_ScriptHash_954 where
+    ScriptHash_955 : bytestring -> ScriptHash_929
+  data StakingCredential_918 | match_StakingCredential_956 where
+    StakingHash_957 : Credential_916 -> StakingCredential_918
+    StakingPtr_958 : integer -> integer -> integer -> StakingCredential_918
+  data TokenName_959 | match_TokenName_960 where
+    TokenName_961 : bytestring -> TokenName_959
+  data (Tuple2_915 :: * -> * -> *) t1_962 t2_963 | match_Tuple2_964 where
+    Tuple2_965 : t1_962 -> t2_963 -> Tuple2_915 t1_962 t2_963
+  data (Tuple4_966 :: * -> * -> * -> * -> *) t1_967 t2_968 t3_969
+  t4_970 | match_Tuple4_971 where
+    Tuple4_972 :
+      t1_967 ->
+      t2_968 ->
+      t3_969 ->
+      t4_970 ->
+      Tuple4_966 t1_967 t2_968 t3_969 t4_970
+  data TxId_973 | match_TxId_974 where
+    TxId_975 : bytestring -> TxId_973
+  data TxInInfo_976 | match_TxInInfo_977 where
+    TxInInfo_978 : Tuple2_915 TxOut_979 TxOutRef_980 -> TxInInfo_976
+  data TxOut_979 | match_TxOut_981 where
+    TxOut_982 :
+      Tuple4_966
+        Address_912
+        OutputDatum_947
+        (Maybe_917 ScriptHash_929)
+        Value_983 ->
+      TxOut_979
+  data TxOutRef_980 | match_TxOutRef_984 where
+    TxOutRef_985 : Tuple2_915 TxId_973 integer -> TxOutRef_980
+  data Value_983 | match_Value_986 where
+    Value_987 :
+      AssocMap_919 CurrencySymbol_930 (AssocMap_919 TokenName_959 integer) ->
+      Value_983
+in
+letrec
+  !go_696 :
+     all k_1041 v_1042.
+       (k_1041 -> data) ->
+       (v_1042 -> data) ->
+       List_924 (Tuple2_915 k_1041 v_1042) ->
+       list (pair data data)
+    = /\k_900 v_901 ->
+        \(fK1_898 : k_900 -> data)
+         (fV1_899 : v_901 -> data)
+         (v1_697 : List_924 (Tuple2_915 k_900 v_901)) ->
+          match_List_940
+            {Tuple2_915 k_900 v_901}
+            v1_697
+            {list (pair data data)}
+            (mkNilPairData ())
+            (\(p_698 : Tuple2_915 k_900 v_901)
+              (xs_699 : List_924 (Tuple2_915 k_900 v_901)) ->
+               match_Tuple2_964
+                 {k_900}
+                 {v_901}
+                 p_698
+                 {list (pair data data)}
+                 (\(x_700 : k_900) (y_701 : v_901) ->
+                    mkCons
+                      {pair data data}
+                      (mkPairData (fK1_898 x_700) (fV1_899 y_701))
+                      (go_696 {k_900} {v_901} fK1_898 fV1_899 xs_699)))
+in
+\(v_714 : TxInInfo_976) ->
+  match_TxInInfo_977
+    v_714
+    {data}
+    (\(rec_715 : Tuple2_915 TxOut_979 TxOutRef_980) ->
+       constrData
+         0
+         (mkCons
+            {data}
+            ((\(v_635 : TxOutRef_980) ->
+                match_TxOutRef_984
+                  v_635
+                  {data}
+                  (\(rec_636 : Tuple2_915 TxId_973 integer) ->
+                     constrData
+                       0
+                       (mkCons
+                          {data}
+                          ((\(v_632 : TxId_973) ->
+                              match_TxId_974
+                                v_632
+                                {data}
+                                (\(bs_633 : bytestring) ->
+                                   constrData
+                                     0
+                                     (mkCons
+                                        {data}
+                                        (bData bs_633)
+                                        (mkNilData ()))))
+                             (match_Tuple2_964
+                                {TxId_973}
+                                {integer}
+                                rec_636
+                                {TxId_973}
+                                (\(`<ACCESSOR>_911` : TxId_973)
+                                  (_t989_989 : integer) ->
+                                   `<ACCESSOR>_911`)))
+                          (mkCons
+                             {data}
+                             (iData
+                                (match_Tuple2_964
+                                   {TxId_973}
+                                   {integer}
+                                   rec_636
+                                   {integer}
+                                   (\(_t991_991 : TxId_973)
+                                     (`<ACCESSOR>_910` : integer) ->
+                                      `<ACCESSOR>_910`)))
+                             (mkNilData ())))))
+               (match_Tuple2_964
+                  {TxOut_979}
+                  {TxOutRef_980}
+                  rec_715
+                  {TxOutRef_980}
+                  (\(_t994_994 : TxOut_979) (`<ACCESSOR>_909` : TxOutRef_980) ->
+                     `<ACCESSOR>_909`)))
+            (mkCons
+               {data}
+               ((\(v_711 : TxOut_979) ->
+                   match_TxOut_981
+                     v_711
+                     {data}
+                     (\(rec_712 :
+                          Tuple4_966
+                            Address_912
+                            OutputDatum_947
+                            (Maybe_917 ScriptHash_929)
+                            Value_983) ->
+                        constrData
+                          0
+                          (mkCons
+                             {data}
+                             ((\(v_708 : Address_912) ->
+                                 match_Address_913
+                                   v_708
+                                   {data}
+                                   (\(rec_709 :
+                                        Tuple2_915
+                                          Credential_916
+                                          (Maybe_917 StakingCredential_918)) ->
+                                      constrData
+                                        0
+                                        (mkCons
+                                           {data}
+                                           ((\(c_680 : Credential_916) ->
+                                               match_Credential_925
+                                                 c_680
+                                                 {data}
+                                                 (\(pkh_681 : PubKeyHash_927) ->
+                                                    constrData
+                                                      0
+                                                      (mkCons
+                                                         {data}
+                                                         ((\(v_641 :
+                                                               PubKeyHash_927) ->
+                                                             match_PubKeyHash_952
+                                                               v_641
+                                                               {data}
+                                                               (\(bs_642 :
+                                                                    bytestring) ->
+                                                                  bData bs_642))
+                                                            pkh_681)
+                                                         (mkNilData ())))
+                                                 (\(sh_682 : ScriptHash_929) ->
+                                                    constrData
+                                                      1
+                                                      (mkCons
+                                                         {data}
+                                                         ((\(v_508 :
+                                                               ScriptHash_929) ->
+                                                             match_ScriptHash_954
+                                                               v_508
+                                                               {data}
+                                                               (\(dat_509 :
+                                                                    bytestring) ->
+                                                                  bData
+                                                                    dat_509))
+                                                            sh_682)
+                                                         (mkNilData ()))))
+                                              (match_Tuple2_964
+                                                 {Credential_916}
+                                                 {Maybe_917
+                                                    StakingCredential_918}
+                                                 rec_709
+                                                 {Credential_916}
+                                                 (\(`<ACCESSOR>_908` :
+                                                      Credential_916)
+                                                   (_t999_999 :
+                                                      Maybe_917
+                                                        StakingCredential_918) ->
+                                                    `<ACCESSOR>_908`)))
+                                           (mkCons
+                                              {data}
+                                              ((/\a_487 ->
+                                                  \(f_484 : a_487 -> data)
+                                                   (m_485 : Maybe_917 a_487) ->
+                                                    match_Maybe_944
+                                                      {a_487}
+                                                      m_485
+                                                      {data}
+                                                      (constrData
+                                                         0
+                                                         (mkNilData ()))
+                                                      (\(x_486 : a_487) ->
+                                                         constrData
+                                                           1
+                                                           (mkCons
+                                                              {data}
+                                                              (f_484 x_486)
+                                                              (mkNilData ()))))
+                                                 {StakingCredential_918}
+                                                 (\(sc_684 :
+                                                      StakingCredential_918) ->
+                                                    match_StakingCredential_956
+                                                      sc_684
+                                                      {data}
+                                                      (\(c_685 :
+                                                           Credential_916) ->
+                                                         constrData
+                                                           0
+                                                           (mkCons
+                                                              {data}
+                                                              ((\(c_680 :
+                                                                    Credential_916) ->
+                                                                  match_Credential_925
+                                                                    c_680
+                                                                    {data}
+                                                                    (\(pkh_681 :
+                                                                         PubKeyHash_927) ->
+                                                                       constrData
+                                                                         0
+                                                                         (mkCons
+                                                                            {data}
+                                                                            ((\(v_641 :
+                                                                                  PubKeyHash_927) ->
+                                                                                match_PubKeyHash_952
+                                                                                  v_641
+                                                                                  {data}
+                                                                                  (\(bs_642 :
+                                                                                       bytestring) ->
+                                                                                     bData
+                                                                                       bs_642))
+                                                                               pkh_681)
+                                                                            (mkNilData
+                                                                               ())))
+                                                                    (\(sh_682 :
+                                                                         ScriptHash_929) ->
+                                                                       constrData
+                                                                         1
+                                                                         (mkCons
+                                                                            {data}
+                                                                            ((\(v_508 :
+                                                                                  ScriptHash_929) ->
+                                                                                match_ScriptHash_954
+                                                                                  v_508
+                                                                                  {data}
+                                                                                  (\(dat_509 :
+                                                                                       bytestring) ->
+                                                                                     bData
+                                                                                       dat_509))
+                                                                               sh_682)
+                                                                            (mkNilData
+                                                                               ()))))
+                                                                 c_685)
+                                                              (mkNilData ())))
+                                                      (\(i1_686 : integer)
+                                                        (i2_687 : integer)
+                                                        (i3_688 : integer) ->
+                                                         constrData
+                                                           1
+                                                           (mkCons
+                                                              {data}
+                                                              (iData i1_686)
+                                                              (mkCons
+                                                                 {data}
+                                                                 (iData i2_687)
+                                                                 (mkCons
+                                                                    {data}
+                                                                    (iData
+                                                                       i3_688)
+                                                                    (mkNilData
+                                                                       ()))))))
+                                                 (match_Tuple2_964
+                                                    {Credential_916}
+                                                    {Maybe_917
+                                                       StakingCredential_918}
+                                                    rec_709
+                                                    {Maybe_917
+                                                       StakingCredential_918}
+                                                    (\(_t1006_1006 :
+                                                         Credential_916)
+                                                      (`<ACCESSOR>_907` :
+                                                         Maybe_917
+                                                           StakingCredential_918) ->
+                                                       `<ACCESSOR>_907`)))
+                                              (mkNilData ())))))
+                                (match_Tuple4_971
+                                   {Address_912}
+                                   {OutputDatum_947}
+                                   {Maybe_917 ScriptHash_929}
+                                   {Value_983}
+                                   rec_712
+                                   {Address_912}
+                                   (\(`<ACCESSOR>_906` : Address_912)
+                                     (_t1011_1011 : OutputDatum_947)
+                                     (_t1010_1010 : Maybe_917 ScriptHash_929)
+                                     (_t1009_1009 : Value_983) ->
+                                      `<ACCESSOR>_906`)))
+                             (mkCons
+                                {data}
+                                ((\(v_705 : Value_983) ->
+                                    match_Value_986
+                                      v_705
+                                      {data}
+                                      (\(v1_706 :
+                                           AssocMap_919
+                                             CurrencySymbol_930
+                                             (AssocMap_919
+                                                TokenName_959
+                                                integer)) ->
+                                         (/\k_703 v_702 ->
+                                            \(fK_690 : k_703 -> data)
+                                             (fV_691 : v_702 -> data)
+                                             (v_692 :
+                                                AssocMap_919 k_703 v_702) ->
+                                              letrec
+                                                !fK1_693 : k_703 -> data
+                                                  = fK_690
+                                              in
+                                              letrec
+                                                !fK1_693 : k_703 -> data
+                                                  = fK1_693
+                                              in
+                                              letrec
+                                                !fV1_694 : v_702 -> data
+                                                  = fV_691
+                                              in
+                                              letrec
+                                                !fV1_694 : v_702 -> data
+                                                  = fV1_694
+                                              in
+                                              match_AssocMap_922
+                                                {k_703}
+                                                {v_702}
+                                                v_692
+                                                {data}
+                                                (\(ell_695 :
+                                                     List_924
+                                                       (Tuple2_915
+                                                          k_703
+                                                          v_702)) ->
+                                                   mapData
+                                                     (go_696
+                                                        {k_703}
+                                                        {v_702}
+                                                        fK1_693
+                                                        fV1_694
+                                                        ell_695)))
+                                           {CurrencySymbol_930}
+                                           {AssocMap_919 TokenName_959 integer}
+                                           (\(v_677 : CurrencySymbol_930) ->
+                                              match_CurrencySymbol_931
+                                                v_677
+                                                {data}
+                                                (\(bs_678 : bytestring) ->
+                                                   bData bs_678))
+                                           ((/\k_703 v_702 ->
+                                               \(fK_690 : k_703 -> data)
+                                                (fV_691 : v_702 -> data)
+                                                (v_692 :
+                                                   AssocMap_919 k_703 v_702) ->
+                                                 letrec
+                                                   !fK1_693 : k_703 -> data
+                                                     = fK_690
+                                                 in
+                                                 letrec
+                                                   !fK1_693 : k_703 -> data
+                                                     = fK1_693
+                                                 in
+                                                 letrec
+                                                   !fV1_694 : v_702 -> data
+                                                     = fV_691
+                                                 in
+                                                 letrec
+                                                   !fV1_694 : v_702 -> data
+                                                     = fV1_694
+                                                 in
+                                                 match_AssocMap_922
+                                                   {k_703}
+                                                   {v_702}
+                                                   v_692
+                                                   {data}
+                                                   (\(ell_695 :
+                                                        List_924
+                                                          (Tuple2_915
+                                                             k_703
+                                                             v_702)) ->
+                                                      mapData
+                                                        (go_696
+                                                           {k_703}
+                                                           {v_702}
+                                                           fK1_693
+                                                           fV1_694
+                                                           ell_695)))
+                                              {TokenName_959}
+                                              {integer}
+                                              (\(v_638 : TokenName_959) ->
+                                                 match_TokenName_960
+                                                   v_638
+                                                   {data}
+                                                   (\(bs_639 : bytestring) ->
+                                                      bData bs_639))
+                                              iData)
+                                           v1_706))
+                                   (match_Tuple4_971
+                                      {Address_912}
+                                      {OutputDatum_947}
+                                      {Maybe_917 ScriptHash_929}
+                                      {Value_983}
+                                      rec_712
+                                      {Value_983}
+                                      (\(_t1020_1020 : Address_912)
+                                        (_t1019_1019 : OutputDatum_947)
+                                        (_t1018_1018 : Maybe_917 ScriptHash_929)
+                                        (`<ACCESSOR>_905` : Value_983) ->
+                                         `<ACCESSOR>_905`)))
+                                (mkCons
+                                   {data}
+                                   ((\(od_647 : OutputDatum_947) ->
+                                       match_OutputDatum_948
+                                         od_647
+                                         {data}
+                                         (constrData 0 (mkNilData ()))
+                                         (\(h_648 : DatumHash_936) ->
+                                            constrData
+                                              1
+                                              (mkCons
+                                                 {data}
+                                                 ((\(v_502 : DatumHash_936) ->
+                                                     match_DatumHash_937
+                                                       v_502
+                                                       {data}
+                                                       (\(bs_503 :
+                                                            bytestring) ->
+                                                          bData bs_503))
+                                                    h_648)
+                                                 (mkNilData ())))
+                                         (\(d_649 : Datum_933) ->
+                                            constrData
+                                              2
+                                              (mkCons
+                                                 {data}
+                                                 ((\(v_498 : Datum_933) ->
+                                                     match_Datum_934
+                                                       v_498
+                                                       {data}
+                                                       (\(dat_499 : data) ->
+                                                          dat_499))
+                                                    d_649)
+                                                 (mkNilData ()))))
+                                      (match_Tuple4_971
+                                         {Address_912}
+                                         {OutputDatum_947}
+                                         {Maybe_917 ScriptHash_929}
+                                         {Value_983}
+                                         rec_712
+                                         {OutputDatum_947}
+                                         (\(_t1027_1027 : Address_912)
+                                           (`<ACCESSOR>_904` : OutputDatum_947)
+                                           (_t1026_1026 :
+                                              Maybe_917 ScriptHash_929)
+                                           (_t1025_1025 : Value_983) ->
+                                            `<ACCESSOR>_904`)))
+                                   (mkCons
+                                      {data}
+                                      ((/\a_487 ->
+                                          \(f_484 : a_487 -> data)
+                                           (m_485 : Maybe_917 a_487) ->
+                                            match_Maybe_944
+                                              {a_487}
+                                              m_485
+                                              {data}
+                                              (constrData 0 (mkNilData ()))
+                                              (\(x_486 : a_487) ->
+                                                 constrData
+                                                   1
+                                                   (mkCons
+                                                      {data}
+                                                      (f_484 x_486)
+                                                      (mkNilData ()))))
+                                         {ScriptHash_929}
+                                         (\(v_508 : ScriptHash_929) ->
+                                            match_ScriptHash_954
+                                              v_508
+                                              {data}
+                                              (\(dat_509 : bytestring) ->
+                                                 bData dat_509))
+                                         (match_Tuple4_971
+                                            {Address_912}
+                                            {OutputDatum_947}
+                                            {Maybe_917 ScriptHash_929}
+                                            {Value_983}
+                                            rec_712
+                                            {Maybe_917 ScriptHash_929}
+                                            (\(_t1033_1033 : Address_912)
+                                              (_t1032_1032 : OutputDatum_947)
+                                              (`<ACCESSOR>_903` :
+                                                 Maybe_917 ScriptHash_929)
+                                              (_t1031_1031 : Value_983) ->
+                                               `<ACCESSOR>_903`)))
+                                      (mkNilData ())))))))
+                  (match_Tuple2_964
+                     {TxOut_979}
+                     {TxOutRef_980}
+                     rec_715
+                     {TxOut_979}
+                     (\(`<ACCESSOR>_902` : TxOut_979)
+                       (_t1036_1036 : TxOutRef_980) ->
+                        `<ACCESSOR>_902`)))
+               (mkNilData ()))))
+------------
+
+------ deserializeTxId ------
+letrec
+  data TxId_900 | match_TxId_901 where
+    TxId_902 : bytestring -> TxId_900
+in
+\(dat_717 : data) ->
+  TxId_902
+    (unBData
+       (headList
+          {data}
+          ((\(dat_899 : data) ->
+              unListData
+                ((\(dat_898 : data) ->
+                    sndPair {integer} {data} (unConstrData dat_898))
+                   dat_899))
+             dat_717)))
+------------
+
+------ deserializeTxOutRef ------
+letrec
+  data (Tuple2_904 :: * -> * -> *) t1_905 t2_906 | match_Tuple2_907 where
+    Tuple2_908 : t1_905 -> t2_906 -> Tuple2_904 t1_905 t2_906
+  data TxId_909 | match_TxId_910 where
+    TxId_911 : bytestring -> TxId_909
+  data TxOutRef_912 | match_TxOutRef_913 where
+    TxOutRef_914 : Tuple2_904 TxId_909 integer -> TxOutRef_912
+in
+\(dat_721 : data) ->
+  TxOutRef_914
+    (Tuple2_908
+       {TxId_909}
+       {integer}
+       ((\(dat_899 : data) ->
+           (\(dat_717 : data) ->
+              TxId_911
+                (unBData
+                   (headList
+                      {data}
+                      ((\(dat_901 : data) ->
+                          unListData
+                            ((\(dat_898 : data) ->
+                                sndPair {integer} {data} (unConstrData dat_898))
+                               dat_901))
+                         dat_717))))
+             (headList
+                {data}
+                ((\(dat_902 : data) ->
+                    unListData
+                      (sndPair {integer} {data} (unConstrData dat_902)))
+                   dat_899)))
+          dat_721)
+       ((\(dat_900 : data) ->
+           unIData
+             (headList
+                {data}
+                ((\(dat_903 : data) ->
+                    tailList
+                      {data}
+                      ((\(dat_902 : data) ->
+                          unListData
+                            (sndPair {integer} {data} (unConstrData dat_902)))
+                         dat_903))
+                   dat_900)))
+          dat_721))
+------------
+
+------ deserializeTokenName ------
+letrec
+  data TokenName_898 | match_TokenName_899 where
+    TokenName_900 : bytestring -> TokenName_898
+in
+\(dat_727 : data) -> TokenName_900 (unBData dat_727)
+------------
+
+------ deserializePubKeyHash ------
+letrec
+  data PubKeyHash_898 | match_PubKeyHash_899 where
+    PubKeyHash_900 : bytestring -> PubKeyHash_898
+in
+\(dat_729 : data) -> PubKeyHash_900 (unBData dat_729)
+------------
+
+------ deserializePOSIXTime ------
+letrec
+  data POSIXTime_898 | match_POSIXTime_899 where
+    POSIXTime_900 : integer -> POSIXTime_898
+in
+\(dat_731 : data) -> POSIXTime_900 (unIData dat_731)
+------------
+
+------ deserializeOutputDatum ------
+letrec
+  data Boolean_900 | match_Boolean_901 where
+    False_902 : Boolean_900
+    True_903 : Boolean_900
+  data Datum_904 | match_Datum_905 where
+    Datum_906 : data -> Datum_904
+  data DatumHash_907 | match_DatumHash_908 where
+    DatumHash_909 : bytestring -> DatumHash_907
+  data OutputDatum_910 | match_OutputDatum_911 where
+    NoOutputDatum_912 : OutputDatum_910
+    OutputDatumHash_913 : DatumHash_907 -> OutputDatum_910
+    OutputDatum_914 : Datum_904 -> OutputDatum_910
+in
+\(dat_733 : data) ->
+  match_Boolean_901
+    ((\(`z#917_917` : integer) (`k#918_918` : integer) ->
+        ifThenElse
+          {unit -> Boolean_900}
+          (equalsInteger `z#917_917` `k#918_918`)
+          (\(`l#919_919` : unit) -> True_903)
+          (\(`w#920_920` : unit) -> False_902)
+          ())
+       ((\(dat_899 : data) ->
+           fstPair
+             {integer}
+             {data}
+             ((\(dat_898 : data) -> unConstrData dat_898) dat_899))
+          dat_733)
+       0)
+    {OutputDatum_910}
+    (match_Boolean_901
+       ((\(`u#921_921` : integer) (`p#922_922` : integer) ->
+           ifThenElse
+             {unit -> Boolean_900}
+             (equalsInteger `u#921_921` `p#922_922`)
+             (\(`c#923_923` : unit) -> True_903)
+             (\(`x#924_924` : unit) -> False_902)
+             ())
+          ((\(dat_899 : data) ->
+              fstPair
+                {integer}
+                {data}
+                ((\(dat_898 : data) -> unConstrData dat_898) dat_899))
+             dat_733)
+          1)
+       {OutputDatum_910}
+       (OutputDatum_914
+          (Datum_906
+             (headList
+                {data}
+                (unListData
+                   (sndPair
+                      {integer}
+                      {data}
+                      ((\(dat_898 : data) -> unConstrData dat_898) dat_733))))))
+       (OutputDatumHash_913
+          ((\(dat_596 : data) -> DatumHash_909 (unBData dat_596))
+             (headList
+                {data}
+                (unListData
+                   (sndPair
+                      {integer}
+                      {data}
+                      ((\(dat_898 : data) -> unConstrData dat_898)
+                         dat_733)))))))
+    NoOutputDatum_912
+------------
+
+------ deserializeLovelace ------
+letrec
+  data Lovelace_898 | match_Lovelace_899 where
+    Lovelace_900 : integer -> Lovelace_898
+in
+\(dat_739 : data) -> Lovelace_900 (unIData dat_739)
+------------
+
+------ deserializeExtended ------
+letrec
+  data Boolean_900 | match_Boolean_901 where
+    False_902 : Boolean_900
+    True_903 : Boolean_900
+  data (Extended_904 :: * -> *) a_905 | match_Extended_906 where
+    NegInf_907 : Extended_904 a_905
+    Finite_908 : a_905 -> Extended_904 a_905
+    PosInf_909 : Extended_904 a_905
+in
+/\a_746 ->
+  \(f_741 : data -> a_746) (dat_742 : data) ->
+    match_Boolean_901
+      ((\(`y#912_912` : integer) (`s#913_913` : integer) ->
+          ifThenElse
+            {unit -> Boolean_900}
+            (equalsInteger `y#912_912` `s#913_913`)
+            (\(`a#914_914` : unit) -> True_903)
+            (\(`f#915_915` : unit) -> False_902)
+            ())
+         ((\(dat_899 : data) ->
+             fstPair
+               {integer}
+               {data}
+               ((\(dat_898 : data) -> unConstrData dat_898) dat_899))
+            dat_742)
+         0)
+      {Extended_904 a_746}
+      (match_Boolean_901
+         ((\(`p#916_916` : integer) (`z#917_917` : integer) ->
+             ifThenElse
+               {unit -> Boolean_900}
+               (equalsInteger `p#916_916` `z#917_917`)
+               (\(`k#918_918` : unit) -> True_903)
+               (\(`l#919_919` : unit) -> False_902)
+               ())
+            ((\(dat_899 : data) ->
+                fstPair
+                  {integer}
+                  {data}
+                  ((\(dat_898 : data) -> unConstrData dat_898) dat_899))
+               dat_742)
+            1)
+         {Extended_904 a_746}
+         (PosInf_909 {a_746})
+         (Finite_908
+            {a_746}
+            (f_741
+               (headList
+                  {data}
+                  (unListData
+                     (sndPair
+                        {integer}
+                        {data}
+                        ((\(dat_898 : data) -> unConstrData dat_898)
+                           dat_742)))))))
+      (NegInf_907 {a_746})
+------------
+
+------ deserializeLowerBound ------
+letrec
+  data Boolean_904 | match_Boolean_905 where
+    False_906 : Boolean_904
+    True_907 : Boolean_904
+  data (Extended_908 :: * -> *) a_909 | match_Extended_910 where
+    NegInf_911 : Extended_908 a_909
+    Finite_912 : a_909 -> Extended_908 a_909
+    PosInf_913 : Extended_908 a_909
+  data (LowerBound_914 :: * -> *) a_915 | match_LowerBound_916 where
+    LowerBound_917 : Extended_908 a_915 -> LowerBound_914 a_915
+in
+/\a_753 ->
+  \(f_748 : data -> a_753) (dat_749 : data) ->
+    LowerBound_917
+      {a_753}
+      ((\(f_899 : data -> a_753) (dat_900 : data) ->
+          (/\a_746 ->
+             \(f_741 : data -> a_746) (dat_742 : data) ->
+               match_Boolean_905
+                 ((\(`w#920_920` : integer) (`u#921_921` : integer) ->
+                     ifThenElse
+                       {unit -> Boolean_904}
+                       (equalsInteger `w#920_920` `u#921_921`)
+                       (\(`p#922_922` : unit) -> True_907)
+                       (\(`c#923_923` : unit) -> False_906)
+                       ())
+                    ((\(dat_902 : data) ->
+                        fstPair
+                          {integer}
+                          {data}
+                          ((\(dat_901 : data) -> unConstrData dat_901) dat_902))
+                       dat_742)
+                    0)
+                 {Extended_908 a_746}
+                 (match_Boolean_905
+                    ((\(`x#924_924` : integer) (`f#925_925` : integer) ->
+                        ifThenElse
+                          {unit -> Boolean_904}
+                          (equalsInteger `x#924_924` `f#925_925`)
+                          (\(`y#926_926` : unit) -> True_907)
+                          (\(`s#927_927` : unit) -> False_906)
+                          ())
+                       ((\(dat_902 : data) ->
+                           fstPair
+                             {integer}
+                             {data}
+                             ((\(dat_901 : data) -> unConstrData dat_901)
+                                dat_902))
+                          dat_742)
+                       1)
+                    {Extended_908 a_746}
+                    (PosInf_913 {a_746})
+                    (Finite_912
+                       {a_746}
+                       (f_741
+                          (headList
+                             {data}
+                             (unListData
+                                (sndPair
+                                   {integer}
+                                   {data}
+                                   ((\(dat_901 : data) -> unConstrData dat_901)
+                                      dat_742)))))))
+                 (NegInf_911 {a_746}))
+            {a_753}
+            f_899
+            (headList
+               {data}
+               ((\(dat_903 : data) ->
+                   unListData
+                     ((\(dat_898 : data) ->
+                         sndPair {integer} {data} (unConstrData dat_898))
+                        dat_903))
+                  dat_900)))
+         dat_749
+         f_748)
+------------
+
+------ deserializeUpperBound ------
+letrec
+  data Boolean_904 | match_Boolean_905 where
+    False_906 : Boolean_904
+    True_907 : Boolean_904
+  data (Extended_908 :: * -> *) a_909 | match_Extended_910 where
+    NegInf_911 : Extended_908 a_909
+    Finite_912 : a_909 -> Extended_908 a_909
+    PosInf_913 : Extended_908 a_909
+  data (UpperBound_914 :: * -> *) a_915 | match_UpperBound_916 where
+    UpperBound_917 : Extended_908 a_915 -> UpperBound_914 a_915
+in
+/\a_760 ->
+  \(f_755 : data -> a_760) (dat_756 : data) ->
+    UpperBound_917
+      {a_760}
+      ((\(f_899 : data -> a_760) (dat_900 : data) ->
+          (/\a_746 ->
+             \(f_741 : data -> a_746) (dat_742 : data) ->
+               match_Boolean_905
+                 ((\(`w#920_920` : integer) (`u#921_921` : integer) ->
+                     ifThenElse
+                       {unit -> Boolean_904}
+                       (equalsInteger `w#920_920` `u#921_921`)
+                       (\(`p#922_922` : unit) -> True_907)
+                       (\(`c#923_923` : unit) -> False_906)
+                       ())
+                    ((\(dat_902 : data) ->
+                        fstPair
+                          {integer}
+                          {data}
+                          ((\(dat_901 : data) -> unConstrData dat_901) dat_902))
+                       dat_742)
+                    0)
+                 {Extended_908 a_746}
+                 (match_Boolean_905
+                    ((\(`x#924_924` : integer) (`f#925_925` : integer) ->
+                        ifThenElse
+                          {unit -> Boolean_904}
+                          (equalsInteger `x#924_924` `f#925_925`)
+                          (\(`y#926_926` : unit) -> True_907)
+                          (\(`s#927_927` : unit) -> False_906)
+                          ())
+                       ((\(dat_902 : data) ->
+                           fstPair
+                             {integer}
+                             {data}
+                             ((\(dat_901 : data) -> unConstrData dat_901)
+                                dat_902))
+                          dat_742)
+                       1)
+                    {Extended_908 a_746}
+                    (PosInf_913 {a_746})
+                    (Finite_912
+                       {a_746}
+                       (f_741
+                          (headList
+                             {data}
+                             (unListData
+                                (sndPair
+                                   {integer}
+                                   {data}
+                                   ((\(dat_901 : data) -> unConstrData dat_901)
+                                      dat_742)))))))
+                 (NegInf_911 {a_746}))
+            {a_760}
+            f_899
+            (headList
+               {data}
+               ((\(dat_903 : data) ->
+                   unListData
+                     ((\(dat_898 : data) ->
+                         sndPair {integer} {data} (unConstrData dat_898))
+                        dat_903))
+                  dat_900)))
+         dat_756
+         f_755)
+------------
+
+------ deserializeInterval ------
+letrec
+  data Boolean_915 | match_Boolean_916 where
+    False_917 : Boolean_915
+    True_918 : Boolean_915
+  data (Extended_919 :: * -> *) a_920 | match_Extended_921 where
+    NegInf_922 : Extended_919 a_920
+    Finite_923 : a_920 -> Extended_919 a_920
+    PosInf_924 : Extended_919 a_920
+  data (Interval_925 :: * -> *) a_926 | match_Interval_927 where
+    Interval_928 :
+      Tuple2_929 (LowerBound_930 a_926) (UpperBound_931 a_926) ->
+      Interval_925 a_926
+  data (LowerBound_930 :: * -> *) a_932 | match_LowerBound_933 where
+    LowerBound_934 : Extended_919 a_932 -> LowerBound_930 a_932
+  data (Tuple2_929 :: * -> * -> *) t1_935 t2_936 | match_Tuple2_937 where
+    Tuple2_938 : t1_935 -> t2_936 -> Tuple2_929 t1_935 t2_936
+  data (UpperBound_931 :: * -> *) a_939 | match_UpperBound_940 where
+    UpperBound_941 : Extended_919 a_939 -> UpperBound_931 a_939
+in
+/\a_769 ->
+  \(f_762 : data -> a_769) (dat_763 : data) ->
+    Interval_928
+      {a_769}
+      (Tuple2_938
+         {LowerBound_930 a_769}
+         {UpperBound_931 a_769}
+         ((\(f_905 : data -> a_769) (dat_906 : data) ->
+             (/\a_753 ->
+                \(f_748 : data -> a_753) (dat_749 : data) ->
+                  LowerBound_934
+                    {a_753}
+                    ((\(f_901 : data -> a_753) (dat_902 : data) ->
+                        (/\a_746 ->
+                           \(f_741 : data -> a_746) (dat_742 : data) ->
+                             match_Boolean_916
+                               ((\(`j#946_946` : integer)
+                                  (`y#947_947` : integer) ->
+                                   ifThenElse
+                                     {unit -> Boolean_915}
+                                     (equalsInteger `j#946_946` `y#947_947`)
+                                     (\(`n#948_948` : unit) -> True_918)
+                                     (\(`m#949_949` : unit) -> False_917)
+                                     ())
+                                  ((\(dat_908 : data) ->
+                                      fstPair
+                                        {integer}
+                                        {data}
+                                        ((\(dat_907 : data) ->
+                                            unConstrData dat_907)
+                                           dat_908))
+                                     dat_742)
+                                  0)
+                               {Extended_919 a_746}
+                               (match_Boolean_916
+                                  ((\(`l#950_950` : integer)
+                                     (`y#951_951` : integer) ->
+                                      ifThenElse
+                                        {unit -> Boolean_915}
+                                        (equalsInteger `l#950_950` `y#951_951`)
+                                        (\(`t#952_952` : unit) -> True_918)
+                                        (\(`i#953_953` : unit) -> False_917)
+                                        ())
+                                     ((\(dat_908 : data) ->
+                                         fstPair
+                                           {integer}
+                                           {data}
+                                           ((\(dat_907 : data) ->
+                                               unConstrData dat_907)
+                                              dat_908))
+                                        dat_742)
+                                     1)
+                                  {Extended_919 a_746}
+                                  (PosInf_924 {a_746})
+                                  (Finite_923
+                                     {a_746}
+                                     (f_741
+                                        (headList
+                                           {data}
+                                           (unListData
+                                              (sndPair
+                                                 {integer}
+                                                 {data}
+                                                 ((\(dat_907 : data) ->
+                                                     unConstrData dat_907)
+                                                    dat_742)))))))
+                               (NegInf_922 {a_746}))
+                          {a_753}
+                          f_901
+                          (headList
+                             {data}
+                             ((\(dat_911 : data) ->
+                                 unListData
+                                   ((\(dat_898 : data) ->
+                                       sndPair
+                                         {integer}
+                                         {data}
+                                         (unConstrData dat_898))
+                                      dat_911))
+                                dat_902)))
+                       f_748
+                       dat_749))
+               {a_769}
+               f_905
+               (headList
+                  {data}
+                  ((\(dat_913 : data) ->
+                      unListData
+                        ((\(dat_900 : data) ->
+                            sndPair {integer} {data} (unConstrData dat_900))
+                           dat_913))
+                     dat_906)))
+            dat_763
+            f_762)
+         ((\(f_909 : data -> a_769) (dat_910 : data) ->
+             (/\a_760 ->
+                \(f_755 : data -> a_760) (dat_756 : data) ->
+                  UpperBound_941
+                    {a_760}
+                    ((\(f_903 : data -> a_760) (dat_904 : data) ->
+                        (/\a_746 ->
+                           \(f_741 : data -> a_746) (dat_742 : data) ->
+                             match_Boolean_916
+                               ((\(`l#954_954` : integer)
+                                  (`d#955_955` : integer) ->
+                                   ifThenElse
+                                     {unit -> Boolean_915}
+                                     (equalsInteger `l#954_954` `d#955_955`)
+                                     (\(`i#956_956` : unit) -> True_918)
+                                     (\(`k#957_957` : unit) -> False_917)
+                                     ())
+                                  ((\(dat_908 : data) ->
+                                      fstPair
+                                        {integer}
+                                        {data}
+                                        ((\(dat_907 : data) ->
+                                            unConstrData dat_907)
+                                           dat_908))
+                                     dat_742)
+                                  0)
+                               {Extended_919 a_746}
+                               (match_Boolean_916
+                                  ((\(`v#958_958` : integer)
+                                     (`p#959_959` : integer) ->
+                                      ifThenElse
+                                        {unit -> Boolean_915}
+                                        (equalsInteger `v#958_958` `p#959_959`)
+                                        (\(`x#960_960` : unit) -> True_918)
+                                        (\(`r#961_961` : unit) -> False_917)
+                                        ())
+                                     ((\(dat_908 : data) ->
+                                         fstPair
+                                           {integer}
+                                           {data}
+                                           ((\(dat_907 : data) ->
+                                               unConstrData dat_907)
+                                              dat_908))
+                                        dat_742)
+                                     1)
+                                  {Extended_919 a_746}
+                                  (PosInf_924 {a_746})
+                                  (Finite_923
+                                     {a_746}
+                                     (f_741
+                                        (headList
+                                           {data}
+                                           (unListData
+                                              (sndPair
+                                                 {integer}
+                                                 {data}
+                                                 ((\(dat_907 : data) ->
+                                                     unConstrData dat_907)
+                                                    dat_742)))))))
+                               (NegInf_922 {a_746}))
+                          {a_760}
+                          f_903
+                          (headList
+                             {data}
+                             ((\(dat_912 : data) ->
+                                 unListData
+                                   ((\(dat_899 : data) ->
+                                       sndPair
+                                         {integer}
+                                         {data}
+                                         (unConstrData dat_899))
+                                      dat_912))
+                                dat_904)))
+                       f_755
+                       dat_756))
+               {a_769}
+               f_909
+               (headList
+                  {data}
+                  ((\(dat_914 : data) ->
+                      tailList
+                        {data}
+                        ((\(dat_913 : data) ->
+                            unListData
+                              ((\(dat_900 : data) ->
+                                  sndPair
+                                    {integer}
+                                    {data}
+                                    (unConstrData dat_900))
+                                 dat_913))
+                           dat_914))
+                     dat_910)))
+            dat_763
+            f_762))
+------------
+
+------ deserializeCurrencySymbol ------
+letrec
+  data CurrencySymbol_898 | match_CurrencySymbol_899 where
+    CurrencySymbol_900 : bytestring -> CurrencySymbol_898
+in
+\(dat_771 : data) -> CurrencySymbol_900 (unBData dat_771)
+------------
+
+------ deserializeCredential ------
+letrec
+  data Boolean_901 | match_Boolean_902 where
+    False_903 : Boolean_901
+    True_904 : Boolean_901
+  data Credential_905 | match_Credential_906 where
+    PubKeyCredential_907 : PubKeyHash_908 -> Credential_905
+    ScriptCredential_909 : ScriptHash_910 -> Credential_905
+  data PubKeyHash_908 | match_PubKeyHash_911 where
+    PubKeyHash_912 : bytestring -> PubKeyHash_908
+  data ScriptHash_910 | match_ScriptHash_913 where
+    ScriptHash_914 : bytestring -> ScriptHash_910
+in
+\(dat_773 : data) ->
+  match_Boolean_902
+    ((\(`p#916_916` : integer) (`z#917_917` : integer) ->
+        ifThenElse
+          {unit -> Boolean_901}
+          (equalsInteger `p#916_916` `z#917_917`)
+          (\(`k#918_918` : unit) -> True_904)
+          (\(`l#919_919` : unit) -> False_903)
+          ())
+       ((\(dat_899 : data) ->
+           fstPair
+             {integer}
+             {data}
+             ((\(dat_898 : data) -> unConstrData dat_898) dat_899))
+          dat_773)
+       0)
+    {Credential_905}
+    (ScriptCredential_909
+       ((\(dat_600 : data) -> ScriptHash_914 (unBData dat_600))
+          (headList
+             {data}
+             ((\(dat_900 : data) ->
+                 unListData
+                   (sndPair
+                      {integer}
+                      {data}
+                      ((\(dat_898 : data) -> unConstrData dat_898) dat_900)))
+                dat_773))))
+    (PubKeyCredential_907
+       ((\(dat_729 : data) -> PubKeyHash_912 (unBData dat_729))
+          (headList
+             {data}
+             ((\(dat_900 : data) ->
+                 unListData
+                   (sndPair
+                      {integer}
+                      {data}
+                      ((\(dat_898 : data) -> unConstrData dat_898) dat_900)))
+                dat_773))))
+------------
+
+------ deserializeStakingCredential ------
+letrec
+  data Boolean_904 | match_Boolean_905 where
+    False_906 : Boolean_904
+    True_907 : Boolean_904
+  data Credential_908 | match_Credential_909 where
+    PubKeyCredential_910 : PubKeyHash_911 -> Credential_908
+    ScriptCredential_912 : ScriptHash_913 -> Credential_908
+  data PubKeyHash_911 | match_PubKeyHash_914 where
+    PubKeyHash_915 : bytestring -> PubKeyHash_911
+  data ScriptHash_913 | match_ScriptHash_916 where
+    ScriptHash_917 : bytestring -> ScriptHash_913
+  data StakingCredential_918 | match_StakingCredential_919 where
+    StakingHash_920 : Credential_908 -> StakingCredential_918
+    StakingPtr_921 : integer -> integer -> integer -> StakingCredential_918
+in
+\(dat_778 : data) ->
+  match_Boolean_905
+    ((\(`x#924_924` : integer) (`f#925_925` : integer) ->
+        ifThenElse
+          {unit -> Boolean_904}
+          (equalsInteger `x#924_924` `f#925_925`)
+          (\(`y#926_926` : unit) -> True_907)
+          (\(`s#927_927` : unit) -> False_906)
+          ())
+       ((\(dat_901 : data) ->
+           fstPair
+             {integer}
+             {data}
+             ((\(dat_899 : data) -> unConstrData dat_899) dat_901))
+          dat_778)
+       0)
+    {StakingCredential_918}
+    (StakingPtr_921
+       (unIData
+          (headList
+             {data}
+             ((\(dat_903 : data) ->
+                 unListData
+                   (sndPair
+                      {integer}
+                      {data}
+                      ((\(dat_899 : data) -> unConstrData dat_899) dat_903)))
+                dat_778)))
+       (unIData
+          (headList
+             {data}
+             (tailList
+                {data}
+                ((\(dat_903 : data) ->
+                    unListData
+                      (sndPair
+                         {integer}
+                         {data}
+                         ((\(dat_899 : data) -> unConstrData dat_899) dat_903)))
+                   dat_778))))
+       (unIData
+          (headList
+             {data}
+             (tailList
+                {data}
+                (tailList
+                   {data}
+                   ((\(dat_903 : data) ->
+                       unListData
+                         (sndPair
+                            {integer}
+                            {data}
+                            ((\(dat_899 : data) -> unConstrData dat_899)
+                               dat_903)))
+                      dat_778))))))
+    (StakingHash_920
+       ((\(dat_773 : data) ->
+           match_Boolean_905
+             ((\(`p#928_928` : integer) (`a#929_929` : integer) ->
+                 ifThenElse
+                   {unit -> Boolean_904}
+                   (equalsInteger `p#928_928` `a#929_929`)
+                   (\(`i#930_930` : unit) -> True_907)
+                   (\(`e#931_931` : unit) -> False_906)
+                   ())
+                ((\(dat_900 : data) ->
+                    fstPair
+                      {integer}
+                      {data}
+                      ((\(dat_898 : data) -> unConstrData dat_898) dat_900))
+                   dat_773)
+                0)
+             {Credential_908}
+             (ScriptCredential_912
+                ((\(dat_600 : data) -> ScriptHash_917 (unBData dat_600))
+                   (headList
+                      {data}
+                      ((\(dat_902 : data) ->
+                          unListData
+                            (sndPair
+                               {integer}
+                               {data}
+                               ((\(dat_898 : data) -> unConstrData dat_898)
+                                  dat_902)))
+                         dat_773))))
+             (PubKeyCredential_910
+                ((\(dat_729 : data) -> PubKeyHash_915 (unBData dat_729))
+                   (headList
+                      {data}
+                      ((\(dat_902 : data) ->
+                          unListData
+                            (sndPair
+                               {integer}
+                               {data}
+                               ((\(dat_898 : data) -> unConstrData dat_898)
+                                  dat_902)))
+                         dat_773)))))
+          (headList
+             {data}
+             ((\(dat_903 : data) ->
+                 unListData
+                   (sndPair
+                      {integer}
+                      {data}
+                      ((\(dat_899 : data) -> unConstrData dat_899) dat_903)))
+                dat_778))))
+------------
+
+------ deserializeAssocMap ------
+letrec
+  data (AssocMap_906 :: * -> * -> *) k_907 v_908 | match_AssocMap_909 where
+    AssocMap_910 : List_911 (Tuple2_912 k_907 v_908) -> AssocMap_906 k_907 v_908
+  data Boolean_913 | match_Boolean_914 where
+    False_915 : Boolean_913
+    True_916 : Boolean_913
+  data (List_911 :: * -> *) a_917 | match_List_918 where
+    Nil_919 : List_911 a_917
+    Cons_920 : a_917 -> List_911 a_917 -> List_911 a_917
+  data (Tuple2_912 :: * -> * -> *) t1_921 t2_922 | match_Tuple2_923 where
+    Tuple2_924 : t1_921 -> t2_922 -> Tuple2_912 t1_921 t2_922
+in
+letrec
+  !go_791 :
+     all k_926 v_927.
+       (data -> k_926) ->
+       (data -> v_927) ->
+       list (pair data data) ->
+       List_911 (Tuple2_912 k_926 v_927)
+    = /\k_904 v_905 ->
+        \(fK_898 : data -> k_904)
+         (fV_899 : data -> v_905)
+         (ell_792 : list (pair data data)) ->
+          match_Boolean_914
+            ((/\`p#928_928` ->
+                \(`a#929_929` : list `p#928_928`) ->
+                  ifThenElse
+                    {unit -> Boolean_913}
+                    (nullList {`p#928_928`} `a#929_929`)
+                    (\(`i#930_930` : unit) -> True_916)
+                    (\(`e#931_931` : unit) -> False_915)
+                    ())
+               {pair data data}
+               ell_792)
+            {List_911 (Tuple2_912 k_904 v_905)}
+            (Cons_920
+               {Tuple2_912 k_904 v_905}
+               (Tuple2_924
+                  {k_904}
+                  {v_905}
+                  (fK_898
+                     ((\(ell_902 : list (pair data data)) ->
+                         fstPair
+                           {data}
+                           {data}
+                           ((\(ell_900 : list (pair data data)) ->
+                               headList {pair data data} ell_900)
+                              ell_902))
+                        ell_792))
+                  (fV_899
+                     ((\(ell_903 : list (pair data data)) ->
+                         sndPair
+                           {data}
+                           {data}
+                           ((\(ell_900 : list (pair data data)) ->
+                               headList {pair data data} ell_900)
+                              ell_903))
+                        ell_792)))
+               (go_791
+                  {k_904}
+                  {v_905}
+                  fK_898
+                  fV_899
+                  ((\(ell_901 : list (pair data data)) ->
+                      tailList {pair data data} ell_901)
+                     ell_792)))
+            (Nil_919 {Tuple2_912 k_904 v_905})
+in
+/\k_798 v_797 ->
+  \(fK_788 : data -> k_798) (fV_789 : data -> v_797) (dat_790 : data) ->
+    AssocMap_910
+      {v_797}
+      {k_798}
+      (go_791 {v_797} {k_798} fV_789 fK_788 (unMapData dat_790))
+------------
+
+------ deserializeValue ------
+letrec
+  data (AssocMap_906 :: * -> * -> *) k_907 v_908 | match_AssocMap_909 where
+    AssocMap_910 : List_911 (Tuple2_912 k_907 v_908) -> AssocMap_906 k_907 v_908
+  data Boolean_913 | match_Boolean_914 where
+    False_915 : Boolean_913
+    True_916 : Boolean_913
+  data CurrencySymbol_917 | match_CurrencySymbol_918 where
+    CurrencySymbol_919 : bytestring -> CurrencySymbol_917
+  data (List_911 :: * -> *) a_920 | match_List_921 where
+    Nil_922 : List_911 a_920
+    Cons_923 : a_920 -> List_911 a_920 -> List_911 a_920
+  data TokenName_924 | match_TokenName_925 where
+    TokenName_926 : bytestring -> TokenName_924
+  data (Tuple2_912 :: * -> * -> *) t1_927 t2_928 | match_Tuple2_929 where
+    Tuple2_930 : t1_927 -> t2_928 -> Tuple2_912 t1_927 t2_928
+  data Value_931 | match_Value_932 where
+    Value_933 :
+      AssocMap_906 CurrencySymbol_917 (AssocMap_906 TokenName_924 integer) ->
+      Value_931
+in
+letrec
+  !go_791 :
+     all k_935 v_936.
+       (data -> k_935) ->
+       (data -> v_936) ->
+       list (pair data data) ->
+       List_911 (Tuple2_912 k_935 v_936)
+    = /\k_904 v_905 ->
+        \(fK_898 : data -> k_904)
+         (fV_899 : data -> v_905)
+         (ell_792 : list (pair data data)) ->
+          match_Boolean_914
+            ((/\`c#937_937` ->
+                \(`q#938_938` : list `c#937_937`) ->
+                  ifThenElse
+                    {unit -> Boolean_913}
+                    (nullList {`c#937_937`} `q#938_938`)
+                    (\(`d#939_939` : unit) -> True_916)
+                    (\(`h#940_940` : unit) -> False_915)
+                    ())
+               {pair data data}
+               ell_792)
+            {List_911 (Tuple2_912 k_904 v_905)}
+            (Cons_923
+               {Tuple2_912 k_904 v_905}
+               (Tuple2_930
+                  {k_904}
+                  {v_905}
+                  (fK_898
+                     ((\(ell_902 : list (pair data data)) ->
+                         fstPair
+                           {data}
+                           {data}
+                           ((\(ell_900 : list (pair data data)) ->
+                               headList {pair data data} ell_900)
+                              ell_902))
+                        ell_792))
+                  (fV_899
+                     ((\(ell_903 : list (pair data data)) ->
+                         sndPair
+                           {data}
+                           {data}
+                           ((\(ell_900 : list (pair data data)) ->
+                               headList {pair data data} ell_900)
+                              ell_903))
+                        ell_792)))
+               (go_791
+                  {k_904}
+                  {v_905}
+                  fK_898
+                  fV_899
+                  ((\(ell_901 : list (pair data data)) ->
+                      tailList {pair data data} ell_901)
+                     ell_792)))
+            (Nil_922 {Tuple2_912 k_904 v_905})
+in
+\(dat_800 : data) ->
+  Value_933
+    ((/\k_798 v_797 ->
+        \(fK_788 : data -> k_798) (fV_789 : data -> v_797) (dat_790 : data) ->
+          AssocMap_910
+            {k_798}
+            {v_797}
+            (go_791 {k_798} {v_797} fK_788 fV_789 (unMapData dat_790)))
+       {CurrencySymbol_917}
+       {AssocMap_906 TokenName_924 integer}
+       (\(dat_771 : data) -> CurrencySymbol_919 (unBData dat_771))
+       ((/\k_798 v_797 ->
+           \(fK_788 : data -> k_798)
+            (fV_789 : data -> v_797)
+            (dat_790 : data) ->
+             AssocMap_910
+               {k_798}
+               {v_797}
+               (go_791 {k_798} {v_797} fK_788 fV_789 (unMapData dat_790)))
+          {TokenName_924}
+          {integer}
+          (\(dat_727 : data) -> TokenName_926 (unBData dat_727))
+          unIData)
+       dat_800)
+------------
+
+------ deserializeAddress ------
+letrec
+  data Address_911 | match_Address_912 where
+    Address_913 :
+      Tuple2_914 Credential_915 (Maybe_916 StakingCredential_917) -> Address_911
+  data Boolean_918 | match_Boolean_919 where
+    False_920 : Boolean_918
+    True_921 : Boolean_918
+  data Credential_915 | match_Credential_922 where
+    PubKeyCredential_923 : PubKeyHash_924 -> Credential_915
+    ScriptCredential_925 : ScriptHash_926 -> Credential_915
+  data (Maybe_916 :: * -> *) a_927 | match_Maybe_928 where
+    Nothing_929 : Maybe_916 a_927
+    Just_930 : a_927 -> Maybe_916 a_927
+  data PubKeyHash_924 | match_PubKeyHash_931 where
+    PubKeyHash_932 : bytestring -> PubKeyHash_924
+  data ScriptHash_926 | match_ScriptHash_933 where
+    ScriptHash_934 : bytestring -> ScriptHash_926
+  data StakingCredential_917 | match_StakingCredential_935 where
+    StakingHash_936 : Credential_915 -> StakingCredential_917
+    StakingPtr_937 : integer -> integer -> integer -> StakingCredential_917
+  data (Tuple2_914 :: * -> * -> *) t1_938 t2_939 | match_Tuple2_940 where
+    Tuple2_941 : t1_938 -> t2_939 -> Tuple2_914 t1_938 t2_939
+in
+\(dat_802 : data) ->
+  Address_913
+    (Tuple2_941
+       {Credential_915}
+       {Maybe_916 StakingCredential_917}
+       ((\(dat_898 : data) ->
+           (\(dat_773 : data) ->
+              match_Boolean_919
+                ((\(`j#946_946` : integer) (`y#947_947` : integer) ->
+                    ifThenElse
+                      {unit -> Boolean_918}
+                      (equalsInteger `j#946_946` `y#947_947`)
+                      (\(`n#948_948` : unit) -> True_921)
+                      (\(`m#949_949` : unit) -> False_920)
+                      ())
+                   ((\(dat_905 : data) ->
+                       fstPair
+                         {integer}
+                         {data}
+                         ((\(dat_901 : data) -> unConstrData dat_901) dat_905))
+                      dat_773)
+                   0)
+                {Credential_915}
+                (ScriptCredential_925
+                   ((\(dat_600 : data) -> ScriptHash_934 (unBData dat_600))
+                      (headList
+                         {data}
+                         ((\(dat_907 : data) ->
+                             unListData
+                               (sndPair
+                                  {integer}
+                                  {data}
+                                  ((\(dat_901 : data) -> unConstrData dat_901)
+                                     dat_907)))
+                            dat_773))))
+                (PubKeyCredential_923
+                   ((\(dat_729 : data) -> PubKeyHash_932 (unBData dat_729))
+                      (headList
+                         {data}
+                         ((\(dat_907 : data) ->
+                             unListData
+                               (sndPair
+                                  {integer}
+                                  {data}
+                                  ((\(dat_901 : data) -> unConstrData dat_901)
+                                     dat_907)))
+                            dat_773)))))
+             (headList
+                {data}
+                ((\(dat_909 : data) ->
+                    unListData
+                      ((\(dat_899 : data) ->
+                          sndPair {integer} {data} (unConstrData dat_899))
+                         dat_909))
+                   dat_898)))
+          dat_802)
+       ((\(dat_903 : data) ->
+           (/\a_582 ->
+              \(f_577 : data -> a_582) (dat_578 : data) ->
+                match_Boolean_919
+                  ((\(`l#950_950` : integer) (`y#951_951` : integer) ->
+                      ifThenElse
+                        {unit -> Boolean_918}
+                        (equalsInteger `l#950_950` `y#951_951`)
+                        (\(`t#952_952` : unit) -> True_921)
+                        (\(`i#953_953` : unit) -> False_920)
+                        ())
+                     ((\(dat_904 : data) ->
+                         fstPair
+                           {integer}
+                           {data}
+                           ((\(dat_900 : data) -> unConstrData dat_900)
+                              dat_904))
+                        dat_578)
+                     0)
+                  {Maybe_916 a_582}
+                  (Just_930
+                     {a_582}
+                     (f_577
+                        (headList
+                           {data}
+                           (unListData
+                              (sndPair
+                                 {integer}
+                                 {data}
+                                 ((\(dat_900 : data) -> unConstrData dat_900)
+                                    dat_578))))))
+                  (Nothing_929 {a_582}))
+             {StakingCredential_917}
+             (\(dat_778 : data) ->
+                match_Boolean_919
+                  ((\(`l#954_954` : integer) (`d#955_955` : integer) ->
+                      ifThenElse
+                        {unit -> Boolean_918}
+                        (equalsInteger `l#954_954` `d#955_955`)
+                        (\(`i#956_956` : unit) -> True_921)
+                        (\(`k#957_957` : unit) -> False_920)
+                        ())
+                     ((\(dat_906 : data) ->
+                         fstPair
+                           {integer}
+                           {data}
+                           ((\(dat_902 : data) -> unConstrData dat_902)
+                              dat_906))
+                        dat_778)
+                     0)
+                  {StakingCredential_917}
+                  (StakingPtr_937
+                     (unIData
+                        (headList
+                           {data}
+                           ((\(dat_908 : data) ->
+                               unListData
+                                 (sndPair
+                                    {integer}
+                                    {data}
+                                    ((\(dat_902 : data) -> unConstrData dat_902)
+                                       dat_908)))
+                              dat_778)))
+                     (unIData
+                        (headList
+                           {data}
+                           (tailList
+                              {data}
+                              ((\(dat_908 : data) ->
+                                  unListData
+                                    (sndPair
+                                       {integer}
+                                       {data}
+                                       ((\(dat_902 : data) ->
+                                           unConstrData dat_902)
+                                          dat_908)))
+                                 dat_778))))
+                     (unIData
+                        (headList
+                           {data}
+                           (tailList
+                              {data}
+                              (tailList
+                                 {data}
+                                 ((\(dat_908 : data) ->
+                                     unListData
+                                       (sndPair
+                                          {integer}
+                                          {data}
+                                          ((\(dat_902 : data) ->
+                                              unConstrData dat_902)
+                                             dat_908)))
+                                    dat_778))))))
+                  (StakingHash_936
+                     ((\(dat_773 : data) ->
+                         match_Boolean_919
+                           ((\(`v#958_958` : integer) (`p#959_959` : integer) ->
+                               ifThenElse
+                                 {unit -> Boolean_918}
+                                 (equalsInteger `v#958_958` `p#959_959`)
+                                 (\(`x#960_960` : unit) -> True_921)
+                                 (\(`r#961_961` : unit) -> False_920)
+                                 ())
+                              ((\(dat_905 : data) ->
+                                  fstPair
+                                    {integer}
+                                    {data}
+                                    ((\(dat_901 : data) -> unConstrData dat_901)
+                                       dat_905))
+                                 dat_773)
+                              0)
+                           {Credential_915}
+                           (ScriptCredential_925
+                              ((\(dat_600 : data) ->
+                                  ScriptHash_934 (unBData dat_600))
+                                 (headList
+                                    {data}
+                                    ((\(dat_907 : data) ->
+                                        unListData
+                                          (sndPair
+                                             {integer}
+                                             {data}
+                                             ((\(dat_901 : data) ->
+                                                 unConstrData dat_901)
+                                                dat_907)))
+                                       dat_773))))
+                           (PubKeyCredential_923
+                              ((\(dat_729 : data) ->
+                                  PubKeyHash_932 (unBData dat_729))
+                                 (headList
+                                    {data}
+                                    ((\(dat_907 : data) ->
+                                        unListData
+                                          (sndPair
+                                             {integer}
+                                             {data}
+                                             ((\(dat_901 : data) ->
+                                                 unConstrData dat_901)
+                                                dat_907)))
+                                       dat_773)))))
+                        (headList
+                           {data}
+                           ((\(dat_908 : data) ->
+                               unListData
+                                 (sndPair
+                                    {integer}
+                                    {data}
+                                    ((\(dat_902 : data) -> unConstrData dat_902)
+                                       dat_908)))
+                              dat_778)))))
+             (headList
+                {data}
+                ((\(dat_910 : data) ->
+                    tailList
+                      {data}
+                      ((\(dat_909 : data) ->
+                          unListData
+                            ((\(dat_899 : data) ->
+                                sndPair {integer} {data} (unConstrData dat_899))
+                               dat_909))
+                         dat_910))
+                   dat_903)))
+          dat_802))
+------------
+
+------ deserializeTxOut ------
+letrec
+  data Address_929 | match_Address_930 where
+    Address_931 :
+      Tuple2_932 Credential_933 (Maybe_934 StakingCredential_935) -> Address_929
+  data (AssocMap_936 :: * -> * -> *) k_937 v_938 | match_AssocMap_939 where
+    AssocMap_940 : List_941 (Tuple2_932 k_937 v_938) -> AssocMap_936 k_937 v_938
+  data Boolean_942 | match_Boolean_943 where
+    False_944 : Boolean_942
+    True_945 : Boolean_942
+  data Credential_933 | match_Credential_946 where
+    PubKeyCredential_947 : PubKeyHash_948 -> Credential_933
+    ScriptCredential_949 : ScriptHash_950 -> Credential_933
+  data CurrencySymbol_951 | match_CurrencySymbol_952 where
+    CurrencySymbol_953 : bytestring -> CurrencySymbol_951
+  data Datum_954 | match_Datum_955 where
+    Datum_956 : data -> Datum_954
+  data DatumHash_957 | match_DatumHash_958 where
+    DatumHash_959 : bytestring -> DatumHash_957
+  data (List_941 :: * -> *) a_960 | match_List_961 where
+    Nil_962 : List_941 a_960
+    Cons_963 : a_960 -> List_941 a_960 -> List_941 a_960
+  data (Maybe_934 :: * -> *) a_964 | match_Maybe_965 where
+    Nothing_966 : Maybe_934 a_964
+    Just_967 : a_964 -> Maybe_934 a_964
+  data OutputDatum_968 | match_OutputDatum_969 where
+    NoOutputDatum_970 : OutputDatum_968
+    OutputDatumHash_971 : DatumHash_957 -> OutputDatum_968
+    OutputDatum_972 : Datum_954 -> OutputDatum_968
+  data PubKeyHash_948 | match_PubKeyHash_973 where
+    PubKeyHash_974 : bytestring -> PubKeyHash_948
+  data ScriptHash_950 | match_ScriptHash_975 where
+    ScriptHash_976 : bytestring -> ScriptHash_950
+  data StakingCredential_935 | match_StakingCredential_977 where
+    StakingHash_978 : Credential_933 -> StakingCredential_935
+    StakingPtr_979 : integer -> integer -> integer -> StakingCredential_935
+  data TokenName_980 | match_TokenName_981 where
+    TokenName_982 : bytestring -> TokenName_980
+  data (Tuple2_932 :: * -> * -> *) t1_983 t2_984 | match_Tuple2_985 where
+    Tuple2_986 : t1_983 -> t2_984 -> Tuple2_932 t1_983 t2_984
+  data (Tuple4_987 :: * -> * -> * -> * -> *) t1_988 t2_989 t3_990
+  t4_991 | match_Tuple4_992 where
+    Tuple4_993 :
+      t1_988 ->
+      t2_989 ->
+      t3_990 ->
+      t4_991 ->
+      Tuple4_987 t1_988 t2_989 t3_990 t4_991
+  data TxOut_994 | match_TxOut_995 where
+    TxOut_996 :
+      Tuple4_987
+        Address_929
+        OutputDatum_968
+        (Maybe_934 ScriptHash_950)
+        Value_997 ->
+      TxOut_994
+  data Value_997 | match_Value_998 where
+    Value_999 :
+      AssocMap_936 CurrencySymbol_951 (AssocMap_936 TokenName_980 integer) ->
+      Value_997
+in
+letrec
+  !go_791 :
+     all k_1008 v_1009.
+       (data -> k_1008) ->
+       (data -> v_1009) ->
+       list (pair data data) ->
+       List_941 (Tuple2_932 k_1008 v_1009)
+    = /\k_927 v_928 ->
+        \(fK_901 : data -> k_927)
+         (fV_902 : data -> v_928)
+         (ell_792 : list (pair data data)) ->
+          match_Boolean_943
+            ((/\`n#1010_1010` ->
+                \(`n#1011_1011` : list `n#1010_1010`) ->
+                  ifThenElse
+                    {unit -> Boolean_942}
+                    (nullList {`n#1010_1010`} `n#1011_1011`)
+                    (\(`a#1012_1012` : unit) -> True_945)
+                    (\(`r#1013_1013` : unit) -> False_944)
+                    ())
+               {pair data data}
+               ell_792)
+            {List_941 (Tuple2_932 k_927 v_928)}
+            (Cons_963
+               {Tuple2_932 k_927 v_928}
+               (Tuple2_986
+                  {k_927}
+                  {v_928}
+                  (fK_901
+                     ((\(ell_925 : list (pair data data)) ->
+                         fstPair
+                           {data}
+                           {data}
+                           ((\(ell_908 : list (pair data data)) ->
+                               headList {pair data data} ell_908)
+                              ell_925))
+                        ell_792))
+                  (fV_902
+                     ((\(ell_926 : list (pair data data)) ->
+                         sndPair
+                           {data}
+                           {data}
+                           ((\(ell_908 : list (pair data data)) ->
+                               headList {pair data data} ell_908)
+                              ell_926))
+                        ell_792)))
+               (go_791
+                  {k_927}
+                  {v_928}
+                  fK_901
+                  fV_902
+                  ((\(ell_911 : list (pair data data)) ->
+                      tailList {pair data data} ell_911)
+                     ell_792)))
+            (Nil_962 {Tuple2_932 k_927 v_928})
+in
+\(dat_809 : data) ->
+  TxOut_996
+    (Tuple4_993
+       {Address_929}
+       {OutputDatum_968}
+       {Maybe_934 ScriptHash_950}
+       {Value_997}
+       ((\(dat_898 : data) ->
+           (\(dat_802 : data) ->
+              Address_931
+                (Tuple2_986
+                   {Credential_933}
+                   {Maybe_934 StakingCredential_935}
+                   ((\(dat_899 : data) ->
+                       (\(dat_773 : data) ->
+                          match_Boolean_943
+                            ((\(`q#1014_1014` : integer)
+                               (`i#1015_1015` : integer) ->
+                                ifThenElse
+                                  {unit -> Boolean_942}
+                                  (equalsInteger `q#1014_1014` `i#1015_1015`)
+                                  (\(`p#1016_1016` : unit) -> True_945)
+                                  (\(`g#1017_1017` : unit) -> False_944)
+                                  ())
+                               ((\(dat_914 : data) ->
+                                   fstPair
+                                     {integer}
+                                     {data}
+                                     ((\(dat_906 : data) ->
+                                         unConstrData dat_906)
+                                        dat_914))
+                                  dat_773)
+                               0)
+                            {Credential_933}
+                            (ScriptCredential_949
+                               ((\(dat_600 : data) ->
+                                   ScriptHash_976 (unBData dat_600))
+                                  (headList
+                                     {data}
+                                     ((\(dat_916 : data) ->
+                                         unListData
+                                           (sndPair
+                                              {integer}
+                                              {data}
+                                              ((\(dat_906 : data) ->
+                                                  unConstrData dat_906)
+                                                 dat_916)))
+                                        dat_773))))
+                            (PubKeyCredential_947
+                               ((\(dat_729 : data) ->
+                                   PubKeyHash_974 (unBData dat_729))
+                                  (headList
+                                     {data}
+                                     ((\(dat_916 : data) ->
+                                         unListData
+                                           (sndPair
+                                              {integer}
+                                              {data}
+                                              ((\(dat_906 : data) ->
+                                                  unConstrData dat_906)
+                                                 dat_916)))
+                                        dat_773)))))
+                         (headList
+                            {data}
+                            ((\(dat_918 : data) ->
+                                unListData
+                                  ((\(dat_900 : data) ->
+                                      sndPair
+                                        {integer}
+                                        {data}
+                                        (unConstrData dat_900))
+                                     dat_918))
+                               dat_899)))
+                      dat_802)
+                   ((\(dat_910 : data) ->
+                       (/\a_582 ->
+                          \(f_577 : data -> a_582) (dat_578 : data) ->
+                            match_Boolean_943
+                              ((\(`w#1018_1018` : integer)
+                                 (`u#1019_1019` : integer) ->
+                                  ifThenElse
+                                    {unit -> Boolean_942}
+                                    (equalsInteger `w#1018_1018` `u#1019_1019`)
+                                    (\(`d#1020_1020` : unit) -> True_945)
+                                    (\(`z#1021_1021` : unit) -> False_944)
+                                    ())
+                                 ((\(dat_912 : data) ->
+                                     fstPair
+                                       {integer}
+                                       {data}
+                                       ((\(dat_904 : data) ->
+                                           unConstrData dat_904)
+                                          dat_912))
+                                    dat_578)
+                                 0)
+                              {Maybe_934 a_582}
+                              (Just_967
+                                 {a_582}
+                                 (f_577
+                                    (headList
+                                       {data}
+                                       (unListData
+                                          (sndPair
+                                             {integer}
+                                             {data}
+                                             ((\(dat_904 : data) ->
+                                                 unConstrData dat_904)
+                                                dat_578))))))
+                              (Nothing_966 {a_582}))
+                         {StakingCredential_935}
+                         (\(dat_778 : data) ->
+                            match_Boolean_943
+                              ((\(`p#1022_1022` : integer)
+                                 (`j#1023_1023` : integer) ->
+                                  ifThenElse
+                                    {unit -> Boolean_942}
+                                    (equalsInteger `p#1022_1022` `j#1023_1023`)
+                                    (\(`f#1024_1024` : unit) -> True_945)
+                                    (\(`x#1025_1025` : unit) -> False_944)
+                                    ())
+                                 ((\(dat_915 : data) ->
+                                     fstPair
+                                       {integer}
+                                       {data}
+                                       ((\(dat_907 : data) ->
+                                           unConstrData dat_907)
+                                          dat_915))
+                                    dat_778)
+                                 0)
+                              {StakingCredential_935}
+                              (StakingPtr_979
+                                 (unIData
+                                    (headList
+                                       {data}
+                                       ((\(dat_917 : data) ->
+                                           unListData
+                                             (sndPair
+                                                {integer}
+                                                {data}
+                                                ((\(dat_907 : data) ->
+                                                    unConstrData dat_907)
+                                                   dat_917)))
+                                          dat_778)))
+                                 (unIData
+                                    (headList
+                                       {data}
+                                       (tailList
+                                          {data}
+                                          ((\(dat_917 : data) ->
+                                              unListData
+                                                (sndPair
+                                                   {integer}
+                                                   {data}
+                                                   ((\(dat_907 : data) ->
+                                                       unConstrData dat_907)
+                                                      dat_917)))
+                                             dat_778))))
+                                 (unIData
+                                    (headList
+                                       {data}
+                                       (tailList
+                                          {data}
+                                          (tailList
+                                             {data}
+                                             ((\(dat_917 : data) ->
+                                                 unListData
+                                                   (sndPair
+                                                      {integer}
+                                                      {data}
+                                                      ((\(dat_907 : data) ->
+                                                          unConstrData dat_907)
+                                                         dat_917)))
+                                                dat_778))))))
+                              (StakingHash_978
+                                 ((\(dat_773 : data) ->
+                                     match_Boolean_943
+                                       ((\(`r#1026_1026` : integer)
+                                          (`k#1027_1027` : integer) ->
+                                           ifThenElse
+                                             {unit -> Boolean_942}
+                                             (equalsInteger
+                                                `r#1026_1026`
+                                                `k#1027_1027`)
+                                             (\(`p#1028_1028` : unit) ->
+                                                True_945)
+                                             (\(`v#1029_1029` : unit) ->
+                                                False_944)
+                                             ())
+                                          ((\(dat_914 : data) ->
+                                              fstPair
+                                                {integer}
+                                                {data}
+                                                ((\(dat_906 : data) ->
+                                                    unConstrData dat_906)
+                                                   dat_914))
+                                             dat_773)
+                                          0)
+                                       {Credential_933}
+                                       (ScriptCredential_949
+                                          ((\(dat_600 : data) ->
+                                              ScriptHash_976 (unBData dat_600))
+                                             (headList
+                                                {data}
+                                                ((\(dat_916 : data) ->
+                                                    unListData
+                                                      (sndPair
+                                                         {integer}
+                                                         {data}
+                                                         ((\(dat_906 : data) ->
+                                                             unConstrData
+                                                               dat_906)
+                                                            dat_916)))
+                                                   dat_773))))
+                                       (PubKeyCredential_947
+                                          ((\(dat_729 : data) ->
+                                              PubKeyHash_974 (unBData dat_729))
+                                             (headList
+                                                {data}
+                                                ((\(dat_916 : data) ->
+                                                    unListData
+                                                      (sndPair
+                                                         {integer}
+                                                         {data}
+                                                         ((\(dat_906 : data) ->
+                                                             unConstrData
+                                                               dat_906)
+                                                            dat_916)))
+                                                   dat_773)))))
+                                    (headList
+                                       {data}
+                                       ((\(dat_917 : data) ->
+                                           unListData
+                                             (sndPair
+                                                {integer}
+                                                {data}
+                                                ((\(dat_907 : data) ->
+                                                    unConstrData dat_907)
+                                                   dat_917)))
+                                          dat_778)))))
+                         (headList
+                            {data}
+                            ((\(dat_920 : data) ->
+                                tailList
+                                  {data}
+                                  ((\(dat_918 : data) ->
+                                      unListData
+                                        ((\(dat_900 : data) ->
+                                            sndPair
+                                              {integer}
+                                              {data}
+                                              (unConstrData dat_900))
+                                           dat_918))
+                                     dat_920))
+                               dat_910)))
+                      dat_802)))
+             (headList
+                {data}
+                ((\(dat_919 : data) ->
+                    unListData
+                      (sndPair {integer} {data} (unConstrData dat_919)))
+                   dat_898)))
+          dat_809)
+       ((\(dat_903 : data) ->
+           (\(dat_733 : data) ->
+              match_Boolean_943
+                ((\(`x#1030_1030` : integer) (`a#1031_1031` : integer) ->
+                    ifThenElse
+                      {unit -> Boolean_942}
+                      (equalsInteger `x#1030_1030` `a#1031_1031`)
+                      (\(`i#1032_1032` : unit) -> True_945)
+                      (\(`g#1033_1033` : unit) -> False_944)
+                      ())
+                   ((\(dat_913 : data) ->
+                       fstPair
+                         {integer}
+                         {data}
+                         ((\(dat_905 : data) -> unConstrData dat_905) dat_913))
+                      dat_733)
+                   0)
+                {OutputDatum_968}
+                (match_Boolean_943
+                   ((\(`h#1034_1034` : integer) (`g#1035_1035` : integer) ->
+                       ifThenElse
+                         {unit -> Boolean_942}
+                         (equalsInteger `h#1034_1034` `g#1035_1035`)
+                         (\(`s#1036_1036` : unit) -> True_945)
+                         (\(`h#1037_1037` : unit) -> False_944)
+                         ())
+                      ((\(dat_913 : data) ->
+                          fstPair
+                            {integer}
+                            {data}
+                            ((\(dat_905 : data) -> unConstrData dat_905)
+                               dat_913))
+                         dat_733)
+                      1)
+                   {OutputDatum_968}
+                   (OutputDatum_972
+                      (Datum_956
+                         (headList
+                            {data}
+                            (unListData
+                               (sndPair
+                                  {integer}
+                                  {data}
+                                  ((\(dat_905 : data) -> unConstrData dat_905)
+                                     dat_733))))))
+                   (OutputDatumHash_971
+                      ((\(dat_596 : data) -> DatumHash_959 (unBData dat_596))
+                         (headList
+                            {data}
+                            (unListData
+                               (sndPair
+                                  {integer}
+                                  {data}
+                                  ((\(dat_905 : data) -> unConstrData dat_905)
+                                     dat_733)))))))
+                NoOutputDatum_970)
+             (headList
+                {data}
+                ((\(dat_922 : data) ->
+                    tailList
+                      {data}
+                      ((\(dat_921 : data) ->
+                          tailList
+                            {data}
+                            ((\(dat_919 : data) ->
+                                unListData
+                                  (sndPair
+                                     {integer}
+                                     {data}
+                                     (unConstrData dat_919)))
+                               dat_921))
+                         dat_922))
+                   dat_903)))
+          dat_809)
+       ((\(dat_909 : data) ->
+           (/\a_582 ->
+              \(f_577 : data -> a_582) (dat_578 : data) ->
+                match_Boolean_943
+                  ((\(`h#1038_1038` : integer) (`y#1039_1039` : integer) ->
+                      ifThenElse
+                        {unit -> Boolean_942}
+                        (equalsInteger `h#1038_1038` `y#1039_1039`)
+                        (\(`g#1040_1040` : unit) -> True_945)
+                        (\(`k#1041_1041` : unit) -> False_944)
+                        ())
+                     ((\(dat_912 : data) ->
+                         fstPair
+                           {integer}
+                           {data}
+                           ((\(dat_904 : data) -> unConstrData dat_904)
+                              dat_912))
+                        dat_578)
+                     0)
+                  {Maybe_934 a_582}
+                  (Just_967
+                     {a_582}
+                     (f_577
+                        (headList
+                           {data}
+                           (unListData
+                              (sndPair
+                                 {integer}
+                                 {data}
+                                 ((\(dat_904 : data) -> unConstrData dat_904)
+                                    dat_578))))))
+                  (Nothing_966 {a_582}))
+             {ScriptHash_950}
+             (\(dat_600 : data) -> ScriptHash_976 (unBData dat_600))
+             (headList
+                {data}
+                ((\(dat_923 : data) ->
+                    tailList
+                      {data}
+                      ((\(dat_922 : data) ->
+                          tailList
+                            {data}
+                            ((\(dat_921 : data) ->
+                                tailList
+                                  {data}
+                                  ((\(dat_919 : data) ->
+                                      unListData
+                                        (sndPair
+                                           {integer}
+                                           {data}
+                                           (unConstrData dat_919)))
+                                     dat_921))
+                               dat_922))
+                         dat_923))
+                   dat_909)))
+          dat_809)
+       ((\(dat_924 : data) ->
+           (\(dat_800 : data) ->
+              Value_999
+                ((/\k_798 v_797 ->
+                    \(fK_788 : data -> k_798)
+                     (fV_789 : data -> v_797)
+                     (dat_790 : data) ->
+                      AssocMap_940
+                        {k_798}
+                        {v_797}
+                        (go_791
+                           {k_798}
+                           {v_797}
+                           fK_788
+                           fV_789
+                           (unMapData dat_790)))
+                   {CurrencySymbol_951}
+                   {AssocMap_936 TokenName_980 integer}
+                   (\(dat_771 : data) -> CurrencySymbol_953 (unBData dat_771))
+                   ((/\k_798 v_797 ->
+                       \(fK_788 : data -> k_798)
+                        (fV_789 : data -> v_797)
+                        (dat_790 : data) ->
+                         AssocMap_940
+                           {k_798}
+                           {v_797}
+                           (go_791
+                              {k_798}
+                              {v_797}
+                              fK_788
+                              fV_789
+                              (unMapData dat_790)))
+                      {TokenName_980}
+                      {integer}
+                      (\(dat_727 : data) -> TokenName_982 (unBData dat_727))
+                      unIData)
+                   dat_800))
+             (headList
+                {data}
+                ((\(dat_921 : data) ->
+                    tailList
+                      {data}
+                      ((\(dat_919 : data) ->
+                          unListData
+                            (sndPair {integer} {data} (unConstrData dat_919)))
+                         dat_921))
+                   dat_924)))
+          dat_809))
+------------
+
+------ deserializeTxInInfo ------
+letrec
+  data Address_939 | match_Address_940 where
+    Address_941 :
+      Tuple2_942 Credential_943 (Maybe_944 StakingCredential_945) -> Address_939
+  data (AssocMap_946 :: * -> * -> *) k_947 v_948 | match_AssocMap_949 where
+    AssocMap_950 : List_951 (Tuple2_942 k_947 v_948) -> AssocMap_946 k_947 v_948
+  data Boolean_952 | match_Boolean_953 where
+    False_954 : Boolean_952
+    True_955 : Boolean_952
+  data Credential_943 | match_Credential_956 where
+    PubKeyCredential_957 : PubKeyHash_958 -> Credential_943
+    ScriptCredential_959 : ScriptHash_960 -> Credential_943
+  data CurrencySymbol_961 | match_CurrencySymbol_962 where
+    CurrencySymbol_963 : bytestring -> CurrencySymbol_961
+  data Datum_964 | match_Datum_965 where
+    Datum_966 : data -> Datum_964
+  data DatumHash_967 | match_DatumHash_968 where
+    DatumHash_969 : bytestring -> DatumHash_967
+  data (List_951 :: * -> *) a_970 | match_List_971 where
+    Nil_972 : List_951 a_970
+    Cons_973 : a_970 -> List_951 a_970 -> List_951 a_970
+  data (Maybe_944 :: * -> *) a_974 | match_Maybe_975 where
+    Nothing_976 : Maybe_944 a_974
+    Just_977 : a_974 -> Maybe_944 a_974
+  data OutputDatum_978 | match_OutputDatum_979 where
+    NoOutputDatum_980 : OutputDatum_978
+    OutputDatumHash_981 : DatumHash_967 -> OutputDatum_978
+    OutputDatum_982 : Datum_964 -> OutputDatum_978
+  data PubKeyHash_958 | match_PubKeyHash_983 where
+    PubKeyHash_984 : bytestring -> PubKeyHash_958
+  data ScriptHash_960 | match_ScriptHash_985 where
+    ScriptHash_986 : bytestring -> ScriptHash_960
+  data StakingCredential_945 | match_StakingCredential_987 where
+    StakingHash_988 : Credential_943 -> StakingCredential_945
+    StakingPtr_989 : integer -> integer -> integer -> StakingCredential_945
+  data TokenName_990 | match_TokenName_991 where
+    TokenName_992 : bytestring -> TokenName_990
+  data (Tuple2_942 :: * -> * -> *) t1_993 t2_994 | match_Tuple2_995 where
+    Tuple2_996 : t1_993 -> t2_994 -> Tuple2_942 t1_993 t2_994
+  data (Tuple4_997 :: * -> * -> * -> * -> *) t1_998 t2_999 t3_1000
+  t4_1001 | match_Tuple4_1002 where
+    Tuple4_1003 :
+      t1_998 ->
+      t2_999 ->
+      t3_1000 ->
+      t4_1001 ->
+      Tuple4_997 t1_998 t2_999 t3_1000 t4_1001
+  data TxId_1004 | match_TxId_1005 where
+    TxId_1006 : bytestring -> TxId_1004
+  data TxInInfo_1007 | match_TxInInfo_1008 where
+    TxInInfo_1009 : Tuple2_942 TxOut_1010 TxOutRef_1011 -> TxInInfo_1007
+  data TxOut_1010 | match_TxOut_1012 where
+    TxOut_1013 :
+      Tuple4_997
+        Address_939
+        OutputDatum_978
+        (Maybe_944 ScriptHash_960)
+        Value_1014 ->
+      TxOut_1010
+  data TxOutRef_1011 | match_TxOutRef_1015 where
+    TxOutRef_1016 : Tuple2_942 TxId_1004 integer -> TxOutRef_1011
+  data Value_1014 | match_Value_1017 where
+    Value_1018 :
+      AssocMap_946 CurrencySymbol_961 (AssocMap_946 TokenName_990 integer) ->
+      Value_1014
+in
+letrec
+  !go_791 :
+     all k_1027 v_1028.
+       (data -> k_1027) ->
+       (data -> v_1028) ->
+       list (pair data data) ->
+       List_951 (Tuple2_942 k_1027 v_1028)
+    = /\k_937 v_938 ->
+        \(fK_902 : data -> k_937)
+         (fV_903 : data -> v_938)
+         (ell_792 : list (pair data data)) ->
+          match_Boolean_953
+            ((/\`v#1029_1029` ->
+                \(`x#1030_1030` : list `v#1029_1029`) ->
+                  ifThenElse
+                    {unit -> Boolean_952}
+                    (nullList {`v#1029_1029`} `x#1030_1030`)
+                    (\(`a#1031_1031` : unit) -> True_955)
+                    (\(`i#1032_1032` : unit) -> False_954)
+                    ())
+               {pair data data}
+               ell_792)
+            {List_951 (Tuple2_942 k_937 v_938)}
+            (Cons_973
+               {Tuple2_942 k_937 v_938}
+               (Tuple2_996
+                  {k_937}
+                  {v_938}
+                  (fK_902
+                     ((\(ell_935 : list (pair data data)) ->
+                         fstPair
+                           {data}
+                           {data}
+                           ((\(ell_912 : list (pair data data)) ->
+                               headList {pair data data} ell_912)
+                              ell_935))
+                        ell_792))
+                  (fV_903
+                     ((\(ell_936 : list (pair data data)) ->
+                         sndPair
+                           {data}
+                           {data}
+                           ((\(ell_912 : list (pair data data)) ->
+                               headList {pair data data} ell_912)
+                              ell_936))
+                        ell_792)))
+               (go_791
+                  {k_937}
+                  {v_938}
+                  fK_902
+                  fV_903
+                  ((\(ell_916 : list (pair data data)) ->
+                      tailList {pair data data} ell_916)
+                     ell_792)))
+            (Nil_972 {Tuple2_942 k_937 v_938})
+in
+\(dat_819 : data) ->
+  TxInInfo_1009
+    (Tuple2_996
+       {TxOut_1010}
+       {TxOutRef_1011}
+       ((\(dat_914 : data) ->
+           (\(dat_809 : data) ->
+              TxOut_1013
+                (Tuple4_1003
+                   {Address_939}
+                   {OutputDatum_978}
+                   {Maybe_944 ScriptHash_960}
+                   {Value_1014}
+                   ((\(dat_898 : data) ->
+                       (\(dat_802 : data) ->
+                          Address_941
+                            (Tuple2_996
+                               {Credential_943}
+                               {Maybe_944 StakingCredential_945}
+                               ((\(dat_899 : data) ->
+                                   (\(dat_773 : data) ->
+                                      match_Boolean_953
+                                        ((\(`g#1033_1033` : integer)
+                                           (`h#1034_1034` : integer) ->
+                                            ifThenElse
+                                              {unit -> Boolean_952}
+                                              (equalsInteger
+                                                 `g#1033_1033`
+                                                 `h#1034_1034`)
+                                              (\(`g#1035_1035` : unit) ->
+                                                 True_955)
+                                              (\(`s#1036_1036` : unit) ->
+                                                 False_954)
+                                              ())
+                                           ((\(dat_919 : data) ->
+                                               fstPair
+                                                 {integer}
+                                                 {data}
+                                                 ((\(dat_910 : data) ->
+                                                     unConstrData dat_910)
+                                                    dat_919))
+                                              dat_773)
+                                           0)
+                                        {Credential_943}
+                                        (ScriptCredential_959
+                                           ((\(dat_600 : data) ->
+                                               ScriptHash_986 (unBData dat_600))
+                                              (headList
+                                                 {data}
+                                                 ((\(dat_923 : data) ->
+                                                     unListData
+                                                       (sndPair
+                                                          {integer}
+                                                          {data}
+                                                          ((\(dat_910 : data) ->
+                                                              unConstrData
+                                                                dat_910)
+                                                             dat_923)))
+                                                    dat_773))))
+                                        (PubKeyCredential_957
+                                           ((\(dat_729 : data) ->
+                                               PubKeyHash_984 (unBData dat_729))
+                                              (headList
+                                                 {data}
+                                                 ((\(dat_923 : data) ->
+                                                     unListData
+                                                       (sndPair
+                                                          {integer}
+                                                          {data}
+                                                          ((\(dat_910 : data) ->
+                                                              unConstrData
+                                                                dat_910)
+                                                             dat_923)))
+                                                    dat_773)))))
+                                     (headList
+                                        {data}
+                                        ((\(dat_925 : data) ->
+                                            unListData
+                                              ((\(dat_901 : data) ->
+                                                  sndPair
+                                                    {integer}
+                                                    {data}
+                                                    (unConstrData dat_901))
+                                                 dat_925))
+                                           dat_899)))
+                                  dat_802)
+                               ((\(dat_915 : data) ->
+                                   (/\a_582 ->
+                                      \(f_577 : data -> a_582)
+                                       (dat_578 : data) ->
+                                        match_Boolean_953
+                                          ((\(`h#1037_1037` : integer)
+                                             (`h#1038_1038` : integer) ->
+                                              ifThenElse
+                                                {unit -> Boolean_952}
+                                                (equalsInteger
+                                                   `h#1037_1037`
+                                                   `h#1038_1038`)
+                                                (\(`y#1039_1039` : unit) ->
+                                                   True_955)
+                                                (\(`g#1040_1040` : unit) ->
+                                                   False_954)
+                                                ())
+                                             ((\(dat_917 : data) ->
+                                                 fstPair
+                                                   {integer}
+                                                   {data}
+                                                   ((\(dat_908 : data) ->
+                                                       unConstrData dat_908)
+                                                      dat_917))
+                                                dat_578)
+                                             0)
+                                          {Maybe_944 a_582}
+                                          (Just_977
+                                             {a_582}
+                                             (f_577
+                                                (headList
+                                                   {data}
+                                                   (unListData
+                                                      (sndPair
+                                                         {integer}
+                                                         {data}
+                                                         ((\(dat_908 : data) ->
+                                                             unConstrData
+                                                               dat_908)
+                                                            dat_578))))))
+                                          (Nothing_976 {a_582}))
+                                     {StakingCredential_945}
+                                     (\(dat_778 : data) ->
+                                        match_Boolean_953
+                                          ((\(`k#1041_1041` : integer)
+                                             (`x#1042_1042` : integer) ->
+                                              ifThenElse
+                                                {unit -> Boolean_952}
+                                                (equalsInteger
+                                                   `k#1041_1041`
+                                                   `x#1042_1042`)
+                                                (\(`g#1043_1043` : unit) ->
+                                                   True_955)
+                                                (\(`g#1044_1044` : unit) ->
+                                                   False_954)
+                                                ())
+                                             ((\(dat_920 : data) ->
+                                                 fstPair
+                                                   {integer}
+                                                   {data}
+                                                   ((\(dat_911 : data) ->
+                                                       unConstrData dat_911)
+                                                      dat_920))
+                                                dat_778)
+                                             0)
+                                          {StakingCredential_945}
+                                          (StakingPtr_989
+                                             (unIData
+                                                (headList
+                                                   {data}
+                                                   ((\(dat_924 : data) ->
+                                                       unListData
+                                                         (sndPair
+                                                            {integer}
+                                                            {data}
+                                                            ((\(dat_911 :
+                                                                  data) ->
+                                                                unConstrData
+                                                                  dat_911)
+                                                               dat_924)))
+                                                      dat_778)))
+                                             (unIData
+                                                (headList
+                                                   {data}
+                                                   (tailList
+                                                      {data}
+                                                      ((\(dat_924 : data) ->
+                                                          unListData
+                                                            (sndPair
+                                                               {integer}
+                                                               {data}
+                                                               ((\(dat_911 :
+                                                                     data) ->
+                                                                   unConstrData
+                                                                     dat_911)
+                                                                  dat_924)))
+                                                         dat_778))))
+                                             (unIData
+                                                (headList
+                                                   {data}
+                                                   (tailList
+                                                      {data}
+                                                      (tailList
+                                                         {data}
+                                                         ((\(dat_924 : data) ->
+                                                             unListData
+                                                               (sndPair
+                                                                  {integer}
+                                                                  {data}
+                                                                  ((\(dat_911 :
+                                                                        data) ->
+                                                                      unConstrData
+                                                                        dat_911)
+                                                                     dat_924)))
+                                                            dat_778))))))
+                                          (StakingHash_988
+                                             ((\(dat_773 : data) ->
+                                                 match_Boolean_953
+                                                   ((\(`h#1045_1045` : integer)
+                                                      (`r#1046_1046` :
+                                                         integer) ->
+                                                       ifThenElse
+                                                         {unit -> Boolean_952}
+                                                         (equalsInteger
+                                                            `h#1045_1045`
+                                                            `r#1046_1046`)
+                                                         (\(`z#1047_1047` :
+                                                              unit) ->
+                                                            True_955)
+                                                         (\(`n#1048_1048` :
+                                                              unit) ->
+                                                            False_954)
+                                                         ())
+                                                      ((\(dat_919 : data) ->
+                                                          fstPair
+                                                            {integer}
+                                                            {data}
+                                                            ((\(dat_910 :
+                                                                  data) ->
+                                                                unConstrData
+                                                                  dat_910)
+                                                               dat_919))
+                                                         dat_773)
+                                                      0)
+                                                   {Credential_943}
+                                                   (ScriptCredential_959
+                                                      ((\(dat_600 : data) ->
+                                                          ScriptHash_986
+                                                            (unBData dat_600))
+                                                         (headList
+                                                            {data}
+                                                            ((\(dat_923 :
+                                                                  data) ->
+                                                                unListData
+                                                                  (sndPair
+                                                                     {integer}
+                                                                     {data}
+                                                                     ((\(dat_910 :
+                                                                           data) ->
+                                                                         unConstrData
+                                                                           dat_910)
+                                                                        dat_923)))
+                                                               dat_773))))
+                                                   (PubKeyCredential_957
+                                                      ((\(dat_729 : data) ->
+                                                          PubKeyHash_984
+                                                            (unBData dat_729))
+                                                         (headList
+                                                            {data}
+                                                            ((\(dat_923 :
+                                                                  data) ->
+                                                                unListData
+                                                                  (sndPair
+                                                                     {integer}
+                                                                     {data}
+                                                                     ((\(dat_910 :
+                                                                           data) ->
+                                                                         unConstrData
+                                                                           dat_910)
+                                                                        dat_923)))
+                                                               dat_773)))))
+                                                (headList
+                                                   {data}
+                                                   ((\(dat_924 : data) ->
+                                                       unListData
+                                                         (sndPair
+                                                            {integer}
+                                                            {data}
+                                                            ((\(dat_911 :
+                                                                  data) ->
+                                                                unConstrData
+                                                                  dat_911)
+                                                               dat_924)))
+                                                      dat_778)))))
+                                     (headList
+                                        {data}
+                                        ((\(dat_929 : data) ->
+                                            tailList
+                                              {data}
+                                              ((\(dat_925 : data) ->
+                                                  unListData
+                                                    ((\(dat_901 : data) ->
+                                                        sndPair
+                                                          {integer}
+                                                          {data}
+                                                          (unConstrData
+                                                             dat_901))
+                                                       dat_925))
+                                                 dat_929))
+                                           dat_915)))
+                                  dat_802)))
+                         (headList
+                            {data}
+                            ((\(dat_926 : data) ->
+                                unListData
+                                  (sndPair
+                                     {integer}
+                                     {data}
+                                     (unConstrData dat_926)))
+                               dat_898)))
+                      dat_809)
+                   ((\(dat_907 : data) ->
+                       (\(dat_733 : data) ->
+                          match_Boolean_953
+                            ((\(`c#1049_1049` : integer)
+                               (`v#1050_1050` : integer) ->
+                                ifThenElse
+                                  {unit -> Boolean_952}
+                                  (equalsInteger `c#1049_1049` `v#1050_1050`)
+                                  (\(`c#1051_1051` : unit) -> True_955)
+                                  (\(`k#1052_1052` : unit) -> False_954)
+                                  ())
+                               ((\(dat_918 : data) ->
+                                   fstPair
+                                     {integer}
+                                     {data}
+                                     ((\(dat_909 : data) ->
+                                         unConstrData dat_909)
+                                        dat_918))
+                                  dat_733)
+                               0)
+                            {OutputDatum_978}
+                            (match_Boolean_953
+                               ((\(`i#1053_1053` : integer)
+                                  (`z#1054_1054` : integer) ->
+                                   ifThenElse
+                                     {unit -> Boolean_952}
+                                     (equalsInteger `i#1053_1053` `z#1054_1054`)
+                                     (\(`n#1055_1055` : unit) -> True_955)
+                                     (\(`e#1056_1056` : unit) -> False_954)
+                                     ())
+                                  ((\(dat_918 : data) ->
+                                      fstPair
+                                        {integer}
+                                        {data}
+                                        ((\(dat_909 : data) ->
+                                            unConstrData dat_909)
+                                           dat_918))
+                                     dat_733)
+                                  1)
+                               {OutputDatum_978}
+                               (OutputDatum_982
+                                  (Datum_966
+                                     (headList
+                                        {data}
+                                        (unListData
+                                           (sndPair
+                                              {integer}
+                                              {data}
+                                              ((\(dat_909 : data) ->
+                                                  unConstrData dat_909)
+                                                 dat_733))))))
+                               (OutputDatumHash_981
+                                  ((\(dat_596 : data) ->
+                                      DatumHash_969 (unBData dat_596))
+                                     (headList
+                                        {data}
+                                        (unListData
+                                           (sndPair
+                                              {integer}
+                                              {data}
+                                              ((\(dat_909 : data) ->
+                                                  unConstrData dat_909)
+                                                 dat_733)))))))
+                            NoOutputDatum_980)
+                         (headList
+                            {data}
+                            ((\(dat_932 : data) ->
+                                tailList
+                                  {data}
+                                  ((\(dat_931 : data) ->
+                                      tailList
+                                        {data}
+                                        ((\(dat_926 : data) ->
+                                            unListData
+                                              (sndPair
+                                                 {integer}
+                                                 {data}
+                                                 (unConstrData dat_926)))
+                                           dat_931))
+                                     dat_932))
+                               dat_907)))
+                      dat_809)
+                   ((\(dat_913 : data) ->
+                       (/\a_582 ->
+                          \(f_577 : data -> a_582) (dat_578 : data) ->
+                            match_Boolean_953
+                              ((\(`x#1057_1057` : integer)
+                                 (`c#1058_1058` : integer) ->
+                                  ifThenElse
+                                    {unit -> Boolean_952}
+                                    (equalsInteger `x#1057_1057` `c#1058_1058`)
+                                    (\(`f#1059_1059` : unit) -> True_955)
+                                    (\(`v#1060_1060` : unit) -> False_954)
+                                    ())
+                                 ((\(dat_917 : data) ->
+                                     fstPair
+                                       {integer}
+                                       {data}
+                                       ((\(dat_908 : data) ->
+                                           unConstrData dat_908)
+                                          dat_917))
+                                    dat_578)
+                                 0)
+                              {Maybe_944 a_582}
+                              (Just_977
+                                 {a_582}
+                                 (f_577
+                                    (headList
+                                       {data}
+                                       (unListData
+                                          (sndPair
+                                             {integer}
+                                             {data}
+                                             ((\(dat_908 : data) ->
+                                                 unConstrData dat_908)
+                                                dat_578))))))
+                              (Nothing_976 {a_582}))
+                         {ScriptHash_960}
+                         (\(dat_600 : data) -> ScriptHash_986 (unBData dat_600))
+                         (headList
+                            {data}
+                            ((\(dat_933 : data) ->
+                                tailList
+                                  {data}
+                                  ((\(dat_932 : data) ->
+                                      tailList
+                                        {data}
+                                        ((\(dat_931 : data) ->
+                                            tailList
+                                              {data}
+                                              ((\(dat_926 : data) ->
+                                                  unListData
+                                                    (sndPair
+                                                       {integer}
+                                                       {data}
+                                                       (unConstrData dat_926)))
+                                                 dat_931))
+                                           dat_932))
+                                     dat_933))
+                               dat_913)))
+                      dat_809)
+                   ((\(dat_934 : data) ->
+                       (\(dat_800 : data) ->
+                          Value_1018
+                            ((/\k_798 v_797 ->
+                                \(fK_788 : data -> k_798)
+                                 (fV_789 : data -> v_797)
+                                 (dat_790 : data) ->
+                                  AssocMap_950
+                                    {k_798}
+                                    {v_797}
+                                    (go_791
+                                       {k_798}
+                                       {v_797}
+                                       fK_788
+                                       fV_789
+                                       (unMapData dat_790)))
+                               {CurrencySymbol_961}
+                               {AssocMap_946 TokenName_990 integer}
+                               (\(dat_771 : data) ->
+                                  CurrencySymbol_963 (unBData dat_771))
+                               ((/\k_798 v_797 ->
+                                   \(fK_788 : data -> k_798)
+                                    (fV_789 : data -> v_797)
+                                    (dat_790 : data) ->
+                                     AssocMap_950
+                                       {k_798}
+                                       {v_797}
+                                       (go_791
+                                          {k_798}
+                                          {v_797}
+                                          fK_788
+                                          fV_789
+                                          (unMapData dat_790)))
+                                  {TokenName_990}
+                                  {integer}
+                                  (\(dat_727 : data) ->
+                                     TokenName_992 (unBData dat_727))
+                                  unIData)
+                               dat_800))
+                         (headList
+                            {data}
+                            ((\(dat_931 : data) ->
+                                tailList
+                                  {data}
+                                  ((\(dat_926 : data) ->
+                                      unListData
+                                        (sndPair
+                                           {integer}
+                                           {data}
+                                           (unConstrData dat_926)))
+                                     dat_931))
+                               dat_934)))
+                      dat_809)))
+             (headList
+                {data}
+                ((\(dat_930 : data) ->
+                    tailList
+                      {data}
+                      ((\(dat_927 : data) ->
+                          unListData
+                            (sndPair {integer} {data} (unConstrData dat_927)))
+                         dat_930))
+                   dat_914)))
+          dat_819)
+       ((\(dat_906 : data) ->
+           (\(dat_721 : data) ->
+              TxOutRef_1016
+                (Tuple2_996
+                   {TxId_1004}
+                   {integer}
+                   ((\(dat_904 : data) ->
+                       (\(dat_717 : data) ->
+                          TxId_1006
+                            (unBData
+                               (headList
+                                  {data}
+                                  ((\(dat_921 : data) ->
+                                      unListData
+                                        ((\(dat_900 : data) ->
+                                            sndPair
+                                              {integer}
+                                              {data}
+                                              (unConstrData dat_900))
+                                           dat_921))
+                                     dat_717))))
+                         (headList
+                            {data}
+                            ((\(dat_922 : data) ->
+                                unListData
+                                  (sndPair
+                                     {integer}
+                                     {data}
+                                     (unConstrData dat_922)))
+                               dat_904)))
+                      dat_721)
+                   ((\(dat_905 : data) ->
+                       unIData
+                         (headList
+                            {data}
+                            ((\(dat_928 : data) ->
+                                tailList
+                                  {data}
+                                  ((\(dat_922 : data) ->
+                                      unListData
+                                        (sndPair
+                                           {integer}
+                                           {data}
+                                           (unConstrData dat_922)))
+                                     dat_928))
+                               dat_905)))
+                      dat_721)))
+             (headList
+                {data}
+                ((\(dat_927 : data) ->
+                    unListData
+                      (sndPair {integer} {data} (unConstrData dat_927)))
+                   dat_906)))
+          dat_819))
+------------
