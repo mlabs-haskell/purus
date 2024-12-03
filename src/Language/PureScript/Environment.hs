@@ -1031,8 +1031,7 @@ builtinCxt =
       we don't have the resources to address at this point in time.
    -}
     , PLC.I_encodeUtf8 #@ tyString -:> tyByteString
-  {-  , PLC.I_decodeUtf8 #@ tyByteString -:> tyString
-   -}
+    , PLC.I_decodeUtf8 #@ tyByteString -:> tyString
     , -- Bool
       -- NOTE: Specializing this to "Type", which miiiight not be what we want depending on how we do the data encoding
       PLC.I_ifThenElse #@ forallT "x" $ \x -> tyBoolean -:> x -:> x -:> x

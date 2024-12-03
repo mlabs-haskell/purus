@@ -9,7 +9,8 @@ Imported Modules:
 Exports: 
 ------------------------------
   equalsPKH,
-  validateIfSignedBy
+  validateIfSignedBy,
+  validate
 
 Re-Exports: 
 ------------------------------
@@ -37,11 +38,11 @@ equalsPKH =
            (bs1: Builtin.BuiltinByteString)
            (bs2: Builtin.BuiltinByteString)
 
-validateIfSignedBy :: forall (a :: Prim.Type) (b :: Prim.Type). (Prim.PubKeyHash -> (((a :: Prim.Type) -> (((b :: Prim.Type) -> ((Builtin.BuiltinData -> (Prim.Boolean))))))))
+validateIfSignedBy :: (Prim.PubKeyHash -> ((Builtin.BuiltinData -> ((Builtin.BuiltinData -> ((Builtin.BuiltinData -> (Prim.Boolean))))))))
 validateIfSignedBy = 
   \(pkh: Prim.PubKeyHash) -> 
-    \(v: (a :: Prim.Type)) -> 
-      \(v1: (b :: Prim.Type)) -> 
+    \(v: Builtin.BuiltinData) -> 
+      \(v1: Builtin.BuiltinData) -> 
         \(cxtData: Builtin.BuiltinData) -> 
           let
             scxt :: Prim.ScriptContext
@@ -82,3 +83,16 @@ validateIfSignedBy =
                            ((Prim.PubKeyHash -> (Prim.Boolean)))))
                            (pkh: Prim.PubKeyHash))
                           (signatories: List (Prim.PubKeyHash))
+
+validate :: (((Builtin.BuiltinData -> (Builtin.BuiltinData)) -> (Builtin.BuiltinData)) -> (Prim.Boolean))
+validate = 
+  let
+    pkh :: Prim.PubKeyHash
+    pkh = 
+      (PubKeyHash: (Builtin.BuiltinByteString -> (Prim.PubKeyHash)))
+      ((encodeUtf8: (Prim.String -> (Builtin.BuiltinByteString)))
+       ("woop": Prim.String))
+  in (validateIfSignedBy: (Prim.PubKeyHash ->
+     ((Builtin.BuiltinData ->
+     ((Builtin.BuiltinData -> ((Builtin.BuiltinData -> (Prim.Boolean)))))))))
+     (pkh: Prim.PubKeyHash)

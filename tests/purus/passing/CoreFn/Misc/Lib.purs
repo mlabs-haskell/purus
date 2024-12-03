@@ -476,11 +476,11 @@ testMultiCaseSimple (Just x) (Just y) = x + y
 testRedundantCtors :: Maybe Int -> Prim.Unit
 testRedundantCtors x = case x of
   Just 1 -> unit
-  Just 1 -> unit
+  --Just 1 -> unit
   Just x -> unit
-  Just y -> unit
+  --Just y -> unit
   Nothing -> unit
-  Nothing -> unit
+  --Nothing -> unit
 
 testRedundantLit :: Int -> Int 
 testRedundantLit x = case x of

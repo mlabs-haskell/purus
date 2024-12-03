@@ -227,10 +227,7 @@ testRedundantCtors =
   \(x: (Prim.Maybe (Prim.Int))) -> 
     case (x: (Prim.Maybe (Prim.Int))) of 
        Just 1 -> (unit: Prim.Unit)
-       Just 1 -> (unit: Prim.Unit)
        Just x1 -> (unit: Prim.Unit)
-       Just y -> (unit: Prim.Unit)
-       Nothing -> (unit: Prim.Unit)
        Nothing -> (unit: Prim.Unit)
 
 testNested :: ((Prim.Maybe ((Prim.Maybe ((Prim.Maybe (Prim.Int)))))) -> (Prim.Int))

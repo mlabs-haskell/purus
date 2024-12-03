@@ -697,10 +697,12 @@ collapseForest' paths =  Debug.trace msg result
   where
     result = map goCollapse grouped
     msg = prettify [
-           "collapseForest'\n\n"
+             "\n---------------------\n"
+           , "collapseForest'\n\n"
            , "input:\n" <> ppForest paths
            , "groups:\n" <> prettyStr (fmap fst <$> grouped)
-           , "\n\nresult" <> ppForest result
+           , "\n\nresult:\n" <> ppForest result
+           ,  "\n---------------------\n"
            ]
     peeled = peel paths
 
@@ -1522,19 +1524,19 @@ eliminateNestedCases' datatypes = \case
           if any isBadNestedPat (getPat <$> alts)
           then do
             let forest = mkForestNoCrack datatypes alts
-            --Debug.traceM $ "forest:\n" <> ppForest (fst <$> forest)
+            Debug.traceM $ "forest:\n" <> ppForest (fst <$> forest)
             let (scrutIdDict,expanded) = expandNestedPatterns datatypes [scrut] $ fst <$> forest
-            --Debug.traceM $ "expanded:\n" <> ppForest expanded
-            let collapsed = collapseForest' expanded
-            --Debug.traceM $ "collapsed:\n" <> ppForest collapsed
+            Debug.traceM $ "expanded:\n" <> ppForest expanded
+            let collapsed = collapseForest expanded
+            Debug.traceM $ "collapsed:\n" <> ppForest collapsed
             let merged = mergeForests collapsed 
-            --Debug.traceM $ "merged:\n" <> prettyStr merged <> "\n"
+            Debug.traceM $ "merged:\n" <> prettyStr merged <> "\n"
             let results = first unTreePatterns <$> forest
-            --Debug.traceM $ "results:\n" <> prettyStr results <> "\n"
+            Debug.traceM $ "results:\n" <> prettyStr results <> "\n"
             let cases = runReader (insertResults results merged) (BindingContext [])
-            --Debug.traceM $ "cases:\n" <> prettyStr cases <> "\n"
+            Debug.traceM $ "cases:\n" <> prettyStr cases <> "\n"
             rebuilt <- rebuildFromCaseOf scrutIdDict datatypes [scrut] cases
-            --Debug.traceM $ "rebuilt:\n" <> prettyStr rebuilt <> "\n"
+            Debug.traceM $ "rebuilt:\n" <> prettyStr rebuilt <> "\n"
             pure rebuilt
           else pure caseE
         Just scrutinees -> case traverse (crackTuplePat . getPat) alts of -- *COMPILER GENERATED* multi cases will always have only tuple constructor patterns

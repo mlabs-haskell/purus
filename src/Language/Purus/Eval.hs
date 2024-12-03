@@ -1,8 +1,13 @@
+{-# LANGUAGE TypeApplications #-}
 module Language.Purus.Eval (
   compileToUPLC,
+  compileToUPLCTerm,
+  evaluateUPLCTerm,
   evaluateTerm,
-  -- temporary for GHCI testing. TODO move these to the test suite
-  passing,
+  parseData,
+  (#),
+  applyArgs,
+  dummyData
 ) where
 
 import Prelude
@@ -41,6 +46,9 @@ import PlutusIR.Compiler.Provenance (Provenance (Original))
 import PlutusIR.Compiler.Types (coDoSimplifierRemoveDeadBindings)
 import PlutusIR.Error (Error)
 import Control.Lens (over, set)
+import System.IO (readFile)
+import PlutusCore.Data qualified as PLC
+import PlutusCore.MkPlc (mkConstant)
 
 type PLCProgram uni fun a = PLC.Program PLC.TyName PLC.Name uni fun (Provenance a)
 
@@ -55,6 +63,24 @@ runPLCProgram (PLC.Program _ _ c) = case evaluateCk PLC.defaultBuiltinsRuntimeFo
     Left _ -> (EvaluationFailure, logs)
     Right t -> (EvaluationSuccess t, logs)
 
+(#) :: PLCTerm -> PLCTerm -> PLCTerm
+f # a = PLC.Apply () f a
+
+applyArgs :: PLCTerm -> [PLCTerm] -> PLCTerm
+applyArgs f [] = f
+applyArgs f (arg:args) = applyArgs (f # arg) args
+
+-- Parse a file containing a "show'd" piece of Data into a PLC term.
+-- Mainly for testing but might have some other uses.
+parseData :: FilePath -> IO PLCTerm
+parseData path = do
+  raw <- readFile path
+  pure $ mkConstant () (read @PLC.Data raw)
+
+-- for when we just need *something* to apply as a dummy argument 
+dummyData :: PLCTerm
+dummyData = mkConstant () $ PLC.I 0
+
 {- Evaluates a PIR Term -}
 evaluateTerm :: PIRTerm -> IO (EvaluationResult (PLC.Term PLC.TyName Name DefaultUni DefaultFun ()), [Text])
 evaluateTerm term = runPLCProgram <$> compileToUPLC term
@@ -66,6 +92,16 @@ compileToUPLC e = do
       withErrors = either (throwIO . userError) pure
   readable <- withErrors . runCompile $ compileToReadable input
   withErrors . runCompile $ compileProgram (void readable)
+
+compileToUPLCTerm :: PIRTerm -> IO PLCTerm
+compileToUPLCTerm e = compileToUPLC e >>= \case
+  PLC.Program a b c -> pure (void c)
+
+evaluateUPLCTerm :: PLCTerm -> IO (EvaluationResult PLCTerm, [Text])
+evaluateUPLCTerm e = do 
+  let input = PLC.Program (Original ()) latestVersion (Original <$> e)
+      withErrors = either (throwIO . userError) pure
+  pure $ runPLCProgram input
 
 {- lol -}
 runCompile ::
@@ -91,51 +127,3 @@ runCompile x =
                               -> CompilationCtx DefaultUni DefaultFun ()
    disableDeadCodeElimination = set  (ccOpts . coDoSimplifierRemoveDeadBindings ) False
 
--- temporary list of test cases used to validate compiler behavior
-passing :: [Text]
-passing =
-  [ "testTestClass"
-  , "minus"
-  , "testEq"
-  , "workingEven"
-  , "brokenEven"
-  , "opt2Int"
-  , "testOpt2Int"
-  , "unIdentitee"
-  , "testIdentitee"
-  , "testEq2"
-  , "nestedBinds"
-  , "anIntLit"
-  , "aStringLit"
-  , "aVal"
-  , "testTuple"
-  , "testCons"
-  , "cons"
-  , "aList"
-  , "aFunction2"
-  , "polyInObjMatch"
-  , "arrForall"
-  , "testBinders"
-  , "testBindersCase"
-  , "testValidator"
-  , "testasum"
-  , "aBool"
-  , "aFunction"
-  , "aFunction3"
-  , "testBuiltin"
-  , "main"
-  , "plus"
-  , "testPlus"
-  , "anObj"
-  , "objUpdate"
-  , "polyInObj"
-  , "aPred"
-  , "id"
-  , "testId"
-  , "objForall"
-  , "arrForall"
-  , "testValidatorApplied"
-  , "guardedCase"
-  , "litPattern"
-  , "irrPattern"
-  ]

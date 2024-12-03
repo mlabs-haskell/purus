@@ -20,13 +20,16 @@ import PlutusCore.Evaluation.Result
 import PlutusIR.Core.Instance.Pretty.Readable (prettyPirReadable)
 import Test.Tasty 
 import Test.Tasty.HUnit
+import Language.Purus.Make.Prim (syntheticPrim)
 
 shouldPassTests :: IO ()
 shouldPassTests = do
   cfn <- coreFnTests
   pirNoEval <- pirTestsNoEval
   pirEval <- pirTestsEval
-  defaultMain $ sequentialTestGroup "Purus Tests" AllFinish [cfn,pirNoEval,pirEval]
+  let validatorTest = testCase "validator apply/eval" mkValidatorTest
+      policyTest    = testCase "minting policy apply/eval" mkMintingPolicyTest
+  defaultMain $ sequentialTestGroup "Purus Tests" AllFinish [cfn,pirNoEval,pirEval,validatorTest,policyTest]
  
 runPurusCoreFn :: P.CodegenTarget -> FilePath ->  IO ()
 runPurusCoreFn target dir =  do
@@ -80,7 +83,7 @@ coreFnTests :: IO TestTree
 coreFnTests = do
   let coreFnTestPath = "tests/purus/passing/CoreFn"
   allTestDirectories <- listDirectory coreFnTestPath
-  let trees = map (\dir -> compileToCoreFnTest (coreFnTestPath </> dir)) ["Misc"]
+  let trees = map (\dir -> compileToCoreFnTest (coreFnTestPath </> dir)) allTestDirectories
   pure $ sequentialTestGroup "CoreFn Tests" AllFinish trees
 
 
@@ -103,6 +106,24 @@ runFullPipeline targetDir mainModuleName mainFunctionName = do
   pir <- make targetDir mainModuleName mainFunctionName Nothing
   evaluateTerm pir
 
+mkValidatorTest :: IO ()
+mkValidatorTest = do
+  scriptContext <- parseData "sampleContext"
+  --  Data -> Data -> Data -> wBoolean
+  validatorPIR <- make "tests/purus/passing/CoreFn/Validator" "Validator" "validate" (Just syntheticPrim)
+  validatorPLC <- compileToUPLCTerm validatorPIR
+  let validatorApplied = applyArgs validatorPLC [dummyData,dummyData,scriptContext]
+  res <- evaluateUPLCTerm validatorApplied
+  print res
+
+mkMintingPolicyTest :: IO ()
+mkMintingPolicyTest = do
+  scriptContext <- parseData "sampleContext"
+  policyPIR <- make "tests/purus/passing/CoreFn/MintingPolicy" "MintingPolicy" "oneAtATime" (Just syntheticPrim)
+  policyPLC <- compileToUPLCTerm policyPIR
+  let policyApplied = applyArgs policyPLC [dummyData,dummyData,scriptContext]
+  res <- evaluateUPLCTerm policyApplied
+  print res
 {- These assumes that name of the main module is "Main" and the
    name of the main function is "Main".
 
@@ -118,49 +139,6 @@ runDefaultEvalTest nm targetDir expected
   = (fst <$> runFullPipeline targetDir "Main" "main") >>= \case
       EvaluationSuccess resTerm -> assertEqual nm expected resTerm
       EvaluationFailure -> assertFailure nm
-
-
-shouldPassCoreFn :: [FilePath]
-shouldPassCoreFn = map (prefix </>) paths
-  where
-    prefix = "tests/purus/passing/CoreFn"
-    paths = [
-         "2018",
-        "2138",
-        "2609",
-        "4035",
-        "4101",
-        "4105",
-        "4200",
-        "4310",
-        "ClassRefSyntax",
-        "Coercible",
-        "DctorOperatorAlias",
-        "Demo",
-        "ExplicitImportReExport",
-        "ExportExplicit",
-        "ExportExplicit2",
-        "ForeignKind",
-        "Import",
-        "ImportExplicit",
-        "ImportQualified",
-        "InstanceUnnamedSimilarClassName",
-        "ModuleDeps",
-         "Misc",
-        "NonOrphanInstanceFunDepExtra",
-        "NonOrphanInstanceMulti",
-        "PendingConflictingImports",
-        "PendingConflictingImports2",
-        "RedefinedFixity",
-        "ReExportQualified",
-        "ResolvableScopeConflict",
-        "ResolvableScopeConflict2",
-        "ResolvableScopeConflict3",
-        "RowSyntax",
-        "ShadowedModuleName",
-        "TransitiveImport",
-        "Validator"
-      ]
 
 
 getTestFiles :: FilePath -> IO [[FilePath]]
