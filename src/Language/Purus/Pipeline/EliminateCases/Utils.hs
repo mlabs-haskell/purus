@@ -1528,8 +1528,8 @@ eliminateNestedCases' datatypes = \case
             let (scrutIdDict,expanded) = expandNestedPatterns datatypes [scrut] $ fst <$> forest
             Debug.traceM $ "expanded:\n" <> ppForest expanded
             let collapsed = collapseForest expanded
-            Debug.traceM $ "collapsed:\n" <> ppForest collapsed
-            let merged = mergeForests collapsed 
+            --Debug.traceM $ "collapsed:\n" <> ppForest collapsed
+            let merged = mergeForests expanded --  collapsed
             Debug.traceM $ "merged:\n" <> prettyStr merged <> "\n"
             let results = first unTreePatterns <$> forest
             Debug.traceM $ "results:\n" <> prettyStr results <> "\n"
