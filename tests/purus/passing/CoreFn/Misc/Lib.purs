@@ -482,6 +482,11 @@ testRedundantCtors x = case x of
   Nothing -> unit
   --Nothing -> unit
 
+testBrokenCollapse :: Identitee Int -> Prim.Unit
+testBrokenCollapse = case _ of
+  Identitee 1 -> unit
+  Identitee x -> unit 
+
 testRedundantLit :: Int -> Int 
 testRedundantLit x = case x of
   1 -> 1
@@ -498,3 +503,9 @@ testNested = case _ of
   Just Nothing -> 1
   Just (Just Nothing) -> 2
   Just (Just (Just x)) -> x
+
+testNestedSmaller :: Maybe (Maybe Int) -> Int
+testNestedSmaller = case _ of
+  Nothing -> 0
+  Just Nothing -> 1
+  Just (Just x) -> x

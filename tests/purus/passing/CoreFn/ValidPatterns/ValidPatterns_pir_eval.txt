@@ -1,0 +1,44 @@
+
+------ someStringLiteralPatterns ------
+[]
+------------
+
+------ someStringLiteralCases ------
+[]
+------------
+
+------ someNumericLiteralPatterns ------
+[]
+------------
+
+------ someNumericLiteralCases ------
+[]
+------------
+
+------ someConstructorCases ------
+[]
+------------
+
+------ someCharLiteralCases ------
+[]
+------------
+
+------ someBinOpCases ------
+[]
+------------
+
+------ myNumericLiteralPattern ------
+[]
+------------
+
+------ myConstructorPatterns ------
+[]
+------------
+
+------ myCharLiteralPattern ------
+[]
+------------
+
+------ myBinaryOpPattern ------
+[]
+------------

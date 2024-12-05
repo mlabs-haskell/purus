@@ -423,6 +423,8 @@ library
     Language.Purus.Pipeline.DesugarCore
     Language.Purus.Pipeline.DesugarObjects
     Language.Purus.Pipeline.EliminateCases
+    Language.Purus.Pipeline.EliminateCases.EliminateNested
+    Language.Purus.Pipeline.EliminateCases.Types
     Language.Purus.Pipeline.EliminateCases.Utils
     Language.Purus.Pipeline.GenerateDatatypes
     Language.Purus.Pipeline.GenerateDatatypes.Utils

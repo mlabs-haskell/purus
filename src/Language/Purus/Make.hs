@@ -70,7 +70,7 @@ import Language.Purus.Utils (
   findDeclBodyWithIndex, findMain,
  )
 import Language.Purus.Make.Prim (syntheticPrim)
-import Language.Purus.Pipeline.EliminateCases.Utils (eliminateNestedCases)
+import Language.Purus.Pipeline.EliminateCases.EliminateNested (eliminateNestedCases)
 
 import Control.Monad.Except (MonadError (throwError), when)
 import Control.Monad.State (evalStateT)
