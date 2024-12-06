@@ -59,9 +59,10 @@ import Language.Purus.Pipeline.EliminateCases.Types
       Pattern,
       PatternConstraint(..),
       Position(ConstructorArgPos) )
+import Data.Kind qualified as GHC
 
 {- Generic Tree Utilities -}
-mkTree :: forall (a :: *). [a] -> Maybe (Tree a)
+mkTree :: forall (a :: GHC.Type). [a] -> Maybe (Tree a)
 mkTree = \case
     [] -> Nothing
     (x : xs) -> pure $ go x xs
@@ -77,7 +78,7 @@ ppTree = drawTree . fmap prettyStr
 ppForest :: Pretty a => [Tree a] -> String
 ppForest = drawForest . fmap (fmap prettyStr)
 
-peel :: forall (a :: *). [Tree a] -> [(a, [Tree a])]
+peel :: forall (a :: GHC.Type). [Tree a] -> [(a, [Tree a])]
 peel = map unTree
     where
         unTree :: Tree a -> (a, [Tree a])
@@ -111,7 +112,7 @@ squishColumnsWith mtx f = map (\cx -> f (V.toList $ getCol cx mtx)) [1..(ncols m
 
 {- Generic Monad Utility -}
 
--- REVIEW: Is this right?
+-- "Rolls back" the state after performing a computation with the current state. (Analagous to `local` for `Reader`, hence the name)
 locally :: (Monad m) => StateT s m a -> StateT s m a
 locally act = do
     s <- get

@@ -38,7 +38,9 @@ import Prettyprinter
       indent,
       punctuate,
       brackets,
-      parens, vsep )
+      parens,
+      vsep
+    )
 
 
 {- Honestly I think keeping this is fine. At this point in the compilation pipeline, these are *obviously*
@@ -90,7 +92,6 @@ instance Pretty CtorIx where
 
    Constructor argument positions point to the field of some constructor, and can be arbitrarily nested, but must contain
    a ScrutineeRef "root position". This invariant is enforced by the type.
-
 -}
 data Position
     = -- The index of the scrutinee in the list of scrutinees
@@ -164,15 +165,14 @@ data PatternConstraint = Position :@ ConstraintContent
 instance Pretty PatternConstraint where
   pretty (pos :@ c) = pretty pos <+> ":=" <+> pretty c
 
-{- Data types for the case expression skeleton.
+{- A `Result` bundles the actual result expression (which we extract at the beginning of our transformations)
+   with a list of necessary re-bindings (along with the position of the variable being rebound).
 
-   At this point it still makes more sense to work with an abstract notion of
-   position instead of explicit named variables. All of the variables which occur in the
-   outer scrutinee(s) can easily be replaced at the end, and all of the "new" variables
-   must have their types deduced - best to keep that task separate.
-
-   A skeleton is either a prototype case expression (with a Position and a list of (Constraint,Skeleton) pairs)
-   or a result conjoined with the necessary variable re-bindings. (I think? Hope I got this right)
+   This is necessary because during our transformations, we will frequently eliminate variables during
+   path collapse & merging, which leaves us with results which are correct "up to variable rebinding/scope".
+   Our solution is to ensure that our result selection function is agnostic with respect to the particular
+   names of variables, and we calculate the necessary rebindings for a result that matches a given branch
+   after we select the correct result.
 -}
 
 data Result = Result Expression [(Position, Identifier, Identifier)]
@@ -180,6 +180,15 @@ data Result = Result Expression [(Position, Identifier, Identifier)]
 instance Pretty Result where
   pretty (Result e rebinds) = pretty e <+> pretty rebinds
 
+{- An intermediary data structure that enforces some invariants which must be satisfied to
+   reconstruct an IR expression. In the tree representation, there is no guarantee of "positional well-formedness" -
+   that is, the property that every child node of a parent node refers to the same position. That is explicitly
+   enforced here.
+
+   The TyVar arg is used to reconstruct the "case expression without results" (`CaseOf ()`) before inserting the
+   results, yielding a `CaseOf Result`, which is a suitable structure for rebuilding the expression.
+
+-}
 data CaseOf a = CaseOf Position [(ConstraintContent, Either (CaseOf a) a)]
 
 instance Pretty a => Pretty (CaseOf a) where

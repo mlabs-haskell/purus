@@ -48,7 +48,6 @@ import Language.Purus.Pipeline.Monad (
     MonadCounter (..),
     PlutusContext,
  )
-
 import Bound (Var (..))
 import Control.Lens (
     ix,
@@ -56,8 +55,7 @@ import Control.Lens (
     over,
     view, transformM,
  )
-
-import Control.Lens.Operators ( (%=), (+=), (^.), (^?), (.~), (&) )
+import Control.Lens.Operators (  (+=), (^.), (^?), (.~), (&) )
 import Control.Monad.State
     ( foldM,
       void,
@@ -66,13 +64,12 @@ import Control.Monad.State
       MonadTrans(lift),
       evalState,
       evalStateT,
-      State )
+      State, modify )
 import Data.Map (Map)
 import Data.Map qualified as M
 import Data.Matrix
     ( fromLists )
 import Data.Tree ( Tree(..))
-
 import Control.Monad.Reader (MonadReader (..), Reader, runReader)
 import Data.Bifunctor (Bifunctor (first), second)
 import Data.Foldable (traverse_)
@@ -86,7 +83,6 @@ import Language.Purus.Debug (prettify, doTrace)
 import Language.PureScript.CoreFn.TypeLike (TypeLike(replaceAllTypeVars))
 import Language.Purus.Pipeline.EliminateCases.Types
 import Language.Purus.Pipeline.EliminateCases.Utils
-
 
 mkForest :: Datatypes Kind Ty
          -> [Alt WithoutObjects Ty (Exp WithoutObjects Ty) (Vars Ty)]
@@ -294,10 +290,6 @@ For Step 1, grouping should proceed as follows:
        and insert that as the root of a new subtree
   iv. We recurse over the the "rest of the paths" indexed to each new subtree
 -}
-
-
-
-
 
 collapse :: [Tree PatternConstraint] -> [Tree PatternConstraint]
 collapse = reverse . collapseForest
@@ -904,7 +896,7 @@ rebuildFromCaseOf' :: Map (Position,Identifier) Expression
                    -> StateT (Map Position Expression) PlutusContext Expression
 rebuildFromCaseOf' scrutVarDict datatypes branch = do
     let scrutPosDict = M.mapKeys fst scrutVarDict
-    id %= (scrutPosDict <>)
+    modify (scrutPosDict <>)
     goCase branch
     where
         scrutIdDict :: Map Identifier Expression
@@ -991,7 +983,7 @@ rebuildFromCaseOf' scrutVarDict datatypes branch = do
         resolveIdentifier p i = case i of
             PSVarData idnt indx ty -> do
                 let v = V . B $ BVar indx ty idnt
-                id %= M.insert p v
+                modify $ M.insert p v
                 pure v
             li@(LocalIdentifier _ ty) -> do
               case M.lookup li scrutIdDict of
@@ -1004,7 +996,7 @@ rebuildFromCaseOf' scrutVarDict datatypes branch = do
                           let utxt = "$X" <> T.pack (show u)
                               uIdent = Ident utxt
                               res = V . B $ BVar u ty uIdent
-                          id %= M.insert p res
+                          modify $ M.insert p res
                           pure res
                       Just res -> pure res
 

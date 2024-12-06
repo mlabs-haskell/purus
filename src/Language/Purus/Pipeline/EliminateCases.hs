@@ -359,11 +359,7 @@ desugarConstructorPattern datatypes altBodyTy _e =
                   -}
                   irrefutable = case head irrefutables of
                     UnguardedAlt WildP irrRHS -> toExp irrRHS
-                    UnguardedAlt (VarP bvId bvIx _) irrRHS -> LetE [NonRecursive bvId bvIx (fromExp scrut)] irrRHS  {- -flip instantiate irrRHS $ \case
-                      bv@(BVar bvIx' _ bvId') ->
-                        if bvIx == bvIx' && bvId == bvId'
-                          then scrut
-                          else V . B $ bv-}
+                    UnguardedAlt (VarP bvId bvIx _) irrRHS -> LetE [NonRecursive bvId bvIx (fromExp scrut)] irrRHS
                     other -> error $ "Expected an irrefutable alt but got: " <> prettyStr other
               result <- assemblePartialCtorCase (CtorCase irrefutable (M.fromList indexedBranches) destructor scrutTy) allCtors
               let msg =
@@ -395,21 +391,15 @@ desugarConstructorPattern datatypes altBodyTy _e =
     winnowUnreachable [] = []
     winnowUnreachable (alt:alts) = case getPat alt of
       ConP tn cn ps | null ps || all irrefutable ps ->
-        let cleaned = foldr (\x acc ->
-                               let pat = getPat x
-                               in case pat of
-                                 ConP tn' cn' _ | tn' == tn && cn' == cn  -> acc
-                                 _ -> x:acc
-                            ) [] alts
+        let cleaned = flip filter alts $ \case
+                        (getPat -> ConP tn' cn' _) | tn' == tn && cn' == cn -> False
+                        _ -> True
             winnowedRest = winnowUnreachable cleaned
         in alt:winnowedRest
       ConP tn cn ps ->
-        let cleaned = foldr (\x acc ->
-                                let pat = getPat x
-                                in case pat of
-                                  ConP tn' cn' ps' | tn' == tn && cn' == cn && and (zipWith covers ps ps') ->
-                                    acc
-                                  _ -> x:acc) [] alts
+        let cleaned = flip filter alts $ \case
+                         (getPat -> ConP tn' cn' ps') | tn' == tn && cn' == cn && and (zipWith covers ps ps') -> False
+                         _ -> True
             winnowedRest = winnowUnreachable cleaned
         in alt:winnowedRest
       _ -> alt : winnowUnreachable alts
@@ -795,12 +785,7 @@ desugarIrrefutables ::
 desugarIrrefutables = transform $ \case
   CaseE _ _ (UnguardedAlt WildP rhs : _) -> toExp rhs
   CaseE _ scrut (UnguardedAlt (VarP bvId bvIx _) rhs : _) ->
-    LetE [NonRecursive bvId bvIx (fromExp scrut)] rhs 
-    {- -flip instantiate rhs $ \case
-    bv@(BVar bvIx' _ bvId') ->
-      if bvIx == bvIx' && bvId == bvId'
-        then scrut
-        else V . B $ bv -}
+    LetE [NonRecursive bvId bvIx (fromExp scrut)] rhs
   other -> other
 
 data CtorCase = CtorCase
