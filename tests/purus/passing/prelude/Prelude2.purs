@@ -1,6 +1,6 @@
 module Prelude2 where
 
-import Prelude 
+import Prelude
 
 serializeStakingCredential :: StakingCredential -> Builtin.BuiltinData
 serializeStakingCredential sc = case sc of

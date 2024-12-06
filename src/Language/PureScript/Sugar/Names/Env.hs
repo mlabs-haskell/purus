@@ -164,7 +164,7 @@ The exported types from the @Prim@ module
 primExports :: Exports
 primExports = (mkPrimExports (primTypes <> M.fromList ledgerTypes) primClasses) {
     exportedValues = M.fromList $ mkValueEntry <$> (M.keys syntheticPrimValueTypes <> M.keys primFunctions)
-  }
+  } 
 
 {- |
 The exported types from the @Prim.Boolean@ module

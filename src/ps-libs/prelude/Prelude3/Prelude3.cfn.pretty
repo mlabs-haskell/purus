@@ -545,10 +545,11 @@ deserializeDCert :: (Builtin.BuiltinData -> (Prim.DCert))
 deserializeDCert = 
   \(dat: Builtin.BuiltinData) -> 
     let
-      p :: ((Builtin.BuiltinPair (Prim.Int)) (Builtin.BuiltinData))
+      p :: ((Builtin.BuiltinPair (Prim.Int)) ((Builtin.BuiltinList (Builtin.BuiltinData))))
       p = 
         (unConstrData: (Builtin.BuiltinData ->
-        (((Builtin.BuiltinPair (Prim.Int)) (Builtin.BuiltinData)))))
+        (((Builtin.BuiltinPair
+        (Prim.Int)) ((Builtin.BuiltinList (Builtin.BuiltinData)))))))
         (dat: Builtin.BuiltinData)
       tag :: Prim.Int
       tag = 
@@ -556,16 +557,16 @@ deserializeDCert =
         (b :: Prim.Type). (((Builtin.BuiltinPair
         ((a :: Prim.Type))) ((b :: Prim.Type))) ->
         ((a :: Prim.Type))))
-        (p: ((Builtin.BuiltinPair (Prim.Int)) (Builtin.BuiltinData)))
+        (p: ((Builtin.BuiltinPair
+        (Prim.Int)) ((Builtin.BuiltinList (Builtin.BuiltinData)))))
       unlisted :: (Builtin.BuiltinList (Builtin.BuiltinData))
       unlisted = 
-        (unListData: (Builtin.BuiltinData ->
-        ((Builtin.BuiltinList (Builtin.BuiltinData)))))
-        ((sndPair: forall (a :: Prim.Type)
-         (b :: Prim.Type). (((Builtin.BuiltinPair
-         ((a :: Prim.Type))) ((b :: Prim.Type))) ->
-         ((b :: Prim.Type))))
-         (p: ((Builtin.BuiltinPair (Prim.Int)) (Builtin.BuiltinData))))
+        (sndPair: forall (a :: Prim.Type)
+        (b :: Prim.Type). (((Builtin.BuiltinPair
+        ((a :: Prim.Type))) ((b :: Prim.Type))) ->
+        ((b :: Prim.Type))))
+        (p: ((Builtin.BuiltinPair
+        (Prim.Int)) ((Builtin.BuiltinList (Builtin.BuiltinData)))))
     in case ((equalsInteger: (Prim.Int -> ((Prim.Int -> (Prim.Boolean))))) (tag: Prim.Int) (0: Prim.Int)) of 
           True -> 
             (DCertDelegRegKey: (Prim.StakingCredential -> (Prim.DCert)))
@@ -693,10 +694,11 @@ deserializeScriptPurpose :: (Builtin.BuiltinData -> (Prim.ScriptPurpose))
 deserializeScriptPurpose = 
   \(dat: Builtin.BuiltinData) -> 
     let
-      p :: ((Builtin.BuiltinPair (Prim.Int)) (Builtin.BuiltinData))
+      p :: ((Builtin.BuiltinPair (Prim.Int)) ((Builtin.BuiltinList (Builtin.BuiltinData))))
       p = 
         (unConstrData: (Builtin.BuiltinData ->
-        (((Builtin.BuiltinPair (Prim.Int)) (Builtin.BuiltinData)))))
+        (((Builtin.BuiltinPair
+        (Prim.Int)) ((Builtin.BuiltinList (Builtin.BuiltinData)))))))
         (dat: Builtin.BuiltinData)
       tag :: Prim.Int
       tag = 
@@ -704,19 +706,19 @@ deserializeScriptPurpose =
         (b :: Prim.Type). (((Builtin.BuiltinPair
         ((a :: Prim.Type))) ((b :: Prim.Type))) ->
         ((a :: Prim.Type))))
-        (p: ((Builtin.BuiltinPair (Prim.Int)) (Builtin.BuiltinData)))
+        (p: ((Builtin.BuiltinPair
+        (Prim.Int)) ((Builtin.BuiltinList (Builtin.BuiltinData)))))
       x :: Builtin.BuiltinData
       x = 
         (headList: forall (a :: Prim.Type). ((Builtin.BuiltinList
         ((a :: Prim.Type))) ->
         ((a :: Prim.Type))))
-        ((unListData: (Builtin.BuiltinData ->
-         ((Builtin.BuiltinList (Builtin.BuiltinData)))))
-         ((sndPair: forall (a :: Prim.Type)
-          (b :: Prim.Type). (((Builtin.BuiltinPair
-          ((a :: Prim.Type))) ((b :: Prim.Type))) ->
-          ((b :: Prim.Type))))
-          (p: ((Builtin.BuiltinPair (Prim.Int)) (Builtin.BuiltinData)))))
+        ((sndPair: forall (a :: Prim.Type)
+         (b :: Prim.Type). (((Builtin.BuiltinPair
+         ((a :: Prim.Type))) ((b :: Prim.Type))) ->
+         ((b :: Prim.Type))))
+         (p: ((Builtin.BuiltinPair
+         (Prim.Int)) ((Builtin.BuiltinList (Builtin.BuiltinData))))))
     in case ((equalsInteger: (Prim.Int -> ((Prim.Int -> (Prim.Boolean))))) (0: Prim.Int) (tag: Prim.Int)) of 
           True -> 
             (Minting: (Prim.CurrencySymbol -> (Prim.ScriptPurpose)))
@@ -749,15 +751,14 @@ deserializeTxInfo =
     let
       unlisted :: (Builtin.BuiltinList (Builtin.BuiltinData))
       unlisted = 
-        (unListData: (Builtin.BuiltinData ->
-        ((Builtin.BuiltinList (Builtin.BuiltinData)))))
-        ((sndPair: forall (a :: Prim.Type)
-         (b :: Prim.Type). (((Builtin.BuiltinPair
-         ((a :: Prim.Type))) ((b :: Prim.Type))) ->
-         ((b :: Prim.Type))))
-         ((unConstrData: (Builtin.BuiltinData ->
-          (((Builtin.BuiltinPair (Prim.Int)) (Builtin.BuiltinData)))))
-          (dat: Builtin.BuiltinData)))
+        (sndPair: forall (a :: Prim.Type)
+        (b :: Prim.Type). (((Builtin.BuiltinPair
+        ((a :: Prim.Type))) ((b :: Prim.Type))) ->
+        ((b :: Prim.Type))))
+        ((unConstrData: (Builtin.BuiltinData ->
+         (((Builtin.BuiltinPair
+         (Prim.Int)) ((Builtin.BuiltinList (Builtin.BuiltinData)))))))
+         (dat: Builtin.BuiltinData))
       unlisted1 :: (Builtin.BuiltinList (Builtin.BuiltinData))
       unlisted1 = 
         (tailList: forall (a :: Prim.Type). ((Builtin.BuiltinList
@@ -997,20 +998,22 @@ deserializeScriptContext :: (Builtin.BuiltinData -> (Prim.ScriptContext))
 deserializeScriptContext = 
   \(dat: Builtin.BuiltinData) -> 
     let
-      dat' :: Builtin.BuiltinData
-      dat' = 
+      unlisted :: (Builtin.BuiltinList (Builtin.BuiltinData))
+      unlisted = 
         (sndPair: forall (a :: Prim.Type)
         (b :: Prim.Type). (((Builtin.BuiltinPair
         ((a :: Prim.Type))) ((b :: Prim.Type))) ->
         ((b :: Prim.Type))))
         ((unConstrData: (Builtin.BuiltinData ->
-         (((Builtin.BuiltinPair (Prim.Int)) (Builtin.BuiltinData)))))
+         (((Builtin.BuiltinPair
+         (Prim.Int)) ((Builtin.BuiltinList (Builtin.BuiltinData)))))))
          (dat: Builtin.BuiltinData))
-      unlisted :: (Builtin.BuiltinList (Builtin.BuiltinData))
-      unlisted = 
-        (unListData: (Builtin.BuiltinData ->
-        ((Builtin.BuiltinList (Builtin.BuiltinData)))))
-        (dat': Builtin.BuiltinData)
+      unlisted' :: (Builtin.BuiltinList (Builtin.BuiltinData))
+      unlisted' = 
+        (tailList: forall (a :: Prim.Type). ((Builtin.BuiltinList
+        ((a :: Prim.Type))) ->
+        ((Builtin.BuiltinList ((a :: Prim.Type))))))
+        (unlisted: (Builtin.BuiltinList (Builtin.BuiltinData)))
       txInfo :: Prim.TxInfo
       txInfo = 
         (deserializeTxInfo: (Builtin.BuiltinData -> (Prim.TxInfo)))
@@ -1018,12 +1021,6 @@ deserializeScriptContext =
          ((a :: Prim.Type))) ->
          ((a :: Prim.Type))))
          (unlisted: (Builtin.BuiltinList (Builtin.BuiltinData))))
-      unlisted' :: (Builtin.BuiltinList (Builtin.BuiltinData))
-      unlisted' = 
-        (tailList: forall (a :: Prim.Type). ((Builtin.BuiltinList
-        ((a :: Prim.Type))) ->
-        ((Builtin.BuiltinList ((a :: Prim.Type))))))
-        (unlisted: (Builtin.BuiltinList (Builtin.BuiltinData)))
       purpose :: Prim.ScriptPurpose
       purpose = 
         (deserializeScriptPurpose: (Builtin.BuiltinData ->

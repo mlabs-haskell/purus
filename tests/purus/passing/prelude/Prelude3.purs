@@ -1,7 +1,7 @@
 module Prelude3 where
 
 import Prelude
-import Prelude2 
+import Prelude2
 
 serializeScriptContext :: ScriptContext -> Builtin.BuiltinData
 serializeScriptContext (ScriptContext rec) =

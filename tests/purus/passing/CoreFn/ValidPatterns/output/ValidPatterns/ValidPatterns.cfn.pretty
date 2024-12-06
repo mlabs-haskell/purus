@@ -73,7 +73,6 @@ someNumericLiteralPatterns =
   \(v: Prim.Int) -> 
     case (v: Prim.Int) of 
        -3 -> (True: Prim.Boolean)
-       -3 -> (True: Prim.Boolean)
        0 -> (True: Prim.Boolean)
        1 -> (True: Prim.Boolean)
        _ -> (True: Prim.Boolean)
@@ -82,12 +81,13 @@ someNumericLiteralCases :: Prim.Boolean
 someNumericLiteralCases = 
   case (0: Prim.Int) of 
      1 -> (True: Prim.Boolean)
+     1 -> (True: Prim.Boolean)
      2 -> (True: Prim.Boolean)
      3 -> (True: Prim.Boolean)
      -3 -> (True: Prim.Boolean)
      _ -> (True: Prim.Boolean)
 
-someConstructorCases :: Prim.Boolean
+someConstructorCases :: Prim.Int
 someConstructorCases = 
   let
     someConstructor :: (((ValidPatterns.Constructors (Prim.Char)) (Prim.Char)) (Prim.Char))
@@ -103,14 +103,14 @@ someConstructorCases =
       ("'b'": Prim.Char)
       ("'c'": Prim.Char)
   in case (someConstructor: (((ValidPatterns.Constructors (Prim.Char)) (Prim.Char)) (Prim.Char))) of 
-        A _ _ _ -> (True: Prim.Boolean)
-        A _ _ _ -> (True: Prim.Boolean)
-        B _ _ -> (True: Prim.Boolean)
-        C _ -> (True: Prim.Boolean)
-        C _ -> (True: Prim.Boolean)
-        C _ -> (True: Prim.Boolean)
-        D -> (True: Prim.Boolean)
-        D -> (True: Prim.Boolean)
+        A _ _ _ -> (1: Prim.Int)
+        A _ _ _ -> (2: Prim.Int)
+        B _ _ -> (3: Prim.Int)
+        C _ -> (4: Prim.Int)
+        C _ -> (5: Prim.Int)
+        C _ -> (6: Prim.Int)
+        D -> (7: Prim.Int)
+        D -> (8: Prim.Int)
 
 someCharLiteralCases :: Prim.Boolean
 someCharLiteralCases = 

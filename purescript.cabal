@@ -156,7 +156,7 @@ common defaults
     -- modules must be parseable by this library otherwise the compiler
     -- will reject them. It should therefore always be pinned to a single
     -- specific version.
-    aeson ==2.2.3.0,
+    aeson >=2.0.3.0 && <2.1,
     aeson-better-errors >=0.9.1.1 && <0.10,
     algebraic-graphs ==0.7,
     ansi-terminal >=0.11.3 && <0.12,
@@ -176,20 +176,21 @@ common defaults
     containers >=0.6.5.1 && <0.7,
     cryptonite ==0.30.*,
     data-ordlist >=0.4.7.0 && <0.5,
-    data-default-class >=0.1.2.0 && < 0.2.0.0,
     deepseq >=1.4.6.1 && <1.5,
     directory >=1.3.6.2 && <1.4,
-    dlist ==1.0,
+    dlist ==1.0.*,
     edit-distance >=0.2.2.1 && <0.3,
     file-embed >=0.0.15.0 && <0.1,
     filepath >=1.4.2.2 && <1.5,
     Glob >=0.10.2 && <0.11,
     hashable,
     haskeline >=0.8.2 && <0.9,
+    indexed-traversable,
     language-javascript ==0.7.0.0,
     lens ==5.2.3,
     lifted-async >=0.10.2.2 && <0.11,
     lifted-base >=0.2.3.12 && <0.3,
+    matrix,
     memory >=0.17.0 && <0.18,
     monad-control >=1.0.3.1 && <1.1,
     monad-logger >=0.3.36 && <0.4,
@@ -204,23 +205,25 @@ common defaults
     regex-tdfa >=1.3.1.2 && <1.4,
     safe >=0.3.19 && <0.4,
     scientific >=0.3.7.0 && <0.4,
-    semigroups ==0.20,
-    semialign ==1.3.1,
+    semigroups ==0.20.*,
+    semialign,
     sourcemap >=0.1.7 && <0.2,
     random ==1.2.1.2,
     stm >=2.5.0.2 && <2.6,
     stringsearch >=0.3.6.6 && <0.4,
+    tasty ==1.5,
+    tasty-hunit,
     template-haskell >=2.18.0.0 && <2.19,
     text >=1.2.5.0 && <2.3,
-    th-abstraction ==0.7.0.0,
-    these ==1.2.1,
+    th-abstraction,
+    these,
     time >=1.11.1.1 && <1.12,
     transformers >=0.5.6.2 && <0.6,
     transformers-base >=0.4.6 && <0.5,
     utf8-string >=1.0.2 && <1.1,
-    vector ==0.13.1.0,
+    vector,
     witherable >=0.4.2 && <0.5,
-    plutus-core ==1.32.1.0,
+    plutus-core ==1.30.0.0,
     plutus-core:plutus-ir
 
 library
@@ -409,8 +412,7 @@ library
 
     Language.Purus.Config
     Language.Purus.Debug
-    Language.Purus.Docs
-    Language.Purus.Eval 
+    Language.Purus.Eval
     Language.Purus.IR
     Language.Purus.IR.Utils
     Language.Purus.Make
@@ -421,6 +423,9 @@ library
     Language.Purus.Pipeline.DesugarCore
     Language.Purus.Pipeline.DesugarObjects
     Language.Purus.Pipeline.EliminateCases
+    Language.Purus.Pipeline.EliminateCases.EliminateNested
+    Language.Purus.Pipeline.EliminateCases.Types
+    Language.Purus.Pipeline.EliminateCases.Utils
     Language.Purus.Pipeline.GenerateDatatypes
     Language.Purus.Pipeline.GenerateDatatypes.Utils
     Language.Purus.Pipeline.Inline
@@ -455,8 +460,8 @@ executable purs
     ansi-wl-pprint >=0.6.9 && <0.7,
     exceptions >=0.10.4 && <0.11,
     network >=3.1.2.7 && <3.2,
-    optparse-applicative ==0.18.1.0,
-    prettyprinter-ansi-terminal ==1.1.3,
+    optparse-applicative,
+    prettyprinter-ansi-terminal,
     purescript,
     purs-lib
   if flag(release)
@@ -518,10 +523,10 @@ test-suite tests
     HUnit >=1.6.2.0 && <1.7,
     newtype >=0.2.2.0 && <0.3,
     QuickCheck >=2.14.2 && <2.15,
+    plutus-core ==1.30.0.0,
     regex-base >=0.94.0.2 && <0.95,
     split >=0.2.3.4 && <0.3,
     typed-process >=0.2.10.1 && <0.3,
-    tasty-expected-failure,
     tasty ==1.5,
     tasty-hunit
   build-tool-depends:

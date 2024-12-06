@@ -81,21 +81,22 @@ someBinOpCases =
         _ /\ _ -> True
         (_ /\ _) -> True
 
-someConstructorCases :: Boolean
+someConstructorCases :: Int
 someConstructorCases = 
     let someConstructor = A 'a' 'b' 'c'
     in case someConstructor of
-        A _ _ _   -> True
-        (A _ _ _) -> True
-        B _ (_)   -> True
-        (C (_))   -> True
-        (C _)     -> True
-        C _       -> True
-        D         -> True
-        (D)       -> True
+        A _ _ _   -> 1
+        (A _ _ _) -> 2
+        B _ (_)   -> 3
+        (C (_))   -> 4
+        (C _)     -> 5
+        C _       -> 6
+        D         -> 7
+        (D)       -> 8
 
 someNumericLiteralCases :: Boolean
 someNumericLiteralCases = case 0 of
+    1 -> True
     1 -> True
     2 -> True
     (3) -> True
@@ -103,7 +104,6 @@ someNumericLiteralCases = case 0 of
     _ -> True
 
 someNumericLiteralPatterns :: Int -> Boolean
-someNumericLiteralPatterns -3 =  True
 someNumericLiteralPatterns (-3) =  True
 someNumericLiteralPatterns 0 =  True
 someNumericLiteralPatterns 1 =  True

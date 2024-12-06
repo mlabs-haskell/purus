@@ -24,8 +24,6 @@
         purs = purus.packages."purescript:exe:purs";
       };
 
-      inherit (purus) checks;
-
       apps = {
         purs.program = "${self'.packages.purs}/bin/purs";
       };

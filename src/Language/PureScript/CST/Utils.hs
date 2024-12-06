@@ -356,12 +356,3 @@ Related GHC issue: https://gitlab.haskell.org/ghc/ghc/issues/8167
 -}
 isLeftFatArrow :: Text -> Bool
 isLeftFatArrow str = str == "<=" || str == "⇐"
-
--- | Unwraps all the parenthesis ('BinderParens') at the top most level of a
--- 'Binder'.
--- E.g.
--- > (a) --unwrapBinderParens--> a
--- > ((Constructor (a) (b))) --unwrapBinderParens--> Constructor (a) (b)
-unwrapBinderParens :: Binder a -> Binder a
-unwrapBinderParens (BinderParens _a wrappedBinder) = unwrapBinderParens $ wrpValue wrappedBinder
-unwrapBinderParens result = result

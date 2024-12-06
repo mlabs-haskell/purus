@@ -98,7 +98,7 @@ import Control.Lens (
   (^?),
  )
 
-import Prettyprinter (Pretty (..))
+import Prettyprinter (Pretty (..)) 
 
 {- This runs the computation in an empty *local* context. The globals (i.e. top level declarations and
    imports are still in scope.)
@@ -187,7 +187,7 @@ desugarCoreModule inScope imports Module {..} = do
   let allDatatypes = moduleDataTypes <> inScope
   s <- get
   let result = Module {moduleDecls = decls <> imports, moduleDataTypes = allDatatypes, ..}
-  -- traceM $ "Desugar Coure output for " <> prettyStr moduleName <> "\n" <> docString (prettyModule result)
+ --  traceM $ "Desugar Coure output for " <> prettyStr moduleName <> "\n" <> docString (prettyModule result)
   pure result
   where
     doEtaReduce = \case

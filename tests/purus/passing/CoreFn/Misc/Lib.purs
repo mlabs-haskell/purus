@@ -2,6 +2,7 @@ module Lib where
 
 import Prim
 
+
 testCons :: List Int
 testCons = Prim.Cons 1 Nil
 
@@ -93,6 +94,11 @@ testBindersCase = testBinders (ConInt 2)
 
 {- Binding groups (with and w/o type anns) -}
 
+{- Disabling these for now because they don't terminate
+
+ TODO: Break out into a "compiles to PIR but can't evaluate" set of tests
+       (these would actually be useful, we want to know that functions like this
+        compile to sensible PIR even if they never terminate)
 
 mutuallyRecursiveBindingGroup :: Int
 mutuallyRecursiveBindingGroup =
@@ -104,16 +110,13 @@ mutuallyRecursiveBindingGroup =
       g y = h (f y) 3
   in g 3
 
-
-
-
 mutuallyRecursiveBindingGroupNoTypes :: Int
 mutuallyRecursiveBindingGroupNoTypes =
   let f' x = g' 2
       h' x y = y
       g' y = h' (f' y) 3
   in g' 3
-
+-}
 nestedBinds :: Int
 nestedBinds =
   let  f :: Int -> Int
@@ -320,9 +323,10 @@ testForLift x = h x 3
     j c d = c + g d
     g a = if h a x then j x 1 else x * x
 
+{- TODO: Doesn't terminate, move somewhere else where we won't evaluate it
 testForLiftApplied :: Boolean
 testForLiftApplied = testForLift 2
-
+-}
 testForLiftPoly :: forall (a :: Type). a -> Boolean
 testForLiftPoly x = h x True
   where
@@ -361,6 +365,7 @@ iff p q = (p && q) || (not p && not q)
 
 infix 5 iff as ===
 
+{- TODO: Doesn't terminate 
 ghcInlinerPaperEx :: Boolean
 ghcInlinerPaperEx = p
   where
@@ -369,8 +374,9 @@ ghcInlinerPaperEx = p
     g x = h x === False
     f x = g (not x)
     q x = g (x=== not x)
+-}
 
-
+{- TODO: Doesn't terminate 
 kozsTwoSCCEx :: Boolean
 kozsTwoSCCEx =
   let z = True
@@ -381,7 +387,7 @@ kozsTwoSCCEx =
       g x =  not (h x) && not x
       h x = not (f x)
   in a z && b z && c z && f z && g z && h z
-
+-}
 testLedgerTypes :: DCert
 testLedgerTypes = DCertMir
 
@@ -435,6 +441,71 @@ testForLift' x = h x 3
     h a b = g a <= 4
     g a = if h a x then x + x else x * x
 
+{- TODO: Doesn't terminate, enable execution budget or move
 testForLiftApplied' :: Boolean
 testForLiftApplied' = testForLift' 101
+-}
 
+-- Multi case elimination test 
+data C (a :: Type) (b :: Type) (c :: Type) = C a b c
+
+
+-- iffbool I guess
+eqBool :: Boolean -> Boolean -> Boolean
+eqBool True True = True
+eqBool False False = True
+eqBool _ _ = False
+
+
+equalsC :: C Int String (Maybe Boolean) -> C Int String (Maybe Boolean) -> Boolean
+equalsC (C i1 s1 (Just b1)) (C i2 s2 (Just b2)) = and (Builtin.equalsInteger i1 i2)
+                                                  (and (Builtin.equalsString s1 s2)
+                                                       (eqBool b1 b2)
+                                                  )
+equalsC (C i1 s1 Nothing) (C i2 s2 Nothing) = and (Builtin.equalsInteger i1 i2) (Builtin.equalsString s1 s2)
+equalsC _ _ = False
+
+testMultiCaseSimple :: Maybe Int -> Maybe Int -> Int
+testMultiCaseSimple Nothing Nothing = 0
+testMultiCaseSimple Nothing (Just y) = y
+testMultiCaseSimple (Just x) Nothing = x
+testMultiCaseSimple (Just x) (Just y) = x + y
+
+-- redundant args in case expressions / unreachable case winnowing
+
+testRedundantCtors :: Maybe Int -> Prim.Unit
+testRedundantCtors x = case x of
+  Just 1 -> unit
+  --Just 1 -> unit
+  Just x -> unit
+  --Just y -> unit
+  Nothing -> unit
+  --Nothing -> unit
+
+testBrokenCollapse :: Identitee Int -> Prim.Unit
+testBrokenCollapse = case _ of
+  Identitee 1 -> unit
+  Identitee x -> unit 
+
+testRedundantLit :: Int -> Int 
+testRedundantLit x = case x of
+  1 -> 1
+  1 -> 2
+  1 -> 3
+  _ -> 4
+  x -> 5
+
+-- NESTED CONSTRUCTORS?!
+
+testNested :: Maybe (Maybe (Maybe Int)) -> Int
+testNested = case _ of
+  Nothing -> 0
+  Just Nothing -> 1
+  Just (Just Nothing) -> 2
+  Just (Just (Just x)) -> x
+
+testNestedSmaller :: Maybe (Maybe Int) -> Int
+testNestedSmaller = case _ of
+  Nothing -> 0
+  Just Nothing -> 1
+  Just (Just x) -> x

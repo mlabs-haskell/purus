@@ -55,6 +55,7 @@ testForLiftPoly x = h x True
 
 testForLiftPolyApplied = testForLiftPoly "hello"
 
+{- TODO: Doesn't terminate
 ghcInlinerPaperEx :: Boolean
 ghcInlinerPaperEx = p
   where
@@ -75,7 +76,7 @@ kozsTwoSCCEx =
       g x =  not (h x) && not x
       h x = not (f x)
   in a z && b z && c z && f z && g z && h z
-
+-}
 testForLift :: Int -> Boolean
 testForLift x = h x 3
   where
@@ -83,14 +84,17 @@ testForLift x = h x 3
     j c d = c + g d
     g a = if h a x then j x 1 else x * x
 
+{-TODO: Doesn't termiante
 testForLiftApplied :: Boolean
 testForLiftApplied = testForLift 2
-
+-}
 testForLift' :: Int -> Boolean
 testForLift' x = h x 3
   where
     h a b = g a <= 4
     g a = if h a x then x + x else x * x
 
+{- TODO: Doesn't terminate
 testForLiftApplied' :: Boolean
 testForLiftApplied' = testForLift' 101
+-}

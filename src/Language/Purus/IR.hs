@@ -32,6 +32,7 @@ import Language.PureScript.Constants.Prim qualified as C
 import Language.PureScript.CoreFn.TypeLike (
   TypeLike (..),
   instantiateWithArgs,
+  underQuantifiers
  )
 import Language.PureScript.Names (Ident (..), ProperName (..), ProperNameType (..), Qualified (..), QualifiedBy (..), disqualify, runIdent, runModuleName, showIdent, showQualified)
 import Language.PureScript.PSString (PSString, decodeStringWithReplacement, prettyPrintString)
@@ -253,6 +254,9 @@ deriving instance (Monad f, Ord1 f, Ord a, Ord ty, Ord (XObjectLiteral x)) => Or
 getPat :: Alt x ty f a -> Pat x ty f a
 getPat = \case
   UnguardedAlt ps _ -> ps
+
+getResult :: Alt x t (Exp x t) (Var (BVar t) (FVar t)) -> Exp x t (Var (BVar t) (FVar t))
+getResult (UnguardedAlt _ res) =  join <$> fromScope res
 
 -- idk if we really need the identifiers?
 data BindE ty (f :: GHC.Type -> GHC.Type) a
@@ -718,7 +722,7 @@ instance (Pretty a) => Pretty (Lit x a) where
 
 instance (Pretty a, Pretty t) => Pretty (Pat x t (Exp x ty) a) where
   pretty = \case
-    VarP i n t -> pretty (runIdent i) <> pretty n <> "@" <> parens (pretty t)
+    VarP i n t -> pretty (runIdent i) <> "#" <> pretty n <> "@" <> parens (pretty t)
     WildP -> "_"
     LitP lit -> case lit of
       IntL i -> pretty i
@@ -728,7 +732,7 @@ instance (Pretty a, Pretty t) => Pretty (Pat x t (Exp x ty) a) where
       -- ConstArrayL xs -> list $ pretty <$> xs
       -- ArrayL xs -> list $ pretty <$> xs
       ObjectL _ _obj -> "TODO: Implement ObjectL pattern printer"
-    ConP _ cn ps -> pretty (runProperName . disqualify $ cn) <+> hsep (pretty <$> ps)
+    ConP _ cn ps -> parens $ pretty (runProperName . disqualify $ cn) <+> hsep (pretty <$> ps)
 
 instance (Pretty a, Pretty (KindOf ty), Pretty ty, TypeLike ty, Pretty (Exp x ty a)) => Pretty (BindE ty (Exp x ty) a) where
   pretty = \case
@@ -764,7 +768,7 @@ analyzeApp e = (,appArgs e) <$> appFun e
         go other = Just other
     appFun _ = Nothing
 
-expTy :: forall x t a. (Pretty a, Pretty (KindOf t), TypeLike t, Pretty t) => (a -> Var (BVar t) (FVar t)) -> Exp x t a -> t
+expTy :: forall x t a. (Pretty a, Pretty (KindOf t), Eq (KindOf t), TypeLike t, Pretty t) => (a -> Var (BVar t) (FVar t)) -> Exp x t a -> t
 expTy f = \case
   V x -> case f x of
     B (BVar _ t _) -> t
@@ -779,7 +783,7 @@ expTy f = \case
   TyInstE t e -> instTy t $ expTy f e
   TyAbs (BVar _ k idnt) inner -> quantify1 (runIdent idnt) k (expTy f inner)
 
-expTy' :: forall x t a. (TypeLike t, Pretty t, Pretty (KindOf t), Pretty a) => (a -> Var (BVar t) (FVar t)) -> Scope (BVar t) (Exp x t) a -> t
+expTy' :: forall x t a. (TypeLike t, Pretty t, Eq (KindOf t), Pretty (KindOf t), Pretty a) => (a -> Var (BVar t) (FVar t)) -> Scope (BVar t) (Exp x t) a -> t
 expTy' f scoped = case instantiateEither (either (V . B) (V . F)) scoped of
   V x -> case x >>= f of
     B (BVar _ t _) -> t
@@ -804,7 +808,7 @@ expTy' f scoped = case instantiateEither (either (V . B) (V . F)) scoped of
 {- | Gets the type of an application expression.
   (Name might be a bit confusing, does not apply types)
 -}
-appType :: forall x t a. (TypeLike t, Pretty t, Pretty (KindOf t), Pretty a) => (a -> Var (BVar t) (FVar t)) -> Exp x t a -> Exp x t a -> t
+appType :: forall x t a. (TypeLike t, Pretty t, Pretty (KindOf t), Eq (KindOf t), Pretty a) => (a -> Var (BVar t) (FVar t)) -> Exp x t a -> Exp x t a -> t
 appType h fe ae = doTrace "appType" msg result
   where
     errmsg = prettify [
@@ -822,13 +826,13 @@ appType h fe ae = doTrace "appType" msg result
 
     result = case unsafeAnalyzeApp (AppE fe ae) of
       (fe', ae') ->
-        quantify
-          . foldr1Trace funTy
-          . drop (length ae')
-          . splitFunTyParts
-          . snd
-          . stripQuantifiers
-          $ instantiateWithArgs (expTy h fe') (expTy h <$> ae')
+        let instantiatedWithArgs = instantiateWithArgs (expTy h fe') (expTy h <$> ae')
+        in underQuantifiers instantiatedWithArgs
+            (foldr1Trace funTy
+             . drop (length ae')
+             . splitFunTyParts
+             . snd
+             . stripQuantifiers)
 
 $(deriveShow1 ''BindE)
 

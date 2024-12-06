@@ -266,7 +266,7 @@ desugarConstructorPattern datatypes altBodyTy _e =
    in case _e of
         CaseE _resTy scrut alts@(UnguardedAlt (ConP tn _ _) _ : _) -> do
           let isConP alt = case getPat alt of ConP {} -> True; _ -> False
-              conPatAlts = takeWhile isConP alts
+              conPatAlts = winnowUnreachable $ takeWhile isConP alts
               scrutTy = expTy id scrut
           indexedBranches <- sortOn fst <$> traverse (mkIndexedBranch scrutTy) conPatAlts
           let branchTy = expTy id . snd . head $ indexedBranches
@@ -359,11 +359,7 @@ desugarConstructorPattern datatypes altBodyTy _e =
                   -}
                   irrefutable = case head irrefutables of
                     UnguardedAlt WildP irrRHS -> toExp irrRHS
-                    UnguardedAlt (VarP bvId bvIx _) irrRHS -> flip instantiate irrRHS $ \case
-                      bv@(BVar bvIx' _ bvId') ->
-                        if bvIx == bvIx' && bvId == bvId'
-                          then scrut
-                          else V . B $ bv
+                    UnguardedAlt (VarP bvId bvIx _) irrRHS -> LetE [NonRecursive bvId bvIx (fromExp scrut)] irrRHS
                     other -> error $ "Expected an irrefutable alt but got: " <> prettyStr other
               result <- assemblePartialCtorCase (CtorCase irrefutable (M.fromList indexedBranches) destructor scrutTy) allCtors
               let msg =
@@ -386,6 +382,50 @@ desugarConstructorPattern datatypes altBodyTy _e =
               pure result
         other -> pure other
   where
+    -- FIXME: This might not be the only place we need to do this. We may need to winnow unreachable literals too, or
+    --        unreachable-constructors-with-literal-args
+    -- these will all be constructors, this is only ever called after `takeWhile isConP`
+    -- REVIEW @Koz I'm not sure about this. Please look it over closely for me.
+    winnowUnreachable :: [Alt WithoutObjects Ty (Exp WithoutObjects Ty) (Var (BVar Ty) (FVar Ty))]
+                      -> [Alt WithoutObjects Ty (Exp WithoutObjects Ty) (Var (BVar Ty) (FVar Ty))]
+    winnowUnreachable [] = []
+    winnowUnreachable (alt:alts) = case getPat alt of
+      ConP tn cn ps | null ps || all irrefutable ps ->
+        let cleaned = flip filter alts $ \case
+                        (getPat -> ConP tn' cn' _) | tn' == tn && cn' == cn -> False
+                        _ -> True
+            winnowedRest = winnowUnreachable cleaned
+        in alt:winnowedRest
+      ConP tn cn ps ->
+        let cleaned = flip filter alts $ \case
+                         (getPat -> ConP tn' cn' ps') | tn' == tn && cn' == cn && and (zipWith covers ps ps') -> False
+                         _ -> True
+            winnowedRest = winnowUnreachable cleaned
+        in alt:winnowedRest
+      _ -> alt : winnowUnreachable alts
+     where
+       irrefutable = \case
+         VarP{} -> True
+         WildP  -> True
+         _ -> False
+
+       {- Whether the second argument is covered by the first.
+           A literal covers any literal equal to it.
+           A variable or wildcard covers everything.
+           A constructor pattern covers constructors of the same type and index iff all of its arguments cover all of the
+           second one's arguments. ** Not 100% on this one
+       -}
+       covers :: Pat WithoutObjects Ty (Exp WithoutObjects Ty) (Vars Ty)
+              -> Pat WithoutObjects Ty (Exp WithoutObjects Ty) (Vars Ty)
+              -> Bool
+       covers VarP{} _ = True
+       covers WildP _  = True
+       covers (LitP l1) (LitP l2) = l1 == l2
+       covers (ConP tn1 cn1 ps1) (ConP tn2 cn2 ps2)
+         = tn1 == tn2 && cn1 == cn2 && and (zipWith covers ps1 ps2)
+       covers _ _ = False 
+
+    
     assemblePartialCtorCase :: CtorCase -> [(Int, CtorDecl Ty)] -> PlutusContext (Exp WithoutObjects Ty (Var (BVar Ty) (FVar Ty)))
     assemblePartialCtorCase CtorCase {..} [] = pure acc
     assemblePartialCtorCase CtorCase {..} ((ctorIx, ctorDecl) : rest) = case M.lookup ctorIx indexedMatchArgs of
@@ -712,11 +752,7 @@ desugarLiteralPattern = \case
   -- catchall stuff we do in the ctor
   -- case eliminator
   -- NOTE (8/28): I'm not sure if the previous FIXME still matters?
-  CaseE _ scrut (UnguardedAlt (VarP bvId bvIx _) rhs : _) -> flip instantiate rhs $ \case
-    bv@(BVar bvIx' _ bvId') ->
-      if bvIx == bvIx' && bvId == bvId'
-        then scrut
-        else V . B $ bv
+  CaseE _ scrut (UnguardedAlt (VarP bvId bvIx _) rhs : _) -> LetE [NonRecursive bvId bvIx (fromExp scrut)] rhs
   other -> other
   where
     eqInt =
@@ -748,11 +784,8 @@ desugarIrrefutables ::
   Exp WithoutObjects Ty (Var (BVar Ty) (FVar Ty))
 desugarIrrefutables = transform $ \case
   CaseE _ _ (UnguardedAlt WildP rhs : _) -> toExp rhs
-  CaseE _ scrut (UnguardedAlt (VarP bvId bvIx _) rhs : _) -> flip instantiate rhs $ \case
-    bv@(BVar bvIx' _ bvId') ->
-      if bvIx == bvIx' && bvId == bvId'
-        then scrut
-        else V . B $ bv
+  CaseE _ scrut (UnguardedAlt (VarP bvId bvIx _) rhs : _) ->
+    LetE [NonRecursive bvId bvIx (fromExp scrut)] rhs
   other -> other
 
 data CtorCase = CtorCase

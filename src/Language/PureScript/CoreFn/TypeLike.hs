@@ -18,6 +18,8 @@ import Language.PureScript.Environment (pattern RecordT, pattern (:->))
 import Language.Purus.Debug (doTrace)
 import Language.Purus.Pretty.Common
 import Prettyprinter (Pretty)
+import Data.Set qualified as S
+import Data.Foldable (foldl')
 
 class TypeLike t where
   type KindOf t :: GHC.Type
@@ -91,13 +93,24 @@ safeFunArgTypes t = case splitFunTyParts t of
   [] -> []
   _ -> funArgTypes t
 
+{- Removes quantifiers from the TypeLike arg (keeps track of them), applies the
+   function arg to that type, then re-quantifies any originally quantified variables
+-}
+underQuantifiers :: forall t. (TypeLike t, Eq (KindOf t)) => t -> (t -> t) -> t
+underQuantifiers t f =
+  let (tyVars,inner) = stripQuantifiers t
+      inner'         = f inner
+      freeInInner    = freeTypeVariables inner'
+      needsQuantified = filter (`elem` freeInInner) $ (\(_,nm,ki) -> (nm,ki)) <$> tyVars
+  in foldr (uncurry quantify1) inner' (reverse needsQuantified)
+
 getInstantiations :: forall t. (TypeLike t) => t -> t -> [(Text, t)]
 getInstantiations mono poly = catMaybes mInstantiations
   where
     freeInPoly = fst <$> usedTypeVariables poly
     mInstantiations = freeInPoly <&> \nm -> (nm,) <$> instantiates nm mono poly
 
-instantiateWithArgs :: forall t. (TypeLike t, Pretty t) => t -> [t] -> t
+instantiateWithArgs :: forall t. (TypeLike t, Pretty t, Eq (KindOf t)) => t -> [t] -> t
 instantiateWithArgs f args = doTrace "instantiateWithArgs" msg result
   where
     msg =
@@ -109,7 +122,7 @@ instantiateWithArgs f args = doTrace "instantiateWithArgs" msg result
         <> prettyStr instantiations
         <> "\n  result: "
         <> prettyStr result
-    result = quantify $ replaceAllTypeVars instantiations (unQuantify f)
+    result = underQuantifiers f $ replaceAllTypeVars instantiations
     instantiations = getAllInstantiations f args
 
 getAllInstantiations ::

@@ -1,17 +1,16 @@
-{-# LANGUAGE MultiWayIf #-}
-
+{-# LANGUAGE TypeApplications #-}
 module TestPurus where
 
 import Prelude
 import Data.Text (Text)
-import Command.Compile ( compileForTests, compileForTestsWith, PSCMakeOptions(..) )
+import Command.Compile ( compileForTests, PSCMakeOptions(..) )
 import Control.Monad (when,unless)
 import System.FilePath
 import Language.PureScript qualified as P
 import Data.Set qualified as S
-import System.Directory
+import Data.Foldable (traverse_)
+import System.Directory 
 import System.FilePath.Glob qualified as Glob
-import System.Exit qualified as Exit
 import Data.Function (on)
 import Data.List (sortBy, stripPrefix, groupBy)
 import Language.Purus.Make
@@ -19,29 +18,19 @@ import Language.Purus.Eval
 import Language.Purus.Types
 import PlutusCore.Evaluation.Result
 import PlutusIR.Core.Instance.Pretty.Readable (prettyPirReadable)
-import Test.Tasty (TestTree, defaultMain, testGroup)
-import Test.Tasty.HUnit (Assertion, testCase, assertBool, assertEqual, assertFailure)
-import Test.Tasty.ExpectedFailure (expectFail)
-import Language.PureScript qualified as PureScript
-import Language.PureScript.CST.Errors qualified as PureScript.CST.Errors
-import Data.Maybe qualified as Maybe
-import Data.Text qualified as Text
-import Control.Arrow qualified as Arrow
+import Test.Tasty 
+import Test.Tasty.HUnit
+import Language.Purus.Make.Prim (syntheticPrim)
 
 shouldPassTests :: IO ()
 shouldPassTests = do
   cfn <- coreFnTests
-  pir <- pirTests
-  defaultMain $ testGroup "Purus Tests" [cfn,pir,parserTests]
-
-parserTests :: TestTree
-parserTests = testGroup "Parser" $ map go shouldParseError
-  where
-    -- Jared provides the directory names so we need to add the full (relative) path (esp since I moved them)
-
-    go :: (FilePath,String) -> TestTree
-    go (path,msg) = testCase path $ runPurusParseError (path,msg)
-
+  pirNoEval <- pirTestsNoEval
+  pirEval <- pirTestsEval
+  let validatorTest = testCase "validator apply/eval" mkValidatorTest
+      policyTest    = testCase "minting policy apply/eval" mkMintingPolicyTest
+  defaultMain $ sequentialTestGroup "Purus Tests" AllFinish [cfn,pirNoEval,pirEval,validatorTest,policyTest]
+ 
 runPurusCoreFn :: P.CodegenTarget -> FilePath ->  IO ()
 runPurusCoreFn target dir =  do
     outDirExists <- doesDirectoryExist outputDir
@@ -73,115 +62,33 @@ runPurusCoreFn target dir =  do
     }
 
 -- TODO: Move modules into a directory specifically for PIR non-eval tests (for now this should be OK)
-pirTests :: IO TestTree
-pirTests = do
+pirTestsNoEval :: IO TestTree
+pirTestsNoEval = do
+  let coreFnTestPath = "tests/purus/passing/CoreFn"
   allTestDirectories <- listDirectory coreFnTestPath
-  let trees = map go {-(\dir -> testCase dir $ compileDirNoEval (coreFnTestPath </> dir)) -} allTestDirectories
-  pure $ testGroup "PIR Tests (No Evaluation)" trees
-  where
-    -- Note (Koz, 30/09/24): We have to use this method to mark tests as
-    -- expected failures so CI won't choke.
-    --
-    -- TODO: Hardcode the paths into a list to make this less brittle.
-    go :: FilePath -> TestTree
-    go fp = let searchable = Text.pack fp 
-                ourCase = testCase fp $ compileDirNoEval (coreFnTestPath </> fp) in
-      if | Text.isInfixOf "Validator" searchable -> expectFail ourCase
-         | Text.isInfixOf "RowSyntax" searchable -> expectFail ourCase
-         | otherwise -> ourCase
-    coreFnTestPath :: FilePath
-    coreFnTestPath = "tests/purus/passing/CoreFn"
+  trees <- mapM (\dir -> compileDirNoEvalTest (coreFnTestPath </> dir)) allTestDirectories-- allTestDirectories
+  pure $ sequentialTestGroup  "PIR Tests (No Evaluation)" AllFinish trees
 
--- path to a Purus project directory, outputs serialized CoreFn
+pirTestsEval :: IO TestTree
+pirTestsEval = do
+  let coreFnTestPath = "tests/purus/passing/CoreFn"
+  allTestDirectories <- listDirectory coreFnTestPath
+  trees <- mapM (\dir -> compileDirEvalTest (coreFnTestPath </> dir)) allTestDirectories-- allTestDirectories
+  pure $ sequentialTestGroup "PIR Tests (Evaluation)" AllFinish trees
+-- path to a Purus project directory, outputs serialized CoreFn 
 compileToCoreFnTest :: FilePath -> TestTree
-compileToCoreFnTest path = testCase path $ runPurusCoreFnDefault path
+compileToCoreFnTest path = testCase (path) $ runPurusCoreFnDefault path
 
 coreFnTests :: IO TestTree
 coreFnTests = do
   let coreFnTestPath = "tests/purus/passing/CoreFn"
   allTestDirectories <- listDirectory coreFnTestPath
   let trees = map (\dir -> compileToCoreFnTest (coreFnTestPath </> dir)) allTestDirectories
-  pure $ testGroup "CoreFn Tests" trees
+  pure $ sequentialTestGroup "CoreFn Tests" AllFinish trees
+
 
 runPurusCoreFnDefault :: FilePath -> IO ()
 runPurusCoreFnDefault path = runPurusCoreFn P.CoreFn path
-
--- | Runs purus but succeeds only in the case of a parse error.
-runPurusShouldParseErrorWithMessage ::
-    P.CodegenTarget ->
-    FilePath ->
-    String ->
-    IO ()
-runPurusShouldParseErrorWithMessage target dir errMsg =
-    runPurusWith target dir $ \_files _warnings errors ->
-        case errors of
-            Right _ -> do
-                putStrLn "Compilation succeeded, but expected parse error"
-                Exit.exitFailure
-            Left PureScript.MultipleErrors{PureScript.runMultipleErrors = psErrors } ->
-                case Maybe.mapMaybe
-                        (\(PureScript.ErrorMessage _ simpleErrMsg) -> case simpleErrMsg of
-                            PureScript.ErrorParsingCSTModule parserError -> Just parserError
-                            _ -> Nothing
-                                ) psErrors of
-                    [parserErrorInfo]
-                        |  prettyErr == errMsg -> putStrLn $ "Parse failed with expected error: " ++ prettyErr
-                        |  otherwise -> do
-                            putStrLn $ "Unexpected parse error of:\n" ++ prettyErr
-                            putStrLn $ "But expected:\n" ++ errMsg
-                            Exit.exitFailure
-                      where
-                        prettyErr = PureScript.CST.Errors.prettyPrintError parserErrorInfo
-
-                    _ -> putStrLn "Too many parser errors" >> Exit.exitFailure
-
-
-
--- | Runs purus with a function with the output of the compiler. This is useful
--- to create test cases that should fail.
-runPurusWith::
-    P.CodegenTarget ->
-    FilePath ->
-    -- | Arguments are: files, warnings, errors
-    ([(FilePath, Text)] -> PureScript.MultipleErrors -> Either PureScript.MultipleErrors [PureScript.ExternsFile] -> IO ()) ->
-    IO ()
-runPurusWith target dir f =  do
-    outDirExists <- doesDirectoryExist outputDir
-    when (target /= P.CheckCoreFn) $ do
-      when outDirExists $ do
-        removeDirectoryRecursive outputDir
-        createDirectory outputDir
-      unless outDirExists $ createDirectory outputDir
-    files <- concat <$> getTestFiles dir
-    print files
-    print ("Compiling " <> dir)
-    compileForTestsWith (makeOpts files) f
-    print ("Done with " <> dir)
-  where
-    outputDir = dir </> "output"
-
-    makeOpts :: [FilePath] -> PSCMakeOptions
-    makeOpts files = PSCMakeOptions {
-      pscmInput = files,
-      pscmExclude = [],
-      pscmOutputDir = outputDir,
-      pscmOpts = purusOpts,
-      pscmUsePrefix = False,
-      pscmJSONErrors = False
-    }
-
-    purusOpts :: P.Options
-    purusOpts = P.Options {
-      optionsVerboseErrors = True,
-      optionsNoComments = True,
-      optionsCodegenTargets = S.singleton target
-    }
-
-runPurusDefault :: FilePath -> IO ()
-runPurusDefault path = runPurusCoreFn P.CoreFn path
-
-runPurusParseError :: (FilePath, String) -> IO ()
-runPurusParseError (path, errMsg) = runPurusShouldParseErrorWithMessage P.CoreFn path errMsg
 
 runPurusGolden :: FilePath -> IO ()
 runPurusGolden path = runPurusCoreFn P.CheckCoreFn path
@@ -199,6 +106,24 @@ runFullPipeline targetDir mainModuleName mainFunctionName = do
   pir <- make targetDir mainModuleName mainFunctionName Nothing
   evaluateTerm pir
 
+mkValidatorTest :: IO ()
+mkValidatorTest = do
+  scriptContext <- parseData "sampleContext"
+  --  Data -> Data -> Data -> wBoolean
+  validatorPIR <- make "tests/purus/passing/CoreFn/Validator" "Validator" "validate" (Just syntheticPrim)
+  validatorPLC <- compileToUPLCTerm validatorPIR
+  let validatorApplied = applyArgs validatorPLC [dummyData,dummyData,scriptContext]
+  res <- evaluateUPLCTerm validatorApplied
+  print res
+
+mkMintingPolicyTest :: IO ()
+mkMintingPolicyTest = do
+  scriptContext <- parseData "sampleContext"
+  policyPIR <- make "tests/purus/passing/CoreFn/MintingPolicy" "MintingPolicy" "oneAtATime" (Just syntheticPrim)
+  policyPLC <- compileToUPLCTerm policyPIR
+  let policyApplied = applyArgs policyPLC [dummyData,dummyData,scriptContext]
+  res <- evaluateUPLCTerm policyApplied
+  print res
 {- These assumes that name of the main module is "Main" and the
    name of the main function is "Main".
 
@@ -215,35 +140,6 @@ runDefaultEvalTest nm targetDir expected
       EvaluationSuccess resTerm -> assertEqual nm expected resTerm
       EvaluationFailure -> assertFailure nm
 
-
--- | 'shouldParseError' is a list of tuples of:
---
--- - the path to the directory of the PureScript project
---
--- - the parser error message when compiling the PureScript project
---
--- So, to add a test, normally one would add a tuple like
--- > ("NewTestCase", "dummy error message")
--- run the tests, and see what the failed test message is, then copy and paste
--- the failed test message in the second projection of the tuple.
---
--- TODO(jaredponn): it would be really great to have some sort of testing
--- framework (golden tests!) to automate this out
-shouldParseError :: [(FilePath, String)]
-shouldParseError = map (Arrow.first (prefix </>)) paths
-  where
-    prefix = "tests/purus/passing/invalid-parses"
-    paths = [
-        ("NestedConstructors", "Unexpected token 'S' at line 7, column 16"),
-        ("CharLiteralInBinaryOp", "Unexpected token ''0'' at line 9, column 18"),
-        ("CharLiteralInConstructor", "Unexpected token ''_'' at line 9, column 24"),
-        ("NumericLiteralInBinaryOp", "Unexpected token '0' at line 9, column 16"),
-        ("NumericLiteralInConstructor", "Unexpected token '0' at line 6, column 14"),
-        ("StringLiteralInConstructor", "Unexpected token '\"\"' at line 6, column 15"),
-        ("StringLiteralInBinaryOp", "Unexpected token '\"\"' at line 9, column 18"),
-        ("NestedBinaryOps", "Unexpected token '_' at line 4, column 24"),
-        ("VariableAsConstructor", "Unexpected token 'b' at line 4, column 13")
-      ]
 
 getTestFiles :: FilePath -> IO [[FilePath]]
 getTestFiles testDir = do

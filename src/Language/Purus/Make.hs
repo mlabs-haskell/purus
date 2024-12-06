@@ -39,7 +39,7 @@ import Language.PureScript.Names (
  )
 
 import Language.Purus.Eval
-import Language.Purus.IR.Utils (IR_Decl, foldBinds)
+import Language.Purus.IR.Utils (IR_Decl, foldBinds, stripSkolemsFromExpr)
 import Language.Purus.Pipeline.CompileToPIR (compileToPIR)
 import Language.Purus.Pipeline.DesugarCore (desugarCoreModule)
 import Language.Purus.Pipeline.DesugarObjects (
@@ -63,13 +63,14 @@ import Language.Purus.Pipeline.Monad (
   runPlutusContext,
  )
 import Language.Purus.Pretty.Common (prettyStr, docString)
-import Language.Purus.Prim.Data (primDataPS)
+import Language.Purus.Prim.Data (primDataPS, primData)
 import Language.Purus.Types (PIRTerm, PLCTerm, initDatatypeDict)
 import Language.Purus.Utils (
   decodeModuleIO,
   findDeclBodyWithIndex, findMain,
  )
 import Language.Purus.Make.Prim (syntheticPrim)
+import Language.Purus.Pipeline.EliminateCases.EliminateNested (eliminateNestedCases)
 
 import Control.Monad.Except (MonadError (throwError), when)
 import Control.Monad.State (evalStateT)
@@ -91,7 +92,12 @@ import Language.Purus.Pipeline.Lift.Types
 import System.Directory
 
 
--- import Debug.Trace (traceM)
+import Debug.Trace (traceM)
+import Language.Purus.IR (expTy)
+
+-- TODO: Move the stuff that needs this to the tests
+import Test.Tasty
+import Test.Tasty.HUnit
 -- import PlutusIR.Core.Instance.Pretty.Readable (prettyPirReadable)
 
 {-  Compiles a main function to PIR, given its module name, dependencies, and a
@@ -126,7 +132,7 @@ compile primModule orderedModules mainModuleName mainFunctionName =
     go = do
       (summedModule, dsCxt) <- runDesugarCore $ desugarCoreModules primModule orderedModules
       let
-        --traceBracket lbl msg = traceM ("\n" <> lbl <> "\n\n" <> msg <> "\n\n")
+        traceBracket lbl msg =  pure () -- traceM ("\n" <> lbl <> "\n\n" <> msg <> "\n\n")
         decls = moduleDecls summedModule
         declIdentsSet = foldBinds (\acc nm _ -> S.insert nm acc) S.empty decls
         couldn'tFindMain n =
@@ -142,26 +148,32 @@ compile primModule orderedModules mainModuleName mainFunctionName =
       -- traceM $ "Found main function Index: " <> show mainFunctionIx
       mainFunctionBody <- note (couldn'tFindMain 2) $ findDeclBodyWithIndex mainFunctionName mainFunctionIx decls
       --traceBracket ("Found main function body for " <> prettyStr mainFunctionName <> ":") (prettyStr mainFunctionBody)
+      --traceBracket ("main function type  ") $ prettyStr (expTy id  mainFunctionBody)
+
       inlined <- runInline summedModule $ do
         liftResult <- lift (mainFunctionName, mainFunctionIx) mainFunctionBody
-        --traceBracket "lift result" (prettyStr liftResult) --"free variables in lift result" (prettyStr . M.toList . fmap S.toList $ oosInLiftResult liftResult)
+        traceBracket "lift result" (prettyStr liftResult) --"free variables in lift result" (prettyStr . M.toList . fmap S.toList $ oosInLiftResult liftResult)
         inlineResult <- inline liftResult
-        -- traceBracket "free variables in inline result" (prettyStr .  S.toList $ findOutOfScopeVars inlineResult)
+        --traceBracket "free variables in inline result" (prettyStr .  S.toList $ findOutOfScopeVars inlineResult)
         pure inlineResult
-      --traceBracket "Done inlining. Result:" $ prettyStr inlined
+      traceBracket "Done inlining. Result:" $  prettyStr inlined
       let !instantiated = applyPolyRowArgs $ instantiateTypes inlined
-      --raceBracket "Done instantiating types. Result:" $ prettyStr instantiated
+      --traceBracket "Done instantiating types. Result:" $ prettyStr instantiated
       withoutObjects <- instantiateTypes <$> runCounter (desugarObjects instantiated)
+
       --traceBracket  "Desugared objects. Result:\n" $ prettyStr withoutObjects
-      datatypes <- runCounter $ desugarObjectsInDatatypes (moduleDataTypes summedModule)
+      datatypes <- runCounter $ desugarObjectsInDatatypes (primDataPS <> moduleDataTypes summedModule)
       --traceM "Desugared datatypes"
       runPlutusContext initDatatypeDict $ do
-        generateDatatypes withoutObjects datatypes
+        noNestedCases <- eliminateNestedCases datatypes withoutObjects
+        when (noNestedCases /= withoutObjects) $ do
+          traceBracket "Eliminated nested cases:\n" (prettyStr noNestedCases)
+        generateDatatypes (moduleName summedModule) mainFunctionName noNestedCases datatypes
         -- traceM "Generated PIR datatypes"
-        withoutCases <- eliminateCases datatypes withoutObjects
-        -- traceBracket "Eliminated Cases. Result:" $  prettyStr withoutCases
+        withoutCases <- eliminateCases datatypes noNestedCases 
+        traceBracket "Eliminated Cases. Result:" $  prettyStr withoutCases
         pir <- compileToPIR datatypes withoutCases
-        -- traceBracket "Compiled to PIR. Result: " $ docString (prettyPirReadable pir)
+        traceBracket  "Compiled to PIR. Result:\n"  $ docString (prettyPirReadable pir)
         -- traceBracket "PIR Raw:" $ LT.unpack (pShowNoColor pir)
         pure pir 
 
@@ -247,7 +259,7 @@ makeForTest main = make "tests/purus/passing/CoreFn/Misc" "Lib" main  (Just synt
 -}
 evalForTest_ :: Text -> IO ()
 evalForTest_ main = (fst <$> evalForTest main) >>= \case
-  EvaluationSuccess res -> print $ prettyPirReadable res
+  EvaluationSuccess res -> pure () -- print $ prettyPirReadable res
   _ -> error $ "failed to evaluate " <> T.unpack main
 
 evalForTest :: Text -> IO (EvaluationResult PLCTerm, [Text])
@@ -292,7 +304,7 @@ sanityCheck = evalTestModule "tests/purus/passing/CoreFn/Misc/output/Lib/Lib.cfn
 -- takes a path to a project dir, returns (ModuleName,Decl Identifier)
 allValueDeclarations :: FilePath -> IO [(ModuleName,Text)]
 allValueDeclarations path = do
-  allModules <- getFilesToCompile path >>= modulesInDependencyOrder
+  allModules <- getFilesToCompile path >>= \files -> print files >> modulesInDependencyOrder files 
   let allDecls = map (\mdl -> (moduleName mdl, moduleDecls mdl)) allModules
       go mn  = \case
         NonRec _ ident _ -> [(mn,runIdent ident)]
@@ -320,6 +332,56 @@ compileDirNoEval path = do
       -- putStrLn msg
       hPutStr h msg
       hClose h 
+
+-- Makes a TestTree. Should probably be in the test dir but don't feel like sorting out imports there
+compileDirNoEvalTest :: FilePath -> IO TestTree
+compileDirNoEvalTest path = do
+  allDecls <- allValueDeclarations path
+  let allModuleNames = runModuleName . fst <$> allDecls
+  forM_ allModuleNames $ \mn -> do
+    let outFilePath = path </> T.unpack mn <> "_pir_no_eval.txt"
+    outFileExists <- doesFileExist outFilePath
+    when outFileExists $
+      removeFile outFilePath
+  testCases <-  forM allDecls $ \(runModuleName -> mn, declNm) -> do
+    let outFilePath = path </> T.unpack mn <> "_pir_no_eval.txt"
+        testNm = path <> " - " <> T.unpack mn <> ":" <> T.unpack declNm
+    pure $ testCase testNm $ do
+     withFile outFilePath AppendMode $ \h -> do
+       result <- make path mn declNm (Just syntheticPrim)
+       let nmStr = T.unpack declNm
+           pirStr = docString $ prettyPirReadable result
+           msg = "\n------ " <> nmStr <> " ------\n"
+                <>  pirStr
+                <> "\n------------\n"
+       -- putStrLn msg
+       hPutStr h msg
+       hClose h
+  pure $ testGroup "PIR Compilation (No Eval)" testCases 
+
+compileDirEvalTest :: FilePath -> IO TestTree
+compileDirEvalTest path = do
+  allDecls <- allValueDeclarations path
+  let allModuleNames = runModuleName . fst <$> allDecls
+  forM_ allModuleNames $ \mn -> do
+    let outFilePath = path </> T.unpack mn <> "_pir_eval.txt"
+    outFileExists <- doesFileExist outFilePath
+    when outFileExists $
+      removeFile outFilePath
+  testCases <-  forM allDecls $ \(runModuleName -> mn, declNm) -> do
+    let outFilePath = path </> T.unpack mn <> "_pir_eval.txt"
+        testNm = path <> " - " <> T.unpack mn <> ":" <> T.unpack declNm
+    pure $ testCase testNm $ do
+     withFile outFilePath AppendMode $ \h -> do
+       result <- snd <$> (evaluateTerm =<< make path mn declNm (Just syntheticPrim))
+       let nmStr = T.unpack declNm
+           pirStr = prettyStr result
+           msg = "\n------ " <> nmStr <> " ------\n"
+                <>  pirStr
+                <> "\n------------\n"
+       hPutStr h msg
+       hClose h
+  pure $ testGroup "PIR Evaluation" testCases
 
 compileModuleNoEval :: FilePath -> IO ()
 compileModuleNoEval path = do

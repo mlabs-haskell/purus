@@ -202,10 +202,11 @@ updateAllBinds deepDict prunedBody _binds = do
       msg =
         prettify
           [ "Pruned body:\n " <> prettyStr prunedBody
-         -- , "AllDeclIdents:\n " <> prettyStr allLiftedIdents
+          , "AllDeclIdents:\n " <> prettyStr allLiftedIdents
           , "AdjustedBody:\n " <> prettyStr adjustedBody
-          -- , "Binds:\n" <> concatMap (\x -> prettyStr x <> "\n\n") binds
-         --  , "Deep Dict:\n" <> prettyStr (M.toList (S.toList <$> deepDict))
+          , "Binds:\n" <> concatMap (\x -> prettyStr x <> "\n\n") binds
+         , "Deep Dict:\n" <> prettyStr (M.toList (S.toList <$> deepDict))
+         , "Old to new:\n" <> prettyStr (M.toList (M.toList <$> allOldToNew))
           ]
   doTraceM "updateAllBinds" msg
   pure (binds, adjustedBody)
@@ -242,6 +243,7 @@ updateAllBinds deepDict prunedBody _binds = do
             Nothing -> x
           _ -> x
         thisOldToNew = allOldToNew M.! declNm -- has to be here if it's in dict
+
     regenBVar :: forall t. BVar t -> Inline (BVar t)
     regenBVar (BVar _ bvTy bvIdent) = do
       u <- next
@@ -267,7 +269,7 @@ updateAllBinds deepDict prunedBody _binds = do
     mkUpdateCallSiteLifted :: Set (BVar PurusType) -> (Ident, Int) -> MonoExp -> MonoExp
     mkUpdateCallSiteLifted new (idnt, indx) me = case toHole me of
       Just (Hole hId hIx _)
-        | hIx == indx && hId == idnt -> foldl' AppE me (V . B <$> S.toList new)
+        | hIx == indx && hId == idnt -> foldr (flip AppE) me (V . B <$>  reverse (S.toList new))
         | otherwise -> me
       Nothing -> me
 
@@ -277,14 +279,14 @@ updateAllBinds deepDict prunedBody _binds = do
       [BVar PurusType] ->
       MonoExp ->
       MonoExp
-    mkUpdateLiftedLambdas oldToNew new e = foldl' (\rhs bv -> LamE bv (abstr rhs)) e new
+    mkUpdateLiftedLambdas oldToNew new e = foldr (\bv rhs -> LamE bv (abstr rhs)) e (new)
       where
         bvf bv = case M.lookup bv oldToNew of Just bvnew -> Just bvnew; Nothing -> Just bv
         abstr = abstract $ \case B bv -> bvf bv; _ -> Nothing
 
     {-
        This correspond to (1) in [NOTE 1], i.e., it is used for updating the call sites of the
-       declarations being lifted *in the body where of the expression where the lifted declarations were
+       declarations being lifted *in the body of the expression where the lifted declarations were
        originally let- bound.
 
        When updating the call site, we don't need to re-index variables b/c the originals *Must* be
@@ -297,7 +299,9 @@ updateAllBinds deepDict prunedBody _binds = do
       Just hole@(Hole hId hIx _)
         | hIx == indx && hId == idnt ->
             let deep = S.toList $ deepDict M.! nm
-             in foldl' AppE (fromHole hole) (V . B <$> deep)
+                result = foldr (flip AppE) (fromHole hole) (V . B <$> deep)
+                msg = prettify ["target: " <> prettyStr nm, "input expr:\n" <> prettyStr x, "deep:\n" <> prettyStr deep, "result:\n" <> prettyStr result]
+             in doTrace "updateCallSiteBody" msg result 
         | otherwise -> x
       Nothing -> x
 
@@ -370,6 +374,7 @@ lift mainNm _e = do
   let msg =
         prettify
           [ "Result\n" <> prettyStr result
+          , "Input:\n" <> prettyStr e
           ]
   doTraceM "lift" msg
   pure result
@@ -480,7 +485,7 @@ lift mainNm _e = do
         collectAlts :: ScopeSummary
                     -> [Alt WithObjects PurusType (Exp WithObjects PurusType) (Vars PurusType)]
                     -> (Set ToLift, [Alt WithObjects PurusType (Exp WithObjects PurusType) (Vars PurusType)])
-        collectAlts scopSum = foldl' (\(accLift,accAlts) (UnguardedAlt pat body) ->
+        collectAlts scopSum = foldr (\ (UnguardedAlt pat body)  (accLift,accAlts) ->
                                           let patBinders = stripSkolemsBV <$> extractPatVarBinders pat
                                               newScope = bindLambdaVars patBinders scopSum
                                               (lifted,body') = asExp body $ collect newScope
