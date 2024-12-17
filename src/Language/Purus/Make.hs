@@ -359,6 +359,32 @@ compileDirNoEvalTest path = do
        hClose h
   pure $ testGroup "PIR Compilation (No Eval)" testCases 
 
+-- Makes a TestTree. Should probably be in the test dir but don't feel like sorting out imports there
+compileDirNoEvalTest' :: FilePath -> IO [(String,IO ())]
+compileDirNoEvalTest' path = do
+  allDecls <- allValueDeclarations path
+  let allModuleNames = runModuleName . fst <$> allDecls
+  forM_ allModuleNames $ \mn -> do
+    let outFilePath = path </> T.unpack mn <> "_pir_no_eval.txt"
+    outFileExists <- doesFileExist outFilePath
+    when outFileExists $
+      removeFile outFilePath
+  forM allDecls $ \(runModuleName -> mn, declNm) -> do
+    let outFilePath = path </> T.unpack mn <> "_pir_no_eval.txt"
+        testNm = path <> " - " <> T.unpack mn <> ":" <> T.unpack declNm
+    (testNm,) <$> do
+     withFile outFilePath AppendMode $ \h -> pure $ do
+       result <- make path mn declNm (Just syntheticPrim)
+       let nmStr = T.unpack declNm
+           pirStr = docString $ prettyPirReadable result
+           msg = "\n------ " <> nmStr <> " ------\n"
+                <>  pirStr
+                <> "\n------------\n"
+       -- putStrLn msg
+       hPutStr h msg
+       hClose h
+
+
 compileDirEvalTest :: FilePath -> IO TestTree
 compileDirEvalTest path = do
   allDecls <- allValueDeclarations path

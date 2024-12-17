@@ -80,6 +80,7 @@ import Language.PureScript.Types
 import Debug.Trace
 import Language.PureScript.Pretty.Values (renderValue)
 import Language.Purus.Pretty.Types (prettyTypeStr)
+import Language.PureScript.Constants.Prim qualified as C
 
 moduleTraces :: Bool
 moduleTraces = False
@@ -216,7 +217,7 @@ typesOf bindingGroupType moduleName vals = goTrace ("TYPESOF: " <> T.unpack (run
   finalState <- get
   let replaceTypes' = replaceTypes (checkSubstitution finalState)
       runTypeSearch' gen = runTypeSearch (guard gen $> foldMap snd inferred) finalState
-      raisePreviousWarnings gen = escalateWarningWhen isHoleError . tell . onErrorMessages (runTypeSearch' gen . replaceTypes')
+      raisePreviousWarnings gen = escalateWarningWhen (\er -> isHoleError er || isIncompleteCoverageError er) . tell . onErrorMessages (runTypeSearch' gen . replaceTypes')
 
   raisePreviousWarnings False wInfer
   forM_ tys $ \(shouldGeneralize, ((_, (_, _)), w)) ->
@@ -258,6 +259,10 @@ typesOf bindingGroupType moduleName vals = goTrace ("TYPESOF: " <> T.unpack (run
     isHoleError :: ErrorMessage -> Bool
     isHoleError (ErrorMessage _ HoleInferredType {}) = True
     isHoleError _ = False
+
+    isIncompleteCoverageError :: ErrorMessage -> Bool
+    isIncompleteCoverageError (ErrorMessage _ (NoInstanceFound (Constraint _ C.Partial _ _ (Just PartialConstraintData{})) _ _ )) = True
+    isIncompleteCoverageError _ = False 
 
 {- | A binding group contains multiple value definitions, some of which are typed
 and some which are not.

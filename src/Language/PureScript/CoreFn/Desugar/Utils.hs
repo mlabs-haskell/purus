@@ -562,8 +562,7 @@ binderToCoreFn dict env mn _ss (A.LiteralBinder ss lit) =
 binderToCoreFn _ _ _ ss A.NullBinder =
   NullBinder (ss, [], Nothing)
 binderToCoreFn dict _ _ _ss vb@(A.VarBinder ss name) =
-  trace ("binderToCoreFn: " <> show vb) $
-    VarBinder (ss, [], Nothing) name (dict M.! name)
+  VarBinder (ss, [], Nothing) name (dict M.! name)
 binderToCoreFn dict env mn _ss (A.ConstructorBinder ss dctor@(Qualified mn' _) bs) =
   let (_, tctor, _, _) = lookupConstructor env dctor
       args = binderToCoreFn dict env mn _ss <$> bs
