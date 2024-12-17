@@ -23,6 +23,7 @@ import System.Directory (getCurrentDirectory)
 import System.FilePath.Glob (glob)
 import System.IO (hPutStr, hPutStrLn, stderr, stdout)
 import System.IO.UTF8 (readUTF8FilesT)
+import Language.PureScript.Errors (MultipleErrors(..))
 
 data PSCMakeOptions = PSCMakeOptions
   { pscmInput        :: [FilePath]
@@ -72,6 +73,7 @@ compile PSCMakeOptions{..} = do
   printWarningsAndErrors (P.optionsVerboseErrors pscmOpts) pscmJSONErrors moduleFiles makeWarnings makeErrors
   exitSuccess
 
+-- No warnings (makes tests output impossible to read)
 compileForTests :: PSCMakeOptions -> IO ()
 compileForTests PSCMakeOptions{..} = do
   included <- globWarningOnMisses warnFileTypeNotFound pscmInput
@@ -83,13 +85,13 @@ compileForTests PSCMakeOptions{..} = do
                              ]
   else do
     moduleFiles <- readUTF8FilesT input
-    (makeErrors, makeWarnings) <- runMake pscmOpts $ do
+    (makeErrors, _) <- runMake pscmOpts $ do
       ms <- CST.parseModulesFromFiles id moduleFiles
       let filePathMap = M.fromList $ map (\(fp, pm) -> (P.getModuleName $ CST.resPartial pm, Right fp)) ms
       foreigns <- inferForeignModules filePathMap
       let makeActions = buildMakeActions pscmOutputDir filePathMap foreigns pscmUsePrefix
       P.make makeActions (map snd ms)
-    printWarningsAndErrors (P.optionsVerboseErrors pscmOpts) pscmJSONErrors moduleFiles makeWarnings makeErrors
+    printWarningsAndErrors (P.optionsVerboseErrors pscmOpts) pscmJSONErrors moduleFiles (MultipleErrors []) makeErrors
 
 warnFileTypeNotFound :: String -> IO ()
 warnFileTypeNotFound = hPutStrLn stderr . ("purs compile: No files found using pattern: " ++)

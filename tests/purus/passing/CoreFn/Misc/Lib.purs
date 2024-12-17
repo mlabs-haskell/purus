@@ -509,3 +509,10 @@ testNestedSmaller = case _ of
   Nothing -> 0
   Just Nothing -> 1
   Just (Just x) -> x
+
+testIncompleteCases :: Int -> Int
+testIncompleteCases = case _ of
+  0 -> 0
+  1 -> 1
+  2 -> 2
+  3 -> 3
