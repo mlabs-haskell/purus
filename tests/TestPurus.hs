@@ -1,5 +1,5 @@
 {-# LANGUAGE TypeApplications #-}
-module TestPurus where
+module TestPurus (shouldPassTests) where
 
 import Prelude
 import Data.Text (Text)
@@ -9,7 +9,6 @@ import Control.Monad (when,unless, void)
 import System.FilePath
 import Language.PureScript qualified as P
 import Data.Set qualified as S
-import Data.Foldable (traverse_)
 import System.Directory
 import System.FilePath.Glob qualified as Glob
 import Data.Function (on)
@@ -17,26 +16,24 @@ import Data.List (sortBy, stripPrefix, groupBy)
 import Language.Purus.Make
 import Language.Purus.Eval
 import Language.Purus.Types
-import PlutusCore.Evaluation.Result
-import PlutusIR.Core.Instance.Pretty.Readable (prettyPirReadable)
 import Test.Tasty
 import Test.Tasty.HUnit
 import Language.Purus.Make.Prim (syntheticPrim)
 import Language.PureScript (ModuleName, runModuleName)
-import Control.Concurrent ( threadDelay )
-import Test.Tasty.Providers
-import Control.Exception
+import Control.Concurrent.STM 
+import Data.Map (Map)
+import Data.Map qualified as M
+import Unsafe.Coerce
+import Control.Exception (SomeException, try, throwIO, Exception (displayException))
 
 shouldPassTests :: IO ()
-shouldPassTests = defaultShouldPassTests >>= defaultMain
-{-
-  do
-  cfn <- coreFnTests
-  pirNoEval <- pirTestsNoEval
-  pirEval <- pirTestsEval
-  let validatorTest = testCase "validator apply/eval" mkValidatorTest
-      policyTest    = testCase "minting policy apply/eval" mkMintingPolicyTest
-  defaultMain $ sequentialTestGroup "Purus Tests" AllFinish [cfn,pirNoEval,pirEval,validatorTest,policyTest]
+shouldPassTests = do
+  generatedTests <- mkShouldPassTests "tests/purus/passing/CoreFn"
+  let allTests = testGroup "Passing" [generatedTests,validatorTest,mintingPolicyTest]
+  defaultMain allTests
+
+{- The PureScript -> CoreFn part of the pipeline. Need to run this to output the CoreFn
+   files which the other tests depend upon. (The Purus pipeline starts by parsing those CoreFn files)
 -}
 runPurusCoreFn :: P.CodegenTarget -> FilePath ->  IO ()
 runPurusCoreFn target dir =  do
@@ -56,7 +53,7 @@ runPurusCoreFn target dir =  do
       pscmInput = files,
       pscmExclude = [],
       pscmOutputDir = outputDir,
-      pscmOpts = purusOpts,
+      pscmOpts = unsafeCoerce purusOpts, -- IT IS THE RIGHT TYPE BUT HLS WILL NOT SHUT UP ABOUT IT
       pscmUsePrefix = False,
       pscmJSONErrors = False
     }
@@ -68,93 +65,104 @@ runPurusCoreFn target dir =  do
       optionsCodegenTargets = S.singleton target
     }
 
-mkPIRTests :: FilePath -> IO [(ModuleName,Text)] -> (PIRTerm -> IO ()) ->  IO [TestTree]
-mkPIRTests path ioInput f = map mkCase <$> ioInput
+{- Generated PIR non-evaluation tests (i.e. only checks that the *Purus* pipeline reaches the PIR stage,
+   does not typecheck/compile/evaluate PIR).
+
+   The TVar should be passed in empty. The path should be the full path to the project directory. The
+   list of declarations is passed in primarily to make the types line up (can't write this without
+   returning an IO [TestTree] if we don't pass it in afaict)
+-}
+-- TODO? withResource? We can do it w/ the TVar arg I think
+mkPIRNoEval :: TVar (Map (ModuleName,Text) PIRTerm) -> FilePath -> [(ModuleName,Text)] ->  [TestTree]
+mkPIRNoEval tv path ioInput  =  mkCase <$> ioInput
   where
     mkCase :: (ModuleName, Text) -> TestTree
-    mkCase (runModuleName -> mn,dn) = testCase testName $ do
-        f =<< make path mn dn (Just syntheticPrim) 
+    mkCase (mn'@(runModuleName -> mn),dn) = testCase testName $ do
+        term <-  make path mn dn (Just syntheticPrim)
+        atomically $ modifyTVar' tv (M.insert (mn',dn) term)
      where
        testName = T.unpack mn <> "." <> T.unpack dn
 
-defaultShouldPassTests :: IO TestTree
-defaultShouldPassTests = mkShouldPassTests "tests/purus/passing/CoreFn"
+{- Generates automated evaluation tests.
 
+   The first argument is an evaluation function. We want this as parameter so we can use (e.g.)
+   variants that don't throw an error if the execution budget is exceeded.
 
+   Second argument is the name of the test tree being generated.
 
+   Third argument is a TVar which should be *full* (i.e. non-empty)
+
+   Fourth argument is a list of declarations, which, as before, is mainly used to make the types line up.
+-}
+mkPIREvalMany :: (PIRTerm -> IO ())
+              -> String
+              -> TVar (Map (ModuleName,Text) PIRTerm)
+              -> [(ModuleName,Text)]
+              -> TestTree
+mkPIREvalMany f nm tv decls = withResource (readTVarIO tv) (\_ -> pure ()) $ \tvIO ->
+  testGroup nm $ mkPIREval1 tvIO <$> decls
+ where
+  mkPIREval1 :: IO (Map (ModuleName,Text) PIRTerm) -> (ModuleName,Text) -> TestTree
+  mkPIREval1 dict declNm@(runModuleName -> mn,dn) = do
+    let testName =  T.unpack mn <> "." <> T.unpack dn
+    testCase testName $ do
+      dict' <- dict
+      case M.lookup declNm dict' of
+        Nothing -> error $ "failure: no PIRTerm compiled at " <> show testName
+        Just term -> void $ f term
+
+{- Full pipeline tests for things we expect will succeed at the CoreFn -> PIR -> PLC -> UPLC -> Evaluation
+   path. Reads from the modules in the `tests/purus/passing/CoreFn` directory.
+
+   All functions tested here *should terminate*.
+-}
 mkShouldPassTests :: FilePath -> IO TestTree
 mkShouldPassTests testDirPath = do
   allProjectDirectories <- listDirectory testDirPath
-  testGroup "Purus Passing" <$> traverse (go . (testDirPath </>)) allProjectDirectories
+  testGroup "Generated (Passing)" <$> traverse (go . (testDirPath </>)) allProjectDirectories
  where
-
    go :: FilePath -> IO TestTree
-   go path = do      --let coreFnTest = testCase ("CoreFn: " <> path) (void $ runPurusCoreFnDefault path) -- this is stupid but idk how to get it to show up in the output unless we do it twice
-      pirNoEval <- testGroup "No Eval" <$> mkPIRTests path initialize (void . pure)
-      pirEval   <- testGroup "Eval" <$> mkPIRTests path initialize (void . evaluateTerm)
-      pure $ testGroup ("PIR: " <> show path) [pirNoEval,pirEval]
-
-
+   go path = try @SomeException initialize >>= \case
+     Left err -> pure .  testCase ("PIR: " <> show path) $ assertFailure ("Failed during CoreFn compilation with reason: " <> displayException err)
+     Right decls -> do
+      declDict <- newTVarIO M.empty
+      let pirNoEval = testGroup "No Eval" $ mkPIRNoEval declDict path decls
+          pirEvalPlc   =  mkPIREvalMany (void . evaluateTerm) "Eval (PLC)" declDict decls
+          pirEvalUplc = mkPIREvalMany convertToUPLCAndEvaluate "Eval (UPLC)" declDict decls
+      pure $ sequentialTestGroup  ("PIR: " <> show path) AllFinish [pirNoEval,pirEvalPlc,pirEvalUplc]
     where
       initialize :: IO [(ModuleName,Text)]
       initialize = do
          void $ runPurusCoreFnDefault path
-         threadDelay 5000 -- not sure if the write will complete before the previous line finishes evaluating
          allValueDeclarations path
 
+{- Runs the PureScript -> CoreFn part of the compiler pipeline in default mode (i.e. not in Golden mode, i.e.
+   this actually writes output files in the project directories)
+-}
 runPurusCoreFnDefault :: FilePath -> IO ()
 runPurusCoreFnDefault path = runPurusCoreFn P.CoreFn path
 
-runPurusGolden :: FilePath -> IO ()
-runPurusGolden path = runPurusCoreFn P.CheckCoreFn path
-
-runFullPipeline_ :: FilePath -> Text -> Text -> IO ()
-runFullPipeline_ targetDir mainModuleName mainFunctionName = do
-  runPurusCoreFnDefault targetDir
-  pir <- make targetDir mainModuleName mainFunctionName Nothing
-  result <- evaluateTerm pir
-  print $ prettyPirReadable result
-
-runFullPipeline :: FilePath -> Text -> Text -> IO (EvaluationResult PLCTerm, [Text])
-runFullPipeline targetDir mainModuleName mainFunctionName = do
-  runPurusCoreFnDefault targetDir
-  pir <- make targetDir mainModuleName mainFunctionName Nothing
-  evaluateTerm pir
-
-mkValidatorTest :: IO ()
-mkValidatorTest = do
+{- Manual tests for scripts. These require us to apply arguments and parse an example script context. 
+-}
+-- TODO: Change these so they run through the UPLC evaluator using the new machinery
+validatorTest :: TestTree
+validatorTest = testCase "Basic Validator Test" $ do
   scriptContext <- parseData "sampleContext"
-  --  Data -> Data -> Data -> wBoolean
+  --  Data -> Data -> Data -> Boolean
   validatorPIR <- make "tests/purus/passing/CoreFn/Validator" "Validator" "validate" (Just syntheticPrim)
   validatorPLC <- compileToUPLCTerm validatorPIR
   let validatorApplied = applyArgs validatorPLC [dummyData,dummyData,scriptContext]
   res <- evaluateUPLCTerm validatorApplied
   print res
 
-mkMintingPolicyTest :: IO ()
-mkMintingPolicyTest = do
+mintingPolicyTest :: TestTree
+mintingPolicyTest = testCase "Basic Minting Policy Test" $ do
   scriptContext <- parseData "sampleContext"
   policyPIR <- make "tests/purus/passing/CoreFn/MintingPolicy" "MintingPolicy" "oneAtATime" (Just syntheticPrim)
   policyPLC <- compileToUPLCTerm policyPIR
   let policyApplied = applyArgs policyPLC [dummyData,dummyData,scriptContext]
   res <- evaluateUPLCTerm policyApplied
   print res
-{- These assumes that name of the main module is "Main" and the
-   name of the main function is "Main".
-
-   For now this recompiles everything from scratch
--}
-
-runDefaultCheckEvalSuccess :: String -> FilePath ->  Assertion
-runDefaultCheckEvalSuccess nm targetDir
-  = (fst <$> runFullPipeline targetDir "Main" "main") >>= assertBool nm . isEvaluationSuccess
-
-runDefaultEvalTest :: String -> FilePath -> PLCTerm -> Assertion
-runDefaultEvalTest nm targetDir expected
-  = (fst <$> runFullPipeline targetDir "Main" "main") >>= \case
-      EvaluationSuccess resTerm -> assertEqual nm expected resTerm
-      EvaluationFailure -> assertFailure nm
-
 
 getTestFiles :: FilePath -> IO [[FilePath]]
 getTestFiles testDir = do

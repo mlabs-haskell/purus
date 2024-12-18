@@ -2,8 +2,11 @@
 module Language.Purus.Eval (
   compileToUPLC,
   compileToUPLCTerm,
+  convertToUPLCAndEvaluate,
   evaluateUPLCTerm,
   evaluateTerm,
+  evaluateTermU_,
+  evaluateTermU,
   parseData,
   (#),
   applyArgs,
@@ -22,7 +25,7 @@ import Control.Monad (join, void)
 import Control.Monad.Reader (Reader, runReader)
 import Control.Monad.Trans.Except (ExceptT, runExceptT)
 
-import Language.Purus.Types (PIRTerm, PLCTerm)
+import Language.Purus.Types (PIRTerm, PLCTerm, UPLCTerm)
 
 import PlutusCore (
   getDefTypeCheckConfig,
@@ -36,7 +39,6 @@ import PlutusCore.Default (
  )
 import PlutusCore.Evaluation.Machine.Ck (
   EvaluationResult (EvaluationFailure, EvaluationSuccess),
-  unsafeToEvaluationResult,
   evaluateCk
  )
 import PlutusCore.Evaluation.Machine.ExBudgetingDefaults qualified as PLC
@@ -45,10 +47,20 @@ import PlutusIR.Compiler (CompilationCtx, Compiling, compileProgram, compileToRe
 import PlutusIR.Compiler.Provenance (Provenance (Original))
 import PlutusIR.Compiler.Types (coDoSimplifierRemoveDeadBindings)
 import PlutusIR.Error (Error)
-import Control.Lens (over, set)
-import System.IO (readFile)
+import Control.Lens (set)
 import PlutusCore.Data qualified as PLC
 import PlutusCore.MkPlc (mkConstant)
+import PlutusCore.Evaluation.Machine.ExBudget (
+  ExBudget (ExBudget),
+  ExRestrictingBudget (ExRestrictingBudget),
+  minusExBudget,
+ )
+import PlutusCore.Compiler.Erase (eraseTerm)
+import UntypedPlutusCore.DeBruijn ( deBruijnTerm )
+import PlutusCore.Evaluation.Machine.ExBudgetingDefaults (defaultCekParametersForTesting)
+import PlutusCore.Evaluation.Machine.ExMemory (ExCPU (ExCPU), ExMemory (ExMemory))
+import UntypedPlutusCore.Evaluation.Machine.Cek qualified as Cek
+import Language.Purus.Pretty.Common (prettyStr)
 
 type PLCProgram uni fun a = PLC.Program PLC.TyName PLC.Name uni fun (Provenance a)
 
@@ -58,8 +70,8 @@ type PLCProgram uni fun a = PLC.Program PLC.TyName PLC.Name uni fun (Provenance 
 
 {- Evaluates a UPLC Program -}
 runPLCProgram :: PLCProgram DefaultUni DefaultFun () -> (EvaluationResult PLCTerm, [Text])
-runPLCProgram (PLC.Program _ _ c) = case evaluateCk PLC.defaultBuiltinsRuntimeForTesting . void $ c of 
-  (result, logs) -> case result of 
+runPLCProgram (PLC.Program _ _ c) = case evaluateCk PLC.defaultBuiltinsRuntimeForTesting . void $ c of
+  (result, logs) -> case result of
     Left _ -> (EvaluationFailure, logs)
     Right t -> (EvaluationSuccess t, logs)
 
@@ -67,8 +79,7 @@ runPLCProgram (PLC.Program _ _ c) = case evaluateCk PLC.defaultBuiltinsRuntimeFo
 f # a = PLC.Apply () f a
 
 applyArgs :: PLCTerm -> [PLCTerm] -> PLCTerm
-applyArgs f [] = f
-applyArgs f (arg:args) = applyArgs (f # arg) args
+applyArgs f args = foldl (#) f args
 
 -- Parse a file containing a "show'd" piece of Data into a PLC term.
 -- Mainly for testing but might have some other uses.
@@ -85,6 +96,11 @@ dummyData = mkConstant () $ PLC.I 0
 evaluateTerm :: PIRTerm -> IO (EvaluationResult (PLC.Term PLC.TyName Name DefaultUni DefaultFun ()), [Text])
 evaluateTerm term = runPLCProgram <$> compileToUPLC term
 
+convertToUPLCAndEvaluate :: PIRTerm -> IO ()
+convertToUPLCAndEvaluate t = evaluateTerm t >>= \case
+  (EvaluationSuccess plcTerm ,_) -> evaluateTermU_ reasonablySizedBudget plcTerm
+  (EvaluationFailure,logs) -> error (show logs)
+  
 {- Compile a PIR Term to a UPLC Program-}
 compileToUPLC :: PIRTerm -> IO (PLCProgram DefaultUni DefaultFun ())
 compileToUPLC e = do
@@ -98,7 +114,7 @@ compileToUPLCTerm e = compileToUPLC e >>= \case
   PLC.Program a b c -> pure (void c)
 
 evaluateUPLCTerm :: PLCTerm -> IO (EvaluationResult PLCTerm, [Text])
-evaluateUPLCTerm e = do 
+evaluateUPLCTerm e = do
   let input = PLC.Program (Original ()) latestVersion (Original <$> e)
       withErrors = either (throwIO . userError) pure
   pure $ runPLCProgram input
@@ -127,3 +143,40 @@ runCompile x =
                               -> CompilationCtx DefaultUni DefaultFun ()
    disableDeadCodeElimination = set  (ccOpts . coDoSimplifierRemoveDeadBindings ) False
 
+
+toDeBruijnUPLC :: PLCTerm -> Either String UPLCTerm
+toDeBruijnUPLC t =  first prettyStr x
+  where
+    x :: Either (Error DefaultUni DefaultFun ()) UPLCTerm
+    x = deBruijnTerm (eraseTerm t)
+
+reasonablySizedBudget :: ExBudget
+reasonablySizedBudget = ExBudget (ExCPU 100000000) (ExMemory 100000)
+
+
+-- stolen from plutarch
+
+evaluateTermU ::
+  ExBudget ->
+  PLCTerm ->
+  Either (String, Maybe ExBudget, [Text]) (UPLCTerm,ExBudget,[Text])
+evaluateTermU budget t = case toDeBruijnUPLC t of
+  Left err -> Left (err, Nothing, [])
+  Right uplc -> case Cek.runCekDeBruijn defaultCekParametersForTesting (Cek.restricting (ExRestrictingBudget budget)) Cek.logEmitter uplc of
+    (errOrRes, Cek.RestrictingSt (ExRestrictingBudget final), logs) -> case errOrRes of
+      Left err -> Left (show err, Just $ budget `minusExBudget` final, logs)
+      Right res -> Right (res, budget `minusExBudget` final, logs)
+
+-- for tests
+evaluateTermU_ ::
+  ExBudget ->
+  PLCTerm ->
+  IO ()
+evaluateTermU_ budget t = case evaluateTermU budget t of
+  Left (msg,mBudg,logs) -> do
+    let prettyErr = "Failed to evaluate term\nError Message:\n" <> msg <>
+                    (case mBudg of
+                      Nothing -> ""
+                      Just resBudg -> "\nCost: " <> prettyStr resBudg <> "\nLog: " <> prettyStr logs)
+    throwIO $ userError prettyErr
+  Right _ -> pure () 

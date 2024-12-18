@@ -20,6 +20,7 @@ import PlutusCore qualified as PLC
 import PlutusIR qualified as PIR
 
 import Control.Lens.TH (makeLenses)
+import UntypedPlutusCore qualified as UPLC
 
 type PIRDatatype =
   PIR.Datatype
@@ -33,6 +34,8 @@ type PIRType = PIR.Type PIR.TyName PLC.DefaultUni ()
 type PIRTerm = PIR.Term PIR.TyName PIR.Name PLC.DefaultUni PLC.DefaultFun ()
 
 type PLCTerm = PLC.Term PLC.TyName PLC.Name PLC.DefaultUni PLC.DefaultFun ()
+
+type UPLCTerm = UPLC.Term UPLC.NamedDeBruijn PLC.DefaultUni PLC.DefaultFun ()
 
 data DatatypeDictionary = DatatypeDictionary
   { _pirDatatypes :: Map (Qualified (ProperName 'TypeName)) PIRDatatype
