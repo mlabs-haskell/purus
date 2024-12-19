@@ -1,35 +1,30 @@
 {-# LANGUAGE TypeApplications #-}
-module Language.Purus.Make where
+module Language.Purus.Make (compile, make, allValueDeclarations) where
 
 import Prelude
 
-import Control.Exception (throwIO)
 
 import Data.Text (Text)
 import Data.Text qualified as T
-import Data.Text.Lazy qualified as LT
 
 import Data.Map qualified as M
 import Data.Set qualified as S
 
 import Data.Function (on)
 
-import Control.Exception
-import Control.Monad (forM)
-import Data.Foldable (foldrM, forM_)
-import Data.List (delete, foldl', groupBy, sortBy, stripPrefix, find)
+import Control.Exception ( throwIO )
+import Data.Foldable (foldrM)
+import Data.List (delete, foldl', groupBy, sortBy, stripPrefix)
 
 import System.FilePath (
   makeRelative,
-  takeBaseName,
   takeDirectory,
   takeExtensions,
   (</>),
  )
-import System.IO
 
 import Language.PureScript.CoreFn.Ann (Ann)
-import Language.PureScript.CoreFn.Expr (Bind (..), PurusType, cfnBindIdents)
+import Language.PureScript.CoreFn.Expr (Bind (..), PurusType)
 import Language.PureScript.CoreFn.Module (Module (..))
 import Language.PureScript.Names (
   Ident (Ident),
@@ -38,8 +33,7 @@ import Language.PureScript.Names (
   runModuleName,
  )
 
-import Language.Purus.Eval
-import Language.Purus.IR.Utils (IR_Decl, foldBinds, stripSkolemsFromExpr)
+import Language.Purus.IR.Utils (IR_Decl, foldBinds)
 import Language.Purus.Pipeline.CompileToPIR (compileToPIR)
 import Language.Purus.Pipeline.DesugarCore (desugarCoreModule)
 import Language.Purus.Pipeline.DesugarObjects (
@@ -63,13 +57,12 @@ import Language.Purus.Pipeline.Monad (
   runPlutusContext,
  )
 import Language.Purus.Pretty.Common (prettyStr, docString)
-import Language.Purus.Prim.Data (primDataPS, primData)
-import Language.Purus.Types (PIRTerm, PLCTerm, initDatatypeDict)
+import Language.Purus.Prim.Data (primDataPS)
+import Language.Purus.Types (PIRTerm, initDatatypeDict)
 import Language.Purus.Utils (
   decodeModuleIO,
-  findDeclBodyWithIndex, findMain,
+  findDeclBodyWithIndex,
  )
-import Language.Purus.Make.Prim (syntheticPrim)
 import Language.Purus.Pipeline.EliminateCases.EliminateNested (eliminateNestedCases)
 
 import Control.Monad.Except (MonadError (throwError), when)
@@ -84,21 +77,7 @@ import Algebra.Graph.AdjacencyMap.Algorithm (topSort)
 
 import System.FilePath.Glob qualified as Glob
 
-import PlutusCore.Evaluation.Result (EvaluationResult(..))
 import PlutusIR.Core.Instance.Pretty.Readable (prettyPirReadable)
-
-
-import Language.Purus.Pipeline.Lift.Types
-import System.Directory
-
-
-import Debug.Trace (traceM)
-import Language.Purus.IR (expTy)
-
--- TODO: Move the stuff that needs this to the tests
-import Test.Tasty
-import Test.Tasty.HUnit
--- import PlutusIR.Core.Instance.Pretty.Readable (prettyPirReadable)
 
 {-  Compiles a main function to PIR, given its module name, dependencies, and a
     Prim module that will be compiled before anything else. (This is kind of a hack-ey shim
@@ -243,63 +222,12 @@ make path mainModule mainFunction primModule = do
     (Nothing, m : ms) -> either (throwIO . userError) pure $ compile m ms (ModuleName mainModule) (Ident mainFunction)
     _ -> throwIO . userError $ "Error: No modules found for compilation"
 
--- for exploration/repl testing, this hardcodes `tests/purus/passing/Lib` as the target directory and
--- we only select the name of the main function
-makeForTest :: Text -> IO PIRTerm
-makeForTest main = make "tests/purus/passing/CoreFn/Misc" "Lib" main  (Just syntheticPrim)
-
-
-
-{- Takes a path to a Purus project directory, the name of
-   a target module, and a list of expression names and
-   compiles them to PIR.
-
-   Assumes that the directory already contains an "output" directory with serialized
-   CoreFn files
--}
-evalForTest_ :: Text -> IO ()
-evalForTest_ main = (fst <$> evalForTest main) >>= \case
-  EvaluationSuccess res -> pure () -- print $ prettyPirReadable res
-  _ -> error $ "failed to evaluate " <> T.unpack main
-
-evalForTest :: Text -> IO (EvaluationResult PLCTerm, [Text])
-evalForTest main = do
-  pir <- makeForTest main
-  -- traceM . docString $ prettyPirReadable pir
-  evaluateTerm pir
 
 -- TODO put this somewhere else
 note :: (MonadError String m) => String -> Maybe a -> m a
 note msg = \case
   Nothing -> throwError msg
   Just x -> pure x
-
-makeTestModule :: FilePath -> IO [(Text,PIRTerm)]
-makeTestModule path = do
-  mdl@Module{..} <- decodeModuleIO path
-  let toTest :: [Ident]
-      toTest = concatMap cfnBindIdents moduleDecls
-      nm     = runModuleName moduleName
-      goCompile  = pure . compile syntheticPrim [mdl] moduleName
-  forM toTest $  \x ->  goCompile x >>= \case
-    Left err -> error $ "Error while compiling " <> T.unpack (runIdent x) <> "\nReason: " <> err
-    Right res -> pure (runIdent x,res)
-
-evalTestModule :: FilePath -> IO ()
-evalTestModule path = do
-  made <- makeTestModule path
-  putStrLn $ "Starting evaluation of: " <> prettyStr (fst <$> made)
-  evaluated <- flip traverse made $ \(x,e) -> do
-      res <- fst <$> evaluateTerm e
-      pure (x,res)
-  forM_ evaluated $ \(eNm,eRes) -> case eRes of
-    EvaluationFailure -> putStrLn $ "\n\n> FAIL: Failed to evaluate " <> T.unpack eNm
-    EvaluationSuccess res -> do
-      putStrLn $ "\n\n> SUCCESS: Evaluated " <> T.unpack eNm
-      print $ prettyPirReadable res
-
-sanityCheck :: IO () 
-sanityCheck = evalTestModule "tests/purus/passing/CoreFn/Misc/output/Lib/Lib.cfn"
 
 -- takes a path to a project dir, returns (ModuleName,Decl Identifier)
 allValueDeclarations :: FilePath -> IO [(ModuleName,Text)]
@@ -310,138 +238,3 @@ allValueDeclarations path = do
         NonRec _ ident _ -> [(mn,runIdent ident)]
         Rec xs -> map (\((_,ident),_) -> (mn,runIdent ident)) xs
   pure $ concatMap (\(mdl,dcls) -> concatMap (go mdl)  dcls)  allDecls
-
-compileDirNoEval :: FilePath -> IO ()
-compileDirNoEval path = do
-  allDecls <- allValueDeclarations path
-  let allModuleNames = runModuleName . fst <$> allDecls
-  forM_ allModuleNames $ \mn -> do
-    let outFilePath = path </> T.unpack mn <> "_pir_no_eval.txt"
-    outFileExists <- doesFileExist outFilePath
-    when outFileExists $
-      removeFile outFilePath
-  forM_ allDecls $ \(runModuleName -> mn, declNm) -> do
-    let outFilePath = path </> T.unpack mn <> "_pir_no_eval.txt"
-    withFile outFilePath AppendMode $ \h -> do
-      result <- make path mn declNm (Just syntheticPrim)
-      let nmStr = T.unpack declNm
-          pirStr = docString $ prettyPirReadable result
-          msg = "\n------ " <> nmStr <> " ------\n"
-               <>  pirStr
-               <> "\n------------\n"
-      -- putStrLn msg
-      hPutStr h msg
-      hClose h 
-
--- Makes a TestTree. Should probably be in the test dir but don't feel like sorting out imports there
-compileDirNoEvalTest :: FilePath -> IO TestTree
-compileDirNoEvalTest path = do
-  allDecls <- allValueDeclarations path
-  let allModuleNames = runModuleName . fst <$> allDecls
-  forM_ allModuleNames $ \mn -> do
-    let outFilePath = path </> T.unpack mn <> "_pir_no_eval.txt"
-    outFileExists <- doesFileExist outFilePath
-    when outFileExists $
-      removeFile outFilePath
-  testCases <-  forM allDecls $ \(runModuleName -> mn, declNm) -> do
-    let outFilePath = path </> T.unpack mn <> "_pir_no_eval.txt"
-        testNm = path <> " - " <> T.unpack mn <> ":" <> T.unpack declNm
-    pure $ testCase testNm $ do
-     withFile outFilePath AppendMode $ \h -> do
-       result <- make path mn declNm (Just syntheticPrim)
-       let nmStr = T.unpack declNm
-           pirStr = docString $ prettyPirReadable result
-           msg = "\n------ " <> nmStr <> " ------\n"
-                <>  pirStr
-                <> "\n------------\n"
-       -- putStrLn msg
-       hPutStr h msg
-       hClose h
-  pure $ testGroup "PIR Compilation (No Eval)" testCases 
-
--- Makes a TestTree. Should probably be in the test dir but don't feel like sorting out imports there
-compileDirNoEvalTest' :: FilePath -> IO [(String,IO ())]
-compileDirNoEvalTest' path = do
-  allDecls <- allValueDeclarations path
-  let allModuleNames = runModuleName . fst <$> allDecls
-  forM_ allModuleNames $ \mn -> do
-    let outFilePath = path </> T.unpack mn <> "_pir_no_eval.txt"
-    outFileExists <- doesFileExist outFilePath
-    when outFileExists $
-      removeFile outFilePath
-  forM allDecls $ \(runModuleName -> mn, declNm) -> do
-    let outFilePath = path </> T.unpack mn <> "_pir_no_eval.txt"
-        testNm = path <> " - " <> T.unpack mn <> ":" <> T.unpack declNm
-    (testNm,) <$> do
-     withFile outFilePath AppendMode $ \h -> pure $ do
-       result <- make path mn declNm (Just syntheticPrim)
-       let nmStr = T.unpack declNm
-           pirStr = docString $ prettyPirReadable result
-           msg = "\n------ " <> nmStr <> " ------\n"
-                <>  pirStr
-                <> "\n------------\n"
-       -- putStrLn msg
-       hPutStr h msg
-       hClose h
-
-
-compileDirEvalTest :: FilePath -> IO TestTree
-compileDirEvalTest path = do
-  allDecls <- allValueDeclarations path
-  let allModuleNames = runModuleName . fst <$> allDecls
-  forM_ allModuleNames $ \mn -> do
-    let outFilePath = path </> T.unpack mn <> "_pir_eval.txt"
-    outFileExists <- doesFileExist outFilePath
-    when outFileExists $
-      removeFile outFilePath
-  testCases <-  forM allDecls $ \(runModuleName -> mn, declNm) -> do
-    let outFilePath = path </> T.unpack mn <> "_pir_eval.txt"
-        testNm = path <> " - " <> T.unpack mn <> ":" <> T.unpack declNm
-    pure $ testCase testNm $ do
-     withFile outFilePath AppendMode $ \h -> do
-       result <- snd <$> (evaluateTerm =<< make path mn declNm (Just syntheticPrim))
-       let nmStr = T.unpack declNm
-           pirStr = prettyStr result
-           msg = "\n------ " <> nmStr <> " ------\n"
-                <>  pirStr
-                <> "\n------------\n"
-       hPutStr h msg
-       hClose h
-  pure $ testGroup "PIR Evaluation" testCases
-
-compileModuleNoEval :: FilePath -> IO ()
-compileModuleNoEval path = do
-  let baseName = takeBaseName path
-      pathDir  = takeDirectory path
-      outFilePath = pathDir </> baseName </> "_pir_decls_no_eval.txt"
-  mdl <- decodeModuleIO path
-  removeFile outFilePath
-  withFile outFilePath  AppendMode $ \h ->  do
-   made <- makeTestModule path
-   forM_ made $ \(nm,pirterm) -> do
-     let nmStr = T.unpack nm
-         pirStr = docString $ prettyPirReadable pirterm
-         origStr = unsafeFindDeclStr mdl nm
-         msg = "\n\n------ " <> nmStr <> " ------\n\n"
-               <> "Original coreFn declaration:\n" <> origStr
-               <> "\n\nCompiled PIR expression:\n" <> pirStr
-               <> "\n------------\n"
-     putStrLn msg
-     hPutStr h msg
-   hClose h
- where
-   findDecl :: Ident -> [Bind Ann] -> Maybe (Bind Ann)
-   findDecl _ [] = Nothing
-   findDecl i (bnd@(NonRec _ i' _):bs)
-     | i == i' = Just bnd
-     | otherwise = findDecl i bs
-   findDecl i (Rec xs:bs) = case find (\x -> snd (fst x) == i) xs  of
-                              Nothing -> findDecl i bs
-                              Just ((a,_),body) -> Just $ NonRec a i body
-
-   unsafeFindDeclStr :: Module (Bind Ann) PurusType PurusType Ann
-                  -> Text
-                  -> String
-   unsafeFindDeclStr mdl nm = case findDecl (Ident nm) (moduleDecls mdl) of
-           Nothing -> "error: couldn't find a declaration for " <> prettyStr nm
-           Just bnd  -> prettyStr bnd

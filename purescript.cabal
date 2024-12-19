@@ -526,7 +526,7 @@ test-suite tests
     plutus-core ==1.30.0.0,
     regex-base >=0.94.0.2 && <0.95,
     split >=0.2.3.4 && <0.3,
-    stm,
+    stm >=2.5.0.2 && <2.6,
     typed-process >=0.2.10.1 && <0.3,
     tasty ==1.5,
     tasty-hunit

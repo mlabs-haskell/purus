@@ -7,24 +7,43 @@ import Data.Text qualified as T
 import Command.Compile ( compileForTests, PSCMakeOptions(..) )
 import Control.Monad (when,unless, void)
 import System.FilePath
+    ( makeRelative, (</>), takeDirectory, takeExtensions )
 import Language.PureScript qualified as P
 import Data.Set qualified as S
 import System.Directory
+    ( createDirectory,
+      doesDirectoryExist,
+      listDirectory,
+      removeDirectoryRecursive )
 import System.FilePath.Glob qualified as Glob
 import Data.Function (on)
 import Data.List (sortBy, stripPrefix, groupBy)
-import Language.Purus.Make
+import Language.Purus.Make ( allValueDeclarations, make )
 import Language.Purus.Eval
-import Language.Purus.Types
+    ( applyArgs,
+      parseData,
+      dummyData,
+      evaluateTerm,
+      convertToUPLCAndEvaluate,
+      compileToUPLCTerm,
+      evaluateUPLCTerm )
+import Language.Purus.Types ( PIRTerm )
 import Test.Tasty
-import Test.Tasty.HUnit
+    ( TestTree,
+      defaultMain,
+      withResource,
+      sequentialTestGroup,
+      testGroup,
+      DependencyType(AllFinish) )
+import Test.Tasty.HUnit ( testCase, assertFailure )
 import Language.Purus.Make.Prim (syntheticPrim)
 import Language.PureScript (ModuleName, runModuleName)
-import Control.Concurrent.STM 
+import Control.Concurrent.STM
+    ( atomically, TVar, newTVarIO, readTVarIO, modifyTVar' )
 import Data.Map (Map)
 import Data.Map qualified as M
-import Unsafe.Coerce
-import Control.Exception (SomeException, try, throwIO, Exception (displayException))
+import Unsafe.Coerce ( unsafeCoerce )
+import Control.Exception (SomeException, try, Exception (displayException))
 
 shouldPassTests :: IO ()
 shouldPassTests = do
