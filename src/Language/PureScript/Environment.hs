@@ -385,6 +385,9 @@ tyVar = TypeVar nullSourceAnn
 tyForall :: Text -> SourceType -> SourceType -> SourceType
 tyForall var k ty = ForAll nullSourceAnn TypeVarInvisible var k ty Nothing
 
+tyForallVis :: Text -> SourceType -> SourceType -> SourceType
+tyForallVis var k ty = ForAll nullSourceAnn TypeVarVisible var k ty Nothing 
+
 -- | Smart constructor for function types
 function :: SourceType -> SourceType -> SourceType
 function = TypeApp nullSourceAnn . TypeApp nullSourceAnn tyFunction
@@ -967,11 +970,14 @@ tyUnit = srcTypeConstructor C.Unit
 -- just for readability
 (#@) :: Qualified Ident -> SourceType -> (Qualified Ident, SourceType)
 f #@ t = (f, t)
+infixr 0 #@
 
 -- the kind is Type here. This is just to avoid potentially making a typo (and to make the manual function sigs more readable)
 forallT :: Text -> (SourceType -> SourceType) -> SourceType
 forallT txt f = tyForall txt kindType (f $ tyVar txt kindType)
-infixr 0 #@
+
+forallTVis :: Text -> (SourceType -> SourceType) -> SourceType
+forallTVis txt f = tyForallVis txt kindType (f $ tyVar txt kindType)
 
 builtinTypes :: M.Map (Qualified (ProperName 'TypeName)) (SourceType, TypeKind)
 builtinTypes =
@@ -986,7 +992,13 @@ builtinTypes =
     ]
 
 primFunctions :: M.Map (Qualified Ident) (SourceType, NameKind, NameVisibility)
-primFunctions = M.singleton (Qualified (ByModuleName C.M_Prim) (Ident "unit")) (tyUnit, Public, Defined)
+primFunctions = M.fromList primFuns
+  where
+    primFuns = [ (Qualified (ByModuleName C.M_Prim) (Ident "unit"), (tyUnit, Public, Defined))
+               , (Qualified (ByModuleName C.M_Prim) (Ident "error"), (errTy, Public, Defined))
+               ]
+    errTy = forallTVis "x" id
+
 
 builtinFunctions :: M.Map (Qualified Ident) (SourceType, NameKind, NameVisibility)
 builtinFunctions = builtinCxt <&> \x -> (x, Public, Defined)

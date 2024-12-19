@@ -31,4 +31,4 @@ runZ :: (Test.Z -> (Prim.String))
 runZ = 
   \(v: Test.Z) -> 
     case (v: Test.Z) of 
-       Z s -> (s: Prim.String)
+       Z (s :: Prim.String) -> (s: Prim.String)
