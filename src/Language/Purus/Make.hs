@@ -3,7 +3,6 @@ module Language.Purus.Make (compile, make, allValueDeclarations) where
 
 import Prelude
 
-
 import Data.Text (Text)
 import Data.Text qualified as T
 
@@ -78,6 +77,7 @@ import Algebra.Graph.AdjacencyMap.Algorithm (topSort)
 import System.FilePath.Glob qualified as Glob
 
 import PlutusIR.Core.Instance.Pretty.Readable (prettyPirReadable)
+import Debug.Trace (traceM)
 
 {-  Compiles a main function to PIR, given its module name, dependencies, and a
     Prim module that will be compiled before anything else. (This is kind of a hack-ey shim
@@ -111,7 +111,7 @@ compile primModule orderedModules mainModuleName mainFunctionName =
     go = do
       (summedModule, dsCxt) <- runDesugarCore $ desugarCoreModules primModule orderedModules
       let
-        traceBracket lbl msg =  pure () -- traceM ("\n" <> lbl <> "\n\n" <> msg <> "\n\n")
+        traceBracket lbl msg =  pure () --  traceM ("\n" <> lbl <> "\n\n" <> msg <> "\n\n")
         decls = moduleDecls summedModule
         declIdentsSet = foldBinds (\acc nm _ -> S.insert nm acc) S.empty decls
         couldn'tFindMain n =
@@ -153,10 +153,7 @@ compile primModule orderedModules mainModuleName mainFunctionName =
         traceBracket "Eliminated Cases. Result:" $  prettyStr withoutCases
         pir <- compileToPIR datatypes withoutCases
         traceBracket  "Compiled to PIR. Result:\n"  $ docString (prettyPirReadable pir)
-        -- traceBracket "PIR Raw:" $ LT.unpack (pShowNoColor pir)
         pure pir 
-
--- traceM . docString $ prettyPirReadable pirTerm
 
 modulesInDependencyOrder :: [[FilePath]] -> IO [Module (Bind Ann) PurusType PurusType Ann]
 modulesInDependencyOrder (concat -> paths) = do

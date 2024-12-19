@@ -78,6 +78,9 @@ type PIRTermBind = Binding PLC.TyName Name DefaultUni DefaultFun ()
 pattern Unit :: FVar t
 pattern Unit <- FVar _ (Qualified (ByModuleName C.M_Prim) (Ident "unit"))
 
+pattern Err :: t -> FVar t
+pattern Err t <- FVar t (Qualified (ByModuleName C.M_Prim) (Ident "error"))
+
 compileToPIR ::
   Datatypes IR.Kind Ty ->
   Exp WithoutObjects Ty (Vars Ty) ->
@@ -104,6 +107,9 @@ compileToPIR' datatypes _exp =
   doTraceM "compileToPIR'" (prettyStr _exp) >> case _exp of
     V x -> case x of
       F Unit -> pure $ mkConstant () ()
+      F (Err t) -> do
+        t' <- toPIRType t
+        pure $ PIR.Error () t'
       F (FVar _ ident@(Qualified _ (runIdent -> nm))) ->
         case M.lookup (T.unpack nm) defaultFunMap of
           Just aBuiltinFun -> case M.lookup aBuiltinFun builtinSubstitutions of

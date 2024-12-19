@@ -509,3 +509,11 @@ testNestedSmaller = case _ of
   Nothing -> 0
   Just Nothing -> 1
   Just (Just x) -> x
+
+
+-- error (compiler magic)
+
+testError :: Int -> Int
+testError = case _ of
+  0 -> error @Int   
+  other -> other 

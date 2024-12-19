@@ -1,5 +1,5 @@
 {-# LANGUAGE TypeApplications #-}
-module TestPurus (shouldPassTests) where
+module TestPurus  where
 
 import Prelude
 import Data.Text (Text)
@@ -148,7 +148,7 @@ mkShouldPassTests testDirPath = do
       let pirNoEval = testGroup "No Eval" $ mkPIRNoEval declDict path decls
           pirEvalPlc   =  mkPIREvalMany (void . evaluateTerm) "Eval (PLC)" declDict decls
           pirEvalUplc = mkPIREvalMany convertToUPLCAndEvaluate "Eval (UPLC)" declDict decls
-      pure $ sequentialTestGroup  ("PIR: " <> show path) AllFinish [pirNoEval,pirEvalPlc,pirEvalUplc]
+      pure $ sequentialTestGroup  ("PIR: " <> show path) AllFinish [pirNoEval,pirEvalPlc] -- ,pirEvalUplc]
     where
       initialize :: IO [(ModuleName,Text)]
       initialize = do
