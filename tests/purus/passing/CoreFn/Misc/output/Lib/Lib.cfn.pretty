@@ -102,6 +102,7 @@ Exports:
   testNested,
   testNestedSmaller,
   testError,
+  testError',
   testClassInt,
   eqInt,
   eq2IntBoolean,
@@ -316,6 +317,13 @@ testForLiftPolyApplied =
   (testForLiftPoly: forall (a :: Prim.Type). ((a :: Prim.Type) ->
   (Prim.Boolean)))
   ("hello": Prim.String)
+
+testError' :: (Prim.Int -> (Prim.Int))
+testError' = 
+  \(v: Prim.Int) -> 
+    case (v: Prim.Int) of 
+       0 -> (error: Prim.Int)
+       (other :: Prim.Int) -> (other: Prim.Int)
 
 testError :: (Prim.Int -> (Prim.Int))
 testError = 
@@ -708,8 +716,8 @@ eq =
 guardedCase2 :: Prim.Int
 guardedCase2 = 
   let
-    v :: forall ($37 :: Prim.Type). (($37 :: Prim.Type) -> (Prim.Int))
-    v = \(v1: ($37 :: Prim.Type)) -> (0: Prim.Int)
+    v :: forall ($38 :: Prim.Type). (($38 :: Prim.Type) -> (Prim.Int))
+    v = \(v1: ($38 :: Prim.Type)) -> (0: Prim.Int)
   in case (polyInObj: { bar :: forall (x :: Prim.Type). ((x :: Prim.Type) -> (Prim.Int)), baz :: Prim.Int }) of 
         { bar: _, baz: (x :: Prim.Int) } -> 
           let
@@ -727,11 +735,11 @@ guardedCase2 =
           in case (v1: Prim.Boolean) of 
                 True -> (x: Prim.Int)
                 _ -> 
-                  (v: forall ($37 :: Prim.Type). (($37 :: Prim.Type) ->
+                  (v: forall ($38 :: Prim.Type). (($38 :: Prim.Type) ->
                   (Prim.Int)))
                   (True: Prim.Boolean)
         _ -> 
-          (v: forall ($37 :: Prim.Type). (($37 :: Prim.Type) -> (Prim.Int)))
+          (v: forall ($38 :: Prim.Type). (($38 :: Prim.Type) -> (Prim.Int)))
           (True: Prim.Boolean)
 
 testEqViaOrd :: forall (a :: Prim.Type). ({ compare :: ((a :: Prim.Type) -> (((a :: Prim.Type) -> (Prim.Int)))), Eq :: { eq :: ((a :: Prim.Type) -> (((a :: Prim.Type) -> (Prim.Boolean)))) } } -> (((a :: Prim.Type) -> (((a :: Prim.Type) -> (Prim.Boolean))))))
@@ -926,8 +934,8 @@ guardedCase =
   \(w: Prim.Int) -> 
     \(x: Prim.Int) -> 
       let
-        v :: forall ($40 :: Prim.Type). (($40 :: Prim.Type) -> (Prim.Int))
-        v = \(v1: ($40 :: Prim.Type)) -> (0: Prim.Int)
+        v :: forall ($41 :: Prim.Type). (($41 :: Prim.Type) -> (Prim.Int))
+        v = \(v1: ($41 :: Prim.Type)) -> (0: Prim.Int)
       in case (w: Prim.Int) (x: Prim.Int) of 
             (y :: Prim.Int) (z :: Prim.Int) -> 
               let
@@ -991,19 +999,19 @@ guardedCase =
                                       in case (v4: Prim.Boolean) of 
                                             True -> (2: Prim.Int)
                                             _ -> 
-                                              (v: forall ($40 :: Prim.Type). (($40 :: Prim.Type) ->
+                                              (v: forall ($41 :: Prim.Type). (($41 :: Prim.Type) ->
                                               (Prim.Int)))
                                               (True: Prim.Boolean)
                                     _ -> 
-                                      (v: forall ($40 :: Prim.Type). (($40 :: Prim.Type) ->
+                                      (v: forall ($41 :: Prim.Type). (($41 :: Prim.Type) ->
                                       (Prim.Int)))
                                       (True: Prim.Boolean)
                             _ -> 
-                              (v: forall ($40 :: Prim.Type). (($40 :: Prim.Type) ->
+                              (v: forall ($41 :: Prim.Type). (($41 :: Prim.Type) ->
                               (Prim.Int)))
                               (True: Prim.Boolean)
                     _ -> 
-                      (v: forall ($40 :: Prim.Type). (($40 :: Prim.Type) ->
+                      (v: forall ($41 :: Prim.Type). (($41 :: Prim.Type) ->
                       (Prim.Int)))
                       (True: Prim.Boolean)
 

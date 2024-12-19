@@ -517,3 +517,8 @@ testError :: Int -> Int
 testError = case _ of
   0 -> error @Int   
   other -> other 
+
+testError' :: Int -> Int
+testError' = case _ of
+  0 -> error
+  other -> other
