@@ -85,11 +85,9 @@ srcTokenRange = tokRange . tokAnn
    type signature in scope when we convert the declaration.
 
 -}
-groupSignaturesAndDeclarations :: (Show a) => [Declaration a] -> [[Declaration a]]
+groupSignaturesAndDeclarations ::  [Declaration a] -> [[Declaration a]]
 groupSignaturesAndDeclarations [] = []
-groupSignaturesAndDeclarations decls =
-  trace ("DECLARATIONS (grouping): \n" <> concatMap ((<> "\n\n") . show) decls) $
-    go kindSigs typeSigs decls'
+groupSignaturesAndDeclarations decls = go kindSigs typeSigs decls'
   where
     ((kindSigs, typeSigs), decls') =
       foldr

@@ -166,7 +166,6 @@ moduleToCoreFn (A.Module modSS coms mn _decls (Just exps)) = do
   decls' <- concat <$> traverse (declToCoreFn mn) nonDataDecls
   let dataDecls' = mkDataDecls mn dataDecls
       result = Module modSS coms mn (spanName modSS) imports exps' reExps externs decls' dataDecls'
-  traceM $ prettyStr dataDecls'
   pure $ result
   where
     setModuleName = modify $ \cs ->
@@ -219,10 +218,8 @@ lookupType sp tn = do
     Nothing -> case M.lookup (mkQualified tn mn) (names env) of
       Nothing -> error $ "No type found for " <> show tn
       Just (ty, _, nv) -> do
-        traceM $ "lookupType: " <> showIdent' tn <> " :: " <> ppType 10 ty
         pure (ty, nv)
     Just (ty, _, nv) -> do
-      traceM $ "lookupType: " <> showIdent' tn <> " :: " <> ppType 10 ty
       pure (ty, nv)
 
 getInnerListTy :: Type a -> Maybe (Type a)
@@ -238,7 +235,6 @@ getInnerObjectTy _ = Nothing
 
 objectToCoreFn :: forall m. (M m) => ModuleName -> SourceSpan -> SourceType -> SourceType -> [(PSString, A.Expr)] -> m (Expr Ann)
 objectToCoreFn mn ss recTy row objFields = do
-  traceM $ "ObjLitTy: " <> show row
   let (tyFields, _) = rowToList row
       tyMap = M.fromList $ (\x -> (runLabel (rowListLabel x), x)) <$> tyFields
   resolvedFields <- foldM (go tyMap) [] objFields

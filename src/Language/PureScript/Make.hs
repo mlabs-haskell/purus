@@ -133,11 +133,10 @@ rebuildModuleWithIndex MakeActions {..} exEnv externs m@(Module _ _ moduleName _
   regrouped <- createBindingGroups moduleName . collapseBindingGroups $ deguarded
 
   let mod' = Module ss coms moduleName regrouped exps
-  traceM $ "PURUS START HERE: " <> T.unpack (runModuleName moduleName)
+  --traceM $ "PURUS START HERE: " <> T.unpack (runModuleName moduleName)
   -- pTrace regrouped
   -- pTrace exps
   ((coreFn, chkSt'), nextVar'') <- runSupplyT nextVar' $ runStateT (CFT.moduleToCoreFn mod') chkSt -- (emptyCheckState env')
-  traceM . T.unpack $ CFT.prettyModuleTxt coreFn
   let corefn = coreFn
       (optimized, nextVar''') = runSupply nextVar'' $ CF.optimizeCoreFn corefn
       (renamedIdents, renamed) = renameInModule optimized
@@ -162,16 +161,7 @@ rebuildModuleWithIndex MakeActions {..} exEnv externs m@(Module _ _ moduleName _
 
   evalSupplyT nextVar''' $ codegen renamed docs exts
   return exts
-  where
-    prettyEnv :: Environment -> String
-    prettyEnv Environment {..} = M.foldlWithKey' goPretty "" names
-      where
-        goPretty acc ident (ty, _, _) =
-          acc
-            <> "\n"
-            <> T.unpack (showQualified showIdent ident)
-            <> " :: "
-            <> ppType 10 ty
+
 
 {- | Compiles in "make" mode, compiling each module separately to a @.js@ file and an @externs.cbor@ file.
 
