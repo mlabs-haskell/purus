@@ -375,6 +375,10 @@ tyBoolean = srcTypeConstructor C.Boolean
 tyList :: SourceType
 tyList = srcTypeConstructor C.List
 
+-- | Type constructor for Delayed functions
+tyDelayed :: SourceType
+tyDelayed = srcTypeConstructor C.Delayed
+
 -- | Type constructor for records
 tyRecord :: SourceType
 tyRecord = srcTypeConstructor C.Record
@@ -413,6 +417,9 @@ pattern ListT a <-
 
 arrayT :: SourceType -> SourceType
 arrayT = TypeApp NullSourceAnn (TypeConstructor NullSourceAnn C.List)
+
+delayedT :: SourceType -> SourceType
+delayedT = TypeApp NullSourceAnn (TypeConstructor NullSourceAnn C.Delayed)
 
 pattern RecordT :: Type a -> Type a
 pattern RecordT a <-
@@ -494,6 +501,7 @@ primTypes =
       , (C.Boolean, (kindType, boolData))
       , (C.Partial <&> coerceProperName, (kindConstraint, ExternData []))
       , (C.Unit, (kindType, ExternData []))
+      , (C.Delayed, (kindType -:> kindType, ExternData [Representational]))
       ]
   where
     boolData =
@@ -996,8 +1004,12 @@ primFunctions = M.fromList primFuns
   where
     primFuns = [ (Qualified (ByModuleName C.M_Prim) (Ident "unit"), (tyUnit, Public, Defined))
                , (Qualified (ByModuleName C.M_Prim) (Ident "error"), (errTy, Public, Defined))
+               , (Qualified (ByModuleName C.M_Prim) (Ident "delay"), (delayTy, Public, Defined))
+               , (Qualified (ByModuleName C.M_Prim) (Ident "force"), (forceTy, Public, Defined))
                ]
     errTy = forallTVis "x" id
+    delayTy = forallT "x" $ \x -> x -:> delayedT x
+    forceTy = forallT "x" $ \x -> delayedT x -:> x
 
 
 builtinFunctions :: M.Map (Qualified Ident) (SourceType, NameKind, NameVisibility)

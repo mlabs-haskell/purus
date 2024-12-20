@@ -44,6 +44,7 @@ import Data.Map (Map)
 import Data.Map qualified as M
 import Unsafe.Coerce ( unsafeCoerce )
 import Control.Exception (SomeException, try, Exception (displayException))
+import Language.Purus.Pretty.Common (prettyStr)
 
 shouldPassTests :: IO ()
 shouldPassTests = do

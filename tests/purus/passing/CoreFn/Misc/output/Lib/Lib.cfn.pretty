@@ -103,6 +103,8 @@ Exports:
   testNestedSmaller,
   testError,
   testError',
+  testDelay,
+  testForce,
   testClassInt,
   eqInt,
   eq2IntBoolean,
@@ -331,6 +333,18 @@ testError =
     case (v: Prim.Int) of 
        0 -> (error: Prim.Int)
        (other :: Prim.Int) -> (other: Prim.Int)
+
+testDelay :: (Prim.Delayed (Prim.Int))
+testDelay = 
+  (delay: forall (x :: Prim.Type). ((x :: Prim.Type) ->
+  ((Prim.Delayed ((x :: Prim.Type))))))
+  (2: Prim.Int)
+
+testForce :: Prim.Int
+testForce = 
+  (force: forall (x :: Prim.Type). ((Prim.Delayed ((x :: Prim.Type))) ->
+  ((x :: Prim.Type))))
+  (testDelay: (Prim.Delayed (Prim.Int)))
 
 testCons :: List (Prim.Int)
 testCons = 

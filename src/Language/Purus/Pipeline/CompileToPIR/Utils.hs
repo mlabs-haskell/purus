@@ -3,7 +3,7 @@
 -}
 {-# LANGUAGE GADTs #-}
 
-module Language.Purus.Pipeline.CompileToPIR.Utils (builtinSubstitutions) where
+module Language.Purus.Pipeline.CompileToPIR.Utils (builtinSubstitutions, pirDelay, pirForce, freshLam, freshLam', pirTyAbs) where
 
 import Prelude
 

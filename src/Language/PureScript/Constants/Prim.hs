@@ -19,6 +19,7 @@ $( TH.declare do
       traverse_ (\x -> TH.dty ("Tuple" <> show x) ["Tuple" <> show x]) [1 .. maxTupleSize] -- tuples
       TH.ty "Char"
       TH.ty "Constraint"
+      TH.ty "Delayed"
       TH.ty "Function"
       TH.ty "Int"
       TH.ty "Number"

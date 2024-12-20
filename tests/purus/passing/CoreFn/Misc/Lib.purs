@@ -522,3 +522,10 @@ testError' :: Int -> Int
 testError' = case _ of
   0 -> error
   other -> other
+
+
+testDelay :: Delayed Int
+testDelay = delay 2
+
+testForce :: Int
+testForce = force testDelay
