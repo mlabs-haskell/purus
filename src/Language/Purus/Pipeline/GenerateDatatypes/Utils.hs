@@ -15,7 +15,10 @@ module Language.Purus.Pipeline.GenerateDatatypes.Utils (
   mkNewTyVar,
   mkTyName,
   note,
-  determineDatatypeDependencies
+  determineDatatypeDependencies,
+  pattern DelayFn,
+  pattern ForceFn,
+  pattern DelayedT
 ) where
 
 import Prelude
@@ -37,7 +40,7 @@ import Language.PureScript.Names (
   disqualify,
   runIdent,
   showIdent,
-  showQualified,
+  showQualified, QualifiedBy (..),
  )
 
 import Language.Purus.Debug (doTraceM)
@@ -75,6 +78,17 @@ import Language.Purus.Pretty (prettyStr)
 import Control.Monad (unless)
 import Data.Maybe (isJust)
 import Data.Set qualified as S
+import Language.PureScript.Constants.Prim qualified as C
+
+-- these have to be in this module b/c we need them in `toPIRType`
+pattern DelayFn :: t -> FVar t
+pattern DelayFn t <- FVar t (Qualified (ByModuleName C.M_Prim) (Ident "delay"))
+
+pattern ForceFn :: t -> FVar t
+pattern ForceFn t <- FVar t (Qualified (ByModuleName C.M_Prim) (Ident "force"))
+
+pattern DelayedT :: Ty -> Ty
+pattern DelayedT t = IR.TyApp (IR.TyCon C.Delayed) t
 
 foldr1Err :: (Foldable t) => String -> (a -> a -> a) -> t a -> a
 foldr1Err msg f ta

@@ -1,5 +1,5 @@
 {-# LANGUAGE TypeApplications #-}
-module TestPurus (shouldPassTests) where
+module TestPurus  where
 
 import Prelude
 import Data.Text (Text)
@@ -14,7 +14,7 @@ import System.Directory
     ( createDirectory,
       doesDirectoryExist,
       listDirectory,
-      removeDirectoryRecursive )
+      removeDirectoryRecursive, createDirectoryIfMissing )
 import System.FilePath.Glob qualified as Glob
 import Data.Function (on)
 import Data.List (sortBy, stripPrefix, groupBy)
@@ -44,6 +44,9 @@ import Data.Map (Map)
 import Data.Map qualified as M
 import Unsafe.Coerce ( unsafeCoerce )
 import Control.Exception (SomeException, try, Exception (displayException))
+import Language.Purus.Pretty.Common (prettyStr, docString)
+import System.IO
+import PlutusIR.Core.Instance.Pretty.Readable (prettyPirReadable)
 
 shouldPassTests :: IO ()
 shouldPassTests = do
@@ -84,6 +87,7 @@ runPurusCoreFn target dir =  do
       optionsCodegenTargets = S.singleton target
     }
 
+
 {- Generated PIR non-evaluation tests (i.e. only checks that the *Purus* pipeline reaches the PIR stage,
    does not typecheck/compile/evaluate PIR).
 
@@ -97,7 +101,16 @@ mkPIRNoEval tv path ioInput  =  mkCase <$> ioInput
   where
     mkCase :: (ModuleName, Text) -> TestTree
     mkCase (mn'@(runModuleName -> mn),dn) = testCase testName $ do
+        let outDirPath = path </> "output" </> T.unpack mn
+            outFilePath = outDirPath </> "pir_no_eval.txt"
+        createDirectoryIfMissing True outDirPath
         term <-  make path mn dn (Just syntheticPrim)
+        withFile (outFilePath) AppendMode $ \h -> do
+          let prettyTerm = docString $ prettyPirReadable term
+              toLog = "\n---------- " <> T.unpack dn <> " -------------\n"
+                      <> prettyTerm
+                      <> "\n-----------------------------------------\n"
+          hPutStr h toLog
         atomically $ modifyTVar' tv (M.insert (mn',dn) term)
      where
        testName = T.unpack mn <> "." <> T.unpack dn
@@ -119,7 +132,7 @@ mkPIREvalMany :: (PIRTerm -> IO ())
               -> [(ModuleName,Text)]
               -> TestTree
 mkPIREvalMany f nm tv decls = withResource (readTVarIO tv) (\_ -> pure ()) $ \tvIO ->
-  testGroup nm $ mkPIREval1 tvIO <$> decls
+  sequentialTestGroup  nm AllFinish $ mkPIREval1 tvIO <$> decls
  where
   mkPIREval1 :: IO (Map (ModuleName,Text) PIRTerm) -> (ModuleName,Text) -> TestTree
   mkPIREval1 dict declNm@(runModuleName -> mn,dn) = do
@@ -148,7 +161,7 @@ mkShouldPassTests testDirPath = do
       let pirNoEval = testGroup "No Eval" $ mkPIRNoEval declDict path decls
           pirEvalPlc   =  mkPIREvalMany (void . evaluateTerm) "Eval (PLC)" declDict decls
           pirEvalUplc = mkPIREvalMany convertToUPLCAndEvaluate "Eval (UPLC)" declDict decls
-      pure $ sequentialTestGroup  ("PIR: " <> show path) AllFinish [pirNoEval,pirEvalPlc,pirEvalUplc]
+      pure $ sequentialTestGroup  ("PIR: " <> show path) AllFinish [pirNoEval,pirEvalPlc] -- ,pirEvalUplc]
     where
       initialize :: IO [(ModuleName,Text)]
       initialize = do

@@ -343,7 +343,9 @@ prettyCaseAlternative (CaseAlternative binders result) = do
 prettyBinderAtom :: Binder a -> Printer ann
 prettyBinderAtom (NullBinder _) = pure "_"
 prettyBinderAtom (LiteralBinder _ l) = prettyLiteralBinder l
-prettyBinderAtom (VarBinder _ ident _) = pure $ pretty ident
+prettyBinderAtom (VarBinder _ ident ty) = do
+  ty' <- prettyType ty
+  pure $ parens (pretty ident <::> ty')
 prettyBinderAtom (ConstructorBinder _ _ ctor []) = pure . pretty $ runProperName (disqualify ctor)
 prettyBinderAtom b@ConstructorBinder {} = prettyBinder b
 prettyBinderAtom (NamedBinder _ ident binder) = do

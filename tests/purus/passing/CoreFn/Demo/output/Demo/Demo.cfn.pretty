@@ -42,7 +42,7 @@ unIdentitee :: ((Demo.Identitee (Prim.Int)) -> (Prim.Int))
 unIdentitee = 
   \(v: (Demo.Identitee (Prim.Int))) -> 
     case (v: (Demo.Identitee (Prim.Int))) of 
-       Identitee x -> (x: Prim.Int)
+       Identitee (x :: Prim.Int) -> (x: Prim.Int)
 
 testValidator :: forall (a :: Prim.Type) (b :: Prim.Type) (c :: Prim.Type). ((a :: Prim.Type) -> (((b :: Prim.Type) -> (((c :: Prim.Type) -> (Prim.Boolean))))))
 testValidator = 
