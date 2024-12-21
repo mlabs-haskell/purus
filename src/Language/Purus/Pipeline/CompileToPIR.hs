@@ -67,7 +67,7 @@ import PlutusIR.MkPir (mkConstant)
 
 import Bound (Var (..))
 import Control.Lens (view)
-import Language.Purus.Pipeline.CompileToPIR.Utils (builtinSubstitutions, pirDelay, freshLam', pirForce, pirTyAbs)
+import Language.Purus.Pipeline.CompileToPIR.Utils (builtinSubstitutions, pirDelay, freshLam', pirForce, pirTyAbs, unit)
 import Control.Monad.Reader (MonadReader(local))
 
 type PIRTermBind = Binding PLC.TyName Name DefaultUni DefaultFun ()
@@ -110,7 +110,7 @@ compileToPIR' datatypes _exp =
         t' <- toPIRType t
         pure $ PIR.Error () t'
       F (DelayFn _) -> pirTyAbs $ \v -> freshLam' v $ \_ z -> pirDelay z
-      F (ForceFn _) -> pirTyAbs $ \v -> freshLam' v $ \_ z -> pure $ pirForce z
+      F (ForceFn _) -> pirTyAbs $ \v -> freshLam' (PIR.TyFun () unit v) $ \_ z -> pure $ pirForce z
       F (FVar _ ident@(Qualified _ (runIdent -> nm))) ->
         case M.lookup (T.unpack nm) defaultFunMap of
           Just aBuiltinFun -> case M.lookup aBuiltinFun builtinSubstitutions of

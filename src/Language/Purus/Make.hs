@@ -1,5 +1,5 @@
 {-# LANGUAGE TypeApplications #-}
-module Language.Purus.Make (compile, make, allValueDeclarations) where
+module Language.Purus.Make (compile, make, allValueDeclarations, evalForTest_, makeForTest ) where
 
 import Prelude
 
@@ -57,7 +57,7 @@ import Language.Purus.Pipeline.Monad (
  )
 import Language.Purus.Pretty.Common (prettyStr, docString)
 import Language.Purus.Prim.Data (primDataPS)
-import Language.Purus.Types (PIRTerm, initDatatypeDict)
+import Language.Purus.Types (PIRTerm, initDatatypeDict, PLCTerm)
 import Language.Purus.Utils (
   decodeModuleIO,
   findDeclBodyWithIndex,
@@ -78,6 +78,10 @@ import System.FilePath.Glob qualified as Glob
 
 import PlutusIR.Core.Instance.Pretty.Readable (prettyPirReadable)
 import Debug.Trace (traceM)
+import Language.Purus.Make.Prim (syntheticPrim)
+import PlutusCore.Evaluation.Result (EvaluationResult)
+import Language.Purus.Eval (evaluateTerm)
+import PlutusCore.Evaluation.Machine.Ck (EvaluationResult(..))
 
 {-  Compiles a main function to PIR, given its module name, dependencies, and a
     Prim module that will be compiled before anything else. (This is kind of a hack-ey shim
@@ -235,3 +239,20 @@ allValueDeclarations path = do
         NonRec _ ident _ -> [(mn,runIdent ident)]
         Rec xs -> map (\((_,ident),_) -> (mn,runIdent ident)) xs
   pure $ concatMap (\(mdl,dcls) -> concatMap (go mdl)  dcls)  allDecls
+
+
+-- Ugh I need these for repl inspection still, but eventually we should remove them
+
+makeForTest :: Text -> IO PIRTerm
+makeForTest main = make "tests/purus/passing/CoreFn/Misc" "Lib" main  (Just syntheticPrim)
+
+evalForTest :: Text -> IO (EvaluationResult PLCTerm, [Text])
+evalForTest main = do
+  pir <- makeForTest main
+  -- traceM . docString $ prettyPirReadable pir
+  evaluateTerm pir
+
+evalForTest_ :: Text -> IO ()
+evalForTest_ main = (fst <$> evalForTest main) >>= \case
+  EvaluationSuccess res ->  putStrLn $ docString $  prettyPirReadable res
+  _ -> error $ "failed to evaluate " <> T.unpack main
