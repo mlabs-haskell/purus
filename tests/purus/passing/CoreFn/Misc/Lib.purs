@@ -535,13 +535,11 @@ testLazy = force (
   then delay True
   else delay error)
 
-{- This one breaks the compiler. It has to do with guard desugaring and
-   the lack of a TypedValue wrapper for `True` there. It's fixable but annoying.
 testLazy' :: Boolean
 testLazy' = force (case True of
   True -> delay True
   False -> delay error)
--}
+
 
 data AB = A | B
 

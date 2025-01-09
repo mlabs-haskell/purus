@@ -13,7 +13,7 @@ import Protolude (ordNub)
 import Prelude
 
 import Data.List (foldl1', groupBy)
-import Data.Maybe (catMaybes, mapMaybe)
+import Data.Maybe (catMaybes, mapMaybe, isJust)
 
 import Control.Monad (forM, join, replicateM, unless, (<=<))
 import Control.Monad.Error.Class (MonadError (..))
@@ -64,7 +64,7 @@ desugarGuardedExprs ::
   Expr ->
   m Expr
 desugarGuardedExprs ss (Case scrut alternatives)
-  | not $ all isTrivialExpr scrut = do
+  | not (all isTrivialExpr scrut) && isJust (traverse safeExprType scrut) = do
       -- in case the scrutinee is non trivial (e.g. not a Var or Literal)
       -- we may evaluate the scrutinee more than once when a guard occurs.
       -- We bind the scrutinee to Vars here to mitigate this case.
@@ -463,3 +463,8 @@ unsafeExprType :: Expr -> SourceType
 unsafeExprType (TypedValue _ _ t) = t
 unsafeExprType (PositionedValue _ _ e) = unsafeExprType e
 unsafeExprType other = error $ "INTERNAL ERROR: Expected a TypedValue during case desugaring but got: " <> show other
+
+safeExprType :: Expr -> Maybe SourceType
+safeExprType (TypedValue _ _ t) = Just t
+safeExprType (PositionedValue _ _ e) = safeExprType e
+safeExprType _ = Nothing

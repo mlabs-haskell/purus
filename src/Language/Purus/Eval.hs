@@ -6,7 +6,9 @@ module Language.Purus.Eval (
   evaluateUPLCTerm,
   evaluateTerm,
   evaluateTermU_,
+  evaluateTermU_',
   evaluateTermU,
+  reasonablySizedBudget,
   parseData,
   (#),
   applyArgs,
@@ -61,6 +63,8 @@ import PlutusCore.Evaluation.Machine.ExBudgetingDefaults (defaultCekParametersFo
 import PlutusCore.Evaluation.Machine.ExMemory (ExCPU (ExCPU), ExMemory (ExMemory))
 import UntypedPlutusCore.Evaluation.Machine.Cek qualified as Cek
 import Language.Purus.Pretty.Common (prettyStr)
+import PlutusCore.Pretty (prettyPlcReadableDef)
+import Language.Purus.Pretty (docString)
 
 type PLCProgram uni fun a = PLC.Program PLC.TyName PLC.Name uni fun (Provenance a)
 
@@ -179,4 +183,19 @@ evaluateTermU_ budget t = case evaluateTermU budget t of
                       Nothing -> ""
                       Just resBudg -> "\nCost: " <> prettyStr resBudg <> "\nLog: " <> prettyStr logs)
     throwIO $ userError prettyErr
-  Right _ -> pure () 
+  Right _ -> pure ()
+
+evaluateTermU_' ::
+  ExBudget ->
+  PLCTerm ->
+  IO ()
+evaluateTermU_' budget t = case evaluateTermU budget t of
+  Left (msg,mBudg,logs) -> do
+    let prettyErr = "Failed to evaluate term\nError Message:\n" <> msg <>
+                    (case mBudg of
+                      Nothing -> ""
+                      Just resBudg -> "\nCost: " <> prettyStr resBudg <> "\nLog: " <> prettyStr logs)
+    throwIO $ userError prettyErr
+  Right res -> do
+    putStrLn . docString $  prettyPlcReadableDef res
+    pure ()
