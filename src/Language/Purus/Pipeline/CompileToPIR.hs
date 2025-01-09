@@ -42,7 +42,7 @@ import Language.Purus.IR (
   Lit (CharL, IntL, StringL),
   Ty,
   expTy,
-  expTy',
+  expTy', pattern (:~>),
  )
 import Language.Purus.IR qualified as IR
 import Language.Purus.IR.Utils (Vars, WithoutObjects, toExp)
@@ -50,10 +50,7 @@ import Language.Purus.Pipeline.GenerateDatatypes (
   mkKind,
   toPIRType,
  )
-import Language.Purus.Pipeline.GenerateDatatypes.Utils (
-  bindTV,
-  getConstructorName,
- )
+import Language.Purus.Pipeline.GenerateDatatypes.Utils
 import Language.Purus.Pipeline.Monad (PlutusContext)
 import Language.Purus.Pretty.Common (prettyStr)
 import Language.Purus.Types (PIRTerm, pirDatatypes)
@@ -70,13 +67,18 @@ import PlutusIR.MkPir (mkConstant)
 
 import Bound (Var (..))
 import Control.Lens (view)
-import Language.Purus.Pipeline.CompileToPIR.Utils (builtinSubstitutions)
+import Language.Purus.Pipeline.CompileToPIR.Utils (builtinSubstitutions, pirDelay, freshLam', pirForce, pirTyAbs, unit)
 import Control.Monad.Reader (MonadReader(local))
 
 type PIRTermBind = Binding PLC.TyName Name DefaultUni DefaultFun ()
 
 pattern Unit :: FVar t
 pattern Unit <- FVar _ (Qualified (ByModuleName C.M_Prim) (Ident "unit"))
+
+pattern Err :: t -> FVar t
+pattern Err t <- FVar t (Qualified (ByModuleName C.M_Prim) (Ident "error"))
+
+
 
 compileToPIR ::
   Datatypes IR.Kind Ty ->
@@ -104,6 +106,11 @@ compileToPIR' datatypes _exp =
   doTraceM "compileToPIR'" (prettyStr _exp) >> case _exp of
     V x -> case x of
       F Unit -> pure $ mkConstant () ()
+      F (Err t) -> do
+        t' <- toPIRType t
+        pure $ PIR.Error () t'
+      F (DelayFn _) -> pirTyAbs $ \v -> freshLam' v $ \_ z -> pirDelay z
+      F (ForceFn _) -> pirTyAbs $ \v -> freshLam' (PIR.TyFun () unit v) $ \_ z -> pure $ pirForce z
       F (FVar _ ident@(Qualified _ (runIdent -> nm))) ->
         case M.lookup (T.unpack nm) defaultFunMap of
           Just aBuiltinFun -> case M.lookup aBuiltinFun builtinSubstitutions of

@@ -509,3 +509,46 @@ testNestedSmaller = case _ of
   Nothing -> 0
   Just Nothing -> 1
   Just (Just x) -> x
+
+
+-- error (compiler magic)
+
+testError :: Int -> Int
+testError = case _ of
+  0 -> error @Int   
+  other -> other 
+
+testError' :: Int -> Int
+testError' = case _ of
+  0 -> error
+  other -> other
+
+testDelay :: Delayed Int
+testDelay = delay 2
+
+testForce :: Int
+testForce = force testDelay
+
+testLazy :: Boolean
+testLazy = force (
+  if True
+  then delay True
+  else delay error)
+
+testLazy' :: Boolean
+testLazy' = force (case True of
+  True -> delay True
+  False -> delay error)
+
+
+data AB = A | B
+
+testAB1 :: AB -> String
+testAB1 = case _ of
+  A -> "A"
+  B -> "B"
+
+testAB2 ::  String
+testAB2 = case A of
+  A -> "A"
+  B -> "B"

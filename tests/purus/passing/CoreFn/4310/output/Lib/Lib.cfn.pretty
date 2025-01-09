@@ -53,7 +53,7 @@ test/\ =
       ({
          runTest: \(v: ((Lib.Tuple (a*0)) (b*1))) -> 
            case (v: ((Lib.Tuple (a*0)) (b*1))) of 
-              Tuple a b -> 
+              Tuple (a :: a*0) (b :: b*1) -> 
                 (mappend: (Prim.String -> ((Prim.String -> (Prim.String)))))
                 ((runTest: forall (@a :: Prim.Type). ({
                                                         runTest :: ((a :: Prim.Type) ->

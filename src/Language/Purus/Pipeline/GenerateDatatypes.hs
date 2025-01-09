@@ -56,16 +56,7 @@ import Language.Purus.IR (
   ppTy, Exp,
  )
 import Language.Purus.IR qualified as IR
-import Language.Purus.Pipeline.GenerateDatatypes.Utils (
-  bindTV,
-  foldr1Err,
-  getBoundTyVarName,
-  mkConstrName,
-  mkNewTyVar,
-  mkTyName,
-  prettyQPN,
-  determineDatatypeDependencies
- )
+import Language.Purus.Pipeline.GenerateDatatypes.Utils
 import Language.Purus.Pipeline.Monad (
   MonadCounter (next),
   PlutusContext,
@@ -137,7 +128,7 @@ mkPIRDatatypes datatypes tyConsInExp =
     >> traverse_ go tyConsInExp
   where
     -- these things don't have datatype definitions anywhere
-    truePrimitives = S.fromList [C.Function, C.Int, C.Char, C.String]
+    truePrimitives = S.fromList [C.Function, C.Int, C.Char, C.String, C.Delayed]
 
     go ::
       Qualified (ProperName 'TypeName) ->
@@ -196,6 +187,11 @@ mkPIRDatatypes datatypes tyConsInExp =
 
 toPIRType :: Ty -> PlutusContext PIRType
 toPIRType _ty = case _ty of
+  DelayedT ty -> do
+    let unit :: PIRType
+        unit = PLC.TyBuiltin () (PLC.SomeTypeIn PLC.DefaultUniUnit)
+    ty' <- toPIRType ty
+    pure $ PIR.TyFun () unit ty'
   IR.TyVar txt _ -> PIR.TyVar () <$> getBoundTyVarName txt
   TyCon qtn@(Qualified qb _) -> case qb of
     ByThisModuleName "Builtin" -> either throwError pure $ handleBuiltinTy qtn
