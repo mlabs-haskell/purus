@@ -3,6 +3,7 @@ module Language.Purus.Eval (
   compileToUPLC,
   compileToUPLCTerm,
   convertToUPLCAndEvaluate,
+  evaluateAndCheck,
   evaluateUPLCTerm,
   evaluateTerm,
   evaluateTermU_,
@@ -12,7 +13,9 @@ module Language.Purus.Eval (
   parseData,
   (#),
   applyArgs,
-  dummyData
+  dummyData,
+  embedHaskell,
+  toDeBruijnUPLC
 ) where
 
 import Prelude
@@ -65,6 +68,8 @@ import UntypedPlutusCore.Evaluation.Machine.Cek qualified as Cek
 import Language.Purus.Pretty.Common (prettyStr)
 import PlutusCore.Pretty (prettyPlcReadableDef)
 import Language.Purus.Pretty (docString)
+import UntypedPlutusCore qualified as UPLC
+import PlutusCore.MkPlc (HasTermLevel)
 
 type PLCProgram uni fun a = PLC.Program PLC.TyName PLC.Name uni fun (Provenance a)
 
@@ -166,7 +171,7 @@ evaluateTermU ::
   Either (String, Maybe ExBudget, [Text]) (UPLCTerm,ExBudget,[Text])
 evaluateTermU budget t = case toDeBruijnUPLC t of
   Left err -> Left (err, Nothing, [])
-  Right uplc -> case Cek.runCekDeBruijn defaultCekParametersForTesting (Cek.restricting (ExRestrictingBudget budget)) Cek.logEmitter uplc of
+  Right uplc -> case Cek.runCekDeBruijn PlutusCore.Evaluation.Machine.ExBudgetingDefaults.defaultCekParametersForTesting (Cek.restricting (ExRestrictingBudget budget)) Cek.logEmitter uplc of
     (errOrRes, Cek.RestrictingSt (ExRestrictingBudget final), logs) -> case errOrRes of
       Left err -> Left (show err, Just $ budget `minusExBudget` final, logs)
       Right res -> Right (res, budget `minusExBudget` final, logs)
@@ -199,3 +204,19 @@ evaluateTermU_' budget t = case evaluateTermU budget t of
   Right res -> do
     putStrLn . docString $  prettyPlcReadableDef res
     pure ()
+
+embedHaskell :: forall (a :: *). HasTermLevel DefaultUni a
+             => a
+             -> UPLCTerm
+embedHaskell = mkConstant () 
+
+
+evaluateAndCheck :: forall (a :: *)
+                       . HasTermLevel DefaultUni a
+                       => ExBudget
+                       -> a
+                       -> PLCTerm
+                       -> Bool
+evaluateAndCheck budget x term = case evaluateTermU budget term of
+  Left _ -> False
+  Right (term',_,_) -> embedHaskell x == term' 

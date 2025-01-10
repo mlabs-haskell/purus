@@ -106,6 +106,7 @@ Exports:
   testDelay,
   testForce,
   testLazy,
+  testLazy',
   A,
   B,
   testAB1,
@@ -280,6 +281,20 @@ testTestClass =
 
 testLedgerTypes :: Prim.DCert
 testLedgerTypes = (DCertMir: Prim.DCert)
+
+testLazy' :: Prim.Boolean
+testLazy' = 
+  (force: forall (x :: Prim.Type). ((Prim.Delayed ((x :: Prim.Type))) ->
+  ((x :: Prim.Type))))
+  (case (True: Prim.Boolean) of 
+     True -> 
+       (delay: forall (x :: Prim.Type). ((x :: Prim.Type) ->
+       ((Prim.Delayed ((x :: Prim.Type))))))
+       (True: Prim.Boolean)
+     False -> 
+       (delay: forall (x :: Prim.Type). ((x :: Prim.Type) ->
+       ((Prim.Delayed ((x :: Prim.Type))))))
+       (error: Prim.Boolean))
 
 testLazy :: Prim.Boolean
 testLazy = 
