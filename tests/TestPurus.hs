@@ -42,11 +42,14 @@ import System.IO
 import PlutusIR.Core.Instance.Pretty.Readable (prettyPirReadable)
 import UntypedPlutusCore (DefaultUni)
 import PlutusCore.MkPlc (HasTermLevel)
+import Data.Maybe (mapMaybe)
+import UntypedPlutusCore.Core qualified as UPLC
 
 shouldPassTests :: IO ()
 shouldPassTests = do
   generatedTests <- mkShouldPassTests "tests/purus/passing/CoreFn"
-  let allTests = sequentialTestGroup "Passing" AllFinish [generatedTests,validatorTest,mintingPolicyTest]
+  expectedResTests <- expectedResultTests
+  let allTests = sequentialTestGroup "Passing" AllFinish [generatedTests,validatorTest,mintingPolicyTest,expectedResTests]
   defaultMain allTests
 
 {- The PureScript -> CoreFn part of the pipeline. Need to run this to output the CoreFn
@@ -138,26 +141,8 @@ mkPIREvalMany f nm tv decls = withResource (readTVarIO tv) (\_ -> pure ()) $ \tv
         Nothing -> error $ "failure: no PIRTerm compiled at " <> show testName
         Just term -> void $ f declNm term
 
--- maybe I need to use withResource? I'm not sure why this isn't working
-mkExpectedResultTests :: TVar (Map (FilePath,ModuleName,Text) PIRTerm)
-                      -> TestTree
-mkExpectedResultTests  declDict =
-  let expectedResultKeys = M.keys expectedResults
-  in sequentialTestGroup "Expected Results" AllFinish $ mkResultTests declDict <$> expectedResultKeys
- where
-   mkResultTests :: TVar (Map (FilePath,ModuleName,Text) PIRTerm)
-                 -> (FilePath,ModuleName,Text)
-                 -> TestTree
-   mkResultTests tv declId@(path,mn,declNm) = testCase testNm $ do
-       pirTerm <- readTVarIO tv >>= \decls -> case M.lookup declId decls of
-                    Nothing -> error $  "No declaration exists with identifier: " <> show declId <> "\n" <> prettyStr (M.keys decls)
-                    Just term -> pure term
-       uplcTermCompiled <- unRight . toDeBruijnUPLC <$> compileToUPLCTerm pirTerm
-       let uplcTermExpected = expectedResults M.! declId -- it HAS to be there
-       assertEqual "expected / actual" uplcTermCompiled uplcTermExpected
-     where
-       unRight (Right x) = x -- shouldn't matter here
-       testNm = "UPLC Expected result (" <> path <> ") " <> T.unpack (runModuleName mn) <> "." <> T.unpack declNm
+        
+
 {- Full pipeline tests for things we expect will succeed at the CoreFn -> PIR -> PLC -> UPLC -> Evaluation
    path. Reads from the modules in the `tests/purus/passing/CoreFn` directory.
 
@@ -173,11 +158,10 @@ mkShouldPassTests testDirPath = do
      Left err -> pure .  testCase ("PIR: " <> show path) $ assertFailure ("Failed during CoreFn compilation with reason: " <> displayException err)
      Right decls -> do
       declDict <- newTVarIO M.empty
-      let pirNoEval = sequentialTestGroup "No Eval" AllFinish$ mkPIRNoEval declDict path decls
+      let pirNoEval = sequentialTestGroup "No Eval" AllFinish $ mkPIRNoEval declDict path decls
           pirEvalPlc   =  mkPIREvalMany ( const (void . evaluateTerm)) "Eval (PLC)" declDict decls
           --pirEvalUplc = mkPIREvalMany (const (void . convertToUPLCAndEvaluate)) "Eval (UPLC)" declDict decls
-          pirEvalResults = mkExpectedResultTests declDict
-      pure $ sequentialTestGroup  ("PIR: " <> show path) AllFinish [pirNoEval,pirEvalPlc, pirEvalResults] -- ,pirEvalUplc]
+      pure $ sequentialTestGroup  ("PIR: " <> show path) AllFinish [pirNoEval,pirEvalPlc] -- ,pirEvalUplc]
     where
       initialize :: IO [(FilePath,ModuleName,Text)]
       initialize = do
@@ -241,32 +225,69 @@ getTestFiles testDir = do
        then maybe fp reverse $ stripPrefix ext $ reverse fp
        else dir
 
--- For expected value tests. Probably should move this eventually
-expectedResults :: Map (FilePath,ModuleName,Text) UPLCTerm
-expectedResults = M.fromList [
-      "testOpt2Int" `is` (2 :: Integer)
-    , "testIdentitee" `is` (101 :: Integer)
-    , "testBindersCase" `is` (2 :: Integer)
-    , "polyInObjMatch" `is` (5 :: Integer)
-    , "litPatternApplied" `is` False
-    , "testPrelude1" `is` (1 :: Integer)
-    , "testForce" `is` (2 :: Integer)
-    , "testLazy" `is` True
-    , "testLazy'" `is` True
-    ]
-  where
-    miscPath :: FilePath
-    miscPath = "tests/purus/passing/CoreFn/Misc"
 
-    miscLibMod :: ModuleName
-    miscLibMod = ModuleName "Lib"
+pattern UPLCTrue :: UPLCTerm
+pattern UPLCTrue = UPLC.Constr () 1 []
 
-    decl :: Text -> (FilePath,ModuleName,Text)
-    decl declNm = (miscPath,miscLibMod,declNm)
+pattern UPLCFalse :: UPLCTerm
+pattern UPLCFalse = UPLC.Constr () 0 []
 
-    is :: forall (a :: *)
-        . HasTermLevel DefaultUni a
-       => Text
-       -> a
-       -> ((FilePath,ModuleName,Text),UPLCTerm)
-    is declNm val = (decl declNm,embedHaskell val)
+
+-- i just think this is more readable
+
+(#=) :: a -> b -> (a,b)
+a #= b = (a,b)
+-- something is wrong w/ the sequencing if I try to write this using the other machinery. Things that *should* be in the TVar are missing.
+-- think I have to do it like this. will increase test run time a bit (but probably not too much if we keep all of the expected value tests in one module)
+--
+expectedResultTests :: IO TestTree
+expectedResultTests = do
+  void $ runPurusCoreFnDefault miscPath
+  let expectedDecls = M.keys expectedResults
+  (pirTerms :: Map (FilePath,ModuleName,Text) PIRTerm) <- M.unions <$> (traverse makePIR expectedDecls)
+  pure $ sequentialTestGroup "Expected Results" AllFinish (makeExpectedTest pirTerms <$> expectedDecls)
+
+ where
+  makeExpectedTest :: Map (FilePath, ModuleName, Text) PIRTerm
+                   -> (FilePath,ModuleName,Text)
+                   -> TestTree
+  makeExpectedTest pirTerms targetDecl@(fpath,runModuleName -> mn, dn) = testCase (fpath <> " " <> T.unpack (mn <> "." <> dn)) $ do
+    let pirCompiled = pirTerms M.! targetDecl
+        uplcExpected = expectedResults M.! targetDecl
+        unRight (Right x) = x
+    (uplcCompiled,_,_) <- unRight . evaluateTermU reasonablySizedBudget <$> compileToUPLCTerm pirCompiled
+    assertEqual "expected / actual"  uplcExpected uplcCompiled
+
+  makePIR :: (FilePath, ModuleName, Text) -> IO (Map (FilePath, ModuleName, Text) PIRTerm)
+  makePIR declId@(fpath,runModuleName -> mn, declNm) = do
+    term <- make fpath mn declNm (Just syntheticPrim)
+    pure $ M.singleton declId term
+
+  expectedResults :: Map (FilePath,ModuleName,Text) UPLCTerm
+  expectedResults = M.fromList [
+        "testOpt2Int" `is` (3 :: Integer)
+      , "testIdentitee" `is` (101 :: Integer)
+      , "testBindersCase" `is` (2 :: Integer)
+      , "polyInObjMatch" `is` (5 :: Integer)
+      , decl "litPatternApplied" #= UPLCFalse
+      , "testPrelude1" `is` (1 :: Integer)
+      , "testForce" `is` (2 :: Integer)
+      , decl "testLazy" #= UPLCTrue
+      , decl "testLazy'" #= UPLCTrue
+      , "main" `is` (101 :: Integer)
+      ]
+  miscPath :: FilePath
+  miscPath = "tests/purus/passing/CoreFn/Misc"
+
+  miscLibMod :: ModuleName
+  miscLibMod = ModuleName "Lib"
+
+  decl :: Text -> (FilePath,ModuleName,Text)
+  decl declNm = (miscPath,miscLibMod,declNm)
+
+  is :: forall (a :: *)
+          . HasTermLevel DefaultUni a
+         => Text
+         -> a
+         -> ((FilePath,ModuleName,Text),UPLCTerm)
+  is declNm val = (decl declNm,embedHaskell val)
