@@ -55,7 +55,7 @@ import Language.PureScript.Errors (
   MultipleErrors,
  )
 import Language.PureScript.Label (Label (..))
-import Language.PureScript.Names (Ident (..), ModuleName, ProperName (..), ProperNameType (..), Qualified (..), QualifiedBy (..), coerceProperName, getQual, runIdent)
+import Language.PureScript.Names (Ident (..), ModuleName, ProperName (..), ProperNameType (..), Qualified (..), QualifiedBy (..), coerceProperName, getQual, runIdent, showQualified)
 import Language.PureScript.PSString (PSString)
 import Language.PureScript.TypeChecker.Monad (
   CheckState (checkCurrentModule, checkEnv),
@@ -68,7 +68,9 @@ import Language.PureScript.TypeChecker.Types (
   kindType,
  )
 import Language.PureScript.TypeClassDictionaries (NamedDict, TypeClassDictionaryInScope (..))
-import Language.PureScript.Types (Constraint (..), RowListItem (..), SourceType, Type (..), everywhereOnTypes, quantify, replaceTypeVars, rowToSortedList, srcTypeApp, srcTypeConstructor, srcTypeVar)
+import Language.PureScript.Types (Constraint (..), RowListItem (..), SourceType, Type (..), everywhereOnTypes, quantify, replaceTypeVars, rowToSortedList, srcTypeApp, srcTypeConstructor, srcTypeVar, freeTypeVariables)
+import Data.Text (Text)
+import Language.Purus.Pretty (prettyStr)
 
 
 {- UTILITIES -}
@@ -664,3 +666,5 @@ pattern NoSourceAnn = (NullSourceSpan, [])
 
 pattern NoAnn :: Ann
 pattern NoAnn = (NullSourceSpan, [], Nothing)
+
+

@@ -100,7 +100,7 @@ import Language.PureScript.Names (
   mkQualified,
   showQualified,
   runIdent,
-  pattern ByNullSourcePos,
+  pattern ByNullSourcePos, runModuleName,
  )
 import Language.PureScript.PSString (PSString, decodeStringWithReplacement)
 import Language.PureScript.Pretty.Values (renderValue)
@@ -122,13 +122,14 @@ import Language.PureScript.Types (
   eqType,
   quantify,
   rowToList,
-  pattern REmptyKinded,
+  pattern REmptyKinded, freeTypeVariables,
  )
 import Language.Purus.Pretty (ppType, prettyStr, renderExprStr)
 import Prettyprinter (Pretty (pretty))
 import Language.PureScript.Sugar (desugarGuardedExprs)
 import Control.Lens.Plated
 import Control.Lens (view, _1, _2)
+import Data.Bifunctor (first)
 
 traceM :: forall f. Applicative f => String -> f ()
 traceM _ = pure ()
@@ -245,7 +246,7 @@ objectToCoreFn mn ss recTy row objFields = do
     go :: M.Map PSString (RowListItem SourceAnn) -> [(PSString, Expr Ann)] -> (PSString, A.Expr) -> m [(PSString, Expr Ann)]
     go tyMap acc (lbl, expr) = case M.lookup lbl tyMap of
       Just rowListItem -> do
-        let fieldTy = rowListType rowListItem
+        let fieldTy = rowListItem.rowListType
         expr' <- exprToCoreFn mn ss (Just fieldTy) expr
         pure $ (lbl, expr') : acc
       Nothing -> do
@@ -290,13 +291,25 @@ declToCoreFn mn (A.DataBindingGroupDeclaration ds) = wrapTrace "declToCoreFn DAT
 -- Essentially a wrapper over `exprToCoreFn`. Not 100% sure if binding the type of the declaration is necessary here?
 -- NOTE: Should be impossible to have a guarded expr here, make it an error
 declToCoreFn mn (A.ValueDecl (ss, _) name _ _ [A.MkUnguarded e]) = wrapTrace ("decltoCoreFn VALDEC " <> show name) $ do
-  traceM $ renderValue 100 e
-  traceM $ "\n" <> (show e)
-  (valDeclTy, nv) <- lookupType (spanStart ss) name
-  traceM (ppType 100 valDeclTy)
-  bindLocalVariables [(ss, name, valDeclTy, nv)] $ do
-    expr <- exprToCoreFn mn ss (Just valDeclTy) e -- maybe wrong? might need to bind something here?
-    pure [NonRec (ssA ss) name expr]
+  (valDeclTy, nv) <-  lookupType (spanStart ss) name
+  case freeTypeVariables valDeclTy of
+    [] -> do
+      bindLocalVariables [(ss, name, valDeclTy, nv)] $ do
+        expr <- exprToCoreFn mn ss (Just valDeclTy) e -- maybe wrong? might need to bind something here?
+        pure [NonRec (ssA ss) name expr]
+    (map fst -> freeVars) -> case name of -- We only care about user-written declarations here, our machinery should correctly handle compiler-generated identifiers
+      Ident _ -> do
+        let modNameStr = T.unpack (runModuleName mn)
+        error $ "Error: Could not compile declaration "
+                <> modNameStr <> "." <> show name
+                <> ".\n The type of this declarations: " <> prettyStr valDeclTy
+                <> " contains free type variables " <> prettyStr freeVars
+                <> ".\nPossible fix: Consider adding a `forall` quantifier to the declaration's type signature."
+      _ -> do -- yeah this control flow is a bit silly but it should work
+        bindLocalVariables [(ss, name, valDeclTy, nv)] $ do
+          expr <- exprToCoreFn mn ss (Just valDeclTy) e -- maybe wrong? might need to bind something here?
+          pure [NonRec (ssA ss) name expr]
+
 -- Recursive binding groups. This is tricky. Calling `typedOf` saves us a lot of work, but it's hard to tell whether that's 100% safe here
 declToCoreFn mn (A.BindingGroupDeclaration ds) = wrapTrace "declToCoreFn BINDING GROUP" $ do
   let typed = NE.toList $ extractTypeAndPrepareBind <$> ds
@@ -728,3 +741,5 @@ inferBinder' _ A.BinaryNoParensBinder {} =
   internalError "BinaryNoParensBinder should have been desugared before inferBinder'"
 inferBinder' _ A.ParensInBinder {} =
   internalError "ParensInBinder should have been desugared before inferBinder'"
+
+

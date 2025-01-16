@@ -16,6 +16,7 @@ Exports:
   testTestClass,
   minus,
   brokenEven,
+  testBrokenEven,
   Some,
   Nada,
   opt2Int,
@@ -58,6 +59,7 @@ Exports:
   nestedApplications,
   anObj,
   objUpdate,
+  testObjUpdate,
   polyInObj,
   polyInObjMatch,
   aPred,
@@ -99,9 +101,12 @@ Exports:
   testRedundantCtors,
   testBrokenCollapse,
   testRedundantLit,
+  testRedundantLitApplied,
   testNested,
+  testNestedApplied,
   testNestedSmaller,
   testError,
+  testErrorApplied,
   testError',
   testDelay,
   testForce,
@@ -111,6 +116,11 @@ Exports:
   B,
   testAB1,
   testAB2,
+  testRecord,
+  testAccessorA,
+  testAccessorB,
+  testAccessorC,
+  doesitparse,
   testClassInt,
   eqInt,
   eq2IntBoolean,
@@ -238,6 +248,10 @@ testRedundantLit =
        _ -> (4: Prim.Int)
        (x1 :: Prim.Int) -> (5: Prim.Int)
 
+testRedundantLitApplied :: Prim.Int
+testRedundantLitApplied = 
+  (testRedundantLit: (Prim.Int -> (Prim.Int))) (1: Prim.Int)
+
 testRedundantCtors :: ((Prim.Maybe (Prim.Int)) -> (Prim.Unit))
 testRedundantCtors = 
   \(x: (Prim.Maybe (Prim.Int))) -> 
@@ -245,6 +259,14 @@ testRedundantCtors =
        Just 1 -> (unit: Prim.Unit)
        Just (x1 :: Prim.Int) -> (unit: Prim.Unit)
        Nothing -> (unit: Prim.Unit)
+
+testRecord :: { b :: Prim.Int, a :: Prim.Int, c :: Prim.Int }
+testRecord = 
+  ({ a: (1: Prim.Int), c: (3: Prim.Int), b: (2: Prim.Int) }: {
+                                                               b :: Prim.Int,
+                                                               a :: Prim.Int,
+                                                               c :: Prim.Int
+                                                             })
 
 testNestedSmaller :: ((Prim.Maybe ((Prim.Maybe (Prim.Int)))) -> (Prim.Int))
 testNestedSmaller = 
@@ -262,6 +284,18 @@ testNested =
        Just Nothing -> (1: Prim.Int)
        Just Just Nothing -> (2: Prim.Int)
        Just Just Just (x :: Prim.Int) -> (x: Prim.Int)
+
+testNestedApplied :: Prim.Int
+testNestedApplied = 
+  (testNested: ((Prim.Maybe ((Prim.Maybe ((Prim.Maybe (Prim.Int)))))) ->
+  (Prim.Int)))
+  ((Just: forall (a :: Prim.Type). ((a :: Prim.Type) ->
+   ((Prim.Maybe ((a :: Prim.Type))))))
+   ((Just: forall (a :: Prim.Type). ((a :: Prim.Type) ->
+    ((Prim.Maybe ((a :: Prim.Type))))))
+    ((Just: forall (a :: Prim.Type). ((a :: Prim.Type) ->
+     ((Prim.Maybe ((a :: Prim.Type))))))
+     (101: Prim.Int))))
 
 testMethod :: forall (@a :: Prim.Type). ({ testMethod :: ((a :: Prim.Type) -> (Prim.Boolean)) } -> (((a :: Prim.Type) -> (Prim.Boolean))))
 testMethod = 
@@ -372,6 +406,9 @@ testError =
        0 -> (error: Prim.Int)
        (other :: Prim.Int) -> (other: Prim.Int)
 
+testErrorApplied :: Prim.Int
+testErrorApplied = (testError: (Prim.Int -> (Prim.Int))) (2: Prim.Int)
+
 testDelay :: (Prim.Delayed (Prim.Int))
 testDelay = 
   (delay: forall (x :: Prim.Type). ((x :: Prim.Type) ->
@@ -445,6 +482,15 @@ testBindersCase :: Prim.Int
 testBindersCase = 
   (testBinders: (Lib.TestBinderSum -> (Prim.Int)))
   ((ConInt: (Prim.Int -> (Lib.TestBinderSum))) (2: Prim.Int))
+
+testAccessorC :: Prim.Int
+testAccessorC = (testRecord: { c :: Prim.Int, a :: Prim.Int, b :: Prim.Int }).c
+
+testAccessorB :: Prim.Int
+testAccessorB = (testRecord: { b :: Prim.Int, a :: Prim.Int, c :: Prim.Int }).b
+
+testAccessorA :: Prim.Int
+testAccessorA = (testRecord: { a :: Prim.Int, b :: Prim.Int, c :: Prim.Int }).a
 
 testAB2 :: Prim.String
 testAB2 = 
@@ -857,6 +903,9 @@ testSuperClass =
   (1: Prim.Int)
   (2: Prim.Int)
 
+doesitparse :: forall (a :: Prim.Type). ((a :: Prim.Type) -> ((a :: Prim.Type)))
+doesitparse = \(x: (a :: Prim.Type)) -> (x: (a :: Prim.Type))
+
 cons :: forall (a :: Prim.Type). ((a :: Prim.Type) -> ((List ((a :: Prim.Type)) -> (List ((a :: Prim.Type))))))
 cons = 
   \(x: (a :: Prim.Type)) -> 
@@ -909,6 +958,9 @@ brokenEven =
          ((minus: (Prim.Int -> ((Prim.Int -> (Prim.Int)))))
           (n: Prim.Int)
           (2: Prim.Int))
+
+testBrokenEven :: Prim.Int
+testBrokenEven = (brokenEven: (Prim.Int -> (Prim.Int))) (0: Prim.Int)
 
 arrForall :: List (forall (a :: Prim.Type). ((a :: Prim.Type) -> ((a :: Prim.Type))))
 arrForall = 
@@ -981,6 +1033,9 @@ objUpdate =
     v :: { foo :: Prim.Int }
     v = (anObj: { foo :: Prim.Int })
   in (v: { foo :: Prim.Int }) { foo = (4: Prim.Int) }
+
+testObjUpdate :: Prim.Int
+testObjUpdate = (objUpdate: { foo :: Prim.Int }).foo
 
 anIntLit :: Prim.Int
 anIntLit = (1: Prim.Int)

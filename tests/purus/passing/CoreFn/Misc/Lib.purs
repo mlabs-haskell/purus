@@ -30,6 +30,9 @@ brokenEven n =
     if n `eq` 0 then 1
     else brokenEven (n `minus` 2)
 
+testBrokenEven :: Int
+testBrokenEven = brokenEven 0
+
 
 data Option (a :: Type) = Some a | Nada
 
@@ -248,6 +251,9 @@ anObj = {foo: 3}
 objUpdate :: {foo :: Int}
 objUpdate = anObj {foo = 4}
 
+testObjUpdate :: Int
+testObjUpdate = objUpdate.foo 
+
 polyInObj :: {bar :: forall (x :: Type). x -> Int, baz :: Int}
 polyInObj = {bar: go, baz : 100}
   where
@@ -356,7 +362,7 @@ not :: Boolean -> Boolean
 not b = if b then False else True
 
 and :: Boolean -> Boolean -> Boolean
-and p q = not (not p || not q) -- i think? rly tired atm
+and p q = not (not p || not q)
 
 infixr 6 and as &&
 
@@ -495,6 +501,9 @@ testRedundantLit x = case x of
   _ -> 4
   x -> 5
 
+testRedundantLitApplied :: Int
+testRedundantLitApplied = testRedundantLit 1
+
 -- NESTED CONSTRUCTORS?!
 
 testNested :: Maybe (Maybe (Maybe Int)) -> Int
@@ -503,6 +512,9 @@ testNested = case _ of
   Just Nothing -> 1
   Just (Just Nothing) -> 2
   Just (Just (Just x)) -> x
+
+testNestedApplied :: Int
+testNestedApplied = testNested (Just (Just (Just 101)))
 
 testNestedSmaller :: Maybe (Maybe Int) -> Int
 testNestedSmaller = case _ of
@@ -516,7 +528,10 @@ testNestedSmaller = case _ of
 testError :: Int -> Int
 testError = case _ of
   0 -> error @Int   
-  other -> other 
+  other -> other
+
+testErrorApplied :: Int
+testErrorApplied = testError 2
 
 testError' :: Int -> Int
 testError' = case _ of
@@ -552,3 +567,20 @@ testAB2 ::  String
 testAB2 = case A of
   A -> "A"
   B -> "B"
+
+-- for verifying record accessor correctness
+
+testRecord :: {b :: Int, a :: Int, c :: Int}
+testRecord = {b: 2, c: 3, a: 1}
+
+testAccessorA :: Int
+testAccessorA = testRecord.a
+
+testAccessorB :: Int
+testAccessorB = testRecord.b
+
+testAccessorC :: Int
+testAccessorC = testRecord.c
+
+doesitparse ::  forall a. a -> a
+doesitparse x = x 

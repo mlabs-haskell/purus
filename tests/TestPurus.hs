@@ -49,7 +49,13 @@ shouldPassTests :: IO ()
 shouldPassTests = do
   generatedTests <- mkShouldPassTests "tests/purus/passing/CoreFn"
   expectedResTests <- expectedResultTests
-  let allTests = sequentialTestGroup "Passing" AllFinish [generatedTests,validatorTest,mintingPolicyTest,expectedResTests]
+  nonTerminatingTests <- mkNonTerminatingTests "tests/purus/passing/NonTerminating"
+  let allTests = sequentialTestGroup "Passing" AllFinish
+                  [ generatedTests
+                  , nonTerminatingTests 
+                  , validatorTest
+                  , mintingPolicyTest
+                  , expectedResTests]
   defaultMain allTests
 
 {- The PureScript -> CoreFn part of the pipeline. Need to run this to output the CoreFn
@@ -141,7 +147,6 @@ mkPIREvalMany f nm tv decls = withResource (readTVarIO tv) (\_ -> pure ()) $ \tv
         Nothing -> error $ "failure: no PIRTerm compiled at " <> show testName
         Just term -> void $ f declNm term
 
-        
 
 {- Full pipeline tests for things we expect will succeed at the CoreFn -> PIR -> PLC -> UPLC -> Evaluation
    path. Reads from the modules in the `tests/purus/passing/CoreFn` directory.
@@ -159,15 +164,43 @@ mkShouldPassTests testDirPath = do
      Right decls -> do
       declDict <- newTVarIO M.empty
       let pirNoEval = sequentialTestGroup "No Eval" AllFinish $ mkPIRNoEval declDict path decls
-          pirEvalPlc   =  mkPIREvalMany ( const (void . evaluateTerm)) "Eval (PLC)" declDict decls
-          --pirEvalUplc = mkPIREvalMany (const (void . convertToUPLCAndEvaluate)) "Eval (UPLC)" declDict decls
-      pure $ sequentialTestGroup  ("PIR: " <> show path) AllFinish [pirNoEval,pirEvalPlc] -- ,pirEvalUplc]
+          --pirEvalPlc   =  mkPIREvalMany ( const (void . evaluateTerm)) "Eval (PLC)" declDict decls
+          pirEvalUplc = mkPIREvalMany (const (void . convertToUPLCAndEvaluate)) "Eval (UPLC)" declDict decls
+      pure $ sequentialTestGroup  ("PIR: " <> show path) AllFinish [pirNoEval,pirEvalUplc]
     where
       initialize :: IO [(FilePath,ModuleName,Text)]
       initialize = do
          void $ runPurusCoreFnDefault path
          allDecls <- allValueDeclarations path
          pure $ (\(b,c) -> (path,b,c)) <$> allDecls
+
+{- Variant of the test generator for modules expected to contain non-terminating functions.
+   Compiles to UPLC then evaluates, recording a failure ONLY in cases where evaluation fails with
+   an error OTHER THAN 'Cek Budget Exceeded'
+
+   Mainly used to test the inliner. Because it is essential to ensure that the inliner does not recurse
+   infinitely (i.e. by inlining forever when inlining recursive functions),
+   most of the useful inliner tests are necessarily non-terminating.
+-}
+
+mkNonTerminatingTests :: FilePath -> IO TestTree
+mkNonTerminatingTests testDirPath = do
+  allProjectDirectories <- listDirectory testDirPath
+  sequentialTestGroup "Non-terminating" AllFinish <$> traverse ( go . (testDirPath </>)) allProjectDirectories
+ where
+   go :: FilePath -> IO TestTree
+   go path = do
+     void $ runPurusCoreFnDefault path
+     allDecls <- allValueDeclarations path
+     trees <- traverse mkTest allDecls
+     pure $ sequentialTestGroup "Non-terminating" AllFinish trees
+    where
+      mkTest :: (ModuleName, Text) -> IO TestTree
+      mkTest (runModuleName -> mn, dn) = do
+        term <- make path mn dn (Just syntheticPrim)
+        pure $ testCase "Non-terminating eval test" (convertAndEvaluateNonTerminating reasonablySizedBudget term)
+
+
 
 
 {- Runs the PureScript -> CoreFn part of the compiler pipeline in default mode (i.e. not in Golden mode, i.e.
@@ -275,6 +308,15 @@ expectedResultTests = do
       , decl "testLazy" #= UPLCTrue
       , decl "testLazy'" #= UPLCTrue
       , "main" `is` (101 :: Integer)
+      , "testNestedApplied" `is` (101 :: Integer)
+      , "testRedundantLitApplied" `is` (1 :: Integer)
+      , "testErrorApplied" `is` (2 :: Integer)
+      , "testIdConst" `is` (5 :: Integer)
+      , "testObjUpdate" `is` (4 :: Integer)
+      , "testBrokenEven" `is` (1 :: Integer)
+      , "testAccessorA" `is` (1 :: Integer)
+      , "testAccessorB" `is` (2 :: Integer)
+      , "testAccessorC" `is` (3 :: Integer)
       ]
   miscPath :: FilePath
   miscPath = "tests/purus/passing/CoreFn/Misc"

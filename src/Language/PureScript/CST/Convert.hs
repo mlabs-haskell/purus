@@ -60,12 +60,14 @@ tvKind :: SourceToken -> Text -> ConvertM T.SourceType
 tvKind srcTok nm = do
   cxt <- get
   case M.lookup nm cxt of
-    Nothing ->
-      internalError $
-        "Error: Missing kind annotation for TyVar "
+    Nothing -> do
+      traceM $
+        "Warning: Missing kind annotation for TyVar "
           <> Text.unpack nm
           <> "\n  at (or near): "
           <> prettyRange (srcTokenRange srcTok)
+          <> "\n defaulting kind to Type"
+      pure $ T.TypeConstructor NullSourceAnn C.Type
     Just t -> pure t
 
 prettyRange :: SourceRange -> String

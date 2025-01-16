@@ -9,6 +9,8 @@ module Language.Purus.Eval (
   evaluateTermU_,
   evaluateTermU_',
   evaluateTermU,
+  evaluateTermUNonTerminating,
+  convertAndEvaluateNonTerminating,
   reasonablySizedBudget,
   parseData,
   (#),
@@ -70,6 +72,8 @@ import PlutusCore.Pretty (prettyPlcReadableDef)
 import Language.Purus.Pretty (docString)
 import UntypedPlutusCore qualified as UPLC
 import PlutusCore.MkPlc (HasTermLevel)
+import UntypedPlutusCore.Evaluation.Machine.SteppableCek (ErrorWithCause(..), EvaluationError (..))
+import UntypedPlutusCore.Evaluation.Machine.Cek (CekUserError(..))
 
 type PLCProgram uni fun a = PLC.Program PLC.TyName PLC.Name uni fun (Provenance a)
 
@@ -106,9 +110,7 @@ evaluateTerm :: PIRTerm -> IO (EvaluationResult (PLC.Term PLC.TyName Name Defaul
 evaluateTerm term = runPLCProgram <$> compileToUPLC term
 
 convertToUPLCAndEvaluate :: PIRTerm -> IO ()
-convertToUPLCAndEvaluate t = evaluateTerm t >>= \case
-  (EvaluationSuccess plcTerm ,_) -> evaluateTermU_ reasonablySizedBudget plcTerm
-  (EvaluationFailure,logs) -> error (show logs)
+convertToUPLCAndEvaluate t = compileToUPLCTerm t >>=  evaluateTermU_ reasonablySizedBudget 
   
 {- Compile a PIR Term to a UPLC Program-}
 compileToUPLC :: PIRTerm -> IO (PLCProgram DefaultUni DefaultFun ())
@@ -160,7 +162,7 @@ toDeBruijnUPLC t =  first prettyStr x
     x = deBruijnTerm (eraseTerm t)
 
 reasonablySizedBudget :: ExBudget
-reasonablySizedBudget = ExBudget (ExCPU 100000000) (ExMemory 100000)
+reasonablySizedBudget = ExBudget (ExCPU 10000000) (ExMemory 1000000)
 
 
 -- stolen from plutarch
@@ -176,6 +178,26 @@ evaluateTermU budget t = case toDeBruijnUPLC t of
       Left err -> Left (show err, Just $ budget `minusExBudget` final, logs)
       Right res -> Right (res, budget `minusExBudget` final, logs)
 
+-- For tests where we expect the function to not terminate (and therefore exceed the budget limits).
+-- I'm not 100% sure what the best thing to do here is, but for the sake of simplicity I think the
+-- it should suffice to return `pure ()` if evaluation either succeeds straightaway or we exceed the
+-- execution limits (all of the modules we'll be calling this on have helper functions that will terminate so
+-- we need to let those pass). Anything else should throw an error. Kind of messy but it's the easiest
+-- thing I can think of.
+evaluateTermUNonTerminating ::
+  ExBudget ->
+  PLCTerm ->
+  IO ()
+evaluateTermUNonTerminating budget t = case toDeBruijnUPLC t of
+  Left err -> error err -- should this be throwIO? idk
+  Right uplc -> case Cek.runCekDeBruijn PlutusCore.Evaluation.Machine.ExBudgetingDefaults.defaultCekParametersForTesting (Cek.restricting (ExRestrictingBudget budget)) Cek.logEmitter uplc of
+    (errOrRes, Cek.RestrictingSt (ExRestrictingBudget final), logs) -> case errOrRes of
+      Right _ -> pure ()
+      Left (ErrorWithCause (OperationalEvaluationError (CekOutOfExError _)) cause) -> pure ()
+      _ -> error "Non-terminating term failed with something other than a `CekOutOfExError`"
+
+convertAndEvaluateNonTerminating :: ExBudget -> PIRTerm -> IO ()
+convertAndEvaluateNonTerminating budget pirterm = compileToUPLCTerm pirterm >>= evaluateTermUNonTerminating budget 
 -- for tests
 evaluateTermU_ ::
   ExBudget ->

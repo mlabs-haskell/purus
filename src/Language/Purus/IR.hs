@@ -65,6 +65,8 @@ import Prettyprinter (
   defaultLayoutOptions,
   dot,
   encloseSep,
+  braces,
+  punctuate,
   group,
   hardline,
   hsep,
@@ -682,8 +684,10 @@ instance (Pretty a, Pretty ty, Pretty (KindOf ty), TypeLike ty) => Pretty (Exp x
               , indent 2 . align . vcat $ pretty <$> bound
               , "in" <+> align (pretty unscopedE)
               ]
-    AccessorE _ _ field expr -> parens (pretty expr) <> dot <> pretty field
-    ObjectUpdateE _ _ _ _ _ -> "TODO: Implement ObjectUpdateE printer"
+    AccessorE _ t field expr -> parens (pretty expr) <> dot <> pretty field <::> pretty t
+    ObjectUpdateE _ t e  _  newFields ->
+      let prettyUpdateFields = hsep . punctuate "," $ map (\(fldNm,newVal) -> pretty fldNm <+> "=" <+> pretty newVal) newFields 
+      in pretty e <+> braces prettyUpdateFields <::> pretty t 
     TyInstE t e -> vsep [pretty e, "@" <> parens (pretty t)]
     TyAbs bv e ->
       "/\\"
@@ -776,7 +780,7 @@ expTy f = \case
   LitE t _ -> t
   LamE (BVar _ t _) body -> t `funTy` expTy' f body
   AppE e1 e2 -> appType f e1 e2
-  CaseE t _ _ -> t
+  CaseE t _ (UnguardedAlt _ altBody:_) -> expTy' f altBody --t
   LetE _ e -> expTy' f e
   AccessorE _ t _ _ -> t
   ObjectUpdateE _ t _ _ _ -> t
@@ -793,7 +797,7 @@ expTy' f scoped = case instantiateEither (either (V . B) (V . F)) scoped of
     let body' = join <$> fmap f <$> body
      in t `funTy` expTy' id body'
   AppE e1 e2 -> appType (>>= f) e1 e2
-  CaseE t _ _ -> t
+  CaseE t _ (UnguardedAlt _ altBody:_) -> expTy' id (join <$> fmap f <$> altBody)
   LetE _ e -> expTy' (>>= f) e
   AccessorE _ t _ _ -> t
   ObjectUpdateE _ t _ _ _ -> t
