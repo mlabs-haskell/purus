@@ -1,0 +1,38 @@
+Main (tests/projects/Foo/Main.purs)
+
+Imported Modules: 
+------------------------------
+  Builtin,
+  Main,
+  Prim
+
+Exports: 
+------------------------------
+  testRecord,
+  main
+
+Re-Exports: 
+------------------------------
+  
+
+Foreign: 
+------------------------------
+  
+
+Datatypes: 
+------------------------------
+
+
+
+Declarations: 
+------------------------------
+testRecord :: { b :: Prim.Int, a :: Prim.Int, c :: Prim.Int }
+testRecord = 
+  ({ a: (1: Prim.Int), c: (3: Prim.Int), b: (2: Prim.Int) }: {
+                                                               b :: Prim.Int,
+                                                               a :: Prim.Int,
+                                                               c :: Prim.Int
+                                                             })
+
+main :: Prim.Int
+main = (testRecord: { a :: Prim.Int, b :: Prim.Int, c :: Prim.Int }).a

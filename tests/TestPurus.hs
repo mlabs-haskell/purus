@@ -50,12 +50,14 @@ shouldPassTests = do
   generatedTests <- mkShouldPassTests "tests/purus/passing/CoreFn"
   expectedResTests <- expectedResultTests
   nonTerminatingTests <- mkNonTerminatingTests "tests/purus/passing/NonTerminating"
-  let allTests = sequentialTestGroup "Passing" AllFinish
+  let golden = testCase "CoreFn Golden" $ runPurusCoreFnGolden "tests/purus/passing/golden/Misc"
+      allTests = sequentialTestGroup "Passing" AllFinish
                   [ generatedTests
                   , nonTerminatingTests 
                   , validatorTest
                   , mintingPolicyTest
-                  , expectedResTests]
+                  , expectedResTests
+                  , golden ]
   defaultMain allTests
 
 {- The PureScript -> CoreFn part of the pipeline. Need to run this to output the CoreFn
@@ -208,6 +210,9 @@ mkNonTerminatingTests testDirPath = do
 -}
 runPurusCoreFnDefault :: FilePath -> IO ()
 runPurusCoreFnDefault path = runPurusCoreFn P.CoreFn path
+
+runPurusCoreFnGolden :: FilePath -> IO ()
+runPurusCoreFnGolden path = runPurusCoreFn P.CheckCoreFn path
 
 {- Manual tests for scripts. These require us to apply arguments and parse an example script context. 
 -}
