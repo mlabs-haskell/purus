@@ -474,6 +474,30 @@ executable purs
   autogen-modules:
     Paths_purescript
 
+executable purus
+  import: defaults
+  hs-source-dirs: purus
+  main-is: Main.hs
+  ghc-options: -fno-warn-unused-do-bind -threaded -rtsopts -with-rtsopts=-N -Wno-unused-packages
+  build-depends:
+    ansi-wl-pprint >=0.6.9 && <0.7,
+    exceptions >=0.10.4 && <0.11,
+    network >=3.1.2.7 && <3.2,
+    optparse-applicative,
+    prettyprinter-ansi-terminal,
+    purescript,
+    purs-lib
+  if flag(release)
+    cpp-options: -DRELEASE
+  else
+    build-depends:
+      gitrev >=1.2.0 && <1.4
+  other-modules:
+    Paths_purescript
+  autogen-modules:
+    Paths_purescript
+
+
 library purs-lib
   import: defaults
   hs-source-dirs: purs-lib

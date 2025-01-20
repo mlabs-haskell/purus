@@ -115,7 +115,7 @@ compile primModule orderedModules mainModuleName mainFunctionName =
     go = do
       (summedModule, dsCxt) <- runDesugarCore $ desugarCoreModules primModule orderedModules
       let
-        traceBracket lbl msg =  pure () --  traceM ("\n" <> lbl <> "\n\n" <> msg <> "\n\n")
+        traceBracket lbl msg = pure () --  traceM ("\n" <> lbl <> "\n\n" <> msg <> "\n\n")
         decls = moduleDecls summedModule
         declIdentsSet = foldBinds (\acc nm _ -> S.insert nm acc) S.empty decls
         couldn'tFindMain n =
@@ -141,10 +141,9 @@ compile primModule orderedModules mainModuleName mainFunctionName =
         pure inlineResult
       traceBracket "Done inlining. Result:" $  prettyStr inlined
       let !instantiated = applyPolyRowArgs $ instantiateTypes inlined
-      --traceBracket "Done instantiating types. Result:" $ prettyStr instantiated
+      traceBracket "Done instantiating types. Result:" $ prettyStr instantiated
       withoutObjects <- instantiateTypes <$> runCounter (desugarObjects instantiated)
-
-      --traceBracket  "Desugared objects. Result:\n" $ prettyStr withoutObjects
+      traceBracket  "Desugared objects. Result:\n" $ prettyStr withoutObjects
       datatypes <- runCounter $ desugarObjectsInDatatypes (primDataPS <> moduleDataTypes summedModule)
       --traceM "Desugared datatypes"
       runPlutusContext initDatatypeDict $ do

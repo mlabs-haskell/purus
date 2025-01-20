@@ -1,4 +1,4 @@
-TestInliner (tests/purus/passing/CoreFn/Inliner/TestInliner.purs)
+TestInliner (tests/purus/passing/NonTerminating/TestInliner/TestInliner.purs)
 
 Imported Modules: 
 ------------------------------
@@ -16,8 +16,12 @@ Exports:
   plus,
   testForLiftPoly,
   testForLiftPolyApplied,
+  ghcInlinerPaperEx,
+  kozsTwoSCCEx,
   testForLift,
-  testForLift'
+  testForLiftApplied,
+  testForLift',
+  testForLiftApplied'
 
 Re-Exports: 
 ------------------------------
@@ -137,6 +141,9 @@ testForLift =
        (x: Prim.Int)
        (3: Prim.Int)
 
+testForLiftApplied :: Prim.Boolean
+testForLiftApplied = (testForLift: (Prim.Int -> (Prim.Boolean))) (2: Prim.Int)
+
 testForLift' :: (Prim.Int -> (Prim.Boolean))
 testForLift' = 
   \(x: Prim.Int) -> 
@@ -164,6 +171,10 @@ testForLift' =
        (x: Prim.Int)
        (3: Prim.Int)
 
+testForLiftApplied' :: Prim.Boolean
+testForLiftApplied' = 
+  (testForLift': (Prim.Int -> (Prim.Boolean))) (101: Prim.Int)
+
 and :: (Prim.Boolean -> ((Prim.Boolean -> (Prim.Boolean))))
 and = 
   \(p: Prim.Boolean) -> 
@@ -184,3 +195,89 @@ iff =
       ((and: (Prim.Boolean -> ((Prim.Boolean -> (Prim.Boolean)))))
        ((not: (Prim.Boolean -> (Prim.Boolean))) (p: Prim.Boolean))
        ((not: (Prim.Boolean -> (Prim.Boolean))) (q: Prim.Boolean)))
+
+ghcInlinerPaperEx :: Prim.Boolean
+ghcInlinerPaperEx = 
+  let
+    h :: (Prim.Boolean -> (Prim.Boolean))
+    h = 
+      \(x: Prim.Boolean) -> 
+        (and: (Prim.Boolean -> ((Prim.Boolean -> (Prim.Boolean)))))
+        ((f: (Prim.Boolean -> (Prim.Boolean))) (True: Prim.Boolean))
+        (x: Prim.Boolean)
+    g :: (Prim.Boolean -> (Prim.Boolean))
+    g = 
+      \(x: Prim.Boolean) -> 
+        (iff: (Prim.Boolean -> ((Prim.Boolean -> (Prim.Boolean)))))
+        ((h: (Prim.Boolean -> (Prim.Boolean))) (x: Prim.Boolean))
+        (False: Prim.Boolean)
+    f :: (Prim.Boolean -> (Prim.Boolean))
+    f = 
+      \(x: Prim.Boolean) -> 
+        (g: (Prim.Boolean -> (Prim.Boolean)))
+        ((not: (Prim.Boolean -> (Prim.Boolean))) (x: Prim.Boolean))
+    q :: (Prim.Boolean -> (Prim.Boolean))
+    q = 
+      \(x: Prim.Boolean) -> 
+        (g: (Prim.Boolean -> (Prim.Boolean)))
+        ((iff: (Prim.Boolean -> ((Prim.Boolean -> (Prim.Boolean)))))
+         (x: Prim.Boolean)
+         ((not: (Prim.Boolean -> (Prim.Boolean))) (x: Prim.Boolean)))
+    p :: Prim.Boolean
+    p = (q: (Prim.Boolean -> (Prim.Boolean))) (False: Prim.Boolean)
+  in (p: Prim.Boolean)
+
+kozsTwoSCCEx :: Prim.Boolean
+kozsTwoSCCEx = 
+  let
+    z :: Prim.Boolean
+    z = (True: Prim.Boolean)
+    h :: (Prim.Boolean -> (Prim.Boolean))
+    h = 
+      \(x: Prim.Boolean) -> 
+        (not: (Prim.Boolean -> (Prim.Boolean)))
+        ((f: (Prim.Boolean -> (Prim.Boolean))) (x: Prim.Boolean))
+    g :: (Prim.Boolean -> (Prim.Boolean))
+    g = 
+      \(x: Prim.Boolean) -> 
+        (and: (Prim.Boolean -> ((Prim.Boolean -> (Prim.Boolean)))))
+        ((not: (Prim.Boolean -> (Prim.Boolean)))
+         ((h: (Prim.Boolean -> (Prim.Boolean))) (x: Prim.Boolean)))
+        ((not: (Prim.Boolean -> (Prim.Boolean))) (x: Prim.Boolean))
+    f :: (Prim.Boolean -> (Prim.Boolean))
+    f = 
+      \(x: Prim.Boolean) -> 
+        (not: (Prim.Boolean -> (Prim.Boolean)))
+        ((g: (Prim.Boolean -> (Prim.Boolean))) (x: Prim.Boolean))
+    c :: (Prim.Boolean -> (Prim.Boolean))
+    c = 
+      \(x: Prim.Boolean) -> 
+        (not: (Prim.Boolean -> (Prim.Boolean)))
+        ((and: (Prim.Boolean -> ((Prim.Boolean -> (Prim.Boolean)))))
+         ((f: (Prim.Boolean -> (Prim.Boolean))) (x: Prim.Boolean))
+         ((b: (Prim.Boolean -> (Prim.Boolean))) (x: Prim.Boolean)))
+    b :: (Prim.Boolean -> (Prim.Boolean))
+    b = 
+      \(x: Prim.Boolean) -> 
+        (and: (Prim.Boolean -> ((Prim.Boolean -> (Prim.Boolean)))))
+        (x: Prim.Boolean)
+        ((and: (Prim.Boolean -> ((Prim.Boolean -> (Prim.Boolean)))))
+         ((c: (Prim.Boolean -> (Prim.Boolean))) (x: Prim.Boolean))
+         ((h: (Prim.Boolean -> (Prim.Boolean))) (x: Prim.Boolean)))
+    a :: (Prim.Boolean -> (Prim.Boolean))
+    a = 
+      \(x: Prim.Boolean) -> 
+        (and: (Prim.Boolean -> ((Prim.Boolean -> (Prim.Boolean)))))
+        ((b: (Prim.Boolean -> (Prim.Boolean))) (x: Prim.Boolean))
+        (x: Prim.Boolean)
+  in (and: (Prim.Boolean -> ((Prim.Boolean -> (Prim.Boolean)))))
+     ((a: (Prim.Boolean -> (Prim.Boolean))) (z: Prim.Boolean))
+     ((and: (Prim.Boolean -> ((Prim.Boolean -> (Prim.Boolean)))))
+      ((b: (Prim.Boolean -> (Prim.Boolean))) (z: Prim.Boolean))
+      ((and: (Prim.Boolean -> ((Prim.Boolean -> (Prim.Boolean)))))
+       ((c: (Prim.Boolean -> (Prim.Boolean))) (z: Prim.Boolean))
+       ((and: (Prim.Boolean -> ((Prim.Boolean -> (Prim.Boolean)))))
+        ((f: (Prim.Boolean -> (Prim.Boolean))) (z: Prim.Boolean))
+        ((and: (Prim.Boolean -> ((Prim.Boolean -> (Prim.Boolean)))))
+         ((g: (Prim.Boolean -> (Prim.Boolean))) (z: Prim.Boolean))
+         ((h: (Prim.Boolean -> (Prim.Boolean))) (z: Prim.Boolean))))))

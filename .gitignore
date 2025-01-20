@@ -44,3 +44,4 @@ tests/purs/make/
 /result*
 
 tests/purus/passing/**/cache-db.json
+tests/purus/passing/**/pir_no_eval.txt

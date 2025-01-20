@@ -291,6 +291,7 @@ desugarConstructorPattern datatypes altBodyTy _e =
                   msg =
                     prettify
                       [ "INPUT TY:\n" <> prettyStr _eTy
+                      , "INPUT EXPRESSION:\n" <> prettyStr _e
                       , "RESULT TY:\n" <> prettyStr (expTy id result)
                       , "DESTRUCTOR TY:\n" <> prettyStr (expTy id destructor)
                       , "ORIGINAL CASE RES TY:\n" <> prettyStr _resTy
