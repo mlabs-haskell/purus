@@ -1,5 +1,5 @@
 {
-  description = "uplc-benchmark";
+  description = "purus";
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs";
     flake-parts = {
