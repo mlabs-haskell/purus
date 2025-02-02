@@ -22,6 +22,8 @@
 
       packages = {
         purs = purus.packages."purescript:exe:purs";
+
+        purus = purus.packages."purescript:exe:purus";
       };
 
       apps = {
