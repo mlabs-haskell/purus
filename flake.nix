@@ -29,6 +29,7 @@
       flakeModules = {
         haskell = ./nix/haskell;
         utils = ./nix/utils;
+        templates = ./nix/templates;
       };
     in
     inputs.flake-parts.lib.mkFlake { inherit inputs; } ({ self, ... }: {
