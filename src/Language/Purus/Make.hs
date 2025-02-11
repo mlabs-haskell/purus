@@ -115,7 +115,7 @@ compile primModule orderedModules mainModuleName mainFunctionName =
     go = do
       (summedModule, dsCxt) <- runDesugarCore $ desugarCoreModules primModule orderedModules
       let
-        traceBracket lbl msg = pure () --  traceM ("\n" <> lbl <> "\n\n" <> msg <> "\n\n")
+        traceBracket lbl msg =  pure () -- traceM ("\n" <> lbl <> "\n\n" <> msg <> "\n\n")
         decls = moduleDecls summedModule
         declIdentsSet = foldBinds (\acc nm _ -> S.insert nm acc) S.empty decls
         couldn'tFindMain n =

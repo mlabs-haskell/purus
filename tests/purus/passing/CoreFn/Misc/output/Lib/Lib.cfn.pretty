@@ -121,6 +121,9 @@ Exports:
   testAccessorB,
   testAccessorC,
   doesitparse,
+  goodNot,
+  badNot,
+  testShims,
   testClassInt,
   eqInt,
   eq2IntBoolean,
@@ -715,6 +718,13 @@ testId =
   (id: forall (t :: Prim.Type). ((t :: Prim.Type) -> ((t :: Prim.Type))))
   (2: Prim.Int)
 
+goodNot :: (Prim.Boolean -> (Prim.Boolean))
+goodNot = 
+  \(b: Prim.Boolean) -> 
+    case (b: Prim.Boolean) of 
+       True -> (False: Prim.Boolean)
+       _ -> (True: Prim.Boolean)
+
 fakeLT :: (Prim.Int -> ((Prim.Int -> (Prim.Boolean))))
 fakeLT = \(v: Prim.Int) -> \(v1: Prim.Int) -> (True: Prim.Boolean)
 
@@ -961,6 +971,20 @@ brokenEven =
 
 testBrokenEven :: Prim.Int
 testBrokenEven = (brokenEven: (Prim.Int -> (Prim.Int))) (0: Prim.Int)
+
+badNot :: (Prim.Boolean -> (Prim.Boolean))
+badNot = 
+  \(b: Prim.Boolean) -> 
+    (ifThenElse: forall (x :: Prim.Type). (Prim.Boolean ->
+    (((x :: Prim.Type) -> (((x :: Prim.Type) -> ((x :: Prim.Type))))))))
+    (b: Prim.Boolean)
+    (False: Prim.Boolean)
+    (True: Prim.Boolean)
+
+testShims :: Prim.Boolean
+testShims = 
+  (goodNot: (Prim.Boolean -> (Prim.Boolean)))
+  ((badNot: (Prim.Boolean -> (Prim.Boolean))) (True: Prim.Boolean))
 
 arrForall :: List (forall (a :: Prim.Type). ((a :: Prim.Type) -> ((a :: Prim.Type))))
 arrForall = 

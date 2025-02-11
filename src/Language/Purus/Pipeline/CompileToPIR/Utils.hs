@@ -3,7 +3,7 @@
 -}
 {-# LANGUAGE GADTs #-}
 
-module Language.Purus.Pipeline.CompileToPIR.Utils (unit, builtinSubstitutions, pirDelay, pirForce, freshLam, freshLam', pirTyAbs) where
+module Language.Purus.Pipeline.CompileToPIR.Utils (unit, (#), pirIfThenElse, pirTyInst, builtinSubstitutions, pirDelay, pirForce, freshLam, freshLam', pirTyAbs) where
 
 import Prelude
 
@@ -67,7 +67,7 @@ pirBoolToBoolean conBoolTerm = do
 pirBooleanToBool :: PIRTerm -> PlutusContext PIRTerm
 pirBooleanToBool psBool = do
   boolDctor <- PIR.Var () <$> getDestructorTy C.Boolean
-  pure $ PIR.TyInst () (boolDctor # psBool # mkConstant () True # mkConstant () False) tyBuiltinBool
+  pure $ PIR.TyInst () (boolDctor # psBool) tyBuiltinBool  # mkConstant () True # mkConstant () False
 
 {- This is *NOT* the thing that we desugar `Builtin.IfThenElse` to. This is a *lazy* if-then-else
    (using TyAbs/TyInst to emulate force/delay since PIR lacks force/delay). You have to pass in the
@@ -234,10 +234,10 @@ pirEqualsData = wrapBoolToBoolean2 tyData PLC.EqualsData
 
 -- forall x. Bool -> x -> x -> x
 pirIfThenElse :: PlutusContext PIRTerm
-pirIfThenElse = freshLam tyBool $ \_ cond -> do
+pirIfThenElse = pirTyAbs $ \t -> freshLam tyBool $ \_ cond -> do
   let fun = PIR.Builtin () PLC.IfThenElse
   cond' <- pirBooleanToBool cond
-  pure $ fun # cond'
+  pure $ pirTyInst t fun # cond'
 
 -- forall x. BuiltinList x -> Bool
 pirNullList :: PlutusContext PIRTerm
