@@ -42,7 +42,7 @@ import Language.Purus.IR (
   Lit (CharL, IntL, StringL),
   Ty,
   expTy,
-  expTy', pattern (:~>),
+  expTy',
  )
 import Language.Purus.IR qualified as IR
 import Language.Purus.IR.Utils (Vars, WithoutObjects, toExp)
@@ -77,8 +77,6 @@ pattern Unit <- FVar _ (Qualified (ByModuleName C.M_Prim) (Ident "unit"))
 
 pattern Err :: t -> FVar t
 pattern Err t <- FVar t (Qualified (ByModuleName C.M_Prim) (Ident "error"))
-
-
 
 compileToPIR ::
   Datatypes IR.Kind Ty ->

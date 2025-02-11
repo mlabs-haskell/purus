@@ -584,3 +584,14 @@ testAccessorC = testRecord.c
 
 doesitparse ::  forall a. a -> a
 doesitparse x = x 
+
+-- Test for the most problematic builtin "shim"
+
+goodNot :: Boolean -> Boolean
+goodNot b = if b then False else True
+
+badNot :: Boolean -> Boolean
+badNot b = Builtin.ifThenElse b False True
+
+testShims :: Boolean
+testShims = goodNot (badNot True)
